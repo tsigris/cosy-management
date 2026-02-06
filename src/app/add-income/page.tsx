@@ -6,11 +6,12 @@ import { supabase } from '@/lib/supabase'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 
-// 1. Φτιάχνουμε ένα εσωτερικό Component που έχει τη φόρμα
-function IncomeForm() {
+// 1. Το εσωτερικό Component που περιέχει τη φόρμα και το logic
+function IncomeFormFields() {
   const router = useRouter()
-  const searchParams = useSearchParams() // Τώρα είναι ασφαλές εδώ μέσα
+  const searchParams = useSearchParams()
   
+  // Παίρνει την ημερομηνία από το URL ή βάζει τη σημερινή
   const dateFromUrl = searchParams.get('date') || new Date().toISOString().split('T')[0]
   
   const [amount, setAmount] = useState('')
@@ -22,6 +23,7 @@ function IncomeForm() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setLoading(true)
+    
     const { error } = await supabase.from('transactions').insert([
       { 
         amount: parseFloat(amount), 
@@ -31,7 +33,13 @@ function IncomeForm() {
         notes 
       }
     ])
-    if (!error) router.push('/')
+    
+    if (!error) {
+      router.push('/')
+    } else {
+      console.error('Error inserting income:', error)
+      alert('Υπήρξε πρόβλημα κατά την αποθήκευση.')
+    }
     setLoading(false)
   }
 
@@ -39,10 +47,53 @@ function IncomeForm() {
     <div style={{ maxWidth: '400px', margin: '0 auto' }}>
       <Link href="/" style={{ color: '#64748b', textDecoration: 'none', fontSize: '14px', fontWeight: 'bold' }}>← ΑΚΥΡΩΣΗ</Link>
       <h1 style={{ fontSize: '24px', fontWeight: '900', marginTop: '20px', color: '#111827' }}>ΝΕΟ ΕΣΟΔΟ</h1>
+
       <form onSubmit={handleSubmit} style={{ marginTop: '25px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
-        <input type="date" value={date} onChange={(e) => setDate(e.target.value)} required style={{ width: '100%', padding: '15px', borderRadius: '15px', border: '1px solid #e2e8f0' }} />
-        <input type="number" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} required placeholder="0.00" style={{ width: '100%', padding: '15px', borderRadius: '15px', border: '1px solid #e2e8f0', fontSize: '20px' }} />
-        <button type="submit" disabled={loading} style={{ backgroundColor: '#16a34a', color: 'white', padding: '18px', borderRadius: '15px', border: 'none', fontWeight: 'bold' }}>
+        <div>
+          <label style={{ fontSize: '11px', fontWeight: '800', color: '#94a3b8', textTransform: 'uppercase' }}>Ημερομηνία Είσπραξης</label>
+          <input 
+            type="date" 
+            value={date} 
+            onChange={(e) => setDate(e.target.value)}
+            required
+            style={{ width: '100%', padding: '15px', borderRadius: '15px', border: '1px solid #e2e8f0', fontSize: '16px', marginTop: '5px' }}
+          />
+        </div>
+
+        <div>
+          <label style={{ fontSize: '11px', fontWeight: '800', color: '#94a3b8', textTransform: 'uppercase' }}>Ποσό (€)</label>
+          <input 
+            type="number" 
+            step="0.01" 
+            value={amount} 
+            onChange={(e) => setAmount(e.target.value)}
+            required
+            placeholder="0.00"
+            style={{ width: '100%', padding: '15px', borderRadius: '15px', border: '1px solid #e2e8f0', fontSize: '20px', fontWeight: '900', marginTop: '5px' }}
+          />
+        </div>
+
+        <div>
+          <label style={{ fontSize: '11px', fontWeight: '800', color: '#94a3b8', textTransform: 'uppercase' }}>Τρόπος</label>
+          <div style={{ display: 'flex', gap: '10px', marginTop: '5px' }}>
+            {['Μετρητά', 'Κάρτα'].map(m => (
+              <button 
+                key={m} 
+                type="button"
+                onClick={() => setMethod(m)}
+                style={{ flex: 1, padding: '12px', borderRadius: '12px', border: method === m ? '2px solid #16a34a' : '1px solid #e2e8f0', backgroundColor: method === m ? '#f0fdf4' : 'white', color: method === m ? '#16a34a' : '#64748b', fontWeight: 'bold' }}
+              >
+                {m === 'Κάρτα' ? '💳 ΚΑΡΤΑ' : '💰 ΜΕΤΡΗΤΑ'}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <button 
+          type="submit" 
+          disabled={loading}
+          style={{ backgroundColor: '#16a34a', color: 'white', padding: '18px', borderRadius: '15px', border: 'none', fontSize: '16px', fontWeight: 'bold', marginTop: '10px', cursor: 'pointer' }}
+        >
           {loading ? 'ΑΠΟΘΗΚΕΥΣΗ...' : 'ΚΑΤΑΧΩΡΗΣΗ ΕΣΟΔΟΥ'}
         </button>
       </form>
@@ -50,12 +101,12 @@ function IncomeForm() {
   )
 }
 
-// 2. Η κύρια σελίδα απλώς "τυλίγει" τη φόρμα με Suspense
+// 2. Η κύρια σελίδα που παρέχει το απαραίτητο Suspense Boundary
 export default function AddIncomePage() {
   return (
-    <main style={{ backgroundColor: '#f9fafb', minHeight: '100vh', padding: '20px' }}>
-      <Suspense fallback={<p style={{ textAlign: 'center' }}>Φόρτωση...</p>}>
-        <IncomeForm />
+    <main style={{ backgroundColor: '#f9fafb', minHeight: '100vh', padding: '20px', fontFamily: 'sans-serif' }}>
+      <Suspense fallback={<p style={{ textAlign: 'center', marginTop: '50px' }}>Φόρτωση φόρμας...</p>}>
+        <IncomeFormFields />
       </Suspense>
     </main>
   )
