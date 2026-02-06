@@ -1,15 +1,15 @@
 'use client'
+export const dynamic = 'force-dynamic' // Η απαραίτητη προσθήκη για να μην βγάζει error στο Vercel
+
 import { useState, Suspense } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 
-// Δημιουργούμε ένα ξεχωριστό component για τη φόρμα
 function IncomeForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
   
-  // Παίρνει την ημερομηνία από το URL ή βάζει τη σημερινή
   const dateFromUrl = searchParams.get('date') || new Date().toISOString().split('T')[0]
   
   const [amount, setAmount] = useState('')
@@ -92,7 +92,6 @@ function IncomeForm() {
   )
 }
 
-// Η κύρια σελίδα που περιέχει το Suspense
 export default function AddIncome() {
   return (
     <main style={{ backgroundColor: '#f9fafb', minHeight: '100vh', padding: '20px', fontFamily: 'sans-serif' }}>
