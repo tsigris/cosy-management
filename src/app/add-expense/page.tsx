@@ -1,6 +1,6 @@
+export const dynamic = 'force-dynamic'
 'use client'
 // Προσθήκη για την αποφυγή σφαλμάτων κατά το build στο Vercel
-export const dynamic = 'force-dynamic'
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
