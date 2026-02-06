@@ -1,4 +1,7 @@
 'use client'
+// Προσθήκη για την αποφυγή σφαλμάτων κατά το build στο Vercel
+export const dynamic = 'force-dynamic'
+
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
@@ -40,7 +43,6 @@ export default function AddExpensePage() {
     
     setFetching(true)
     
-    // Εδώ στέλνουμε το payload με τη σωστή ημερομηνία για να φαίνεται στο "Σήμερα"
     const payload: any = {
       type: 'expense',
       amount: parseFloat(formData.amount),
@@ -49,7 +51,6 @@ export default function AddExpensePage() {
       description: formData.description || '',
       is_credit: formData.is_credit || false,
       is_debt_payment: formData.is_debt_payment || false,
-      // Στέλνουμε την ημερομηνία σε ISO format για να την αναγνωρίσει η βάση
       date: new Date().toISOString() 
     }
 
@@ -65,11 +66,9 @@ export default function AddExpensePage() {
 
     if (!error) {
       router.push('/')
-      // Κάνουμε refresh για να ανανεωθεί η αρχική σελίδα και να δει τη νέα εγγραφή
       router.refresh()
     } else {
       setFetching(false)
-      // Αν βγάλει σφάλμα για τη στήλη 'date', πρέπει να την προσθέσεις στο Supabase SQL Editor
       alert('Σφάλμα: ' + error.message)
     }
   }
@@ -77,7 +76,7 @@ export default function AddExpensePage() {
   return (
     <main style={{ padding: '20px', maxWidth: '500px', margin: '0 auto', fontFamily: 'sans-serif', backgroundColor: '#ffffff', minHeight: '100vh' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px' }}>
-         <button onClick={() => router.back()} style={{ border: 'none', background: 'none', fontSize: '24px', color: '#64748b' }}>←</button>
+         <button onClick={() => router.back()} style={{ border: 'none', background: 'none', fontSize: '24px', color: '#64748b', cursor: 'pointer' }}>←</button>
          <h2 style={{ fontSize: '22px', fontWeight: '800', margin: 0 }}>Νέο Έξοδο</h2>
       </div>
       
@@ -166,6 +165,6 @@ export default function AddExpensePage() {
 }
 
 const labelStyle = { fontSize: '11px', fontWeight: '800', color: '#64748b', display: 'block', marginBottom: '6px', textTransform: 'uppercase' as const };
-const inputStyle = { width: '100%', padding: '14px', borderRadius: '12px', border: '1px solid #e2e8f0', fontSize: '16px' };
+const inputStyle = { width: '100%', padding: '14px', borderRadius: '12px', border: '1px solid #e2e8f0', fontSize: '16px', outline: 'none' };
 const saveBtnStyle = { backgroundColor: '#2563eb', color: 'white', padding: '18px', borderRadius: '14px', border: 'none', fontWeight: 'bold' as const, fontSize: '16px', cursor: 'pointer' };
 const boxStyle = (bg: string, border: string) => ({ padding: '15px', backgroundColor: bg, borderRadius: '14px', border: `1px solid ${border}` });

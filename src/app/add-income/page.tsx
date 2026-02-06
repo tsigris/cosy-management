@@ -1,70 +1,103 @@
 'use client'
-import { Suspense, useState, useEffect } from 'react'
+export const dynamic = 'force-dynamic' // Η γραμμή που λύνει το Prerender Error στο Vercel
+
+import { useState, Suspense } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter, useSearchParams } from 'next/navigation'
+import Link from 'next/link'
 
-// Αυτό το κομμάτι περιέχει τη λογική της σελίδας
-function AddIncomeContent() {
+function IncomeForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
+  
+  const dateFromUrl = searchParams.get('date') || new Date().toISOString().split('T')[0]
+  
   const [amount, setAmount] = useState('')
-  const [description, setDescription] = useState('')
+  const [method, setMethod] = useState('Μετρητά')
+  const [date, setDate] = useState(dateFromUrl)
+  const [notes, setNotes] = useState('')
   const [loading, setLoading] = useState(false)
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setLoading(true)
-    const { data: { user } } = await supabase.auth.getUser()
-    
-    if (user) {
-      const { error } = await supabase.from('transactions').insert([
-        { 
-          user_id: user.id, 
-          amount: parseFloat(amount), 
-          description, 
-          type: 'income',
-          date: new Date().toISOString()
-        }
-      ])
-      if (!error) router.push('/analysis')
-      else alert('Σφάλμα: ' + error.message)
-    }
+    const { error } = await supabase.from('transactions').insert([
+      { 
+        amount: parseFloat(amount), 
+        method, 
+        type: 'income', 
+        date_recorded: date,
+        notes 
+      }
+    ])
+    if (!error) router.push('/')
     setLoading(false)
   }
 
   return (
-    <main style={{ padding: '20px', maxWidth: '500px', margin: '0 auto' }}>
-      <h1>Προσθήκη Εσόδου</h1>
-      <form onSubmit={handleSubmit}>
-        <input 
-          type="number" 
-          placeholder="Ποσό" 
-          value={amount} 
-          onChange={(e) => setAmount(e.target.value)} 
-          style={{ width: '100%', padding: '10px', marginBottom: '10px' }}
-          required 
-        />
-        <input 
-          type="text" 
-          placeholder="Περιγραφή" 
-          value={description} 
-          onChange={(e) => setDescription(e.target.value)} 
-          style={{ width: '100%', padding: '10px', marginBottom: '10px' }}
-          required 
-        />
-        <button type="submit" disabled={loading} style={{ width: '100%', padding: '10px', backgroundColor: '#22c55e', color: 'white', border: 'none' }}>
-          {loading ? 'Αποθήκευση...' : 'Προσθήκη'}
+    <div style={{ maxWidth: '400px', margin: '0 auto' }}>
+      <Link href="/" style={{ color: '#64748b', textDecoration: 'none', fontSize: '14px', fontWeight: 'bold' }}>← ΑΚΥΡΩΣΗ</Link>
+      <h1 style={{ fontSize: '24px', fontWeight: '900', marginTop: '20px', color: '#111827' }}>ΝΕΟ ΕΣΟΔΟ</h1>
+
+      <form onSubmit={handleSubmit} style={{ marginTop: '25px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+        <div>
+          <label style={{ fontSize: '11px', fontWeight: '800', color: '#94a3b8', textTransform: 'uppercase' }}>Ημερομηνία Είσπραξης</label>
+          <input 
+            type="date" 
+            value={date} 
+            onChange={(e) => setDate(e.target.value)}
+            required
+            style={{ width: '100%', padding: '15px', borderRadius: '15px', border: '1px solid #e2e8f0', fontSize: '16px', marginTop: '5px' }}
+          />
+        </div>
+
+        <div>
+          <label style={{ fontSize: '11px', fontWeight: '800', color: '#94a3b8', textTransform: 'uppercase' }}>Ποσό (€)</label>
+          <input 
+            type="number" 
+            step="0.01" 
+            value={amount} 
+            onChange={(e) => setAmount(e.target.value)}
+            required
+            placeholder="0.00"
+            style={{ width: '100%', padding: '15px', borderRadius: '15px', border: '1px solid #e2e8f0', fontSize: '20px', fontWeight: '900', marginTop: '5px' }}
+          />
+        </div>
+
+        <div>
+          <label style={{ fontSize: '11px', fontWeight: '800', color: '#94a3b8', textTransform: 'uppercase' }}>Τρόπος</label>
+          <div style={{ display: 'flex', gap: '10px', marginTop: '5px' }}>
+            {['Μετρητά', 'Κάρτα'].map(m => (
+              <button 
+                key={m} 
+                type="button"
+                onClick={() => setMethod(m)}
+                style={{ flex: 1, padding: '12px', borderRadius: '12px', border: method === m ? '2px solid #16a34a' : '1px solid #e2e8f0', backgroundColor: method === m ? '#f0fdf4' : 'white', color: method === m ? '#16a34a' : '#64748b', fontWeight: 'bold' }}
+              >
+                {m === 'Κάρτα' ? '💳 ΚΑΡΤΑ' : '💰 ΜΕΤΡΗΤΑ'}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <button 
+          type="submit" 
+          disabled={loading}
+          style={{ backgroundColor: '#16a34a', color: 'white', padding: '18px', borderRadius: '15px', border: 'none', fontSize: '16px', fontWeight: 'bold', marginTop: '10px' }}
+        >
+          {loading ? 'ΑΠΟΘΗΚΕΥΣΗ...' : 'ΚΑΤΑΧΩΡΗΣΗ ΕΣΟΔΟΥ'}
         </button>
       </form>
-    </main>
+    </div>
   )
 }
 
-// Η κύρια σελίδα που "τυλίγει" το περιεχόμενο σε Suspense
-export default function AddIncomePage() {
+export default function AddIncome() {
   return (
-    <Suspense fallback={<div>Φόρτωση...</div>}>
-      <AddIncomeContent />
-    </Suspense>
+    <main style={{ backgroundColor: '#f9fafb', minHeight: '100vh', padding: '20px', fontFamily: 'sans-serif' }}>
+      <Suspense fallback={<p style={{ textAlign: 'center' }}>Φόρτωση...</p>}>
+        <IncomeForm />
+      </Suspense>
+    </main>
   )
 }
