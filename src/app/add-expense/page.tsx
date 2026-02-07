@@ -13,7 +13,8 @@ function AddExpenseForm() {
   const [notes, setNotes] = useState('')
   const [invoiceNum, setInvoiceNum] = useState('')
   const [isCredit, setIsCredit] = useState(false) 
-  const [isAgainstDebt, setIsAgainstDebt] = useState(false) 
+  const [isAgainstDebt, setIsAgainstDebt] = useState(false)
+  const [source, setSource] = useState('store') // 'store' = ΤΑΜΕΙΟ, 'pocket' = ΤΣΕΠΗ
 
   const [employees, setEmployees] = useState<any[]>([])
   const [suppliers, setSuppliers] = useState<any[]>([])
@@ -33,16 +34,11 @@ function AddExpenseForm() {
       if (s) setSuppliers(s)
       if (f) setFixedAssets(f)
 
-      // ΑΥΤΟΜΑΤΗ ΣΥΜΠΛΗΡΩΣΗ ΑΠΟ URL (Για εξόφληση από Καρτέλες)
       const supIdFromUrl = searchParams.get('supId')
       const againstDebtFromUrl = searchParams.get('againstDebt')
       
-      if (supIdFromUrl) {
-        setSelectedSup(supIdFromUrl)
-      }
-      if (againstDebtFromUrl === 'true') {
-        setIsAgainstDebt(true)
-      }
+      if (supIdFromUrl) setSelectedSup(supIdFromUrl)
+      if (againstDebtFromUrl === 'true') setIsAgainstDebt(true)
     }
     loadData()
   }, [searchParams])
@@ -50,15 +46,20 @@ function AddExpenseForm() {
   async function handleSave() {
     if (!amount || Number(amount) <= 0) return alert('Συμπληρώστε το ποσό')
 
+    // ΚΑΤΗΓΟΡΙΟΠΟΙΗΣΗ
     let category = 'Λοιπά'
     if (selectedSup) category = 'Εμπορεύματα'
     else if (selectedEmp) category = 'Προσωπικό'
     else if (selectedFixed) category = 'Πάγια'
 
+    // Αν η πηγή είναι η ΤΣΕΠΗ, το ποσό γίνεται αρνητικό και η κατηγορία 'pocket'
+    const finalAmount = source === 'pocket' ? -Math.abs(Number(amount)) : Number(amount)
+    const finalCategory = source === 'pocket' ? 'pocket' : (isAgainstDebt ? 'Εξόφληση Χρέους' : category)
+
     const payload: any = {
-      amount: Number(amount),
+      amount: finalAmount,
       method: isCredit ? 'Πίστωση' : method,
-      notes: isAgainstDebt ? `ΕΞΟΦΛΗΣΗ ΧΡΕΟΥΣ: ${notes}` : notes,
+      notes: source === 'pocket' ? `(ΑΠΟ ΤΣΕΠΗ) ${notes}` : notes,
       invoice_number: invoiceNum,
       is_credit: isCredit,
       type: isAgainstDebt ? 'debt_payment' : 'expense',
@@ -66,7 +67,7 @@ function AddExpenseForm() {
       employee_id: selectedEmp || null,
       supplier_id: selectedSup || null,
       fixed_asset_id: selectedFixed || null,
-      category: isAgainstDebt ? 'Εξόφληση Χρέους' : category
+      category: finalCategory
     }
 
     const { error } = await supabase.from('transactions').insert([payload])
@@ -85,6 +86,25 @@ function AddExpenseForm() {
         <div style={{ display: 'flex', alignItems: 'center', gap: '15px', marginBottom: '20px' }}>
           <Link href="/" style={{ textDecoration: 'none', fontSize: '24px', color: '#64748b' }}>←</Link>
           <h2 style={{ fontSize: '20px', fontWeight: '900', color: '#1e293b', margin: 0 }}>Νέο Έξοδο</h2>
+        </div>
+
+        {/* ΕΠΙΛΟΓΗ ΠΗΓΗΣ ΧΡΗΜΑΤΩΝ */}
+        <div style={{ marginBottom: '20px' }}>
+          <label style={labelStyle}>ΠΗΓΗ ΧΡΗΜΑΤΩΝ (ΠΟΙΟΣ ΠΛΗΡΩΝΕΙ;)</label>
+          <div style={{ display: 'flex', gap: '10px', marginTop: '8px' }}>
+            <button 
+              onClick={() => { setSource('store'); setIsCredit(false); }} 
+              style={{ ...sourceBtn, backgroundColor: source === 'store' ? '#0f172a' : '#f1f5f9', color: source === 'store' ? 'white' : '#64748b' }}
+            >
+              🏪 ΤΑΜΕΙΟ
+            </button>
+            <button 
+              onClick={() => { setSource('pocket'); setIsCredit(false); }} 
+              style={{ ...sourceBtn, backgroundColor: source === 'pocket' ? '#8b5cf6' : '#f1f5f9', color: source === 'pocket' ? 'white' : '#64748b' }}
+            >
+              💰 ΤΣΕΠΗ
+            </button>
+          </div>
         </div>
 
         {/* ΠΟΣΟ - ΜΕΘΟΔΟΣ - ΠΑΡΑΣΤΑΤΙΚΟ */}
@@ -106,58 +126,48 @@ function AddExpenseForm() {
           </div>
         </div>
 
-        {/* ΕΠΙΛΟΓΕΣ ΧΡΕΟΥΣ */}
-        <div style={{ backgroundColor: '#f8fafc', padding: '15px', borderRadius: '15px', marginBottom: '20px', border: '1px solid #f1f5f9' }}>
-          <div style={{ marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <input type="checkbox" checked={isCredit} onChange={e => {setIsCredit(e.target.checked); if(e.target.checked) setIsAgainstDebt(false)}} id="credit" style={checkboxStyle} />
-            <label htmlFor="credit" style={checkLabel}>ΕΠΙ ΠΙΣΤΩΣΕΙ (ΝΕΟ ΧΡΕΟΣ)</label>
+        {/* ΕΠΙΛΟΓΕΣ ΧΡΕΟΥΣ (Μόνο αν η πηγή είναι το Ταμείο) */}
+        {source === 'store' && (
+          <div style={{ backgroundColor: '#f8fafc', padding: '15px', borderRadius: '15px', marginBottom: '20px', border: '1px solid #f1f5f9' }}>
+            <div style={{ marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <input type="checkbox" checked={isCredit} onChange={e => {setIsCredit(e.target.checked); if(e.target.checked) setIsAgainstDebt(false)}} id="credit" style={checkboxStyle} />
+              <label htmlFor="credit" style={checkLabel}>ΕΠΙ ΠΙΣΤΩΣΕΙ (ΝΕΟ ΧΡΕΟΣ)</label>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <input type="checkbox" checked={isAgainstDebt} onChange={e => {setIsAgainstDebt(e.target.checked); if(e.target.checked) setIsCredit(false)}} id="against" style={checkboxStyle} />
+              <label htmlFor="against" style={checkLabel}>ΕΝΑΝΤΙ ΠΑΛΑΙΟΥ ΧΡΕΟΥ</label>
+            </div>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <input type="checkbox" checked={isAgainstDebt} onChange={e => {setIsAgainstDebt(e.target.checked); if(e.target.checked) setIsCredit(false)}} id="against" style={checkboxStyle} />
-            <label htmlFor="against" style={checkLabel}>ΕΝΑΝΤΙ ΠΑΛΑΙΟΥ ΧΡΕΟΥ</label>
-          </div>
-        </div>
+        )}
 
-        {/* 1. ΠΡΟΜΗΘΕΥΤΗΣ */}
+        {/* ΕΠΙΛΟΓΗ ΣΤΟΙΧΕΙΟΥ */}
         <div style={selectGroup}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '5px' }}>
-            <label style={labelStyle}>ΠΡΟΜΗΘΕΥΤΗΣ</label>
-            <Link href="/suppliers" style={addBtn}>+</Link>
-          </div>
+          <label style={labelStyle}>ΠΡΟΜΗΘΕΥΤΗΣ</label>
           <select value={selectedSup} onChange={e => {setSelectedSup(e.target.value); setSelectedEmp(''); setSelectedFixed('')}} style={inputStyle}>
             <option value="">— Επιλέξτε —</option>
             {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
           </select>
         </div>
 
-        {/* 2. ΥΠΑΛΛΗΛΟΣ */}
         <div style={selectGroup}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '5px' }}>
-            <label style={labelStyle}>ΥΠΑΛΛΗΛΟΣ</label>
-            <Link href="/employees" style={addBtn}>+</Link>
-          </div>
+          <label style={labelStyle}>ΥΠΑΛΛΗΛΟΣ</label>
           <select value={selectedEmp} onChange={e => {setSelectedEmp(e.target.value); setSelectedSup(''); setSelectedFixed('')}} style={inputStyle}>
             <option value="">— Επιλέξτε —</option>
             {employees.map(e => <option key={e.id} value={e.id}>{e.full_name}</option>)}
           </select>
         </div>
 
-        {/* 3. ΠΑΓΙΟ */}
         <div style={selectGroup}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '5px' }}>
-            <label style={labelStyle}>ΠΑΓΙΟ (ΔΕΗ, ΕΝΟΙΚΙΟ ΚΛΠ)</label>
-            <Link href="/fixed-assets" style={addBtn}>+</Link>
-          </div>
+          <label style={labelStyle}>ΠΑΓΙΟ</label>
           <select value={selectedFixed} onChange={e => {setSelectedFixed(e.target.value); setSelectedEmp(''); setSelectedSup('')}} style={inputStyle}>
             <option value="">— Επιλέξτε —</option>
             {fixedAssets.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
           </select>
         </div>
 
-        {/* ΣΗΜΕΙΩΣΕΙΣ */}
         <div style={{ marginBottom: '25px' }}>
-          <label style={labelStyle}>ΣΗΜΕΙΩΣΕΙΣ / ΠΕΡΙΓΡΑΦΗ</label>
-          <textarea value={notes} onChange={e => setNotes(e.target.value)} style={{ ...inputStyle, height: '80px', paddingTop: '10px' }} placeholder="Προαιρετικές σημειώσεις..." />
+          <label style={labelStyle}>ΣΗΜΕΙΩΣΕΙΣ</label>
+          <textarea value={notes} onChange={e => setNotes(e.target.value)} style={{ ...inputStyle, height: '60px', paddingTop: '10px' }} placeholder="Προαιρετικές σημειώσεις..." />
         </div>
 
         <button onClick={handleSave} style={saveBtn}>ΑΠΟΘΗΚΕΥΣΗ ΕΞΟΔΟΥ</button>
@@ -177,12 +187,12 @@ export default function AddExpensePage() {
 }
 
 // STYLES
-const formCardStyle = { maxWidth: '500px', margin: '0 auto', backgroundColor: 'white', borderRadius: '28px', padding: '24px', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.05)', border: '1px solid #e2e8f0' };
-const labelStyle: any = { fontSize: '10px', fontWeight: '900', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.5px' };
+const formCardStyle = { maxWidth: '500px', margin: '0 auto', backgroundColor: 'white', borderRadius: '28px', padding: '24px', border: '1px solid #e2e8f0' };
+const labelStyle: any = { fontSize: '10px', fontWeight: '900', color: '#94a3b8', textTransform: 'uppercase' };
 const inputStyle: any = { width: '100%', padding: '14px', borderRadius: '14px', border: '1px solid #e2e8f0', fontSize: '15px', fontWeight: 'bold', backgroundColor: '#f8fafc', boxSizing: 'border-box' };
-const selectGroup = { marginBottom: '18px' };
-const addBtn: any = { textDecoration: 'none', backgroundColor: '#eff6ff', color: '#2563eb', width: '24px', height: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '6px', fontWeight: 'bold', fontSize: '18px' };
-const saveBtn: any = { width: '100%', padding: '18px', backgroundColor: '#2563eb', color: 'white', border: 'none', borderRadius: '16px', fontWeight: '900', fontSize: '16px', cursor: 'pointer', boxShadow: '0 4px 6px rgba(37, 99, 235, 0.2)' };
-const cancelBtn: any = { width: '100%', padding: '14px', backgroundColor: 'transparent', color: '#64748b', border: 'none', borderRadius: '16px', fontWeight: 'bold', fontSize: '14px', marginTop: '10px', cursor: 'pointer' };
+const sourceBtn: any = { flex: 1, padding: '14px', borderRadius: '12px', border: 'none', fontWeight: '900', fontSize: '12px', cursor: 'pointer', transition: '0.2s' };
+const selectGroup = { marginBottom: '15px' };
+const saveBtn: any = { width: '100%', padding: '18px', backgroundColor: '#0f172a', color: 'white', border: 'none', borderRadius: '16px', fontWeight: '900', fontSize: '16px', cursor: 'pointer' };
+const cancelBtn: any = { width: '100%', padding: '14px', backgroundColor: 'transparent', color: '#64748b', border: 'none', fontWeight: 'bold', fontSize: '14px', cursor: 'pointer' };
 const checkboxStyle = { width: '18px', height: '18px', cursor: 'pointer' };
 const checkLabel: any = { fontSize: '13px', fontWeight: '800', color: '#1e293b', cursor: 'pointer' };
