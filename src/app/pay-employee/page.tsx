@@ -108,7 +108,7 @@ function PayEmployeeForm() {
         </div>
 
         <button onClick={handlePayment} disabled={loading} style={saveBtn}>
-          {loading ? 'ΚΑΤΑΧΩΡΗΣΗ...' : 'ΕΠΙΒΕΒΑΙΩΣΗ ΔΙΠΛΗΣ ΠΛΗΡΩΜΗΣ'}
+          {loading ? 'ΚΑΤΑΧΩΡΗΣΗ...' : 'ΕΠΙΒΕΒΑΙΩΣΗ ΠΛΗΡΩΜΗΣ'}
         </button>
       </div>
     </main>
