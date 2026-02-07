@@ -9,15 +9,17 @@ function AddExpenseContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   
-  // Λήψη παραμέτρων από το URL (αν υπάρχουν)
+  // 1. Παίρνουμε τα στοιχεία από το URL μόνο αν υπάρχουν (από το κουμπί ΕΞΟΦΛΗΣΗ)
   const supplierIdFromUrl = searchParams.get('supplier_id')
-  const isPaymentParam = searchParams.get('type') === 'payment'
+  const isAutoPayment = searchParams.get('type') === 'payment'
   const dateParam = searchParams.get('date') || new Date().toISOString().split('T')[0]
 
   const [amount, setAmount] = useState('')
   const [supplierId, setSupplierId] = useState(supplierIdFromUrl || '')
   const [method, setMethod] = useState('Μετρητά')
-  const [isDebtPayment, setIsDebtPayment] = useState(isPaymentParam)
+  const [description, setDescription] = useState('')
+  const [isDebtPayment, setIsDebtPayment] = useState(isAutoPayment) // TRUE μόνο αν έρχεται από καρτέλες
+  const [isCredit, setIsCredit] = useState(false)
   const [suppliers, setSuppliers] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
 
@@ -39,9 +41,10 @@ function AddExpenseContent() {
       supplier_id: supplierId,
       type: 'expense',
       method,
+      description,
       date: dateParam,
-      is_debt_payment: isDebtPayment, // Εδώ αποθηκεύεται αν είναι έναντι χρέους
-      is_credit: false // Μια πληρωμή χρέους δεν είναι η ίδια πίστωση
+      is_debt_payment: isDebtPayment,
+      is_credit: isCredit
     }])
 
     if (error) alert(error.message)
@@ -54,83 +57,90 @@ function AddExpenseContent() {
       <div style={{ display: 'flex', alignItems: 'center', gap: '15px', marginBottom: '30px' }}>
         <button onClick={() => router.back()} style={backBtn}>←</button>
         <h2 style={{ fontWeight: '900', margin: 0 }}>
-          {isDebtPayment ? 'Εξόφληση Χρέους' : 'Νέο Έξοδο'}
+          {isAutoPayment ? 'Εξόφληση Καρτέλας' : 'Νέο Έξοδο'}
         </h2>
       </div>
 
       <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
         
-        {/* ΕΠΙΛΟΓΗ ΠΡΟΜΗΘΕΥΤΗ */}
+        {/* ΗΜΕΡΟΜΗΝΙΑ (Πάντα ορατή όπως πριν) */}
+        <div>
+          <label style={labelStyle}>ΗΜΕΡΟΜΗΝΙΑ</label>
+          <input type="date" value={dateParam} disabled style={inputStyle} />
+        </div>
+
+        {/* ΠΡΟΜΗΘΕΥΤΗΣ - Αν έρχεται από Εξόφληση, είναι κλειδωμένο */}
         <div>
           <label style={labelStyle}>ΠΡΟΜΗΘΕΥΤΗΣ</label>
           <select 
             value={supplierId} 
             onChange={(e) => setSupplierId(e.target.value)} 
             style={inputStyle}
-            disabled={!!supplierIdFromUrl} // Κλειδωμένο αν έρχεται από την καρτέλα
+            disabled={!!supplierIdFromUrl} 
           >
-            <option value="">Επιλέξτε...</option>
+            <option value="">— Επιλέξτε —</option>
             {suppliers.map(s => (
               <option key={s.id} value={s.id}>{s.name}</option>
             ))}
           </select>
         </div>
 
-        {/* ΠΟΣΟ */}
-        <div>
-          <label style={labelStyle}>ΠΟΣΟ (€)</label>
-          <input 
-            type="number" 
-            step="0.01" 
-            value={amount} 
-            onChange={(e) => setAmount(e.target.value)} 
-            style={amountInput} 
-            placeholder="0.00"
-            autoFocus 
-          />
-        </div>
-
-        {/* ΤΡΟΠΟΣ ΠΛΗΡΩΜΗΣ */}
-        <div>
-          <label style={labelStyle}>ΤΡΟΠΟΣ ΠΛΗΡΩΜΗΣ</label>
-          <div style={{ display: 'flex', gap: '10px' }}>
-            {['Μετρητά', 'Κάρτα', 'Τράπεζα'].map(m => (
-              <button
-                key={m}
-                type="button"
-                onClick={() => setMethod(m)}
-                style={{
-                  ...methodBtn,
-                  backgroundColor: method === m ? '#1e293b' : 'white',
-                  color: method === m ? 'white' : '#1e293b'
-                }}
-              >
-                {m}
-              </button>
-            ))}
+        <div style={{ display: 'flex', gap: '15px' }}>
+          <div style={{ flex: 1 }}>
+            <label style={labelStyle}>ΠΟΣΟ (€)</label>
+            <input 
+              type="number" 
+              step="0.01" 
+              value={amount} 
+              onChange={(e) => setAmount(e.target.value)} 
+              style={amountInput} 
+              placeholder="0.00"
+              autoFocus 
+            />
+          </div>
+          <div style={{ flex: 1 }}>
+            <label style={labelStyle}>ΜΕΘΟΔΟΣ</label>
+            <select value={method} onChange={(e) => setMethod(e.target.value)} style={inputStyle}>
+              <option value="Μετρητά">Μετρητά</option>
+              <option value="Κάρτα">Κάρτα</option>
+              <option value="Τράπεζα">Τράπεζα</option>
+            </select>
           </div>
         </div>
 
-        {/* ΕΠΙΛΟΓΗ ΕΝΑΝΤΙ ΧΡΕΟΥΣ - ΜΟΝΟ ΑΝ ΔΕΝ ΕΙΝΑΙ ΗΔΗ ΠΡΟΕΠΙΛΕΓΜΕΝΟ */}
-        {!isPaymentParam && (
-          <label style={checkboxContainer}>
+        {/* ΕΠΙΛΟΓΕΣ - Αν έρχεται από Εξόφληση, το "Έναντι Χρέους" είναι προεπιλεγμένο */}
+        <div style={optionsBox}>
+          {!isAutoPayment && (
+            <label style={checkboxRow}>
+              <input type="checkbox" checked={isCredit} onChange={e => { setIsCredit(e.target.checked); if(e.target.checked) setIsDebtPayment(false); }} />
+              <span>ΕΠΙ ΠΙΣΤΩΣΕΙ (ΝΕΟ ΧΡΕΟΣ)</span>
+            </label>
+          )}
+          
+          <label style={checkboxRow}>
             <input 
               type="checkbox" 
               checked={isDebtPayment} 
-              onChange={(e) => setIsDebtPayment(e.target.checked)} 
+              onChange={e => { setIsDebtPayment(e.target.checked); if(e.target.checked) setIsCredit(false); }}
+              disabled={isAutoPayment} // Κλειδωμένο αν έρχεται από καρτέλες
             />
-            <span style={{ fontSize: '14px', fontWeight: '700' }}>ΕΝΑΝΤΙ ΠΑΛΑΙΟΥ ΧΡΕΟΥΣ</span>
+            <span>ΕΝΑΝΤΙ ΠΑΛΑΙΟΥ ΧΡΕΟΥΣ</span>
           </label>
-        )}
+        </div>
 
-        {isDebtPayment && (
-          <div style={infoNote}>
-            ℹ️ Η κίνηση αυτή θα αφαιρεθεί από το υπόλοιπο της καρτέλας.
-          </div>
-        )}
+        <div>
+          <label style={labelStyle}>ΣΗΜΕΙΩΣΕΙΣ / ΠΕΡΙΓΡΑΦΗ</label>
+          <input 
+            type="text" 
+            value={description} 
+            onChange={(e) => setDescription(e.target.value)} 
+            style={inputStyle} 
+            placeholder="π.χ. Αρ. Τιμολογίου..." 
+          />
+        </div>
 
         <button type="submit" disabled={loading} style={submitBtn}>
-          {loading ? 'ΑΠΟΘΗΚΕΥΣΗ...' : 'ΟΛΟΚΛΗΡΩΣΗ'}
+          {loading ? 'ΑΠΟΘΗΚΕΥΣΗ...' : 'ΑΠΟΘΗΚΕΥΣΗ ΕΞΟΔΟΥ'}
         </button>
       </form>
     </div>
@@ -146,11 +156,10 @@ export default function AddExpensePage() {
 }
 
 // STYLES
-const backBtn = { border: 'none', background: '#f1f5f9', width: '45px', height: '45px', borderRadius: '15px', fontSize: '20px', cursor: 'pointer' };
-const labelStyle = { fontSize: '11px', fontWeight: '800', color: '#94a3b8', marginBottom: '8px', display: 'block', letterSpacing: '0.5px' };
-const inputStyle = { width: '100%', padding: '15px', borderRadius: '15px', border: '1px solid #e2e8f0', fontSize: '16px', outline: 'none', appearance: 'none' as const };
-const amountInput = { ...inputStyle, fontSize: '24px', fontWeight: '900', textAlign: 'center' as const, color: '#dc2626' };
-const methodBtn = { flex: 1, padding: '12px', borderRadius: '12px', border: '1px solid #e2e8f0', fontWeight: '700', cursor: 'pointer', transition: 'all 0.2s' };
-const checkboxContainer = { display: 'flex', alignItems: 'center', gap: '10px', padding: '15px', background: '#f8fafc', borderRadius: '15px', cursor: 'pointer' };
-const submitBtn = { padding: '18px', borderRadius: '15px', border: 'none', backgroundColor: '#0f172a', color: 'white', fontWeight: '800', fontSize: '16px', cursor: 'pointer', marginTop: '10px' };
-const infoNote = { padding: '12px', backgroundColor: '#f0f9ff', color: '#0369a1', borderRadius: '10px', fontSize: '12px', fontWeight: '600', textAlign: 'center' as const };
+const backBtn = { border: 'none', background: '#f1f5f9', width: '40px', height: '40px', borderRadius: '12px', fontSize: '18px', cursor: 'pointer' };
+const labelStyle = { fontSize: '11px', fontWeight: '800', color: '#94a3b8', marginBottom: '8px', display: 'block' };
+const inputStyle = { width: '100%', padding: '12px', borderRadius: '12px', border: '1px solid #e2e8f0', fontSize: '15px', outline: 'none', backgroundColor: '#fff' };
+const amountInput = { ...inputStyle, fontWeight: '700' };
+const optionsBox = { padding: '15px', backgroundColor: '#f8fafc', borderRadius: '15px', display: 'flex', flexDirection: 'column' as const, gap: '12px' };
+const checkboxRow = { display: 'flex', alignItems: 'center', gap: '10px', fontSize: '13px', fontWeight: '700', cursor: 'pointer' };
+const submitBtn = { padding: '16px', borderRadius: '15px', border: 'none', backgroundColor: '#2563eb', color: 'white', fontWeight: '800', fontSize: '16px', cursor: 'pointer', marginTop: '10px' };
