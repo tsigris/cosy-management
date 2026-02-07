@@ -12,14 +12,14 @@ export default function SuppliersPage() {
   const [category, setCategory] = useState('Εμπορεύματα')
   const [editingId, setEditingId] = useState<string | null>(null)
   const [showTransactions, setShowTransactions] = useState<string | null>(null)
-  const [isFormOpen, setIsFormOpen] = useState(false) // Για το κουμπί προσθήκης
+  const [isFormOpen, setIsFormOpen] = useState(false)
   const [loading, setLoading] = useState(false)
 
   useEffect(() => { fetchData() }, [])
 
   async function fetchData() {
     const { data: sData } = await supabase.from('suppliers').select('*').order('name')
-    const { data: tData } = await supabase.from('transactions').select('*')
+    const { data: tData } = await supabase.from('transactions').select('*').order('date', { ascending: false })
     if (sData) setSuppliers(sData)
     if (tData) setTransactions(tData)
   }
@@ -59,10 +59,17 @@ export default function SuppliersPage() {
     window.scrollTo(0, 0);
   }
 
+  // Συνάρτηση για την εμφάνιση του σωστού εικονιδίου πληρωμής
+  const getPaymentIcon = (method: string) => {
+    if (method === 'Μετρητά') return '💵'
+    if (method === 'Κάρτα' || method === 'POS') return '💳'
+    if (method === 'Τράπεζα') return '🏦'
+    return '💰'
+  }
+
   return (
     <main style={{ maxWidth: '500px', margin: '0 auto', padding: '16px', fontFamily: 'sans-serif', backgroundColor: '#f8fafc', minHeight: '100vh' }}>
       
-      {/* HEADER */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
         <Link href="/" style={{ textDecoration: 'none', color: '#64748b', fontWeight: 'bold', fontSize: '14px' }}>← ΠΙΣΩ</Link>
         <h2 style={{ margin: 0, fontSize: '22px', fontWeight: '900', color: '#1e293b' }}>Προμηθευτές</h2>
@@ -74,7 +81,6 @@ export default function SuppliersPage() {
         </button>
       </div>
 
-      {/* ΦΟΡΜΑ ΠΡΟΣΘΗΚΗΣ / ΕΠΕΞΕΡΓΑΣΙΑΣ (ΕΜΦΑΝΙΖΕΤΑΙ ΜΟΝΟ ΜΕ ΤΟ ΚΟΥΜΠΙ) */}
       {isFormOpen && (
         <div style={{ ...formCard, borderColor: editingId ? '#f59e0b' : '#2563eb' }}>
           <p style={labelStyle}>ΕΠΩΝΥΜΙΑ ΠΡΟΜΗΘΕΥΤΗ</p>
@@ -99,7 +105,6 @@ export default function SuppliersPage() {
         </div>
       )}
 
-      {/* ΛΙΣΤΑ ΠΡΟΜΗΘΕΥΤΩΝ */}
       <div style={{ marginTop: '12px' }}>
         <p style={{ fontSize: '11px', fontWeight: '800', color: '#94a3b8', marginBottom: '12px', textTransform: 'uppercase' }}>ΛΙΣΤΑ ΣΥΝΕΡΓΑΤΩΝ ({suppliers.length})</p>
         {suppliers.map(s => (
@@ -114,19 +119,21 @@ export default function SuppliersPage() {
               </div>
               <div style={{ display: 'flex', gap: '6px' }}>
                 <button onClick={() => handleEdit(s)} style={editBtn}>✎</button>
-                <button onClick={async (e) => { e.stopPropagation(); if(confirm('Διαγραφή;')) { await supabase.from('suppliers').delete().eq('id', s.id); fetchData(); } }} style={deleteBtn}>🗑️</button>
+                <button onClick={(e) => { e.stopPropagation(); if(confirm('Διαγραφή;')) { supabase.from('suppliers').delete().eq('id', s.id).then(() => fetchData()); } }} style={deleteBtn}>🗑️</button>
               </div>
             </div>
 
-            {/* ΙΣΤΟΡΙΚΟ ΧΩΡΙΣ ΩΡΑ */}
             {showTransactions === s.id && (
               <div style={transList}>
                 <p style={{ fontSize: '10px', fontWeight: '900', color: '#64748b', marginBottom: '10px', borderBottom: '1px solid #e2e8f0', paddingBottom: '5px' }}>ΙΣΤΟΡΙΚΟ ΣΥΝΑΛΛΑΓΩΝ</p>
                 {transactions.filter(t => t.supplier_id === s.id).length > 0 ? (
                   transactions.filter(t => t.supplier_id === s.id).map(t => (
                     <div key={t.id} style={transItem}>
-                      <span style={{ color: '#64748b' }}>{t.date.split('T')[0]}</span> {/* Αφαίρεση ώρας */}
-                      <span style={{ fontWeight: '800', color: '#1e293b' }}>{Number(t.amount).toFixed(2)}€</span>
+                      <span style={{ color: '#64748b' }}>{t.date.split('T')[0]}</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ fontSize: '14px' }} title={t.method}>{getPaymentIcon(t.method)}</span>
+                        <span style={{ fontWeight: '800', color: '#1e293b' }}>{Number(t.amount).toFixed(2)}€</span>
+                      </div>
                     </div>
                   ))
                 ) : <p style={{ fontSize: '12px', color: '#94a3b8', textAlign: 'center' }}>Δεν υπάρχουν κινήσεις</p>}
@@ -139,7 +146,6 @@ export default function SuppliersPage() {
   )
 }
 
-// STYLES
 const addBtn = { padding: '8px 16px', backgroundColor: '#2563eb', color: 'white', border: 'none', borderRadius: '10px', fontWeight: '800', cursor: 'pointer', fontSize: '12px' };
 const cancelBtn = { padding: '8px 16px', backgroundColor: '#f1f5f9', color: '#64748b', border: 'none', borderRadius: '10px', fontWeight: '800', cursor: 'pointer', fontSize: '12px' };
 const formCard = { backgroundColor: 'white', padding: '20px', borderRadius: '24px', border: '2px solid', marginBottom: '20px', boxShadow: '0 4px 12px rgba(0,0,0,0.05)' };
