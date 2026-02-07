@@ -18,7 +18,7 @@ function DashboardContent() {
   useEffect(() => {
     async function fetchTransactions() {
       setLoading(true)
-      // Φέρνουμε και το όνομα του προμηθευτή (suppliers) μαζί με τη συναλλαγή
+      // Φέρνουμε τα δεδομένα και το όνομα του προμηθευτή από τον πίνακα suppliers
       const { data } = await supabase
         .from('transactions')
         .select('*, suppliers(name)') 
@@ -31,13 +31,12 @@ function DashboardContent() {
     fetchTransactions()
   }, [selectedDate])
 
-  // ΥΠΟΛΟΓΙΣΜΟΣ ΣΥΝΟΛΩΝ (Οι πιστώσεις ΔΕΝ αφαιρούνται από το ταμείο)
+  // Υπολογισμός συνόλων - Οι πιστώσεις δεν αφαιρούνται από τα έξοδα ημέρας
   const totals = transactions.reduce((acc, t) => {
     const amt = Number(t.amount) || 0
     if (t.type === 'income') {
       acc.inc += amt
     } else if (t.type === 'expense' && !t.is_credit) {
-      // Μόνο αν ΔΕΝ είναι πίστωση αφαιρείται από το ταμείο
       acc.exp += amt
     }
     return acc
@@ -45,6 +44,7 @@ function DashboardContent() {
 
   return (
     <div style={{ maxWidth: '500px', margin: '0 auto', fontFamily: 'sans-serif' }}>
+      
       {/* HEADER & MENU */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', paddingTop: '10px' }}>
         <h1 style={{ fontWeight: '900', fontSize: '28px', margin: 0 }}>ΚΑΤΑΣΤΗΜΑ</h1>
@@ -56,7 +56,8 @@ function DashboardContent() {
               <Link href="/employees" style={menuItem}>👤 Υπάλληλοι</Link>
               <Link href="/suppliers" style={menuItem}>🛒 Προμηθευτές</Link>
               <Link href="/analysis" style={menuItem}>📈 Ανάλυση</Link>
-              <button onClick={() => alert('Logout...')} style={{...menuItem, color: 'red', border: 'none', background: 'none', width: '100%'}}>ΑΠΟΣΥΝΔΕΣΗ 🚪</button>
+              <div style={{ height: '1px', backgroundColor: '#f1f5f9', margin: '8px 0' }} />
+              <button onClick={() => alert('Logout...')} style={{...menuItem, color: '#ef4444', border: 'none', background: '#fee2e2', width: '100%', borderRadius: '10px' }}>ΑΠΟΣΥΝΔΕΣΗ 🚪</button>
             </div>
           )}
         </div>
@@ -82,12 +83,11 @@ function DashboardContent() {
           <div key={t.id} style={itemStyle}>
             <div style={{ flex: 1 }}>
               <p style={{ fontWeight: '800', margin: 0 }}>
-                {t.type === 'income' ? '💰 ' + (t.notes || 'ΕΙΣΠΡΑΞΗ') : '💸 ' + (t.category || 'ΕΞΟΔΟ')}
-                {t.is_credit && <span style={creditBadgeStyle}>🚩 ΠΙΣΤΩΣΗ</span>}
+                {t.type === 'income' ? '💰 ' + (t.notes || 'ΕΙΣΠΡΑΞΗ Z') : (
+                    t.is_credit ? <span><span style={{color: '#dc2626'}}>🚩 ΠΙΣΤΩΣΗ:</span> {t.suppliers?.name || 'Προμηθευτής'}</span> : '💸 ' + (t.suppliers?.name || t.category)
+                )}
               </p>
-              <p style={subLabelStyle}>
-                {t.method} {t.suppliers?.name ? `| ${t.suppliers.name}` : ''}
-              </p>
+              <p style={subLabelStyle}>{t.method}</p>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
               <p style={{ fontWeight: '900', fontSize: '16px', color: t.is_credit ? '#94a3b8' : (t.type === 'income' ? '#16a34a' : '#dc2626'), margin: 0 }}>
@@ -117,8 +117,7 @@ const btnStyle = { flex: 1, padding: '20px', borderRadius: '20px', color: 'white
 const itemStyle = { backgroundColor: 'white', padding: '15px', borderRadius: '20px', border: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' };
 const subLabelStyle = { fontSize: '11px', color: '#94a3b8', textTransform: 'uppercase' as const, margin: '4px 0 0 0', fontWeight: 'bold' };
 const gearBtnStyle = { backgroundColor: '#f1f5f9', border: 'none', padding: '10px', borderRadius: '12px', cursor: 'pointer', fontWeight: 'bold' };
-const dropdownStyle = { position: 'absolute' as const, top: '50px', right: '0', backgroundColor: 'white', minWidth: '180px', borderRadius: '20px', boxShadow: '0 10px 25px rgba(0,0,0,0.1)', padding: '15px', zIndex: 100 };
-const menuItem = { display: 'block', padding: '10px', textDecoration: 'none', color: '#1e293b', fontWeight: '600' as const, fontSize: '14px' };
+const dropdownStyle = { position: 'absolute' as const, top: '50px', right: '0', backgroundColor: 'white', minWidth: '200px', borderRadius: '20px', boxShadow: '0 10px 25px rgba(0,0,0,0.1)', padding: '15px', zIndex: 100 };
+const menuItem = { display: 'block', padding: '12px', textDecoration: 'none', color: '#1e293b', fontWeight: '600' as const, fontSize: '14px' };
 const menuSectionLabel = { fontSize: '9px', fontWeight: '800' as const, color: '#94a3b8', marginBottom: '10px' };
-const creditBadgeStyle = { color: '#ea580c', fontSize: '10px', marginLeft: '8px', verticalAlign: 'middle', fontWeight: '900' };
 const dateInputStyle = { width: '100%', padding: '15px', borderRadius: '15px', border: '1px solid #e2e8f0', fontSize: '18px', fontWeight: 'bold', textAlign: 'center' as const, marginBottom: '20px' };
