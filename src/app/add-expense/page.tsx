@@ -10,11 +10,12 @@ export default function AddExpensePage() {
   const [method, setMethod] = useState('Μετρητά')
   const [notes, setNotes] = useState('')
   const [invoiceNum, setInvoiceNum] = useState('')
-  const [isCredit, setIsCredit] = useState(false) // ΕΠΙ ΠΙΣΤΩΣΕΙ (ΝΕΟ ΧΡΕΟΣ)
-  const [isAgainstDebt, setIsAgainstDebt] = useState(false) // ΕΝΑΝΤΙ ΠΑΛΑΙΟΥ ΧΡΕΟΥ
+  const [isCredit, setIsCredit] = useState(false) 
+  const [isAgainstDebt, setIsAgainstDebt] = useState(false) 
 
   const [employees, setEmployees] = useState<any[]>([])
   const [suppliers, setSuppliers] = useState<any[]>([])
+  const [fixedAssets, setFixedAssets] = useState<any[]>([]) // ΝΕΑ ΚΑΤΑΣΤΑΣΗ ΓΙΑ ΠΑΓΙΑ
   
   const [selectedEmp, setSelectedEmp] = useState('')
   const [selectedSup, setSelectedSup] = useState('')
@@ -24,8 +25,11 @@ export default function AddExpensePage() {
     async function loadData() {
       const { data: e } = await supabase.from('employees').select('*').order('full_name')
       const { data: s } = await supabase.from('suppliers').select('*').order('name')
+      const { data: f } = await supabase.from('fixed_assets').select('*').order('name') // ΦΟΡΤΩΣΗ ΠΑΓΙΩΝ
+      
       if (e) setEmployees(e)
       if (s) setSuppliers(s)
+      if (f) setFixedAssets(f)
     }
     loadData()
   }, [])
@@ -38,19 +42,17 @@ export default function AddExpensePage() {
     else if (selectedEmp) category = 'Προσωπικό'
     else if (selectedFixed) category = 'Πάγια'
 
-    // ΛΟΓΙΚΗ ΕΝΑΝΤΙ ΠΑΛΑΙΟΥ ΧΡΕΟΥ:
-    // Αν είναι έναντι χρέους, το is_credit παραμένει false (για να μειωθεί το ταμείο) 
-    // αλλά προσθέτουμε ειδικό flag ή αρνητική εγγραφή για την καρτέλα αν χρειάζεται.
     const payload = {
       amount: Number(amount),
       method: isCredit ? 'Πίστωση' : method,
-      notes: isAgainstDebt ? `ΕΞΟΦΛΗΣΗ ΧΡΕΟΥ: ${notes}` : notes,
+      notes: isAgainstDebt ? `ΕΞΟΦΛΗΣΗ ΧΡΕΟΥΣ: ${notes}` : notes,
       invoice_number: invoiceNum,
-      is_credit: isCredit, // Αν είναι true, δεν πειράζει το ταμείο ημέρας αλλά αυξάνει την καρτέλα
-      type: isAgainstDebt ? 'debt_payment' : 'expense', // Διαχωρισμός τύπου για την ανάλυση
+      is_credit: isCredit,
+      type: isAgainstDebt ? 'debt_payment' : 'expense',
       date: new Date().toISOString().split('T')[0],
       employee_id: selectedEmp || null,
       supplier_id: selectedSup || null,
+      fixed_asset_id: selectedFixed || null, // ΑΠΟΘΗΚΕΥΣΗ ΤΟΥ ID ΤΟΥ ΠΑΓΙΟΥ
       category: isAgainstDebt ? 'Εξόφληση Χρέους' : category
     }
 
@@ -91,7 +93,7 @@ export default function AddExpensePage() {
           </div>
         </div>
 
-        {/* ΕΠΙΛΟΓΕΣ ΧΡΕΟΥΣ - ΟΠΩΣ ΣΤΗ ΦΩΤΟΓΡΑΦΙΑ */}
+        {/* ΕΠΙΛΟΓΕΣ ΧΡΕΟΥΣ */}
         <div style={{ backgroundColor: '#f8fafc', padding: '15px', borderRadius: '15px', marginBottom: '20px', border: '1px solid #f1f5f9' }}>
           <div style={{ marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '10px' }}>
             <input type="checkbox" checked={isCredit} onChange={e => {setIsCredit(e.target.checked); if(e.target.checked) setIsAgainstDebt(false)}} id="credit" style={checkboxStyle} />
@@ -103,9 +105,7 @@ export default function AddExpensePage() {
           </div>
         </div>
 
-        {/* ΣΕΙΡΑ: 1. ΠΡΟΜΗΘΕΥΤΗΣ, 2. ΥΠΑΛΛΗΛΟΣ, 3. ΠΑΓΙΟ */}
-        
-        {/* ΠΡΟΜΗΘΕΥΤΗΣ */}
+        {/* 1. ΠΡΟΜΗΘΕΥΤΗΣ */}
         <div style={selectGroup}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '5px' }}>
             <label style={labelStyle}>ΠΡΟΜΗΘΕΥΤΗΣ</label>
@@ -117,7 +117,7 @@ export default function AddExpensePage() {
           </select>
         </div>
 
-        {/* ΥΠΑΛΛΗΛΟΣ */}
+        {/* 2. ΥΠΑΛΛΗΛΟΣ */}
         <div style={selectGroup}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '5px' }}>
             <label style={labelStyle}>ΥΠΑΛΛΗΛΟΣ</label>
@@ -129,16 +129,15 @@ export default function AddExpensePage() {
           </select>
         </div>
 
-        {/* ΠΑΓΙΟ */}
+        {/* 3. ΠΑΓΙΟ (ΔΥΝΑΜΙΚΗ ΛΙΣΤΑ) */}
         <div style={selectGroup}>
-          <label style={labelStyle}>ΠΑΓΙΟ (ΔΕΗ, ΕΝΟΙΚΙΟ ΚΛΠ)</label>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '5px' }}>
+            <label style={labelStyle}>ΠΑΓΙΟ (ΔΕΗ, ΕΝΟΙΚΙΟ ΚΛΠ)</label>
+            <Link href="/fixed-assets" style={addBtn}>+</Link>
+          </div>
           <select value={selectedFixed} onChange={e => {setSelectedFixed(e.target.value); setSelectedEmp(''); setSelectedSup('')}} style={inputStyle}>
             <option value="">— Επιλέξτε —</option>
-            <option value="ΔΕΗ">ΔΕΗ / Ρεύμα</option>
-            <option value="ΕΥΔΑΠ">ΕΥΔΑΠ / Νερό</option>
-            <option value="Ενοίκιο">Ενοίκιο</option>
-            <option value="Τηλεφωνία">Τηλεφωνία / Internet</option>
-            <option value="Λοιπά">Λοιπά Πάγια</option>
+            {fixedAssets.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
           </select>
         </div>
 
@@ -156,7 +155,7 @@ export default function AddExpensePage() {
   )
 }
 
-// STYLES
+// STYLES (Παραμένουν ίδια)
 const labelStyle = { fontSize: '10px', fontWeight: '900', color: '#94a3b8', textTransform: 'uppercase' as const, letterSpacing: '0.5px' };
 const inputStyle = { width: '100%', padding: '14px', borderRadius: '14px', border: '1px solid #e2e8f0', fontSize: '15px', fontWeight: 'bold', backgroundColor: '#f8fafc', boxSizing: 'border-box' as const };
 const selectGroup = { marginBottom: '18px' };
