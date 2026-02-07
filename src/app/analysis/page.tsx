@@ -7,157 +7,143 @@ export default function AnalysisPage() {
   const [transactions, setTransactions] = useState<any[]>([])
   const [initialAmount, setInitialAmount] = useState(0)
   const [loading, setLoading] = useState(true)
-  const [period, setPeriod] = useState('Ημέρα')
+  const [searchTerm, setSearchTerm] = useState('')
+  const [startDate, setStartDate] = useState('')
+  const [endDate, setEndDate] = useState('')
 
-  useEffect(() => { 
-    fetchData() 
-  }, [period])
+  useEffect(() => { fetchData() }, [])
 
   async function fetchData() {
     setLoading(true)
     const { data: { user } } = await supabase.auth.getUser()
-    
     if (user) {
-      // 1. Λήψη Αρχικού Ποσού από το Προφίλ
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('initial_amount')
-        .eq('id', user.id)
-        .single()
-      
+      const { data: profile } = await supabase.from('profiles').select('initial_amount').eq('id', user.id).single()
       if (profile) setInitialAmount(profile.initial_amount || 0)
 
-      // 2. Λήψη όλων των κινήσεων (το φιλτράρισμα γίνεται μετά στην JS για ευκολία)
-      const { data: trans } = await supabase
-        .from('transactions')
-        .select('*')
-      
+      const { data: trans } = await supabase.from('transactions').select('*, suppliers(name)')
       if (trans) setTransactions(trans)
     }
     setLoading(false)
   }
 
-  const filterByPeriod = (t: any) => {
-    const now = new Date()
-    // Χρησιμοποιούμε το πεδίο 'date' που έχουμε στη βάση
-    const tDate = new Date(t.date) 
+  // ΦΙΛΤΡΑΡΙΣΜΑ
+  const filtered = transactions.filter(t => {
+    const tDate = t.date // Χρησιμοποιεί την ημερομηνία της κίνησης
+    const matchesSearch = 
+      (t.notes?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
+      (t.suppliers?.name?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
+      (t.category?.toLowerCase() || '').includes(searchTerm.toLowerCase())
     
-    if (period === 'Ημέρα') return tDate.toDateString() === now.toDateString()
-    if (period === 'Εβδομάδα') {
-      const oneWeekAgo = new Date(); oneWeekAgo.setDate(now.getDate() - 7)
-      return tDate >= oneWeekAgo
-    }
-    if (period === 'Μήνας') return tDate.getMonth() === now.getMonth() && tDate.getFullYear() === now.getFullYear()
-    if (period === 'Έτος') return tDate.getFullYear() === now.getFullYear()
-    return true
-  }
+    const matchesStart = startDate ? tDate >= startDate : true
+    const matchesEnd = endDate ? tDate <= endDate : true
+    
+    return matchesSearch && matchesStart && matchesEnd
+  })
 
-  const filtered = transactions.filter(filterByPeriod)
-
+  // ΥΠΟΛΟΓΙΣΜΟΙ
   const stats = filtered.reduce((acc, t) => {
     const amt = Number(t.amount) || 0
-    const isCard = t.method === 'Κάρτα' || t.method === 'Τράπεζα'
-
     if (t.type === 'income') {
-      if (isCard) acc.incomeCard += amt
-      else acc.incomeCash += amt
-    } else if (t.type === 'expense') {
-      if (t.is_credit) {
-        acc.credits += amt // Χρέος προς προμηθευτή
-      } else {
-        if (isCard) acc.expenseCard += amt
-        else acc.expenseCash += amt
-        
-        // Αν είναι πληρωμή χρέους (δεν υπολογίζεται ως νέο έξοδο στο συρτάρι αν έγινε με πίστωση)
-        if (t.is_debt_payment) acc.debtPayments += amt
-      }
+      acc.income += amt
+    } else {
+      acc.expenses += amt
+      if (t.category === 'Μισθοδοσία' || t.category === 'Προσωπικό') acc.payroll += amt
+      if (t.category === 'Εμπορεύματα' || t.category === 'Αγορές') acc.inventory += amt
+      if (t.category === 'Πάγια' || t.category === 'Λογαριασμοί') acc.fixed += amt
     }
     return acc
-  }, { incomeCash: 0, incomeCard: 0, expenseCash: 0, expenseCard: 0, credits: 0, debtPayments: 0 })
+  }, { income: 0, expenses: 0, payroll: 0, inventory: 0, fixed: 0 })
 
-  const totalIncome = stats.incomeCash + stats.incomeCard
-  // ΤΑΜΕΙΟ = Αρχικό + Έσοδα Μετρητά - Έξοδα Μετρητά
-  const totalCashInPocket = initialAmount + stats.incomeCash - stats.expenseCash
-
-  const cashPercentage = totalIncome > 0 ? Math.round((stats.incomeCash / totalIncome) * 100) : 0
-  const cardPercentage = totalIncome > 0 ? Math.round((stats.incomeCard / totalIncome) * 100) : 0
+  const payrollPercent = stats.income > 0 ? ((stats.payroll / stats.income) * 100).toFixed(1) : '0'
 
   return (
-    <main style={{ backgroundColor: '#f9fafb', minHeight: '100vh', padding: '16px', fontFamily: 'sans-serif' }}>
-      <div style={{ maxWidth: '450px', margin: '0 auto', paddingBottom: '60px' }}>
+    <main style={{ backgroundColor: '#f3f4f6', minHeight: '100vh', padding: '16px', fontFamily: 'sans-serif' }}>
+      <div style={{ maxWidth: '500px', margin: '0 auto' }}>
         
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px', alignItems: 'center' }}>
-          <Link href="/" style={{ color: '#2563eb', fontWeight: 'bold', textDecoration: 'none', fontSize: '14px' }}>← ΠΙΣΩ</Link>
-          <h2 style={{ fontSize: '18px', fontWeight: '900', margin: 0 }}>Ανάλυση</h2>
-          <select value={period} onChange={(e) => setPeriod(e.target.value)} style={selectStyle}>
-            {['Ημέρα', 'Εβδομάδα', 'Μήνας', 'Έτος', 'Όλα'].map(p => <option key={p} value={p}>{p}</option>)}
-          </select>
-        </div>
+        <Link href="/" style={{ color: '#2563eb', fontWeight: 'bold', textDecoration: 'none', display: 'block', marginBottom: '15px' }}>← Πίσω στο Ταμείο</Link>
 
-        {/* ΜΕΤΡΗΤΑ ΣΤΟ ΣΥΡΤΑΡΙ */}
-        <div style={darkCard}>
-          <p style={labelStyleLight}>ΜΕΤΡΗΤΑ ΣΤΟ ΣΥΡΤΑΡΙ</p>
-          <h2 style={{ fontSize: '36px', fontWeight: '800', margin: 0 }}>{totalCashInPocket.toFixed(2)}€</h2>
-          <div style={statsRow}>
-             <span style={{ color: '#4ade80' }}>+ {stats.incomeCash.toFixed(2)}€</span>
-             <span style={{ color: '#f87171' }}>- {stats.expenseCash.toFixed(2)}€</span>
+        {/* ΦΙΛΤΡΑ ΑΝΑΖΗΤΗΣΗΣ */}
+        <div style={filterCard}>
+          <input 
+            placeholder="🔍 Αναζήτηση (π.χ. ΔΕΗ, Εμπορεύματα...)" 
+            style={inputStyle} 
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
+          <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
+            <input type="date" style={dateInput} value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+            <input type="date" style={dateInput} value={endDate} onChange={(e) => setEndDate(e.target.value)} />
           </div>
-          <p style={{ fontSize: '10px', marginTop: '10px', opacity: 0.6 }}>Περιλαμβάνει αρχικό ποσό: {initialAmount}€</p>
         </div>
 
-        {/* ΚΙΝΗΣΗ ΚΑΡΤΩΝ */}
+        {/* ΚΥΡΙΑ ΣΤΑΤΙΣΤΙΚΑ */}
+        <div style={mainCard}>
+          <p style={labelStyle}>ΣΥΝΟΛΙΚΟΣ ΤΖΙΡΟΣ</p>
+          <h2 style={{ fontSize: '32px', margin: 0, fontWeight: '900' }}>{stats.income.toFixed(2)}€</h2>
+          <div style={divider} />
+          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+            <div>
+              <p style={labelSmall}>ΕΞΟΔΑ</p>
+              <p style={{ color: '#ef4444', fontWeight: '800' }}>-{stats.expenses.toFixed(2)}€</p>
+            </div>
+            <div style={{ textAlign: 'right' }}>
+              <p style={labelSmall}>ΚΑΘΑΡΟ</p>
+              <p style={{ color: '#10b981', fontWeight: '800' }}>{(stats.income - stats.expenses).toFixed(2)}€</p>
+            </div>
+          </div>
+        </div>
+
+        {/* ΕΠΑΓΓΕΛΜΑΤΙΚΗ ΑΝΑΛΥΣΗ */}
         <div style={whiteCard}>
-          <p style={labelStyleDark}>ΚΙΝΗΣΗ ΚΑΡΤΩΝ (POS / ΤΡΑΠΕΖΑ)</p>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <h3 style={{ color: '#2563eb', fontSize: '28px', fontWeight: '800', margin: 0 }}>{stats.incomeCard.toFixed(2)}€</h3>
-            <span style={subNote}>ΕΞΟΔΑ: {stats.expenseCard.toFixed(2)}€</span>
+          <h4 style={{ margin: '0 0 15px 0', fontSize: '14px', color: '#1e293b' }}>ΑΝΑΛΥΣΗ ΚΑΤΗΓΟΡΙΩΝ & KPI</h4>
+          
+          <div style={metricRow}>
+             <span>👥 Προσωπικό (Μισθοδοσία):</span>
+             <b>{stats.payroll.toFixed(2)}€ <small style={{color: '#6366f1'}}>({payrollPercent}%)</small></b>
+          </div>
+          <div style={metricRow}>
+             <span>🛒 Εμπορεύματα:</span>
+             <b>{stats.inventory.toFixed(2)}€</b>
+          </div>
+          <div style={metricRow}>
+             <span>🏢 Πάγια / Λογαριασμοί:</span>
+             <b>{stats.fixed.toFixed(2)}€</b>
+          </div>
+          <div style={metricRow}>
+             <span>📦 Λοιπά Έξοδα:</span>
+             <b>{(stats.expenses - (stats.payroll + stats.inventory + stats.fixed)).toFixed(2)}€</b>
           </div>
         </div>
 
-        {/* ΚΑΡΤΑ ΠΙΣΤΩΣΕΩΝ */}
-        <div style={orangeCard}>
-          <p style={labelStyleOrange}>ΥΠΟΛΟΙΠΟ ΠΙΣΤΩΣΕΩΝ (ΧΡΕΗ)</p>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <h3 style={{ fontSize: '22px', fontWeight: '800', color: '#111827', margin: 0 }}>{stats.credits.toFixed(2)}€</h3>
-            <span style={{ color: '#16a34a', fontSize: '11px', fontWeight: 'bold' }}>ΠΛΗΡΩΜΕΣ: -{stats.debtPayments.toFixed(2)}€</span>
-          </div>
+        {/* ΛΙΣΤΑ ΑΠΟΤΕΛΕΣΜΑΤΩΝ ΑΝΑΖΗΤΗΣΗΣ */}
+        <div style={{ marginTop: '20px' }}>
+           <p style={{ fontSize: '12px', fontWeight: 'bold', color: '#64748b', marginBottom: '10px' }}>ΑΠΟΤΕΛΕΣΜΑΤΑ ΑΝΑΖΗΤΗΣΗΣ ({filtered.length})</p>
+           {filtered.slice(0, 10).map(t => (
+             <div key={t.id} style={listItem}>
+                <div>
+                  <p style={{ margin: 0, fontWeight: 'bold', fontSize: '14px' }}>{t.suppliers?.name || t.notes || t.category}</p>
+                  <p style={{ margin: 0, fontSize: '11px', color: '#94a3b8' }}>{t.date} • {t.method}</p>
+                </div>
+                <p style={{ fontWeight: '900', color: t.type === 'income' ? '#10b981' : '#ef4444' }}>
+                  {t.type === 'income' ? '+' : '-'}{Number(t.amount).toFixed(2)}€
+                </p>
+             </div>
+           ))}
         </div>
 
-        {/* ΣΥΝΟΛΟ ΕΣΟΔΩΝ */}
-        <div style={{ padding: '0 8px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '10px' }}>
-                <span style={{ fontSize: '16px', fontWeight: '800', color: '#1e293b' }}>ΣΥΝΟΛΟ ΕΣΟΔΩΝ:</span>
-                <span style={{ fontSize: '20px', fontWeight: '900', color: '#1e293b' }}>{totalIncome.toFixed(2)}€</span>
-            </div>
-            
-            <div style={progressBar}>
-                <div style={{ width: `${cashPercentage}%`, backgroundColor: '#111827', transition: 'width 0.5s' }}></div>
-                <div style={{ width: `${cardPercentage}%`, backgroundColor: '#2563eb', transition: 'width 0.5s' }}></div>
-            </div>
-
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', fontWeight: '800' }}>
-                <span style={{ color: '#111827' }}>● ΜΕΤΡΗΤΑ: {cashPercentage}%</span>
-                <span style={{ color: '#2563eb' }}>● ΚΑΡΤΑ / VISA: {cardPercentage}%</span>
-            </div>
-        </div>
-
-        <button onClick={fetchData} disabled={loading} style={refreshBtn}>
-          {loading ? 'ΦΟΡΤΩΣΗ...' : '🔄 ΕΠΙΚΑΙΡΟΠΟΙΗΣΗ ΣΤΑΤΙΣΤΙΚΩΝ'}
-        </button>
       </div>
     </main>
   )
 }
 
 // STYLES
-const selectStyle = { padding: '8px 12px', borderRadius: '10px', border: '1px solid #e5e7eb', fontWeight: 'bold' as const, backgroundColor: 'white' };
-const darkCard = { backgroundColor: '#111827', padding: '24px', borderRadius: '28px', color: 'white', marginBottom: '16px', boxShadow: '0 10px 20px rgba(0,0,0,0.1)' };
-const whiteCard = { backgroundColor: 'white', padding: '24px', borderRadius: '28px', border: '1px solid #f1f5f9', marginBottom: '16px' };
-const orangeCard = { backgroundColor: '#fffaf5', padding: '24px', borderRadius: '28px', border: '1px solid #fff2e5', marginBottom: '24px' };
-const labelStyleLight = { fontSize: '10px', fontWeight: 'bold' as const, color: '#9ca3af', letterSpacing: '1px', marginBottom: '8px', textTransform: 'uppercase' as const };
-const labelStyleDark = { fontSize: '10px', fontWeight: 'bold' as const, color: '#64748b', letterSpacing: '1px', marginBottom: '8px', textTransform: 'uppercase' as const };
-const labelStyleOrange = { fontSize: '10px', fontWeight: 'bold' as const, color: '#c2410c', letterSpacing: '1px', marginBottom: '8px', textTransform: 'uppercase' as const };
-const statsRow = { display: 'flex', gap: '15px', marginTop: '15px', borderTop: '1px solid #374151', paddingTop: '15px' };
-const subNote = { fontSize: '11px', color: '#94a3b8', fontWeight: 'bold' as const };
-const progressBar = { height: '10px', backgroundColor: '#e2e8f0', borderRadius: '20px', overflow: 'hidden', display: 'flex', marginBottom: '12px' };
-const refreshBtn = { width: '100%', marginTop: '40px', padding: '18px', backgroundColor: 'white', border: '1px solid #e2e8f0', borderRadius: '18px', color: '#64748b', fontWeight: 'bold' as const, fontSize: '13px', cursor: 'pointer' };
+const filterCard = { backgroundColor: 'white', padding: '15px', borderRadius: '18px', marginBottom: '15px', boxShadow: '0 2px 10px rgba(0,0,0,0.05)' };
+const mainCard = { backgroundColor: '#1e293b', padding: '25px', borderRadius: '25px', color: 'white', marginBottom: '15px' };
+const whiteCard = { backgroundColor: 'white', padding: '20px', borderRadius: '20px', border: '1px solid #e2e8f0' };
+const inputStyle = { width: '100%', padding: '12px', borderRadius: '10px', border: '1px solid #e2e8f0', fontSize: '14px' };
+const dateInput = { flex: 1, padding: '10px', borderRadius: '10px', border: '1px solid #e2e8f0', fontSize: '13px' };
+const labelStyle = { fontSize: '10px', fontWeight: 'bold', color: '#94a3b8', letterSpacing: '1px', marginBottom: '5px' };
+const labelSmall = { fontSize: '9px', fontWeight: 'bold', color: '#94a3b8' };
+const divider = { height: '1px', backgroundColor: '#334155', margin: '15px 0' };
+const metricRow = { display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderBottom: '1px solid #f1f5f9', fontSize: '13px' };
+const listItem = { backgroundColor: 'white', padding: '12px 15px', borderRadius: '15px', marginBottom: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: '1px solid #f1f5f9' };
