@@ -18,7 +18,6 @@ function DashboardContent() {
   useEffect(() => {
     async function fetchTransactions() {
       setLoading(true)
-      // Φέρνουμε τις κινήσεις και το όνομα προμηθευτή
       const { data } = await supabase
         .from('transactions')
         .select('*, suppliers(name)') 
@@ -31,27 +30,11 @@ function DashboardContent() {
     fetchTransactions()
   }, [selectedDate])
 
-  // Λειτουργία Πραγματικής Αποσύνδεσης
   async function handleLogout() {
-    const { error } = await supabase.auth.signOut()
-    if (!error) {
-      router.push('/login')
-      router.refresh()
-    } else {
-      alert('Σφάλμα: ' + error.message)
-    }
+    await supabase.auth.signOut()
+    router.push('/login')
   }
 
-  // Λειτουργία Διαγραφής Κίνησης
-  async function handleDelete(id: string) {
-    if (!confirm('Διαγραφή κίνησης;')) return
-    const { error } = await supabase.from('transactions').delete().eq('id', id)
-    if (!error) {
-      setTransactions(transactions.filter(t => t.id !== id))
-    }
-  }
-
-  // Υπολογισμός Συνόλων (χωρίς τις πιστώσεις στα έξοδα)
   const totals = transactions.reduce((acc, t) => {
     const amt = Number(t.amount) || 0
     if (t.type === 'income') acc.inc += amt
@@ -74,7 +57,10 @@ function DashboardContent() {
               <p style={menuSectionLabel}>ΔΙΑΧΕΙΡΙΣΗ</p>
               <Link href="/employees" style={menuItem} onClick={() => setIsMenuOpen(false)}>👤 Υπάλληλοι</Link>
               <Link href="/suppliers" style={menuItem} onClick={() => setIsMenuOpen(false)}>🛒 Προμηθευτές</Link>
+              
+              {/* ΕΔΩ ΕΙΝΑΙ Η ΔΙΟΡΘΩΣΗ: ΠΡΕΠΕΙ ΝΑ ΠΗΓΑΙΝΕΙ ΣΤΟ /suppliers-balance */}
               <Link href="/suppliers-balance" style={menuItem} onClick={() => setIsMenuOpen(false)}>🚩 Καρτέλες (Χρέη)</Link>
+              
               <Link href="/analysis" style={menuItem} onClick={() => setIsMenuOpen(false)}>📈 Ανάλυση</Link>
               <div style={divider} />
               <button onClick={handleLogout} style={logoutBtnStyle}>ΑΠΟΣΥΝΔΕΣΗ 🚪</button>
@@ -89,7 +75,6 @@ function DashboardContent() {
         <div style={cardStyle}><p style={labelStyle}>ΕΞΟΔΑ ΗΜΕΡΑΣ</p><p style={{ color: '#dc2626', fontSize: '24px', fontWeight: '900' }}>{totals.exp.toFixed(2)}€</p></div>
       </div>
 
-      {/* ACTION BUTTONS */}
       <div style={{ display: 'flex', gap: '12px', marginBottom: '25px' }}>
         <Link href={`/add-income?date=${selectedDate}`} style={{ ...btnStyle, backgroundColor: '#10b981' }}>+ ΕΣΟΔΑ</Link>
         <Link href={`/add-expense?date=${selectedDate}`} style={{ ...btnStyle, backgroundColor: '#ef4444' }}>- ΕΞΟΔΑ</Link>
@@ -97,9 +82,7 @@ function DashboardContent() {
 
       <input type="date" value={selectedDate} onChange={(e) => router.push(`/?date=${e.target.value}`)} style={dateInputStyle} />
 
-      {/* LIST */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-        <p style={{ fontSize: '11px', fontWeight: '800', color: '#94a3b8', textTransform: 'uppercase' }}>Πρόσφατες Κινήσεις</p>
         {loading ? <p style={{ textAlign: 'center' }}>Φόρτωση...</p> : transactions.map(t => (
           <div key={t.id} style={itemStyle}>
             <div style={{ flex: 1 }}>
@@ -114,7 +97,6 @@ function DashboardContent() {
               <p style={{ fontWeight: '900', fontSize: '16px', color: t.is_credit ? '#94a3b8' : (t.type === 'income' ? '#16a34a' : '#dc2626'), margin: 0 }}>
                 {t.type === 'income' ? '+' : '-'}{Number(t.amount).toFixed(2)}€
               </p>
-              <button onClick={() => handleDelete(t.id)} style={{ background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer', opacity: 0.4 }}>🗑️</button>
             </div>
           </div>
         ))}
@@ -131,7 +113,6 @@ export default function HomePage() {
   )
 }
 
-// STYLES
 const menuBtnStyle = { backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', width: '40px', height: '40px', borderRadius: '12px', cursor: 'pointer', fontSize: '20px', color: '#64748b' };
 const dropdownStyle = { position: 'absolute' as const, top: '50px', right: '0', backgroundColor: 'white', minWidth: '200px', borderRadius: '20px', boxShadow: '0 10px 30px rgba(0,0,0,0.15)', padding: '12px', zIndex: 100, border: '1px solid #f1f5f9' };
 const menuItem = { display: 'block', padding: '12px', textDecoration: 'none', color: '#334155', fontWeight: '700' as const, fontSize: '14px', borderRadius: '10px' };
