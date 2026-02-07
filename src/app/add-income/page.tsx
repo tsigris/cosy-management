@@ -17,30 +17,39 @@ function AddIncomeContent() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!amount) return alert('Παρακαλώ συμπληρώστε το ποσό')
+    
+    // ΠΡΟΣΤΑΣΙΑ: Αν ήδη αποθηκεύει ή δεν έχει ποσό, σταμάτα
+    if (loading || !amount) return
     
     setLoading(true)
 
     try {
-      // Περιμένουμε την ολοκλήρωση της εγγραφής στη Supabase
+      // 1. Εκτέλεση εγγραφής στη βάση
       const { error } = await supabase.from('transactions').insert([{
         amount: parseFloat(amount),
         type: 'income',
-        method,
+        method: method,
         notes: notes.trim(),
         date: dateParam
       }])
 
       if (error) throw error
 
-      // Αν όλα πήγαν καλά, επιστρέφουμε στην αρχική
-      router.push(`/?date=${dateParam}`)
-      router.refresh()
+      // 2. Μικρή καθυστέρηση (500ms) για να ολοκληρωθεί η σύνδεση πριν το redirect
+      setTimeout(() => {
+        router.push(`/?date=${dateParam}`)
+        router.refresh()
+      }, 500)
 
     } catch (err: any) {
-      // Αν κοπεί η σύνδεση ή υπάρξει σφάλμα, το εμφανίζουμε εδώ
-      alert('Σφάλμα: ' + (err.message || 'Αποτυχία σύνδεσης με τη βάση'))
-    } finally {
+      console.error('Submit error:', err)
+      
+      // Αν το σφάλμα είναι AbortError, δίνουμε πιο κατανοητό μήνυμα
+      if (err.name === 'AbortError') {
+        alert('Η σύνδεση διακόπηκε προσωρινά. Το αίτημα μπορεί να έχει ολοκληρωθεί, παρακαλώ ελέγξτε την αρχική σελίδα.')
+      } else {
+        alert('Σφάλμα: ' + (err.message || 'Αποτυχία σύνδεσης με τη βάση'))
+      }
       setLoading(false)
     }
   }
@@ -54,7 +63,7 @@ function AddIncomeContent() {
 
       <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
         
-        <div>
+        <div style={fieldGroup}>
           <label style={labelStyle}>ΠΟΣΟ ΕΙΣΠΡΑΞΗΣ (€)</label>
           <input 
             type="number" 
@@ -64,11 +73,12 @@ function AddIncomeContent() {
             style={amountInput} 
             placeholder="0.00"
             autoFocus 
+            required
           />
         </div>
 
-        <div>
-          <label style={labelStyle}>ΤΡΟΠΟΣ</label>
+        <div style={fieldGroup}>
+          <label style={labelStyle}>ΤΡΟΠΟΣ ΠΛΗΡΩΜΗΣ</label>
           <select value={method} onChange={(e) => setMethod(e.target.value)} style={inputStyle}>
             <option value="Μετρητά">Μετρητά</option>
             <option value="Κάρτα">Κάρτα</option>
@@ -76,8 +86,8 @@ function AddIncomeContent() {
           </select>
         </div>
 
-        <div>
-          <label style={labelStyle}>ΣΗΜΕΙΩΣΕΙΣ</label>
+        <div style={fieldGroup}>
+          <label style={labelStyle}>ΣΗΜΕΙΩΣΕΙΣ (Προαιρετικό)</label>
           <input 
             type="text" 
             value={notes} 
@@ -87,8 +97,16 @@ function AddIncomeContent() {
           />
         </div>
 
-        <button type="submit" disabled={loading} style={submitBtn}>
-          {loading ? 'ΑΠΟΘΗΚΕΥΣΗ...' : 'ΑΠΟΘΗΚΕΥΣΗ ΕΣΟΔΟΥ'}
+        <button 
+          type="submit" 
+          disabled={loading} 
+          style={{ 
+            ...submitBtn, 
+            backgroundColor: loading ? '#94a3b8' : '#16a34a',
+            cursor: loading ? 'not-allowed' : 'pointer'
+          }}
+        >
+          {loading ? 'ΑΠΟΘΗΚΕΥΣΗ ΣΕ ΕΞΕΛΙΞΗ...' : 'ΑΠΟΘΗΚΕΥΣΗ ΕΣΟΔΟΥ'}
         </button>
       </form>
     </div>
@@ -104,8 +122,9 @@ export default function AddIncomePage() {
 }
 
 // STYLES
-const backBtn = { border: 'none', background: '#f1f5f9', width: '40px', height: '40px', borderRadius: '12px', fontSize: '18px', cursor: 'pointer' };
-const labelStyle = { fontSize: '11px', fontWeight: '800', color: '#94a3b8', marginBottom: '8px', display: 'block' };
-const inputStyle = { width: '100%', padding: '15px', borderRadius: '15px', border: '1px solid #e2e8f0', fontSize: '16px', outline: 'none', backgroundColor: '#fff', boxSizing: 'border-box' as const };
-const amountInput = { ...inputStyle, fontWeight: '700', fontSize: '20px' };
-const submitBtn = { padding: '18px', borderRadius: '15px', border: 'none', backgroundColor: '#16a34a', color: 'white', fontWeight: '800', fontSize: '16px', cursor: 'pointer', marginTop: '10px' };
+const backBtn = { border: 'none', background: '#f1f5f9', width: '45px', height: '45px', borderRadius: '15px', fontSize: '20px', cursor: 'pointer' };
+const labelStyle = { fontSize: '11px', fontWeight: '800', color: '#94a3b8', marginBottom: '8px', display: 'block', letterSpacing: '0.5px' };
+const fieldGroup = { display: 'flex', flexDirection: 'column' as const };
+const inputStyle = { width: '100%', padding: '16px', borderRadius: '15px', border: '1px solid #e2e8f0', fontSize: '16px', outline: 'none', backgroundColor: '#fff', boxSizing: 'border-box' as const };
+const amountInput = { ...inputStyle, fontWeight: '900', fontSize: '22px', color: '#16a34a', textAlign: 'center' as const };
+const submitBtn = { padding: '20px', borderRadius: '15px', border: 'none', color: 'white', fontWeight: '800', fontSize: '16px', marginTop: '10px' };
