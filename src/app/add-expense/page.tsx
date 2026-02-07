@@ -1,11 +1,13 @@
 'use client'
-import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useEffect, useState, Suspense } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
 
-export default function AddExpensePage() {
+function AddExpenseForm() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  
   const [amount, setAmount] = useState('')
   const [method, setMethod] = useState('Μετρητά')
   const [notes, setNotes] = useState('')
@@ -15,7 +17,7 @@ export default function AddExpensePage() {
 
   const [employees, setEmployees] = useState<any[]>([])
   const [suppliers, setSuppliers] = useState<any[]>([])
-  const [fixedAssets, setFixedAssets] = useState<any[]>([]) // ΝΕΑ ΚΑΤΑΣΤΑΣΗ ΓΙΑ ΠΑΓΙΑ
+  const [fixedAssets, setFixedAssets] = useState<any[]>([])
   
   const [selectedEmp, setSelectedEmp] = useState('')
   const [selectedSup, setSelectedSup] = useState('')
@@ -25,14 +27,25 @@ export default function AddExpensePage() {
     async function loadData() {
       const { data: e } = await supabase.from('employees').select('*').order('full_name')
       const { data: s } = await supabase.from('suppliers').select('*').order('name')
-      const { data: f } = await supabase.from('fixed_assets').select('*').order('name') // ΦΟΡΤΩΣΗ ΠΑΓΙΩΝ
+      const { data: f } = await supabase.from('fixed_assets').select('*').order('name')
       
       if (e) setEmployees(e)
       if (s) setSuppliers(s)
       if (f) setFixedAssets(f)
+
+      // ΑΥΤΟΜΑΤΗ ΣΥΜΠΛΗΡΩΣΗ ΑΠΟ URL (ΚΑΡΤΕΛΕΣ)
+      const supIdFromUrl = searchParams.get('supId')
+      const againstDebtFromUrl = searchParams.get('againstDebt')
+      
+      if (supIdFromUrl) {
+        setSelectedSup(supIdFromUrl)
+      }
+      if (againstDebtFromUrl === 'true') {
+        setIsAgainstDebt(true)
+      }
     }
     loadData()
-  }, [])
+  }, [searchParams])
 
   async function handleSave() {
     if (!amount || Number(amount) <= 0) return alert('Συμπληρώστε το ποσό')
@@ -42,7 +55,7 @@ export default function AddExpensePage() {
     else if (selectedEmp) category = 'Προσωπικό'
     else if (selectedFixed) category = 'Πάγια'
 
-    const payload = {
+    const payload: any = {
       amount: Number(amount),
       method: isCredit ? 'Πίστωση' : method,
       notes: isAgainstDebt ? `ΕΞΟΦΛΗΣΗ ΧΡΕΟΥΣ: ${notes}` : notes,
@@ -52,7 +65,7 @@ export default function AddExpensePage() {
       date: new Date().toISOString().split('T')[0],
       employee_id: selectedEmp || null,
       supplier_id: selectedSup || null,
-      fixed_asset_id: selectedFixed || null, // ΑΠΟΘΗΚΕΥΣΗ ΤΟΥ ID ΤΟΥ ΠΑΓΙΟΥ
+      fixed_asset_id: selectedFixed || null,
       category: isAgainstDebt ? 'Εξόφληση Χρέους' : category
     }
 
@@ -67,7 +80,7 @@ export default function AddExpensePage() {
 
   return (
     <main style={{ backgroundColor: '#f8fafc', minHeight: '100vh', padding: '16px', fontFamily: 'sans-serif' }}>
-      <div style={{ maxWidth: '500px', margin: '0 auto', backgroundColor: 'white', borderRadius: '28px', padding: '24px', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.05)', border: '1px solid #e2e8f0' }}>
+      <div style={formCardStyle}>
         
         <div style={{ display: 'flex', alignItems: 'center', gap: '15px', marginBottom: '20px' }}>
           <Link href="/" style={{ textDecoration: 'none', fontSize: '24px', color: '#64748b' }}>←</Link>
@@ -78,7 +91,7 @@ export default function AddExpensePage() {
         <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
           <div style={{ flex: 1.5 }}>
             <label style={labelStyle}>ΠΟΣΟ (€)</label>
-            <input type="number" value={amount} onChange={e => setAmount(e.target.value)} style={inputStyle} placeholder="0.00" />
+            <input type="number" value={amount} onChange={e => setAmount(e.target.value)} style={inputStyle} placeholder="0.00" autoFocus />
           </div>
           <div style={{ flex: 1 }}>
             <label style={labelStyle}>ΜΕΘΟΔΟΣ</label>
@@ -129,7 +142,7 @@ export default function AddExpensePage() {
           </select>
         </div>
 
-        {/* 3. ΠΑΓΙΟ (ΔΥΝΑΜΙΚΗ ΛΙΣΤΑ) */}
+        {/* 3. ΠΑΓΙΟ */}
         <div style={selectGroup}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '5px' }}>
             <label style={labelStyle}>ΠΑΓΙΟ (ΔΕΗ, ΕΝΟΙΚΙΟ ΚΛΠ)</label>
@@ -144,7 +157,7 @@ export default function AddExpensePage() {
         {/* ΣΗΜΕΙΩΣΕΙΣ */}
         <div style={{ marginBottom: '25px' }}>
           <label style={labelStyle}>ΣΗΜΕΙΩΣΕΙΣ / ΠΕΡΙΓΡΑΦΗ</label>
-          <textarea value={notes} onChange={e => setNotes(e.target.value)} style={{ ...inputStyle, height: '80px', paddingTop: '10px' }} placeholder="π.χ. Αρ. Τιμολογίου..." />
+          <textarea value={notes} onChange={e => setNotes(e.target.value)} style={{ ...inputStyle, height: '80px', paddingTop: '10px' }} placeholder="Προαιρετικές σημειώσεις..." />
         </div>
 
         <button onClick={handleSave} style={saveBtn}>ΑΠΟΘΗΚΕΥΣΗ ΕΞΟΔΟΥ</button>
@@ -155,7 +168,17 @@ export default function AddExpensePage() {
   )
 }
 
-// STYLES (Παραμένουν ίδια)
+// Wrapper για το Suspense
+export default function AddExpensePage() {
+  return (
+    <Suspense fallback={<div style={{padding: '20px', textAlign: 'center'}}>Φόρτωση φόρμας...</div>}>
+      <AddExpenseForm />
+    </Suspense>
+  )
+}
+
+// STYLES
+const formCardStyle = { maxWidth: '500px', margin: '0 auto', backgroundColor: 'white', borderRadius: '28px', padding: '24px', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.05)', border: '1px solid #e2e8f0' };
 const labelStyle = { fontSize: '10px', fontWeight: '900', color: '#94a3b8', textTransform: 'uppercase' as const, letterSpacing: '0.5px' };
 const inputStyle = { width: '100%', padding: '14px', borderRadius: '14px', border: '1px solid #e2e8f0', fontSize: '15px', fontWeight: 'bold', backgroundColor: '#f8fafc', boxSizing: 'border-box' as const };
 const selectGroup = { marginBottom: '18px' };
