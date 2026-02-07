@@ -1,145 +1,143 @@
 'use client'
 import { useEffect, useState } from 'react'
-import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
+import Link from 'next/link'
 
-export default function AnalysisPage() {
+export default function ProfessionalAnalysisPage() {
   const [transactions, setTransactions] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [searchTerm, setSearchTerm] = useState('')
-  const [period, setPeriod] = useState('Μήνας')
+  const [period, setPeriod] = useState('month')
+  const [filterCat, setFilterCat] = useState('all') // Αντί για αναζήτηση κειμένου
 
-  useEffect(() => { fetchData() }, [period])
+  useEffect(() => {
+    fetchData()
+  }, [])
 
   async function fetchData() {
     setLoading(true)
-    const { data } = await supabase
-      .from('transactions')
-      .select('*, suppliers(name, category)')
+    const { data } = await supabase.from('transactions').select('*')
     if (data) setTransactions(data)
     setLoading(false)
   }
 
+  // Λογική Φιλτραρίσματος
+  const now = new Date()
   const filtered = transactions.filter(t => {
-    const now = new Date()
     const tDate = new Date(t.date)
-    const matchesSearch = (t.suppliers?.name?.toLowerCase() || '').includes(searchTerm.toLowerCase()) || (t.notes?.toLowerCase() || '').includes(searchTerm.toLowerCase())
+    const matchesPeriod = period === 'month' 
+      ? (tDate.getMonth() === now.getMonth() && tDate.getFullYear() === now.getFullYear())
+      : (tDate.getFullYear() === now.getFullYear())
     
-    let matchesPeriod = true
-    if (period === 'Ημέρα') matchesPeriod = tDate.toDateString() === now.toDateString()
-    if (period === 'Μήνας') matchesPeriod = tDate.getMonth() === now.getMonth() && tDate.getFullYear() === now.getFullYear()
-    
-    return matchesSearch && matchesPeriod
+    const matchesCat = filterCat === 'all' || t.category === filterCat
+    return matchesPeriod && matchesCat
   })
 
-  const stats = filtered.reduce((acc, t) => {
-    const amt = Number(t.amount) || 0
-    if (t.type === 'income') {
-      acc.income += amt
-    } else {
-      acc.expenses += amt
-      const cat = t.suppliers?.category || t.category
-      if (cat === 'Προσωπικό' || cat === 'Μισθοδοσία') acc.payroll += amt
-      else if (cat === 'Εμπορεύματα') acc.inventory += amt
-      else if (cat === 'Πάγια') acc.fixed += amt
-      else acc.others += amt
-    }
-    return acc
-  }, { income: 0, expenses: 0, payroll: 0, inventory: 0, fixed: 0, others: 0 })
-
-  const getPercent = (value: number) => {
-    return stats.income > 0 ? ((value / stats.income) * 100).toFixed(1) : '0'
-  }
-
-  // Υπολογισμός Καθαρού Κέρδους %
-  const netProfit = stats.income - stats.expenses
-  const profitMargin = stats.income > 0 ? ((netProfit / stats.income) * 100).toFixed(1) : '0'
+  // Στατιστικά
+  const income = filtered.filter(t => t.type === 'income').reduce((acc, t) => acc + Number(t.amount), 0)
+  const expenses = filtered.filter(t => t.type === 'expense' || t.type === 'debt_payment').reduce((acc, t) => acc + Number(t.amount), 0)
+  const profit = income - expenses
+  const margin = income > 0 ? (profit / income) * 100 : 0
+  const estimatedVAT = (income - expenses) * 0.24 // Μια πρόχειρη εκτίμηση
 
   return (
     <main style={{ backgroundColor: '#f8fafc', minHeight: '100vh', padding: '16px', fontFamily: 'sans-serif' }}>
-      <div style={{ maxWidth: '450px', margin: '0 auto' }}>
+      <div style={{ maxWidth: '500px', margin: '0 auto' }}>
         
         {/* HEADER */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-          <Link href="/" style={{ textDecoration: 'none', color: '#64748b', fontWeight: '900', fontSize: '13px' }}>
-             ← ΑΡΧΙΚΗ
-          </Link>
-          <h2 style={{ margin: 0, fontSize: '18px', fontWeight: '900', color: '#0f172a' }}>Οικονομική Ανάλυση</h2>
-          <div style={{ width: '45px' }}></div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+          <Link href="/" style={{ textDecoration: 'none', color: '#64748b', fontWeight: 'bold', fontSize: '14px' }}>← ΑΡΧΙΚΗ</Link>
+          <h1 style={{ fontSize: '18px', fontWeight: '900', color: '#1e293b', margin: 0 }}>Οικονομική Ανάλυση</h1>
         </div>
 
-        {/* CONTROLS */}
-        <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
-           <input placeholder="🔍 Αναζήτηση..." style={inputStyle} value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
-           <select value={period} onChange={(e) => setPeriod(e.target.value)} style={selectStyle}>
-              <option value="Ημέρα">Σήμερα</option>
-              <option value="Μήνας">Μήνας</option>
-           </select>
+        {/* ΕΞΥΠΝΑ ΦΙΛΤΡΑ (Αντικαθιστούν την Αναζήτηση) */}
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '20px' }}>
+          <select value={period} onChange={e => setPeriod(e.target.value)} style={filterSelect}>
+            <option value="month">Μήνας</option>
+            <option value="year">Έτος</option>
+          </select>
+          <select value={filterCat} onChange={e => setFilterCat(e.target.value)} style={{ ...filterSelect, flex: 2 }}>
+            <option value="all">Όλες οι Κατηγορίες</option>
+            <option value="Εμπορεύματα">Εμπορεύματα</option>
+            <option value="Προσωπικό">Προσωπικό</option>
+            <option value="Πάγια">Πάγια</option>
+          </select>
         </div>
 
-        {/* ΚΕΝΤΡΙΚΗ ΚΑΡΤΑ (DASHBOARD) */}
-        <div style={mainCard}>
-          <div style={{ textAlign: 'center', marginBottom: '20px' }}>
-            <p style={labelSmall}>ΣΥΝΟΛΙΚΟΣ ΤΖΙΡΟΣ ({period})</p>
-            <h2 style={{ fontSize: '42px', margin: '5px 0', fontWeight: '900', color: 'white' }}>{stats.income.toFixed(2)}€</h2>
-            <div style={{ display: 'inline-block', backgroundColor: '#334155', padding: '4px 12px', borderRadius: '20px', fontSize: '12px', fontWeight: 'bold' }}>
-               Περιθώριο Κέρδους: {profitMargin}%
-            </div>
-          </div>
-
-          <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #334155', paddingTop: '15px' }}>
-            <div style={{ textAlign: 'left' }}>
-              <p style={labelSmall}>ΕΞΟΔΑ</p>
-              <p style={{ color: '#f87171', fontWeight: '900', fontSize: '18px', margin: 0 }}>-{stats.expenses.toFixed(2)}€</p>
-            </div>
-            <div style={{ textAlign: 'right' }}>
-              <p style={labelSmall}>ΚΑΘΑΡΟ ΠΛΕΟΝΑΣΜΑ</p>
-              <p style={{ color: '#4ade80', fontWeight: '900', fontSize: '18px', margin: 0 }}>{netProfit.toFixed(2)}€</p>
-            </div>
-          </div>
-        </div>
-
-        {/* ΑΝΑΛΥΣΗ ΚΑΤΗΓΟΡΙΩΝ ΜΕ PROGRESS BARS */}
-        <div style={whiteCard}>
-          <p style={{ fontWeight: '900', fontSize: '12px', color: '#64748b', marginBottom: '20px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-            Κατανομή Εξόδων (% επί του τζίρου)
-          </p>
+        {/* MAIN SCOREBOARD */}
+        <div style={mainCardStyle}>
+          <p style={labelStyle}>ΣΥΝΟΛΙΚΟΣ ΤΖΙΡΟΣ ({period === 'month' ? 'ΜΗΝΑΣ' : 'ΕΤΟΣ'})</p>
+          <h2 style={amountStyle}>{income.toFixed(2)}€</h2>
           
-          <CategoryRow label="👥 Προσωπικό" value={stats.payroll} percent={getPercent(stats.payroll)} color="#6366f1" />
-          <CategoryRow label="🛒 Εμπορεύματα" value={stats.inventory} percent={getPercent(stats.inventory)} color="#f59e0b" />
-          <CategoryRow label="🏢 Πάγια / Λογαριασμοί" value={stats.fixed} percent={getPercent(stats.fixed)} color="#ec4899" />
-          <CategoryRow label="📦 Λοιπά Έξοδα" value={stats.others} percent={getPercent(stats.others)} color="#94a3b8" />
+          <div style={badgeContainer}>
+             <div style={marginBadge}>Περιθώριο Κέρδους: {margin.toFixed(1)}%</div>
+          </div>
+
+          <div style={statsGrid}>
+            <div>
+              <p style={labelStyle}>ΕΞΟΔΑ</p>
+              <p style={{ color: '#f87171', fontWeight: '900', margin: 0 }}>-{expenses.toFixed(2)}€</p>
+            </div>
+            <div style={{ width: '1px', backgroundColor: '#334155' }}></div>
+            <div>
+              <p style={labelStyle}>ΚΑΘΑΡΟ ΠΛΕΟΝΑΣΜΑ</p>
+              <p style={{ color: '#4ade80', fontWeight: '900', margin: 0 }}>{profit.toFixed(2)}€</p>
+            </div>
+          </div>
         </div>
 
-        {/* FOOTER INFO */}
-        <p style={{ textAlign: 'center', fontSize: '11px', color: '#94a3b8', marginTop: '20px', fontWeight: 'bold' }}>
-          Η ανάλυση βασίζεται σε {filtered.length} καταγεγραμμένες κινήσεις.
-        </p>
+        {/* VAT ESTIMATION (ΝΕΟ) */}
+        <div style={vatCard}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: '13px', fontWeight: '800', color: '#1e293b' }}>🧾 Εκτίμηση ΦΠΑ προς απόδοση</span>
+            <span style={{ fontWeight: '900', color: '#ef4444' }}>~{estimatedVAT > 0 ? estimatedVAT.toFixed(2) : '0.00'}€</span>
+          </div>
+        </div>
+
+        {/* ΚΑΤΑΝΟΜΗ ΕΞΟΔΩΝ */}
+        <div style={whiteCard}>
+          <h3 style={cardTitle}>ΚΑΤΑΝΟΜΗ ΕΞΟΔΩΝ (% ΕΠΙ ΤΟΥ ΤΖΙΡΟΥ)</h3>
+          
+          <CategoryRow label="Προσωπικό" icon="👥" val={expensesByCat(filtered, 'Προσωπικό')} total={income} color="#3b82f6" />
+          <CategoryRow label="Εμπορεύματα" icon="🛒" val={expensesByCat(filtered, 'Εμπορεύματα')} total={income} color="#fb923c" />
+          <CategoryRow label="Πάγια / Λογαριασμοί" icon="🏦" val={expensesByCat(filtered, 'Πάγια')} total={income} color="#8b5cf6" />
+          <CategoryRow label="Λοιπά Έξοδα" icon="📦" val={expensesByCat(filtered, 'Λοιπά')} total={income} color="#94a3b8" />
+        </div>
+
+        <p style={footerNote}>Η ανάλυση βασίζεται σε {filtered.length} καταγεγραμμένες κινήσεις.</p>
       </div>
     </main>
   )
 }
 
-// Sub-component για τις γραμμές ανάλυσης
-function CategoryRow({ label, value, percent, color }: any) {
+// Helper Components & Logic
+function expensesByCat(trans: any[], cat: string) {
+  return trans.filter(t => t.category === cat).reduce((acc, t) => acc + Number(t.amount), 0)
+}
+
+function CategoryRow({ label, icon, val, total, color }: any) {
+  const perc = total > 0 ? (val / total) * 100 : 0
   return (
     <div style={{ marginBottom: '18px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px', fontWeight: '800', marginBottom: '6px', color: '#1e293b' }}>
-        <span>{label}</span>
-        <span>{value.toFixed(2)}€ <small style={{ color: '#94a3b8', fontWeight: 'bold' }}>({percent}%)</small></span>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', fontSize: '14px' }}>
+        <span style={{ fontWeight: '700', color: '#334155' }}>{icon} {label}</span>
+        <span style={{ fontWeight: '800' }}>{val.toFixed(2)}€ <span style={{ color: '#94a3b8', fontWeight: '600', fontSize: '11px' }}>({perc.toFixed(1)}%)</span></span>
       </div>
-      <div style={{ width: '100%', height: '8px', backgroundColor: '#f1f5f9', borderRadius: '10px', overflow: 'hidden' }}>
-        <div style={{ width: `${Math.min(Number(percent), 100)}%`, height: '100%', backgroundColor: color, borderRadius: '10px', transition: 'width 0.5s ease-out' }}></div>
-      </div>
+      <div style={barBg}><div style={{ ...barFill, width: `${Math.min(perc, 100)}%`, backgroundColor: color }}></div></div>
     </div>
   )
 }
 
-
-
 // STYLES
-const inputStyle = { flex: 1, padding: '12px', borderRadius: '14px', border: '1px solid #e2e8f0', fontSize: '14px', fontWeight: 'bold' };
-const selectStyle = { padding: '12px', borderRadius: '14px', border: '1px solid #e2e8f0', fontWeight: '900', backgroundColor: 'white', color: '#1e293b' };
-const mainCard = { backgroundColor: '#0f172a', padding: '25px', borderRadius: '30px', color: 'white', marginBottom: '15px', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' };
-const whiteCard = { backgroundColor: 'white', padding: '24px', borderRadius: '28px', border: '1px solid #f1f5f9', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' };
-const labelSmall = { fontSize: '10px', fontWeight: '900', color: '#94a3b8', letterSpacing: '1px', textTransform: 'uppercase' as const };
+const filterSelect = { padding: '12px', borderRadius: '14px', border: '1px solid #e2e8f0', backgroundColor: 'white', fontWeight: '800', fontSize: '13px', color: '#1e293b', outline: 'none' };
+const mainCardStyle = { backgroundColor: '#0f172a', padding: '25px', borderRadius: '28px', color: 'white', textAlign: 'center' as const, marginBottom: '15px' };
+const labelStyle = { fontSize: '10px', fontWeight: '800', color: '#94a3b8', letterSpacing: '0.5px', marginBottom: '8px' };
+const amountStyle = { fontSize: '38px', fontWeight: '900', margin: '5px 0' };
+const badgeContainer = { display: 'flex', justifyContent: 'center', marginBottom: '20px' };
+const marginBadge = { backgroundColor: 'rgba(255,255,255,0.1)', padding: '6px 14px', borderRadius: '20px', fontSize: '12px', fontWeight: '700' };
+const statsGrid = { display: 'flex', justifyContent: 'center', gap: '25px', borderTop: '1px solid #1e293b', paddingTop: '15px' };
+const whiteCard = { backgroundColor: 'white', padding: '22px', borderRadius: '24px', border: '1px solid #f1f5f9', marginBottom: '15px' };
+const vatCard = { backgroundColor: '#fff7ed', padding: '16px', borderRadius: '18px', border: '1px solid #ffedd5', marginBottom: '15px' };
+const cardTitle = { fontSize: '11px', fontWeight: '900', color: '#64748b', marginBottom: '20px', letterSpacing: '0.5px' };
+const barBg = { width: '100%', height: '8px', backgroundColor: '#f1f5f9', borderRadius: '10px', overflow: 'hidden' };
+const barFill = { height: '100%', borderRadius: '10px', transition: 'width 0.6s ease' };
+const footerNote = { textAlign: 'center' as const, fontSize: '11px', color: '#94a3b8', fontWeight: '600', marginTop: '20px' };
