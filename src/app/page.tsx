@@ -14,12 +14,10 @@ function DashboardContent() {
   const [transactions, setTransactions] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [isMenuOpen, setIsMenuOpen] = useState(false)
-  
-  // ΚΑΤΑΣΤΑΣΗ ΓΙΑ ΤΟ ΔΥΝΑΜΙΚΟ ΟΝΟΜΑ ΚΑΤΑΣΤΗΜΑΤΟΣ
   const [storeName, setStoreName] = useState('ΚΑΤΑΣΤΗΜΑ')
 
   useEffect(() => {
-    // ΣΥΝΑΡΤΗΣΗ ΓΙΑ ΛΗΨΗ ΟΝΟΜΑΤΟΣ ΑΠΟ ΤΟ ΠΡΟΦΙΛ ΧΡΗΣΤΗ
+    // Λήψη ονόματος καταστήματος από το προφίλ
     async function fetchProfile() {
       const { data: { user } } = await supabase.auth.getUser()
       if (user) {
@@ -66,7 +64,7 @@ function DashboardContent() {
   return (
     <div style={{ maxWidth: '500px', margin: '0 auto', fontFamily: 'sans-serif' }}>
       
-      {/* HEADER ΜΕ ΔΥΝΑΜΙΚΟ ΤΙΤΛΟ */}
+      {/* HEADER */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', paddingTop: '10px' }}>
         <h1 style={{ fontWeight: '900', fontSize: '26px', margin: 0, color: '#0f172a' }}>
           {storeName.toUpperCase()}
@@ -85,6 +83,7 @@ function DashboardContent() {
               
               <div style={divider} />
               <p style={menuSectionLabel}>ΕΦΑΡΜΟΓΗ</p>
+              <Link href="/subscription" style={menuItem} onClick={() => setIsMenuOpen(false)}>💳 Συνδρομή</Link>
               <Link href="/settings" style={menuItem} onClick={() => setIsMenuOpen(false)}>⚙️ Ρυθμίσεις</Link>
               
               <div style={divider} />
@@ -151,7 +150,7 @@ export default function HomePage() {
   )
 }
 
-// STYLES (Παραμένουν ίδια)
+// STYLES
 const menuBtnStyle = { backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', width: '40px', height: '40px', borderRadius: '12px', cursor: 'pointer', fontSize: '20px', color: '#64748b' };
 const dropdownStyle = { position: 'absolute' as const, top: '50px', right: '0', backgroundColor: 'white', minWidth: '200px', borderRadius: '20px', boxShadow: '0 10px 30px rgba(0,0,0,0.15)', padding: '12px', zIndex: 100, border: '1px solid #f1f5f9' };
 const menuItem = { display: 'block', padding: '12px', textDecoration: 'none', color: '#334155', fontWeight: '700' as const, fontSize: '14px', borderRadius: '10px' };
