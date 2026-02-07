@@ -27,13 +27,6 @@ export default function EmployeesPage() {
     setLoading(false)
   }
 
-  const getPaymentIcon = (method: string) => {
-    if (method === 'Μετρητά') return '💵'
-    if (method === 'Κάρτα' || method === 'POS') return '💳'
-    if (method === 'Τράπεζα') return '🏦'
-    return '💰'
-  }
-
   const getDaysUntilPayment = (startDateStr: string) => {
     if (!startDateStr) return null
     const today = new Date()
@@ -42,9 +35,7 @@ export default function EmployeesPage() {
     let nextPayDate = new Date(today.getFullYear(), today.getMonth(), payDay)
     today.setHours(0, 0, 0, 0)
     nextPayDate.setHours(0, 0, 0, 0)
-    if (today >= nextPayDate) {
-      nextPayDate = new Date(today.getFullYear(), today.getMonth() + 1, payDay)
-    }
+    if (today >= nextPayDate) nextPayDate = new Date(today.getFullYear(), today.getMonth() + 1, payDay)
     const diffTime = nextPayDate.getTime() - today.getTime()
     return Math.ceil(diffTime / (1000 * 60 * 60 * 24))
   }
@@ -54,6 +45,12 @@ export default function EmployeesPage() {
     return transactions
       .filter(t => t.employee_id === id && new Date(t.date).getMonth() === now.getMonth() && new Date(t.date).getFullYear() === now.getFullYear())
       .reduce((acc, t) => acc + (Number(t.amount) || 0), 0)
+  }
+
+  const getPaymentIcon = (method: string) => {
+    if (method === 'Μετρητά') return '💵'
+    if (method === 'Τράπεζα') return '🏦'
+    return '💰'
   }
 
   async function handleSave() {
@@ -86,7 +83,7 @@ export default function EmployeesPage() {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <Link href="/" style={{ color: '#64748b', textDecoration: 'none', fontWeight: 'bold', fontSize: '14px' }}>← ΠΙΣΩ</Link>
-            <h1 style={{ fontSize: '22px', fontWeight: '900', color: '#1e293b', margin: 0 }}>Προσωπικό</h1>
+            <h1 style={{ fontSize: '22px', fontWeight: '900', color: '#1e293b', margin: 0 }}>Υπάλληλοι</h1>
           </div>
           <button onClick={() => { setIsAdding(!isAdding); setEditingId(null); }} style={isAdding ? cancelBtn : addBtn}>
             {isAdding ? 'ΑΚΥΡΟ' : '+ ΝΕΟΣ'}
@@ -94,58 +91,80 @@ export default function EmployeesPage() {
         </div>
 
         {isAdding && (
-          <div style={formCard}>
+          <div style={{ ...formCard, borderColor: editingId ? '#f59e0b' : '#2563eb' }}>
             <p style={labelStyle}>ΟΝΟΜΑΤΕΠΩΝΥΜΟ *</p>
             <input value={formData.full_name} onChange={e => setFormData({...formData, full_name: e.target.value})} style={inputStyle} />
             <div style={{ display: 'flex', gap: '10px', marginTop: '15px' }}>
-              <div style={{ flex: 1 }}><p style={labelStyle}>ΜΗΝΙΑΙΟΣ ΜΙΣΘΟΣ</p><input type="number" value={formData.monthly_salary} onChange={e => setFormData({...formData, monthly_salary: e.target.value})} style={inputStyle} /></div>
-              <div style={{ flex: 1 }}><p style={labelStyle}>ΗΜ/ΝΙΑ ΕΝΑΡΞΗΣ</p><input type="date" value={formData.start_date} onChange={e => setFormData({...formData, start_date: e.target.value})} style={inputStyle} /></div>
+              <div style={{ flex: 1 }}><p style={labelStyle}>ΜΙΣΘΟΣ (€)</p><input type="number" value={formData.monthly_salary} onChange={e => setFormData({...formData, monthly_salary: e.target.value})} style={inputStyle} /></div>
+              <div style={{ flex: 1 }}><p style={labelStyle}>ΕΝΑΡΞΗ</p><input type="date" value={formData.start_date} onChange={e => setFormData({...formData, start_date: e.target.value})} style={inputStyle} /></div>
             </div>
-            <button onClick={handleSave} style={saveBtnStyle}>{editingId ? 'ΕΝΗΜΕΡΩΣΗ' : 'ΑΠΟΘΗΚΕΥΣΗ'}</button>
+            <button onClick={handleSave} style={{...saveBtnStyle, backgroundColor: editingId ? '#f59e0b' : '#10b981'}}>
+              {editingId ? 'ΕΝΗΜΕΡΩΣΗ' : 'ΑΠΟΘΗΚΕΥΣΗ'}
+            </button>
           </div>
         )}
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
           {employees.map((emp) => {
+            const monthlySalary = Number(emp.monthly_salary) || 0
             const monthlyPaid = getMonthlyPaid(emp.id)
             const totalPaidAllTime = transactions.filter(t => t.employee_id === emp.id).reduce((acc, t) => acc + (Number(t.amount) || 0), 0)
-            const remaining = (Number(emp.monthly_salary) || 0) - monthlyPaid
+            const remaining = monthlySalary - monthlyPaid
             const isSelected = selectedEmpId === emp.id
             const daysLeft = getDaysUntilPayment(emp.start_date)
 
             return (
-              <div key={emp.id} style={{ backgroundColor: 'white', borderRadius: '20px', border: '1px solid #f1f5f9', overflow: 'hidden' }}>
-                <div onClick={() => setSelectedEmpId(isSelected ? null : emp.id)} style={{ padding: '18px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between' }}>
-                  <div>
-                    <span style={{ fontWeight: '800', color: '#1e293b' }}>{emp.full_name}</span>
-                    <div style={{ marginTop: '4px' }}><span style={badgeStyle}>ΠΛΗΡΩΜΗ ΣΕ: {daysLeft} ΗΜΕΡΕΣ</span></div>
+              <div key={emp.id} style={employeeCard}>
+                <div onClick={() => setSelectedEmpId(isSelected ? null : emp.id)} style={{ padding: '18px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ flex: 1 }}>
+                    <span style={{ fontWeight: '800', color: '#1e293b', fontSize: '16px' }}>{emp.full_name}</span>
+                    <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
+                       <span style={badgeStyle}>ΠΛΗΡΩΜΗ ΣΕ: {daysLeft} ΗΜΕΡΕΣ</span>
+                    </div>
                   </div>
-                  <div style={{ textAlign: 'right' }}>
-                    <p style={{ margin: 0, fontSize: '15px', fontWeight: '900', color: remaining > 0 ? '#f59e0b' : '#16a34a' }}>{remaining > 0 ? `${remaining.toFixed(2)}€` : 'ΕΞΟΦΛΗΘΗ'}</p>
-                    <p style={{ margin: 0, fontSize: '9px', color: '#94a3b8', fontWeight: '800' }}>ΥΠΟΛΟΙΠΟ ΜΗΝΑ</p>
+                  
+                  <div style={{ textAlign: 'right', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    {/* ΚΟΥΜΠΙ ΠΛΗΡΩΜΗΣ ΟΠΩΣ ΣΤΙΣ ΚΑΡΤΕΛΕΣ */}
+                    <Link 
+                      href={`/pay-employee?id=${emp.id}&name=${emp.full_name}`} 
+                      onClick={(e) => e.stopPropagation()} 
+                      style={payBtnStyle}
+                    >
+                      ΠΛΗΡΩΜΗ
+                    </Link>
+
+                    <div>
+                      <p style={{ margin: 0, fontSize: '15px', fontWeight: '900', color: remaining > 0 ? '#f59e0b' : '#16a34a' }}>
+                        {remaining > 0 ? `${remaining.toFixed(2)}€` : 'ΕΞΟΦΛΗΘΗ'}
+                      </p>
+                      <p style={{ margin: 0, fontSize: '9px', color: '#94a3b8', fontWeight: '800' }}>ΥΠΟΛΟΙΠΟ</p>
+                    </div>
                   </div>
                 </div>
 
                 {isSelected && (
-                  <div style={{ padding: '18px', backgroundColor: '#fcfcfc', borderTop: '1px solid #f1f5f9' }}>
-                    <div style={{ backgroundColor: '#0f172a', padding: '15px', borderRadius: '15px', color: 'white', marginBottom: '20px' }}>
-                       <p style={{ fontSize: '10px', fontWeight: '800', margin: '0 0 5px 0', opacity: 0.7 }}>ΣΥΝΟΛΙΚΕΣ ΑΠΟΛΑΒΕΣ (ALL-TIME)</p>
-                       <h3 style={{ fontSize: '26px', margin: 0, fontWeight: '900', color: '#4ade80' }}>{totalPaidAllTime.toFixed(2)}€</h3>
+                  <div style={{ backgroundColor: '#fcfcfc', padding: '18px', borderTop: '1px solid #f1f5f9' }}>
+                    <div style={allTimeCard}>
+                       <p style={labelSmallLight}>ΓΕΝΙΚΟ ΣΥΝΟΛΟ ΠΛΗΡΩΜΩΝ (ALL-TIME)</p>
+                       <h3 style={{ fontSize: '28px', margin: 0, fontWeight: '900', color: '#4ade80' }}>{totalPaidAllTime.toFixed(2)}€</h3>
                     </div>
-                    <div style={{ marginBottom: '15px' }}>
-                       <p style={{ fontSize: '10px', fontWeight: '900', color: '#94a3b8', marginBottom: '8px', borderBottom: '1px solid #eee' }}>ΠΛΗΡΕΣ ΙΣΤΟΡΙΚΟ</p>
+                    <div style={{ marginBottom: '20px' }}>
+                       <p style={historyTitle}>ΠΛΗΡΕΣ ΙΣΤΟΡΙΚΟ ΣΥΝΑΛΛΑΓΩΝ</p>
                        <div style={{ maxHeight: '200px', overflowY: 'auto' }}>
-                        {transactions.filter(t => t.employee_id === emp.id).map(t => (
-                          <div key={t.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px dotted #eee', fontSize: '13px' }}>
-                             <span style={{color: '#64748b'}}>{t.date.split('T')[0]}</span>
-                             <div style={{display: 'flex', gap: '6px'}}><span>{getPaymentIcon(t.method)}</span><span style={{fontWeight: '800'}}>{Number(t.amount).toFixed(2)}€</span></div>
-                          </div>
-                        ))}
+                          {transactions.filter(t => t.employee_id === emp.id).map(t => (
+                            <div key={t.id} style={historyItem}>
+                               <span style={{ color: '#64748b', fontWeight: 'bold' }}>{t.date.split('T')[0]}</span>
+                               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                  <span>{getPaymentIcon(t.method)}</span>
+                                  <span style={{ fontWeight: '800' }}>{Number(t.amount).toFixed(2)}€</span>
+                               </div>
+                            </div>
+                          ))}
                        </div>
                     </div>
                     <div style={{ display: 'flex', gap: '8px' }}>
-                      <button onClick={() => { setFormData({...emp}); setEditingId(emp.id); setIsAdding(true); }} style={editBtn}>✎ ΕΠΕΞΕΡΓΑΣΙΑ</button>
-                      <button onClick={() => { if(confirm('Διαγραφή;')) supabase.from('employees').delete().eq('id', emp.id).then(() => fetchInitialData()) }} style={deleteBtn}>🗑️ ΔΙΑΓΡΑΦΗ</button>
+                      <button onClick={() => { setFormData({...emp}); setEditingId(emp.id); setIsAdding(true); window.scrollTo(0,0); }} style={editBtn}>ΕΠΕΞΕΡΓΑΣΙΑ ✎</button>
+                      <button onClick={async () => { if(confirm('Διαγραφή;')) { await supabase.from('employees').delete().eq('id', emp.id); fetchInitialData(); } }} style={deleteBtn}>ΔΙΑΓΡΑΦΗ 🗑️</button>
                     </div>
                   </div>
                 )}
@@ -158,12 +177,19 @@ export default function EmployeesPage() {
   )
 }
 
-const addBtn = { padding: '10px 20px', backgroundColor: '#2563eb', color: 'white', border: 'none', borderRadius: '12px', fontWeight: '900', cursor: 'pointer' };
-const cancelBtn = { padding: '10px 20px', backgroundColor: '#f1f5f9', color: '#64748b', border: 'none', borderRadius: '12px', fontWeight: '900' };
-const formCard = { backgroundColor: 'white', padding: '20px', borderRadius: '25px', marginBottom: '20px', border: '2px solid #2563eb' };
-const labelStyle = { fontSize: '10px', fontWeight: '900', color: '#94a3b8', marginBottom: '5px' };
-const inputStyle = { width: '100%', padding: '14px', borderRadius: '14px', border: '1px solid #e2e8f0', marginBottom: '10px', boxSizing: 'border-box' as const, fontWeight: 'bold' };
-const saveBtnStyle = { width: '100%', padding: '16px', backgroundColor: '#10b981', color: 'white', border: 'none', borderRadius: '14px', fontWeight: '900', fontSize: '15px' };
-const badgeStyle = { fontSize: '9px', fontWeight: '900', backgroundColor: '#eff6ff', color: '#2563eb', padding: '4px 8px', borderRadius: '6px' };
-const editBtn = { flex: 1, padding: '12px', borderRadius: '12px', border: 'none', backgroundColor: '#fef3c7', color: '#92400e', fontWeight: '900' };
-const deleteBtn = { padding: '12px', borderRadius: '12px', border: 'none', backgroundColor: '#fee2e2', color: '#ef4444', fontWeight: '900' };
+// STYLES
+const payBtnStyle = { backgroundColor: '#2563eb', color: 'white', padding: '8px 12px', borderRadius: '10px', fontSize: '11px', fontWeight: '900', textDecoration: 'none' };
+const addBtn = { padding: '8px 16px', backgroundColor: '#2563eb', color: 'white', border: 'none', borderRadius: '10px', fontWeight: '800', cursor: 'pointer', fontSize: '12px' };
+const cancelBtn = { padding: '8px 16px', backgroundColor: '#f1f5f9', color: '#64748b', border: 'none', borderRadius: '10px', fontWeight: '800', cursor: 'pointer', fontSize: '12px' };
+const formCard = { backgroundColor: 'white', padding: '20px', borderRadius: '24px', border: '2px solid', marginBottom: '25px', boxShadow: '0 4px 12px rgba(0,0,0,0.05)' };
+const labelStyle = { fontSize: '10px', fontWeight: '900', color: '#94a3b8', display: 'block', marginBottom: '6px', textTransform: 'uppercase' as const };
+const inputStyle = { width: '100%', padding: '14px', borderRadius: '14px', border: '1px solid #e2e8f0', fontSize: '15px', fontWeight: 'bold', backgroundColor: '#f8fafc', boxSizing: 'border-box' as const };
+const saveBtnStyle = { width: '100%', color: 'white', padding: '16px', borderRadius: '14px', border: 'none', fontWeight: '800', fontSize: '15px', marginTop: '20px', cursor: 'pointer' };
+const employeeCard = { backgroundColor: 'white', borderRadius: '20px', border: '1px solid #f1f5f9', overflow: 'hidden' };
+const badgeStyle = { fontSize: '9px', fontWeight: '800', backgroundColor: '#eff6ff', padding: '4px 8px', borderRadius: '6px', color: '#2563eb' };
+const allTimeCard = { backgroundColor: '#0f172a', padding: '20px', borderRadius: '18px', color: 'white', marginBottom: '20px' };
+const labelSmallLight = { fontSize: '9px', fontWeight: '900', color: '#94a3b8', marginBottom: '8px' };
+const historyTitle = { fontSize: '10px', fontWeight: '900', color: '#1e293b', marginBottom: '10px', paddingBottom: '5px', borderBottom: '2px solid #f1f5f9' };
+const historyItem = { display: 'flex', justifyContent: 'space-between', fontSize: '13px', padding: '10px 0', borderBottom: '1px solid #f1f5f9' };
+const editBtn = { flex: 2, background: '#fef3c7', border: 'none', padding: '12px', borderRadius: '12px', cursor: 'pointer', fontSize: '11px', fontWeight: '800', color: '#92400e' };
+const deleteBtn = { flex: 1, background: '#fee2e2', border: 'none', padding: '12px', borderRadius: '12px', cursor: 'pointer', fontSize: '11px', fontWeight: '800', color: '#ef4444' };
