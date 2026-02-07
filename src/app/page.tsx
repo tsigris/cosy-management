@@ -1,163 +1,176 @@
 'use client'
-// 1. Απαραίτητο για να μην χτυπάει το Vercel
+// Διασφαλίζει ότι η σελίδα θα φορτώνει σωστά στο Vercel
 export const dynamic = 'force-dynamic'
 
 import { useEffect, useState, Suspense } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
-import { supabase } from '@/lib/supabase'
-import SettingsMenu from '@/components/SettingsMenu'
 import Link from 'next/link'
+import { supabase } from '@/lib/supabase'
+import { useRouter } from 'next/navigation'
 
-// 2. Το κυρίως περιεχόμενο (Dashboard)
-function DashboardContent() {
+function SuppliersContent() {
   const router = useRouter()
-  const searchParams = useSearchParams()
-  
-  // Διαβάζουμε την ημερομηνία από το URL ή βάζουμε τη σημερινή
-  const selectedDate = searchParams.get('date') || new Date().toISOString().split('T')[0]
-  
+  const [suppliers, setSuppliers] = useState<any[]>([])
   const [transactions, setTransactions] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [displayTitle, setDisplayTitle] = useState('ΚΑΤΑΣΤΗΜΑ')
+  const [isAdding, setIsAdding] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [selectedSupplierId, setSelectedSupplierId] = useState<string | null>(null)
+  
+  // Κρατάμε μόνο τα πεδία που υπάρχουν σίγουρα στη βάση σου (name, phone)
+  const [formData, setFormData] = useState({ 
+    name: '', phone: '' 
+  })
 
-  // Φόρτωση δεδομένων κάθε φορά που αλλάζει η ημερομηνία
-  useEffect(() => {
-    async function loadData() {
-      setLoading(true)
-      const { data: { session } } = await supabase.auth.getSession()
-      
-      if (!session) {
-        router.push('/login')
-        return
-      }
+  useEffect(() => { 
+    fetchInitialData() 
+  }, [])
 
-      // Παίρνουμε όνομα καταστήματος και κινήσεις ταυτόχρονα
-      await Promise.all([
-        fetchStoreName(session.user.id),
-        fetchTransactions(selectedDate)
-      ])
-      setLoading(false)
+  async function fetchInitialData() {
+    setLoading(true)
+    const { data: sups } = await supabase.from('suppliers').select('*').order('name')
+    const { data: trans } = await supabase.from('transactions').select('*')
+    if (sups) setSuppliers(sups)
+    if (trans) setTransactions(trans)
+    setLoading(false)
+  }
+
+  const getSupplierStats = (id: string) => {
+    return transactions
+      .filter(t => t.supplier_id === id)
+      .reduce((acc, t) => {
+        const amt = Number(t.amount) || 0
+        if (t.type === 'expense') {
+          if (t.is_credit) acc.credits += amt
+          else if (t.is_debt_payment) acc.payments += amt
+          else acc.cash += amt
+          acc.turnover += amt
+        }
+        return acc
+      }, { turnover: 0, cash: 0, credits: 0, payments: 0 })
+  }
+
+  async function handleSave() {
+    if (!formData.name.trim()) return alert('Το όνομα είναι υποχρεωτικό!')
+    setLoading(true)
+    
+    // Στέλνουμε μόνο το όνομα και το τηλέφωνο για να μην έχουμε σφάλμα στήλης
+    const payload: any = { 
+        name: formData.name.trim(),
+        phone: formData.phone?.trim() || null
     }
-    loadData()
-  }, [selectedDate, router])
 
-  async function fetchStoreName(userId: string) {
-    const { data } = await supabase.from('profiles').select('store_name').eq('id', userId).single()
-    if (data?.store_name) setDisplayTitle(data.store_name)
+    const { error } = editingId 
+      ? await supabase.from('suppliers').update(payload).eq('id', editingId)
+      : await supabase.from('suppliers').insert([payload])
+
+    if (!error) {
+      alert(editingId ? 'Ενημερώθηκε!' : 'Αποθηκεύτηκε!')
+      setEditingId(null)
+      setFormData({ name: '', phone: '' })
+      setIsAdding(false)
+      fetchInitialData()
+    } else {
+      alert('Σφάλμα: ' + error.message)
+    }
+    setLoading(false)
   }
-
-  async function fetchTransactions(date: string) {
-    const { data } = await supabase
-      .from('transactions')
-      .select('*, suppliers(name), employees(full_name)')
-      .eq('date_recorded', date) // Φιλτράρισμα βάσει της ημερομηνίας
-      .order('created_at', { ascending: false })
-
-    if (data) setTransactions(data)
-  }
-
-  async function handleDelete(id: string) {
-    if (!confirm('Διαγραφή κίνησης;')) return
-    const { error } = await supabase.from('transactions').delete().eq('id', id)
-    if (!error) fetchTransactions(selectedDate)
-  }
-
-  // Υπολογισμός συνόλων
-  const totals = transactions.reduce((acc, t) => {
-    const amt = Number(t.amount) || 0
-    if (t.type === 'income') acc.income += amt
-    else acc.expense += amt
-    return acc
-  }, { income: 0, expense: 0 })
 
   return (
-    <div style={{ padding: '16px', maxWidth: '600px', margin: '0 auto', fontFamily: 'sans-serif', backgroundColor: '#f8fafc', minHeight: '100vh' }}>
-      
+    <div style={{ maxWidth: '600px', margin: '0 auto' }}>
       {/* HEADER */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-        <h1 style={{ fontSize: '24px', fontWeight: '900', color: '#0f172a', margin: 0, textTransform: 'uppercase' }}>
-          {displayTitle}
-        </h1>
-        <SettingsMenu />
-      </div>
-
-      {/* ΣΥΝΟΛΑ ΗΜΕΡΑΣ */}
-      <div style={{ display: 'flex', gap: '12px', marginBottom: '20px' }}>
-        <div style={statsCard}>
-          <p style={statsLabel}>ΕΣΟΔΑ ΗΜΕΡΑΣ</p>
-          <p style={{ ...statsValue, color: '#16a34a' }}>{totals.income.toFixed(2)}€</p>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+          <button onClick={() => router.push('/')} style={{ background: 'none', border: 'none', color: '#64748b', fontWeight: 'bold', fontSize: '24px', cursor: 'pointer' }}>←</button>
+          <h1 style={{ fontSize: '22px', fontWeight: '800', color: '#1e293b', margin: 0 }}>Προμηθευτές</h1>
         </div>
-        <div style={statsCard}>
-          <p style={statsLabel}>ΕΞΟΔΑ ΗΜΕΡΑΣ</p>
-          <p style={{ ...statsValue, color: '#ef4444' }}>{totals.expense.toFixed(2)}€</p>
-        </div>
+        <button 
+          onClick={() => { setIsAdding(!isAdding); setSelectedSupplierId(null); }}
+          style={{ backgroundColor: isAdding ? '#94a3b8' : '#2563eb', color: 'white', padding: '10px 18px', borderRadius: '10px', border: 'none', fontWeight: 'bold', cursor: 'pointer' }}
+        >
+          {isAdding ? 'Άκυρο' : '+ Νέος'}
+        </button>
       </div>
 
-      {/* ΚΟΥΜΠΙΑ ΕΝΕΡΓΕΙΩΝ (Στέλνουν και την ημερομηνία!) */}
-      <div style={{ display: 'flex', gap: '12px', marginBottom: '25px' }}>
-        <Link href={`/add-income?date=${selectedDate}`} style={mainActionBtn('#6da36d')}>+ ΕΣΟΔΑ</Link>
-        <Link href={`/add-expense?date=${selectedDate}`} style={mainActionBtn('#c64d43')}>- ΕΞΟΔΑ</Link>
-      </div>
-
-      {/* ΕΠΙΛΟΓΕΑΣ ΗΜΕΡΟΜΗΝΙΑΣ (ΤΟ ΠΡΟΣΘΕΣΑΜΕ ΞΑΝΑ) */}
-      <div style={{ marginBottom: '25px', backgroundColor: 'white', padding: '10px', borderRadius: '15px', border: '1px solid #e2e8f0' }}>
-        <input 
-          type="date" 
-          value={selectedDate} 
-          onChange={(e) => router.push(`/?date=${e.target.value}`)}
-          style={{ width: '100%', border: 'none', fontSize: '18px', fontWeight: 'bold', color: '#334155', textAlign: 'center', outline: 'none' }}
-        />
-      </div>
-
-      <div style={{ marginBottom: '15px' }}>
-        <p style={{ fontSize: '11px', fontWeight: '800', color: '#94a3b8', textTransform: 'uppercase' }}>Κινήσεις {selectedDate.split('-').reverse().join('/')}</p>
-      </div>
-
-      {/* ΛΙΣΤΑ ΚΙΝΗΣΕΩΝ */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-        {loading ? (
-          <p style={{ textAlign: 'center', color: '#94a3b8', marginTop: '20px' }}>Φόρτωση...</p>
-        ) : transactions.length === 0 ? (
-          <p style={{ textAlign: 'center', color: '#94a3b8', marginTop: '20px', fontSize: '14px' }}>Καμία κίνηση για αυτή τη μέρα.</p>
-        ) : (
-          transactions.map((t) => (
-            <div key={t.id} style={transactionCard}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                  <p style={{ margin: 0, fontWeight: '700', color: '#1e293b', fontSize: '15px' }}>
-                     {t.category === 'Μισθοδοσία' ? (t.employees?.full_name || 'Μισθοδοσία') : (t.suppliers?.name || t.category || (t.type === 'income' ? 'Είσπραξη' : 'Έξοδο'))}
-                  </p>
-                  <p style={{ margin: '2px 0 0 0', fontSize: '11px', color: '#94a3b8' }}>
-                    {t.method} • {t.notes || ''}
-                  </p>
-                </div>
-                <div style={{ textAlign: 'right', display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <p style={{ margin: 0, fontWeight: '900', fontSize: '16px', color: t.type === 'income' ? '#16a34a' : '#ef4444' }}>
-                    {t.type === 'income' ? '+' : '-'}{Number(t.amount).toFixed(2)}€
-                  </p>
-                  <button onClick={() => handleDelete(t.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '14px', opacity: 0.3 }}>🗑️</button>
-                </div>
-              </div>
+      {/* ΦΟΡΜΑ ΚΑΤΑΧΩΡΗΣΗΣ */}
+      {isAdding && (
+        <div style={{ backgroundColor: '#f8fafc', padding: '20px', borderRadius: '18px', marginBottom: '25px', border: '2px solid #2563eb' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+            <div>
+              <label style={labelStyle}>ΟΝΟΜΑ ΠΡΟΜΗΘΕΥΤΗ *</label>
+              <input value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} style={inputStyle} placeholder="π.χ. Fiat Κουλουράς" />
             </div>
-          ))
-        )}
+            <div>
+              <label style={labelStyle}>ΤΗΛΕΦΩΝΟ</label>
+              <input value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} style={inputStyle} placeholder="210..." />
+            </div>
+          </div>
+          <button onClick={handleSave} disabled={loading} style={saveBtnStyle}>
+            {loading ? 'ΠΑΡΑΚΑΛΩ ΠΕΡΙΜΕΝΕΤΕ...' : (editingId ? 'ΕΝΗΜΕΡΩΣΗ' : 'ΑΠΟΘΗΚΕΥΣΗ')}
+          </button>
+        </div>
+      )}
+
+      {/* ΛΙΣΤΑ ΠΡΟΜΗΘΕΥΤΩΝ */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+        {loading && !isAdding ? <p style={{ textAlign: 'center' }}>Φόρτωση...</p> : suppliers.map((s) => {
+          const stats = getSupplierStats(s.id)
+          const isSelected = selectedSupplierId === s.id
+
+          return (
+            <div key={s.id} style={{ border: '1px solid #f1f5f9', borderRadius: '20px', overflow: 'hidden', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
+              <div 
+                onClick={() => setSelectedSupplierId(isSelected ? null : s.id)}
+                style={{ backgroundColor: 'white', padding: '18px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+              >
+                <div>
+                  <span style={{ fontWeight: '700', color: '#1e293b', fontSize: '16px' }}>{s.name}</span>
+                  <p style={{ margin: '4px 0 0 0', fontSize: '11px', color: '#94a3b8', fontWeight: 'bold' }}>ΤΖΙΡΟΣ: {stats.turnover.toFixed(2)}€</p>
+                </div>
+                <span style={{ fontSize: '18px', color: '#cbd5e0' }}>{isSelected ? '▲' : '▼'}</span>
+              </div>
+
+              {isSelected && (
+                <div style={{ backgroundColor: '#fdfdfd', padding: '18px', borderTop: '1px solid #f1f5f9' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '15px' }}>
+                    <div style={statBox}>
+                      <p style={statLabel}>ΜΕΤΡΗΤΑ / ΚΑΡΤΑ</p>
+                      <p style={{...statValue, color: '#16a34a'}}>{stats.cash.toFixed(2)}€</p>
+                    </div>
+                    <div style={statBox}>
+                      <p style={statLabel}>ΕΠΙ ΠΙΣΤΩΣΕΙ</p>
+                      <p style={{...statValue, color: '#ea580c'}}>{stats.credits.toFixed(2)}€</p>
+                    </div>
+                  </div>
+                  
+                  <div style={{ display: 'flex', gap: '10px' }}>
+                    <button onClick={() => { setFormData({ name: s.name, phone: s.phone || '' }); setEditingId(s.id); setIsAdding(true); }} style={actionBtn}>ΕΠΕΞΕΡΓΑΣΙΑ ✎</button>
+                    <button onClick={async () => { if(confirm('Διαγραφή;')) { await supabase.from('suppliers').delete().eq('id', s.id); fetchInitialData(); } }} style={{...actionBtn, color: '#ef4444'}}>ΔΙΑΓΡΑΦΗ 🗑️</button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )
+        })}
       </div>
     </div>
   )
 }
 
-// 3. Η σελίδα με το Suspense (ΑΠΑΡΑΙΤΗΤΟ για Vercel)
-export default function HomePage() {
+// Η κύρια σελίδα που περιλαμβάνει το Suspense Boundary
+export default function SuppliersPage() {
   return (
-    <Suspense fallback={<p style={{ textAlign: 'center', padding: '50px' }}>Φόρτωση εφαρμογής...</p>}>
-      <DashboardContent />
-    </Suspense>
+    <main style={{ backgroundColor: '#ffffff', minHeight: '100vh', padding: '16px', fontFamily: 'sans-serif' }}>
+      <Suspense fallback={<div style={{ textAlign: 'center', padding: '50px' }}>Φόρτωση...</div>}>
+        <SuppliersContent />
+      </Suspense>
+    </main>
   )
 }
 
-// STYLES
-const statsCard = { flex: 1, backgroundColor: '#ffffff', padding: '18px', borderRadius: '24px', border: '1px solid #f1f5f9', textAlign: 'center' as const, boxShadow: '0 2px 4px rgba(0,0,0,0.02)' };
-const statsLabel = { fontSize: '9px', fontWeight: '800', color: '#94a3b8', margin: '0 0 4px 0' };
-const statsValue = { fontSize: '22px', fontWeight: '900', margin: 0 };
-const mainActionBtn = (bg: string) => ({ flex: 1, backgroundColor: bg, color: 'white', padding: '20px', borderRadius: '20px', textDecoration: 'none', textAlign: 'center' as const, fontWeight: '900', fontSize: '16px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' });
-const transactionCard = { backgroundColor: '#ffffff', padding: '18px', borderRadius: '22px', border: '1px solid #f1f5f9', boxShadow: '0 2px 8px rgba(0,0,0,0.02)' };
+const labelStyle = { fontSize: '10px', fontWeight: '800', color: '#94a3b8', display: 'block', marginBottom: '4px', textTransform: 'uppercase' as const };
+const inputStyle = { width: '100%', padding: '12px', borderRadius: '10px', border: '1px solid #e2e8f0', fontSize: '15px' };
+const saveBtnStyle = { width: '100%', backgroundColor: '#16a34a', color: 'white', padding: '16px', borderRadius: '12px', border: 'none', fontWeight: 'bold' as const, fontSize: '15px', marginTop: '10px', cursor: 'pointer' };
+const statBox = { padding: '12px', borderRadius: '12px', border: '1px solid #f1f5f9', backgroundColor: 'white' };
+const statLabel = { fontSize: '9px', fontWeight: '800' as const, color: '#94a3b8', margin: '0 0 4px 0' };
+const statValue = { fontSize: '16px', fontWeight: '900' as const, margin: 0 };
+const actionBtn = { flex: 1, background: 'white', border: '1px solid #e2e8f0', padding: '10px', borderRadius: '10px', cursor: 'pointer', fontSize: '11px', fontWeight: 'bold' as const };
