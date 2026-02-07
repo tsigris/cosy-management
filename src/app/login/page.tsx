@@ -2,6 +2,7 @@
 import { useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
@@ -11,7 +12,7 @@ export default function LoginPage() {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!email || !password) return alert('Συμπληρώστε email και κωδικό')
+    if (!email || !password) return alert('Παρακαλώ συμπληρώστε τα στοιχεία σας.')
     setLoading(true)
     
     const { error } = await supabase.auth.signInWithPassword({ 
@@ -19,7 +20,7 @@ export default function LoginPage() {
       password: password.trim() 
     })
     
-    if (error) alert('Σφάλμα Εισόδου: ' + error.message)
+    if (error) alert('Σφάλμα: ' + error.message)
     else {
       router.push('/')
       router.refresh()
@@ -27,138 +28,48 @@ export default function LoginPage() {
     setLoading(false)
   }
 
-  const handleSignUp = async () => {
-    if (!email || !password || password.length < 6) {
-      return alert('Βάλτε έγκυρο email και κωδικό τουλάχιστον 6 χαρακτήρων')
-    }
-    setLoading(true)
-    const { data, error } = await supabase.auth.signUp({ 
-      email: email.trim(), 
-      password: password.trim()
-    })
-    if (error) alert('Σφάλμα Εγγραφής: ' + error.message)
-    else if (data.user) alert('Ο λογαριασμός δημιουργήθηκε! Κάντε τώρα Είσοδο.')
-    setLoading(false)
-  }
-
   return (
     <main style={containerStyle}>
-      <div style={glassCardStyle}>
-        {/* ICON & TITLE */}
-        <div style={{ textAlign: 'center', marginBottom: '40px' }}>
-          <div style={logoCircleStyle}>✨</div>
-          <h1 style={titleStyle}>Cosy App</h1>
-          <p style={subtitleStyle}>Καλώς ορίσατε στο ταμείο σας</p>
+      <div style={loginCardStyle}>
+        <div style={headerStyle}>
+          <h1 style={brandStyle}>COSY APP</h1>
+          <div style={dividerStyle} />
+          <p style={instructionStyle}>Είσοδος στο Σύστημα</p>
         </div>
         
-        <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
-          <div style={inputGroup}>
+        <form onSubmit={handleLogin} style={formStyle}>
+          <div style={fieldGroup}>
             <label style={labelStyle}>EMAIL</label>
-            <input 
-              type="email" 
-              placeholder="name@company.com" 
-              value={email} 
-              onChange={e => setEmail(e.target.value)} 
-              style={inputStyle} 
-            />
+            <input type="email" value={email} onChange={e => setEmail(e.target.value)} style={inputStyle} placeholder="email@example.com" />
           </div>
-          
-          <div style={inputGroup}>
-            <label style={labelStyle}>ΚΩΔΙΚΟΣ</label>
-            <input 
-              type="password" 
-              placeholder="••••••••" 
-              value={password} 
-              onChange={e => setPassword(e.target.value)} 
-              style={inputStyle} 
-            />
+          <div style={fieldGroup}>
+            <label style={labelStyle}>ΚΩΔΙΚΟΣ ΠΡΟΣΒΑΣΗΣ</label>
+            <input type="password" value={password} onChange={e => setPassword(e.target.value)} style={inputStyle} placeholder="••••••••" />
           </div>
-          
-          <button type="submit" disabled={loading} style={mainBtn}>
-            {loading ? 'ΓΙΝΕΤΑΙ ΣΥΝΔΕΣΗ...' : 'Είσοδος στο Σύστημα'}
-          </button>
-          
-          <button type="button" onClick={handleSignUp} disabled={loading} style={secBtn}>
-            Δεν έχετε λογαριασμό; <span style={{ color: '#2563eb' }}>Εγγραφή</span>
+          <button type="submit" disabled={loading} style={submitBtnStyle}>
+            {loading ? 'ΤΑΥΤΟΠΟΙΗΣΗ...' : 'ΕΙΣΟΔΟΣ'}
           </button>
         </form>
+
+        <div style={footerStyle}>
+          <p style={{fontSize:'13px', color:'#64748b', marginBottom:'10px'}}>Δεν έχετε λογαριασμό;</p>
+          <Link href="/register" style={{color:'#1e40af', fontWeight:'700', textDecoration:'none', fontSize:'14px'}}>ΔΗΜΙΟΥΡΓΙΑ ΛΟΓΑΡΙΑΣΜΟΥ →</Link>
+        </div>
       </div>
     </main>
   )
 }
 
-// ΜΟΝΤΕΡΝΑ STYLES (PURE CSS)
-const containerStyle = {
-  minHeight: '100vh',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  background: 'linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%)',
-  padding: '20px',
-  fontFamily: 'sans-serif'
-};
-
-const glassCardStyle = {
-  backgroundColor: 'rgba(255, 255, 255, 0.95)',
-  padding: '40px 30px',
-  borderRadius: '32px',
-  boxShadow: '0 20px 40px rgba(0,0,0,0.05)',
-  width: '100%',
-  maxWidth: '420px',
-  backdropFilter: 'blur(10px)',
-  border: '1px solid white'
-};
-
-const logoCircleStyle = {
-  width: '70px',
-  height: '70px',
-  backgroundColor: '#f1f5f9',
-  borderRadius: '22px',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  fontSize: '32px',
-  margin: '0 auto 15px auto',
-  boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.05)'
-};
-
-const titleStyle = { fontSize: '28px', fontWeight: '900', color: '#0f172a', margin: '0' };
-const subtitleStyle = { fontSize: '14px', color: '#64748b', marginTop: '8px', fontWeight: '500' };
-
-const inputGroup = { display: 'flex', flexDirection: 'column' as const, gap: '6px' };
-const labelStyle = { fontSize: '10px', fontWeight: '800', color: '#94a3b8', letterSpacing: '0.5px', paddingLeft: '4px' };
-
-const inputStyle = {
-  padding: '16px',
-  borderRadius: '16px',
-  border: '1px solid #e2e8f0',
-  fontSize: '16px',
-  outline: 'none',
-  transition: 'border-color 0.2s',
-  backgroundColor: '#fcfcfc'
-};
-
-const mainBtn = {
-  backgroundColor: '#0f172a', // Σκούρο μπλε/μαύρο για πιο premium αίσθηση
-  color: 'white',
-  padding: '18px',
-  borderRadius: '18px',
-  border: 'none',
-  fontWeight: 'bold' as const,
-  fontSize: '16px',
-  cursor: 'pointer',
-  marginTop: '10px',
-  boxShadow: '0 10px 20px rgba(15, 23, 42, 0.2)',
-  transition: 'transform 0.1s'
-};
-
-const secBtn = {
-  backgroundColor: 'transparent',
-  color: '#64748b',
-  padding: '10px',
-  border: 'none',
-  cursor: 'pointer',
-  fontSize: '14px',
-  fontWeight: '600' as const,
-  marginTop: '10px'
-};
+// STYLES (Όπως τα συμφωνήσαμε πριν)
+const containerStyle = { minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#f1f5f9', fontFamily: 'sans-serif', padding: '20px' };
+const loginCardStyle = { backgroundColor: '#ffffff', width: '100%', maxWidth: '420px', padding: '40px', borderRadius: '8px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', borderTop: '5px solid #1e40af' };
+const headerStyle = { textAlign: 'center' as const, marginBottom: '30px' };
+const brandStyle = { fontSize: '24px', fontWeight: '800', color: '#1e293b', margin: '0 0 10px 0' };
+const dividerStyle = { height: '2px', width: '30px', backgroundColor: '#e2e8f0', margin: '0 auto 15px auto' };
+const instructionStyle = { fontSize: '14px', color: '#64748b' };
+const formStyle = { display: 'flex', flexDirection: 'column' as const, gap: '20px' };
+const fieldGroup = { display: 'flex', flexDirection: 'column' as const, gap: '6px' };
+const labelStyle = { fontSize: '11px', fontWeight: '700', color: '#475569' };
+const inputStyle = { padding: '12px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '15px' };
+const submitBtnStyle = { backgroundColor: '#1e40af', color: '#ffffff', padding: '14px', borderRadius: '4px', border: 'none', fontWeight: '700', cursor: 'pointer' };
+const footerStyle = { marginTop: '30px', textAlign: 'center' as const, borderTop: '1px solid #f1f5f9', paddingTop: '20px' };
