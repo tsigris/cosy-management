@@ -53,12 +53,10 @@ function DashboardContent() {
     router.push('/login')
   }
 
-  // ΔΙΑΓΡΑΦΗ ΜΕ ΑΜΕΣΗ ΕΝΗΜΕΡΩΣΗ STATE
   async function handleDelete(id: string) {
     if (confirm('Θέλετε να διαγράψετε αυτή την κίνηση;')) {
       const { error } = await supabase.from('transactions').delete().eq('id', id)
       if (!error) {
-        // Αφαιρεί την κίνηση από τη λίστα χωρίς reload
         setTransactions(prev => prev.filter(t => t.id !== id))
       } else {
         alert('Σφάλμα: ' + error.message)
@@ -66,11 +64,10 @@ function DashboardContent() {
     }
   }
 
-  // ΥΠΟΛΟΓΙΣΜΟΣ ΣΥΝΟΛΩΝ (Ενημερώνονται αυτόματα μόλις διαγραφεί κάτι)
   const totals = transactions.reduce((acc, t) => {
     const amt = Number(t.amount) || 0
     if (t.type === 'income') acc.inc += amt
-    else if (t.type === 'expense' && !t.is_credit) acc.exp += amt
+    else if (t.type === 'expense' && !t.is_credit && t.category !== 'pocket') acc.exp += amt
     return acc
   }, { inc: 0, exp: 0 })
 
@@ -120,10 +117,17 @@ function DashboardContent() {
       </div>
 
       {/* QUICK BUTTONS */}
-      <div style={{ display: 'flex', gap: '12px', marginBottom: '25px' }}>
+      <div style={{ display: 'flex', gap: '12px', marginBottom: '12px' }}>
         <Link href={`/add-income?date=${selectedDate}`} style={{ ...btnStyle, backgroundColor: '#10b981' }}>+ ΕΣΟΔΑ</Link>
         <Link href={`/add-expense?date=${selectedDate}`} style={{ ...btnStyle, backgroundColor: '#ef4444' }}>- ΕΞΟΔΑ</Link>
       </div>
+
+      {/* ΚΟΥΜΠΙ Ζ ΗΜΕΡΑΣ */}
+      <Link href="/daily-z" style={zBtnStyle}>
+        📟 ΚΛΕΙΣΙΜΟ ΤΑΜΕΙΟΥ (Ζ) & ΑΝΑΛΗΨΗ
+      </Link>
+
+      <div style={{ marginBottom: '20px' }} />
 
       {/* DATE PICKER */}
       <input 
@@ -145,6 +149,7 @@ function DashboardContent() {
               <div style={{ flex: 1 }}>
                 <p style={{ fontWeight: '800', margin: 0 }}>
                   {t.type === 'income' ? '💰 ' + (t.notes || 'ΕΙΣΠΡΑΞΗ') : (
+                      t.category === 'pocket' ? <span style={{color: '#8b5cf6'}}>🏠 ΑΝΑΛΗΨΗ: ΣΠΙΤΙ</span> :
                       t.is_credit ? <span><span style={{color: '#f97316'}}>🚩 ΠΙΣΤΩΣΗ:</span> {t.suppliers?.name || 'Προμηθευτής'}</span> : 
                       t.category === 'Πάγια' ? <span>🔌 {t.fixed_assets?.name || 'Πάγιο'}</span> :
                       '💸 ' + (t.suppliers?.name || t.category)
@@ -153,7 +158,7 @@ function DashboardContent() {
                 <p style={subLabelStyle}>{t.method} {t.notes && !t.notes.includes('ΕΙΣΠΡΑΞΗ') ? `• ${t.notes}` : ''}</p>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <p style={{ fontWeight: '900', fontSize: '16px', color: t.is_credit ? '#94a3b8' : (t.type === 'income' ? '#16a34a' : '#dc2626'), margin: 0 }}>
+                <p style={{ fontWeight: '900', fontSize: '16px', color: t.category === 'pocket' ? '#8b5cf6' : t.is_credit ? '#94a3b8' : (t.type === 'income' ? '#16a34a' : '#dc2626'), margin: 0 }}>
                   {t.type === 'income' ? '+' : '-'}{Number(t.amount).toFixed(2)}€
                 </p>
                 <button 
@@ -195,6 +200,7 @@ const divider = { height: '1px', backgroundColor: '#f1f5f9', margin: '8px 0' };
 const cardStyle = { flex: 1, backgroundColor: 'white', padding: '18px', borderRadius: '20px', textAlign: 'center' as const, boxShadow: '0 2px 4px rgba(0,0,0,0.02)' };
 const labelStyle = { fontSize: '10px', fontWeight: '800', color: '#94a3b8', marginBottom: '4px' };
 const btnStyle = { flex: 1, padding: '18px', borderRadius: '16px', color: 'white', textDecoration: 'none', textAlign: 'center' as const, fontWeight: '800', fontSize: '15px' };
+const zBtnStyle = { display: 'block', padding: '14px', borderRadius: '16px', backgroundColor: '#0f172a', color: 'white', textDecoration: 'none', textAlign: 'center' as const, fontWeight: '800', fontSize: '14px', boxShadow: '0 4px 12px rgba(15, 23, 42, 0.2)' };
 const itemStyle = { backgroundColor: 'white', padding: '14px', borderRadius: '18px', border: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' };
 const subLabelStyle = { fontSize: '11px', color: '#94a3b8', textTransform: 'uppercase' as const, margin: '4px 0 0 0', fontWeight: 'bold' };
 const dateInputStyle = { width: '100%', padding: '14px', borderRadius: '14px', border: '1px solid #e2e8f0', fontSize: '16px', fontWeight: 'bold', textAlign: 'center' as const, marginBottom: '20px', backgroundColor: 'white', outline: 'none' };
