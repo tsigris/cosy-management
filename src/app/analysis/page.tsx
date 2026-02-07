@@ -40,6 +40,33 @@ export default function AnalysisPage() {
     setLoading(false)
   }
 
+  // ΣΥΝΑΡΤΗΣΗ ΔΙΟΡΘΩΣΗΣ ΤΣΕΠΗΣ
+  async function handleAdjustPocket() {
+    const newAmount = prompt("Ορίστε το πραγματικό ποσό που έχετε στην τσέπη (π.χ. 500):", pocketTotal.toString());
+    
+    if (newAmount !== null && newAmount !== "") {
+      const target = Number(newAmount);
+      const diff = target - pocketTotal;
+      
+      if (diff === 0) return;
+
+      const { error } = await supabase.from('transactions').insert([{
+        amount: diff,
+        type: 'expense',
+        category: 'pocket',
+        notes: 'ΧΕΙΡΟΚΙΝΗΤΗ ΔΙΟΡΘΩΣΗ ΥΠΟΛΟΙΠΟΥ',
+        date: new Date().toISOString().split('T')[0],
+        method: 'Μετρητά'
+      }]);
+
+      if (!error) {
+        fetchData();
+      } else {
+        alert("Σφάλμα διόρθωσης: " + error.message);
+      }
+    }
+  }
+
   async function handleDelete(id: string) {
     if (confirm('Θέλετε σίγουρα να διαγράψετε αυτή τη συναλλαγή;')) {
       const { error } = await supabase.from('transactions').delete().eq('id', id)
@@ -54,7 +81,6 @@ export default function AnalysisPage() {
 
   const now = new Date()
 
-  // ΦΙΛΤΡΑΡΙΣΜΑ ΒΑΣΕΙ ΧΡΟΝΟΥ
   const filterByTime = (data: any[], type: string, refDate: Date) => {
     return data.filter(t => {
       const d = new Date(t.date)
@@ -74,7 +100,6 @@ export default function AnalysisPage() {
   const totalIncome = incomeData.reduce((acc, t) => acc + Number(t.amount), 0)
   const totalExpense = currentData.filter(t => t.type === 'expense' && t.category !== 'pocket').reduce((acc, t) => acc + Number(t.amount), 0)
 
-  // ΥΠΟΛΟΓΙΣΜΟΣ ΠΟΣΟΣΤΩΝ (Βάσει των notes που βάζει το Daily-Z)
   const stats = {
     cashZ: incomeData.filter(t => t.notes === 'Ζ ΤΑΜΕΙΑΚΗΣ').reduce((acc, t) => acc + Number(t.amount), 0),
     posZ: incomeData.filter(t => t.notes === 'Ζ ΤΑΜΕΙΑΚΗΣ (POS)').reduce((acc, t) => acc + Number(t.amount), 0),
@@ -89,19 +114,16 @@ export default function AnalysisPage() {
     <main style={{ backgroundColor: '#f8fafc', minHeight: '100vh', padding: '16px', fontFamily: 'sans-serif' }}>
       <div style={{ maxWidth: '500px', margin: '0 auto' }}>
         
-        {/* HEADER */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '15px', marginBottom: '20px' }}>
           <Link href="/" style={backBtnStyle}>←</Link>
           <h2 style={{ fontSize: '20px', fontWeight: '900', color: '#1e293b', margin: 0 }}>Ανάλυση</h2>
         </div>
 
-        {/* TABS */}
         <div style={tabContainer}>
           <button onClick={() => setView('income')} style={{...tabBtn, backgroundColor: view === 'income' ? '#10b981' : 'white', color: view === 'income' ? 'white' : '#64748b'}}>ΕΣΟΔΑ</button>
           <button onClick={() => setView('expenses')} style={{...tabBtn, backgroundColor: view === 'expenses' ? '#ef4444' : 'white', color: view === 'expenses' ? 'white' : '#64748b'}}>ΕΞΟΔΑ</button>
         </div>
 
-        {/* ΦΙΛΤΡΑ ΠΕΡΙΟΔΟΥ */}
         <div style={whiteCard}>
            <select value={period} onChange={e => setPeriod(e.target.value)} style={selectStyle}>
               <option value="month">Προβολή: Μήνας</option>
@@ -112,17 +134,19 @@ export default function AnalysisPage() {
             {period === 'custom_day' && <input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} style={dateInputStyle} />}
         </div>
 
-        {/* ΚΟΥΜΠΑΡΑΣ POCKET (ΜΟΝΟ ΣΤΑ ΕΣΟΔΑ) */}
+        {/* ΚΟΥΜΠΑΡΑΣ POCKET ΜΕ ΚΟΥΜΠΙ ΔΙΟΡΘΩΣΗΣ */}
         {view === 'income' && (
           <div style={pocketMiniCard}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: '11px', fontWeight: '900', color: '#64748b' }}>💰 ΣΥΝΟΛΟ ΣΤΗΝ ΤΣΕΠΗ (ΚΑΘΑΡΟ)</span>
-              <span style={{ fontSize: '20px', fontWeight: '900', color: '#8b5cf6' }}>{pocketTotal.toLocaleString('el-GR')}€</span>
+              <div>
+                <span style={{ fontSize: '11px', fontWeight: '900', color: '#64748b' }}>💰 ΣΥΝΟΛΟ ΣΤΗΝ ΤΣΕΠΗ</span>
+                <div style={{ fontSize: '20px', fontWeight: '900', color: '#8b5cf6' }}>{pocketTotal.toLocaleString('el-GR')}€</div>
+              </div>
+              <button onClick={handleAdjustPocket} style={adjustBtnStyle}>⚙️ Διόρθωση</button>
             </div>
           </div>
         )}
 
-        {/* ΑΝΑΛΥΣΗ ΠΟΣΟΣΤΩΝ ΤΖΙΡΟΥ */}
         {view === 'income' && totalIncome > 0 && (
           <div style={whiteCard}>
             <p style={sectionTitle}>ΚΑΤΑΝΟΜΗ ΤΖΙΡΟΥ (%)</p>
@@ -132,7 +156,6 @@ export default function AnalysisPage() {
           </div>
         )}
 
-        {/* ΚΕΝΤΡΙΚΗ ΚΑΡΤΑ ΣΥΝΟΛΟΥ */}
         <div style={{...mainCard, backgroundColor: view === 'income' ? '#064e3b' : '#450a0a'}}>
           <p style={labelMicro}>{view === 'income' ? 'ΣΥΝΟΛΙΚΟΣ ΤΖΙΡΟΣ' : 'ΣΥΝΟΛΙΚΑ ΕΞΟΔΑ'}</p>
           <h2 style={{ fontSize: '38px', fontWeight: '900', margin: '5px 0' }}>
@@ -140,18 +163,16 @@ export default function AnalysisPage() {
           </h2>
         </div>
 
-        {/* ΛΙΣΤΑ ΚΙΝΗΣΕΩΝ */}
         <div style={whiteCard}>
           <h3 style={sectionTitle}>ΚΙΝΗΣΕΙΣ ΠΕΡΙΟΔΟΥ</h3>
           {currentData.filter(t => {
             if (view === 'income') return t.type === 'income';
-            // Στα έξοδα δείχνουμε τα πάντα εκτός από τα pocket (που είναι αναλήψεις)
             return t.type === 'expense' || t.category === 'pocket';
           }).map(t => (
             <div key={t.id} style={rowStyle}>
               <div style={{ flex: 1 }}>
                 <div style={{ fontWeight: '700', fontSize: '14px' }}>
-                  {t.category === 'pocket' ? (t.amount > 0 ? '🏠 ΑΝΑΛΗΨΗ' : '🏠 ΠΛΗΡΩΜΗ ΑΠΟ ΤΣΕΠΗ') : (t.suppliers?.name || t.notes || t.category)}
+                  {t.category === 'pocket' ? (t.amount > 0 ? '🏠 ΑΝΑΛΗΨΗ' : '🏠 ΠΛΗΡΩΜΗ/ΔΙΟΡΘΩΣΗ ΤΣΕΠΗΣ') : (t.suppliers?.name || t.notes || t.category)}
                 </div>
                 <div style={{ fontSize: '11px', color: '#94a3b8' }}>{format(new Date(t.date), 'dd/MM/yyyy')}</div>
               </div>
@@ -172,7 +193,6 @@ export default function AnalysisPage() {
             </div>
           ))}
         </div>
-
       </div>
     </main>
   )
@@ -186,6 +206,7 @@ const whiteCard = { backgroundColor: 'white', padding: '15px', borderRadius: '20
 const selectStyle = { width: '100%', padding: '12px', borderRadius: '12px', border: '1px solid #e2e8f0', outline: 'none', fontWeight: 'bold' };
 const dateInputStyle = { width: '100%', padding: '12px', borderRadius: '12px', border: '1px solid #e2e8f0', marginTop: '10px', fontWeight: 'bold' };
 const pocketMiniCard = { backgroundColor: '#f1f5f9', padding: '18px', borderRadius: '20px', marginBottom: '15px', border: '1px solid #e2e8f0' };
+const adjustBtnStyle = { background: '#e2e8f0', border: 'none', padding: '8px 12px', borderRadius: '10px', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer', color: '#475569' };
 const statsRow = { display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderBottom: '1px solid #f8fafc', fontSize: '13px' };
 const mainCard = { padding: '30px', borderRadius: '28px', color: 'white', textAlign: 'center' as const, marginBottom: '20px' };
 const labelMicro = { fontSize: '10px', fontWeight: '900', opacity: 0.7, letterSpacing: '1px' };
