@@ -64,12 +64,18 @@ function DashboardContent() {
     }
   }
 
+  // ΥΠΟΛΟΓΙΣΜΟΣ ΣΥΝΟΛΩΝ (Περιλαμβάνει τα Ζ για σωστή εικόνα στα νούμερα)
   const totals = transactions.reduce((acc, t) => {
     const amt = Number(t.amount) || 0
     if (t.type === 'income') acc.inc += amt
     else if (t.type === 'expense' && !t.is_credit && t.category !== 'pocket') acc.exp += amt
     return acc
   }, { inc: 0, exp: 0 })
+
+  // ΦΙΛΤΡΟ ΓΙΑ ΤΗ ΛΙΣΤΑ: Κρύβουμε Ζ και Pocket για καθαρή αρχική
+  const filteredForList = transactions.filter(t => 
+    t.category !== 'Εσοδα Ζ' && t.category !== 'pocket'
+  )
 
   return (
     <div style={{ maxWidth: '500px', margin: '0 auto', fontFamily: 'sans-serif' }}>
@@ -122,7 +128,7 @@ function DashboardContent() {
         <Link href={`/add-expense?date=${selectedDate}`} style={{ ...btnStyle, backgroundColor: '#ef4444' }}>- ΕΞΟΔΑ</Link>
       </div>
 
-      {/* ΚΟΥΜΠΙ Ζ ΗΜΕΡΑΣ */}
+      {/* ΚΟΥΜΠΙ Ζ ΗΜΕΡΑΣ (ΕΝΤΟΝΟ) */}
       <Link href="/daily-z" style={zBtnStyle}>
         📟 ΚΛΕΙΣΙΜΟ ΤΑΜΕΙΟΥ (Ζ) & ΑΝΑΛΗΨΗ
       </Link>
@@ -139,17 +145,16 @@ function DashboardContent() {
 
       {/* ΛΙΣΤΑ ΚΙΝΗΣΕΩΝ */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-        <p style={{ fontSize: '11px', fontWeight: '800', color: '#94a3b8', textTransform: 'uppercase' }}>Πρόσφατες Κινήσεις</p>
+        <p style={{ fontSize: '11px', fontWeight: '800', color: '#94a3b8', textTransform: 'uppercase' }}>Καθημερινές Κινήσεις</p>
         
         {loading ? (
           <p style={{ textAlign: 'center', padding: '20px' }}>Φόρτωση...</p>
-        ) : transactions.length > 0 ? (
-          transactions.map(t => (
+        ) : filteredForList.length > 0 ? (
+          filteredForList.map(t => (
             <div key={t.id} style={itemStyle}>
               <div style={{ flex: 1 }}>
                 <p style={{ fontWeight: '800', margin: 0 }}>
                   {t.type === 'income' ? '💰 ' + (t.notes || 'ΕΙΣΠΡΑΞΗ') : (
-                      t.category === 'pocket' ? <span style={{color: '#8b5cf6'}}>🏠 ΑΝΑΛΗΨΗ: ΣΠΙΤΙ</span> :
                       t.is_credit ? <span><span style={{color: '#f97316'}}>🚩 ΠΙΣΤΩΣΗ:</span> {t.suppliers?.name || 'Προμηθευτής'}</span> : 
                       t.category === 'Πάγια' ? <span>🔌 {t.fixed_assets?.name || 'Πάγιο'}</span> :
                       '💸 ' + (t.suppliers?.name || t.category)
@@ -158,21 +163,16 @@ function DashboardContent() {
                 <p style={subLabelStyle}>{t.method} {t.notes && !t.notes.includes('ΕΙΣΠΡΑΞΗ') ? `• ${t.notes}` : ''}</p>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <p style={{ fontWeight: '900', fontSize: '16px', color: t.category === 'pocket' ? '#8b5cf6' : t.is_credit ? '#94a3b8' : (t.type === 'income' ? '#16a34a' : '#dc2626'), margin: 0 }}>
+                <p style={{ fontWeight: '900', fontSize: '16px', color: t.is_credit ? '#94a3b8' : (t.type === 'income' ? '#16a34a' : '#dc2626'), margin: 0 }}>
                   {t.type === 'income' ? '+' : '-'}{Number(t.amount).toFixed(2)}€
                 </p>
-                <button 
-                  onClick={() => handleDelete(t.id)} 
-                  style={delBtnStyle}
-                >
-                  🗑️
-                </button>
+                <button onClick={() => handleDelete(t.id)} style={delBtnStyle}>🗑️</button>
               </div>
             </div>
           ))
         ) : (
           <div style={{ textAlign: 'center', padding: '30px', color: '#94a3b8', background: 'white', borderRadius: '20px' }}>
-            Καμία κίνηση για αυτή την ημέρα.
+            Καμία καθημερινή κίνηση.
           </div>
         )}
       </div>
@@ -200,8 +200,8 @@ const divider = { height: '1px', backgroundColor: '#f1f5f9', margin: '8px 0' };
 const cardStyle = { flex: 1, backgroundColor: 'white', padding: '18px', borderRadius: '20px', textAlign: 'center' as const, boxShadow: '0 2px 4px rgba(0,0,0,0.02)' };
 const labelStyle = { fontSize: '10px', fontWeight: '800', color: '#94a3b8', marginBottom: '4px' };
 const btnStyle = { flex: 1, padding: '18px', borderRadius: '16px', color: 'white', textDecoration: 'none', textAlign: 'center' as const, fontWeight: '800', fontSize: '15px' };
-const zBtnStyle = { display: 'block', padding: '14px', borderRadius: '16px', backgroundColor: '#0f172a', color: 'white', textDecoration: 'none', textAlign: 'center' as const, fontWeight: '800', fontSize: '14px', boxShadow: '0 4px 12px rgba(15, 23, 42, 0.2)' };
+const zBtnStyle = { display: 'block', padding: '16px', borderRadius: '16px', backgroundColor: '#0f172a', color: 'white', textDecoration: 'none', textAlign: 'center' as const, fontWeight: '900', fontSize: '14px' };
 const itemStyle = { backgroundColor: 'white', padding: '14px', borderRadius: '18px', border: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' };
 const subLabelStyle = { fontSize: '11px', color: '#94a3b8', textTransform: 'uppercase' as const, margin: '4px 0 0 0', fontWeight: 'bold' };
 const dateInputStyle = { width: '100%', padding: '14px', borderRadius: '14px', border: '1px solid #e2e8f0', fontSize: '16px', fontWeight: 'bold', textAlign: 'center' as const, marginBottom: '20px', backgroundColor: 'white', outline: 'none' };
-const delBtnStyle = { background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer', opacity: 0.3, transition: 'opacity 0.2s' };
+const delBtnStyle = { background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer', opacity: 0.3 };
