@@ -14,8 +14,27 @@ function DashboardContent() {
   const [transactions, setTransactions] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [isMenuOpen, setIsMenuOpen] = useState(false)
+  
+  // ΚΑΤΑΣΤΑΣΗ ΓΙΑ ΤΟ ΔΥΝΑΜΙΚΟ ΟΝΟΜΑ ΚΑΤΑΣΤΗΜΑΤΟΣ
+  const [storeName, setStoreName] = useState('ΚΑΤΑΣΤΗΜΑ')
 
   useEffect(() => {
+    // ΣΥΝΑΡΤΗΣΗ ΓΙΑ ΛΗΨΗ ΟΝΟΜΑΤΟΣ ΑΠΟ ΤΟ ΠΡΟΦΙΛ ΧΡΗΣΤΗ
+    async function fetchProfile() {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
+        const { data } = await supabase
+          .from('profiles')
+          .select('store_name')
+          .eq('id', user.id)
+          .single()
+        
+        if (data?.store_name) {
+          setStoreName(data.store_name)
+        }
+      }
+    }
+
     async function fetchTransactions() {
       setLoading(true)
       const { data } = await supabase
@@ -27,6 +46,8 @@ function DashboardContent() {
       if (data) setTransactions(data)
       setLoading(false)
     }
+
+    fetchProfile()
     fetchTransactions()
   }, [selectedDate])
 
@@ -45,9 +66,11 @@ function DashboardContent() {
   return (
     <div style={{ maxWidth: '500px', margin: '0 auto', fontFamily: 'sans-serif' }}>
       
-      {/* HEADER */}
+      {/* HEADER ΜΕ ΔΥΝΑΜΙΚΟ ΤΙΤΛΟ */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', paddingTop: '10px' }}>
-        <h1 style={{ fontWeight: '900', fontSize: '26px', margin: 0, color: '#0f172a' }}>ΚΑΤΑΣΤΗΜΑ</h1>
+        <h1 style={{ fontWeight: '900', fontSize: '26px', margin: 0, color: '#0f172a' }}>
+          {storeName.toUpperCase()}
+        </h1>
         
         <div style={{ position: 'relative' }}>
           <button onClick={() => setIsMenuOpen(!isMenuOpen)} style={menuBtnStyle}>⋮</button>
@@ -56,14 +79,14 @@ function DashboardContent() {
             <div style={dropdownStyle}>
               <p style={menuSectionLabel}>ΔΙΑΧΕΙΡΙΣΗ</p>
               <Link href="/employees" style={menuItem} onClick={() => setIsMenuOpen(false)}>👤 Υπάλληλοι</Link>
-              
-              {/* ΓΕΝΙΚΗ ΛΙΣΤΑ ΠΡΟΜΗΘΕΥΤΩΝ */}
               <Link href="/suppliers" style={menuItem} onClick={() => setIsMenuOpen(false)}>🛒 Προμηθευτές</Link>
-              
-              {/* Η ΔΙΟΡΘΩΣΗ: ΤΩΡΑ ΟΔΗΓΕΙ ΣΤΙΣ ΚΑΡΤΕΛΕΣ ΧΡΕΩΝ */}
               <Link href="/suppliers-balance" style={menuItem} onClick={() => setIsMenuOpen(false)}>🚩 Καρτέλες (Χρέη)</Link>
-              
               <Link href="/analysis" style={menuItem} onClick={() => setIsMenuOpen(false)}>📈 Ανάλυση</Link>
+              
+              <div style={divider} />
+              <p style={menuSectionLabel}>ΕΦΑΡΜΟΓΗ</p>
+              <Link href="/settings" style={menuItem} onClick={() => setIsMenuOpen(false)}>⚙️ Ρυθμίσεις</Link>
+              
               <div style={divider} />
               <button onClick={handleLogout} style={logoutBtnStyle}>ΑΠΟΣΥΝΔΕΣΗ 🚪</button>
             </div>
@@ -128,12 +151,12 @@ export default function HomePage() {
   )
 }
 
-// STYLES
+// STYLES (Παραμένουν ίδια)
 const menuBtnStyle = { backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', width: '40px', height: '40px', borderRadius: '12px', cursor: 'pointer', fontSize: '20px', color: '#64748b' };
 const dropdownStyle = { position: 'absolute' as const, top: '50px', right: '0', backgroundColor: 'white', minWidth: '200px', borderRadius: '20px', boxShadow: '0 10px 30px rgba(0,0,0,0.15)', padding: '12px', zIndex: 100, border: '1px solid #f1f5f9' };
 const menuItem = { display: 'block', padding: '12px', textDecoration: 'none', color: '#334155', fontWeight: '700' as const, fontSize: '14px', borderRadius: '10px' };
 const logoutBtnStyle = { ...menuItem, color: '#ef4444', border: 'none', background: '#fee2e2', width: '100%', cursor: 'pointer', textAlign: 'left' as const };
-const menuSectionLabel = { fontSize: '9px', fontWeight: '800' as const, color: '#94a3b8', marginBottom: '8px', paddingLeft: '12px' };
+const menuSectionLabel = { fontSize: '9px', fontWeight: '800' as const, color: '#94a3b8', marginBottom: '8px', paddingLeft: '12px', marginTop: '8px' };
 const divider = { height: '1px', backgroundColor: '#f1f5f9', margin: '8px 0' };
 const cardStyle = { flex: 1, backgroundColor: 'white', padding: '18px', borderRadius: '20px', textAlign: 'center' as const };
 const labelStyle = { fontSize: '10px', fontWeight: '800', color: '#94a3b8', marginBottom: '4px' };
