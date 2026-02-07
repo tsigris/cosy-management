@@ -1,144 +1,132 @@
 'use client'
 export const dynamic = 'force-dynamic'
 
-import { useState, Suspense } from 'react'
+import { useEffect, useState, Suspense } from 'react'
+import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 
-// 1. Το Component με την πλήρη λειτουργία της φόρμας
-function IncomeFormFields() {
+function ExpenseFormFields() {
   const router = useRouter()
-  const searchParams = useSearchParams()
+  const [employees, setEmployees] = useState<any[]>([])
+  const [suppliers, setSuppliers] = useState<any[]>([])
+  const [fetching, setFetching] = useState(true)
   
-  // Παίρνει την ημερομηνία από το URL ή βάζει τη σημερινή
-  const dateFromUrl = searchParams.get('date') || new Date().toISOString().split('T')[0]
-  
-  const [amount, setAmount] = useState('')
-  const [method, setMethod] = useState('Μετρητά')
-  const [date, setDate] = useState(dateFromUrl)
-  const [notes, setNotes] = useState('')
-  const [loading, setLoading] = useState(false)
+  const [formData, setFormData] = useState({
+    amount: '',
+    category: 'Αγορά Εμπορευμάτων', 
+    method: 'Μετρητά',
+    description: '',
+    supplier_id: '',
+    employee_id: '',
+  })
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    if (!amount || Number(amount) <= 0) return alert('Παρακαλώ βάλτε έγκυρο ποσό')
+  useEffect(() => {
+    async function loadData() {
+      setFetching(true)
+      const [empRes, supRes] = await Promise.all([
+        supabase.from('employees').select('id, full_name').order('full_name'),
+        supabase.from('suppliers').select('id, name').order('name')
+      ])
+      if (empRes.data) setEmployees(empRes.data)
+      if (supRes.data) setSuppliers(supRes.data)
+      setFetching(false)
+    }
+    loadData()
+  }, [])
+
+  async function handleSave() {
+    if (!formData.amount || Number(formData.amount) <= 0) return alert('Παρακαλώ βάλτε ποσό')
+    setFetching(true)
     
-    setLoading(true)
-    const { error } = await supabase.from('transactions').insert([
-      { 
-        amount: parseFloat(amount), 
-        method, 
-        type: 'income', 
-        date_recorded: date,
-        notes 
-      }
-    ])
-    
+    const payload: any = {
+      type: 'expense',
+      amount: parseFloat(formData.amount),
+      category: formData.category,
+      method: formData.method,
+      description: formData.description || '',
+      date: new Date().toISOString() 
+    }
+
+    if (formData.category === 'Μισθοδοσία') {
+      payload.employee_id = formData.employee_id || null
+    } else {
+      payload.supplier_id = formData.supplier_id || null
+    }
+
+    const { error } = await supabase.from('transactions').insert([payload])
     if (!error) {
       router.push('/')
       router.refresh()
     } else {
-      setLoading(false)
+      setFetching(false)
       alert('Σφάλμα: ' + error.message)
     }
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', marginTop: '25px' }}>
-      <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-        
-        <div>
-          <label style={labelStyle}>ΗΜΕΡΟΜΗΝΙΑ ΕΙΣΠΡΑΞΗΣ</label>
-          <input 
-            type="date" 
-            value={date} 
-            onChange={(e) => setDate(e.target.value)}
-            required
-            style={inputStyle}
-          />
-        </div>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+      <div>
+        <label style={labelStyle}>ΠΟΣΟ (€)</label>
+        <input type="number" value={formData.amount} onChange={e => setFormData({...formData, amount: e.target.value})} style={inputStyle} />
+      </div>
 
-        <div>
-          <label style={labelStyle}>ΠΟΣΟ (€)</label>
-          <input 
-            type="number" 
-            step="0.01" 
-            inputMode="decimal"
-            value={amount} 
-            onChange={(e) => setAmount(e.target.value)}
-            required
-            placeholder="0.00"
-            style={{ ...inputStyle, fontSize: '20px', fontWeight: '900' }}
-          />
-        </div>
+      <div>
+        <label style={labelStyle}>ΚΑΤΗΓΟΡΙΑ</label>
+        <select value={formData.category} onChange={e => setFormData({...formData, category: e.target.value, employee_id: '', supplier_id: ''})} style={inputStyle}>
+          <option value="Αγορά Εμπορευμάτων">Αγορά Εμπορευμάτων</option>
+          <option value="Μισθοδοσία">Μισθοδοσία</option>
+          <option value="Ενοίκιο">Ενοίκιο</option>
+          <option value="Λογαριασμοί">Λογαριασμοί</option>
+        </select>
+      </div>
 
-        <div>
-          <label style={labelStyle}>ΤΡΟΠΟΣ ΕΙΣΠΡΑΞΗΣ</label>
-          <div style={{ display: 'flex', gap: '10px' }}>
-            {['Μετρητά', 'Κάρτα', 'Τράπεζα'].map(m => (
-              <button 
-                key={m} 
-                type="button"
-                onClick={() => setMethod(m)}
-                style={{ 
-                  flex: 1, 
-                  padding: '12px', 
-                  borderRadius: '12px', 
-                  border: method === m ? '2px solid #16a34a' : '1px solid #e2e8f0', 
-                  backgroundColor: method === m ? '#f0fdf4' : 'white', 
-                  color: method === m ? '#16a34a' : '#64748b', 
-                  fontWeight: 'bold',
-                  cursor: 'pointer'
-                }}
-              >
-                {m === 'Κάρτα' ? '💳 ΚΑΡΤΑ' : m === 'Τράπεζα' ? '🏦 ΤΡΑΠΕΖΑ' : '💰 ΜΕΤΡΗΤΑ'}
-              </button>
-            ))}
+      {formData.category === 'Αγορά Εμπορευμάτων' && (
+        <div style={boxStyle('#fff1f2', '#fecaca')}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+            <label style={{...labelStyle, color: '#991b1b', marginBottom: 0 }}>ΠΡΟΜΗΘΕΥΤΗΣ</label>
+            <Link href="/settings/suppliers" style={{ textDecoration: 'none', background: '#991b1b', color: 'white', width: '24px', height: '24px', borderRadius: '50%', textAlign: 'center', lineHeight: '22px', fontWeight: 'bold' }}>+</Link>
           </div>
+          <select value={formData.supplier_id} onChange={e => setFormData({...formData, supplier_id: e.target.value})} style={inputStyle}>
+            <option value="">— Επιλέξτε —</option>
+            {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </select>
         </div>
+      )}
 
-        <div>
-          <label style={labelStyle}>ΣΗΜΕΙΩΣΕΙΣ (ΠΡΟΑΙΡΕΤΙΚΑ)</label>
-          <textarea 
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            placeholder="Περιγραφή εσόδου..."
-            style={{ ...inputStyle, height: '80px', resize: 'none' }}
-          />
+      {formData.category === 'Μισθοδοσία' && (
+        <div style={boxStyle('#f0f9ff', '#bae6fd')}>
+          <label style={{...labelStyle, color: '#0369a1'}}>ΥΠΑΛΛΗΛΟΣ</label>
+          <select value={formData.employee_id} onChange={e => setFormData({...formData, employee_id: e.target.value})} style={inputStyle}>
+            <option value="">— Επιλέξτε —</option>
+            {employees.map(emp => <option key={emp.id} value={emp.id}>{emp.full_name}</option>)}
+          </select>
         </div>
+      )}
 
-        <button 
-          type="submit" 
-          disabled={loading}
-          style={saveBtnStyle}
-        >
-          {loading ? 'ΑΠΟΘΗΚΕΥΣΗ...' : 'ΚΑΤΑΧΩΡΗΣΗ ΕΣΟΔΟΥ'}
-        </button>
-      </form>
+      <button onClick={handleSave} disabled={fetching} style={saveBtnStyle}>
+        {fetching ? 'ΑΠΟΘΗΚΕΥΣΗ...' : 'ΑΠΟΘΗΚΕΥΣΗ ΕΞΟΔΟΥ'}
+      </button>
     </div>
   )
 }
 
-// 2. Η κύρια σελίδα με το Suspense Boundary
-export default function AddIncomePage() {
+export default function AddExpensePage() {
   const router = useRouter()
   return (
-    <main style={{ backgroundColor: '#f9fafb', minHeight: '100vh', padding: '20px', fontFamily: 'sans-serif' }}>
-      <div style={{ maxWidth: '450px', margin: '0 auto' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <button onClick={() => router.back()} style={{ border: 'none', background: 'none', fontSize: '24px', color: '#64748b', cursor: 'pointer' }}>←</button>
-          <h1 style={{ fontSize: '24px', fontWeight: '900', color: '#111827', margin: 0 }}>Νέο Έσοδο</h1>
-        </div>
-        
-        <Suspense fallback={<div style={{ textAlign: 'center', padding: '40px' }}>Φόρτωση φόρμας...</div>}>
-          <IncomeFormFields />
-        </Suspense>
+    <main style={{ padding: '20px', maxWidth: '500px', margin: '0 auto', fontFamily: 'sans-serif' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px' }}>
+         <button onClick={() => router.back()} style={{ border: 'none', background: 'none', fontSize: '24px', cursor: 'pointer' }}>←</button>
+         <h2 style={{ fontWeight: '800', margin: 0 }}>Νέο Έξοδο</h2>
       </div>
+      <Suspense fallback={<div>Φόρτωση...</div>}>
+        <ExpenseFormFields />
+      </Suspense>
     </main>
   )
 }
 
-const labelStyle = { fontSize: '11px', fontWeight: '800', color: '#94a3b8', display: 'block', marginBottom: '6px', textTransform: 'uppercase' as const };
-const inputStyle = { width: '100%', padding: '15px', borderRadius: '15px', border: '1px solid #e2e8f0', fontSize: '16px', outline: 'none', backgroundColor: 'white' };
-const saveBtnStyle = { backgroundColor: '#16a34a', color: 'white', padding: '18px', borderRadius: '15px', border: 'none', fontSize: '16px', fontWeight: 'bold' as const, marginTop: '10px', cursor: 'pointer', boxShadow: '0 4px 12px rgba(22, 163, 74, 0.2)' };
+const labelStyle = { fontSize: '11px', fontWeight: '800', color: '#64748b', display: 'block', marginBottom: '6px' };
+const inputStyle = { width: '100%', padding: '14px', borderRadius: '12px', border: '1px solid #e2e8f0', fontSize: '16px' };
+const saveBtnStyle = { backgroundColor: '#2563eb', color: 'white', padding: '18px', borderRadius: '14px', border: 'none', fontWeight: 'bold' as const, width: '100%' };
+const boxStyle = (bg: string, border: string) => ({ padding: '15px', backgroundColor: bg, borderRadius: '14px', border: `1px solid ${border}` });
