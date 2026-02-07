@@ -1,126 +1,56 @@
 'use client'
 export const dynamic = 'force-dynamic'
 
-import { useEffect, useState, Suspense } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState, Suspense } from 'react'
 import { supabase } from '@/lib/supabase'
-import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 
-function ExpenseFormFields() {
+function IncomeFormFields() {
   const router = useRouter()
-  const [employees, setEmployees] = useState<any[]>([])
-  const [suppliers, setSuppliers] = useState<any[]>([])
-  const [fetching, setFetching] = useState(true)
-  
-  const [formData, setFormData] = useState({
-    amount: '',
-    category: 'Αγορά Εμπορευμάτων', 
-    method: 'Μετρητά',
-    description: '',
-    supplier_id: '',
-    employee_id: '',
-  })
-
-  useEffect(() => {
-    async function loadData() {
-      setFetching(true)
-      const [empRes, supRes] = await Promise.all([
-        supabase.from('employees').select('id, full_name').order('full_name'),
-        supabase.from('suppliers').select('id, name').order('name')
-      ])
-      if (empRes.data) setEmployees(empRes.data)
-      if (supRes.data) setSuppliers(supRes.data)
-      setFetching(false)
-    }
-    loadData()
-  }, [])
+  const [amount, setAmount] = useState('')
+  const [method, setMethod] = useState('Μετρητά')
+  const [loading, setLoading] = useState(false)
 
   async function handleSave() {
-    if (!formData.amount || Number(formData.amount) <= 0) return alert('Παρακαλώ βάλτε ποσό')
-    setFetching(true)
-    
-    const payload: any = {
-      type: 'expense',
-      amount: parseFloat(formData.amount),
-      category: formData.category,
-      method: formData.method,
-      description: formData.description || '',
-      date: new Date().toISOString() 
-    }
-
-    if (formData.category === 'Μισθοδοσία') {
-      payload.employee_id = formData.employee_id || null
-    } else {
-      payload.supplier_id = formData.supplier_id || null
-    }
-
-    const { error } = await supabase.from('transactions').insert([payload])
-    if (!error) {
-      router.push('/')
-      router.refresh()
-    } else {
-      setFetching(false)
-      alert('Σφάλμα: ' + error.message)
-    }
+    if (!amount || Number(amount) <= 0) return alert('Βάλτε ποσό')
+    setLoading(true)
+    const { error } = await supabase.from('transactions').insert([
+      { amount: parseFloat(amount), type: 'income', method, date_recorded: new Date().toISOString() }
+    ])
+    if (!error) { router.push('/'); router.refresh(); }
+    else { setLoading(false); alert('Σφάλμα: ' + error.message); }
   }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
       <div>
-        <label style={labelStyle}>ΠΟΣΟ (€)</label>
-        <input type="number" value={formData.amount} onChange={e => setFormData({...formData, amount: e.target.value})} style={inputStyle} />
+        <label style={labelStyle}>ΠΟΣΟ ΕΙΣΠΡΑΞΗΣ (€)</label>
+        <input type="number" value={amount} onChange={e => setAmount(e.target.value)} style={inputStyle} placeholder="0.00" />
       </div>
-
       <div>
-        <label style={labelStyle}>ΚΑΤΗΓΟΡΙΑ</label>
-        <select value={formData.category} onChange={e => setFormData({...formData, category: e.target.value, employee_id: '', supplier_id: ''})} style={inputStyle}>
-          <option value="Αγορά Εμπορευμάτων">Αγορά Εμπορευμάτων</option>
-          <option value="Μισθοδοσία">Μισθοδοσία</option>
-          <option value="Ενοίκιο">Ενοίκιο</option>
-          <option value="Λογαριασμοί">Λογαριασμοί</option>
+        <label style={labelStyle}>ΤΡΟΠΟΣ</label>
+        <select value={method} onChange={e => setMethod(e.target.value)} style={inputStyle}>
+          <option value="Μετρητά">Μετρητά</option>
+          <option value="Κάρτα">Κάρτα</option>
         </select>
       </div>
-
-      {formData.category === 'Αγορά Εμπορευμάτων' && (
-        <div style={boxStyle('#fff1f2', '#fecaca')}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-            <label style={{...labelStyle, color: '#991b1b', marginBottom: 0 }}>ΠΡΟΜΗΘΕΥΤΗΣ</label>
-            <Link href="/settings/suppliers" style={{ textDecoration: 'none', background: '#991b1b', color: 'white', width: '24px', height: '24px', borderRadius: '50%', textAlign: 'center', lineHeight: '22px', fontWeight: 'bold' }}>+</Link>
-          </div>
-          <select value={formData.supplier_id} onChange={e => setFormData({...formData, supplier_id: e.target.value})} style={inputStyle}>
-            <option value="">— Επιλέξτε —</option>
-            {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-          </select>
-        </div>
-      )}
-
-      {formData.category === 'Μισθοδοσία' && (
-        <div style={boxStyle('#f0f9ff', '#bae6fd')}>
-          <label style={{...labelStyle, color: '#0369a1'}}>ΥΠΑΛΛΗΛΟΣ</label>
-          <select value={formData.employee_id} onChange={e => setFormData({...formData, employee_id: e.target.value})} style={inputStyle}>
-            <option value="">— Επιλέξτε —</option>
-            {employees.map(emp => <option key={emp.id} value={emp.id}>{emp.full_name}</option>)}
-          </select>
-        </div>
-      )}
-
-      <button onClick={handleSave} disabled={fetching} style={saveBtnStyle}>
-        {fetching ? 'ΑΠΟΘΗΚΕΥΣΗ...' : 'ΑΠΟΘΗΚΕΥΣΗ ΕΞΟΔΟΥ'}
+      <button onClick={handleSave} disabled={loading} style={{...saveBtnStyle, backgroundColor: '#16a34a'}}>
+        {loading ? 'ΑΠΟΘΗΚΕΥΣΗ...' : 'ΚΑΤΑΧΩΡΗΣΗ ΕΣΟΔΟΥ'}
       </button>
     </div>
   )
 }
 
-export default function AddExpensePage() {
+export default function AddIncomePage() {
   const router = useRouter()
   return (
     <main style={{ padding: '20px', maxWidth: '500px', margin: '0 auto', fontFamily: 'sans-serif' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px' }}>
-         <button onClick={() => router.back()} style={{ border: 'none', background: 'none', fontSize: '24px', cursor: 'pointer' }}>←</button>
-         <h2 style={{ fontWeight: '800', margin: 0 }}>Νέο Έξοδο</h2>
+         <button onClick={() => router.push('/')} style={{ border: 'none', background: 'none', fontSize: '24px', cursor: 'pointer' }}>←</button>
+         <h2 style={{ fontWeight: '800', margin: 0 }}>Νέο Έσοδο</h2>
       </div>
       <Suspense fallback={<div>Φόρτωση...</div>}>
-        <ExpenseFormFields />
+        <IncomeFormFields />
       </Suspense>
     </main>
   )
@@ -128,5 +58,4 @@ export default function AddExpensePage() {
 
 const labelStyle = { fontSize: '11px', fontWeight: '800', color: '#64748b', display: 'block', marginBottom: '6px' };
 const inputStyle = { width: '100%', padding: '14px', borderRadius: '12px', border: '1px solid #e2e8f0', fontSize: '16px' };
-const saveBtnStyle = { backgroundColor: '#2563eb', color: 'white', padding: '18px', borderRadius: '14px', border: 'none', fontWeight: 'bold' as const, width: '100%' };
-const boxStyle = (bg: string, border: string) => ({ padding: '15px', backgroundColor: bg, borderRadius: '14px', border: `1px solid ${border}` });
+const saveBtnStyle = { color: 'white', padding: '18px', borderRadius: '14px', border: 'none', fontWeight: 'bold' as const, width: '100%', cursor: 'pointer' };
