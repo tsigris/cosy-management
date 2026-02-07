@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 
 const DEFAULT_ASSETS = [
   'ΔΕΗ / Ρεύμα', 'Ενοίκιο', 'Νερό / ΕΥΔΑΠ', 'Λογιστής', 
@@ -9,26 +10,25 @@ const DEFAULT_ASSETS = [
 ]
 
 export default function FixedAssetsPage() {
+  const router = useRouter()
   const [assets, setAssets] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [isAdding, setIsAdding] = useState(false)
   const [newName, setNewName] = useState('')
+  const [editingId, setEditingId] = useState<string | null>(null)
 
   useEffect(() => { fetchAssets() }, [])
 
   async function fetchAssets() {
     setLoading(true)
-    // Φέρνουμε τα πάγια
     let { data: assetsData } = await supabase.from('fixed_assets').select('*').order('name')
     
-    // Αν είναι άδεια η λίστα, δημιούργησε τα προεπιλεγμένα
     if (assetsData && assetsData.length === 0) {
       await supabase.from('fixed_assets').insert(DEFAULT_ASSETS.map(name => ({ name })))
       const { data: newData } = await supabase.from('fixed_assets').select('*').order('name')
       assetsData = newData
     }
 
-    // Φέρνουμε τις συναλλαγές για να βγάλουμε τα σύνολα
     const { data: transData } = await supabase.from('transactions').select('amount, fixed_asset_id').eq('category', 'Πάγια')
 
     if (assetsData) {
@@ -43,19 +43,23 @@ export default function FixedAssetsPage() {
     setLoading(false)
   }
 
-  async function handleAdd() {
+  async function handleSave() {
     if (!newName.trim()) return
-    const { error } = await supabase.from('fixed_assets').insert([{ name: newName.trim() }])
-    if (!error) {
-      setNewName('')
-      setIsAdding(false)
-      fetchAssets()
+    
+    if (editingId) {
+      await supabase.from('fixed_assets').update({ name: newName }).eq('id', editingId)
+    } else {
+      await supabase.from('fixed_assets').insert([{ name: newName }])
     }
+
+    setNewName('')
+    setEditingId(null)
+    setIsAdding(false)
+    fetchAssets()
   }
 
-  async function handleDelete(id: string, e: React.MouseEvent) {
-    e.preventDefault() // Για να μην ανοίξει το Link
-    if (confirm('Διαγραφή παγίου και ιστορικού;')) {
+  async function handleDelete(id: string) {
+    if (confirm('Διαγραφή παγίου;')) {
       await supabase.from('fixed_assets').delete().eq('id', id)
       fetchAssets()
     }
@@ -65,49 +69,59 @@ export default function FixedAssetsPage() {
     <main style={{ backgroundColor: '#f8fafc', minHeight: '100vh', padding: '16px', fontFamily: 'sans-serif' }}>
       <div style={{ maxWidth: '500px', margin: '0 auto' }}>
         
-        {/* HEADER */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <Link href="/" style={{ color: '#64748b', textDecoration: 'none', fontWeight: 'bold', fontSize: '14px' }}>← ΠΙΣΩ</Link>
             <h1 style={{ fontSize: '22px', fontWeight: '900', color: '#1e293b', margin: 0 }}>Πάγια</h1>
           </div>
-          <button onClick={() => setIsAdding(!isAdding)} style={addBtn}>
+          <button onClick={() => { setIsAdding(!isAdding); setEditingId(null); setNewName('') }} style={addBtn}>
             {isAdding ? 'ΑΚΥΡΟ' : '+ ΝΕΟ'}
           </button>
         </div>
 
         {isAdding && (
           <div style={formCard}>
+            <p style={{ fontSize: '10px', fontWeight: '900', color: '#94a3b8', marginBottom: '8px' }}>
+              {editingId ? 'ΔΙΟΡΘΩΣΗ ΟΝΟΜΑΤΟΣ' : 'ΟΝΟΜΑ ΠΑΓΙΟΥ'}
+            </p>
             <input 
               value={newName} 
               onChange={e => setNewName(e.target.value)} 
-              placeholder="Όνομα παγίου..." 
+              placeholder="π.χ. Δημοτικά Τέλη..." 
               style={inputStyle} 
+              autoFocus
             />
-            <button onClick={handleAdd} style={saveBtn}>ΠΡΟΣΘΗΚΗ</button>
+            <button onClick={handleSave} style={saveBtn}>ΑΠΟΘΗΚΕΥΣΗ</button>
           </div>
         )}
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
           {assets.map(asset => (
-            <Link 
-              key={asset.id} 
-              href={`/fixed-assets/history?id=${asset.id}&name=${asset.name}`}
-              style={{ textDecoration: 'none' }}
-            >
-              <div style={assetCard}>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: '800', color: '#1e293b', fontSize: '16px' }}>{asset.name}</div>
-                  <div style={{ fontSize: '10px', color: '#94a3b8', fontWeight: '800', marginTop: '4px' }}>ΣΥΝΟΛΟ ΕΞΟΔΩΝ</div>
-                </div>
-                <div style={{ textAlign: 'right', display: 'flex', alignItems: 'center', gap: '15px' }}>
-                  <div style={{ fontWeight: '900', color: '#ef4444', fontSize: '17px' }}>
-                    {asset.total > 0 ? `-${asset.total.toFixed(2)}€` : '0.00€'}
-                  </div>
-                  <button onClick={(e) => handleDelete(asset.id, e)} style={delBtnSmall}>🗑️</button>
+            <div key={asset.id} style={assetCard}>
+              {/* Αριστερό μέρος: Όνομα και Ποσό (Πατώντας εδώ πάει στο ιστορικό) */}
+              <div 
+                onClick={() => router.push(`/fixed-assets/history?id=${asset.id}&name=${asset.name}`)}
+                style={{ flex: 1, cursor: 'pointer' }}
+              >
+                <div style={{ fontWeight: '800', color: '#1e293b', fontSize: '16px' }}>{asset.name}</div>
+                <div style={{ fontWeight: '900', color: '#ef4444', fontSize: '17px', marginTop: '4px' }}>
+                  -{asset.total.toFixed(2)}€
                 </div>
               </div>
-            </Link>
+
+              {/* Δεξί μέρος: Κουμπιά (Δεν επηρεάζονται από το κλικ του ιστορικού) */}
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button 
+                  onClick={() => { setEditingId(asset.id); setNewName(asset.name); setIsAdding(true); }} 
+                  style={editBtnSmall}
+                >
+                  ✎
+                </button>
+                <button onClick={() => handleDelete(asset.id)} style={delBtnSmall}>
+                  🗑️
+                </button>
+              </div>
+            </div>
           ))}
         </div>
       </div>
@@ -116,9 +130,10 @@ export default function FixedAssetsPage() {
 }
 
 // STYLES
-const assetCard = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '20px', backgroundColor: 'white', borderRadius: '20px', border: '1px solid #f1f5f9', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' };
+const assetCard = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '18px', backgroundColor: 'white', borderRadius: '20px', border: '1px solid #f1f5f9', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' };
 const addBtn = { padding: '8px 16px', backgroundColor: '#2563eb', color: 'white', border: 'none', borderRadius: '10px', fontWeight: '800', fontSize: '12px' };
-const formCard = { backgroundColor: 'white', padding: '15px', borderRadius: '18px', border: '1px solid #e2e8f0', marginBottom: '20px' };
-const inputStyle = { width: '100%', padding: '12px', borderRadius: '10px', border: '1px solid #e2e8f0', marginBottom: '10px', boxSizing: 'border-box' as const };
-const saveBtn = { width: '100%', padding: '12px', backgroundColor: '#10b981', color: 'white', border: 'none', borderRadius: '10px', fontWeight: '900' };
-const delBtnSmall = { background: 'none', border: 'none', fontSize: '16px', cursor: 'pointer', padding: '5px' };
+const formCard = { backgroundColor: 'white', padding: '20px', borderRadius: '18px', border: '1px solid #e2e8f0', marginBottom: '20px' };
+const inputStyle = { width: '100%', padding: '14px', borderRadius: '12px', border: '1px solid #e2e8f0', marginBottom: '15px', boxSizing: 'border-box' as const, fontWeight: 'bold' };
+const saveBtn = { width: '100%', padding: '14px', backgroundColor: '#10b981', color: 'white', border: 'none', borderRadius: '12px', fontWeight: '900' };
+const editBtnSmall = { backgroundColor: '#eff6ff', color: '#2563eb', border: 'none', padding: '10px', borderRadius: '10px', cursor: 'pointer', fontSize: '16px' };
+const delBtnSmall = { backgroundColor: '#fef2f2', color: '#ef4444', border: 'none', padding: '10px', borderRadius: '10px', cursor: 'pointer', fontSize: '16px' };
