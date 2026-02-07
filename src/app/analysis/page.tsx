@@ -2,15 +2,17 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation' // Προσθήκη για το Edit
 import { 
   startOfWeek, endOfWeek, startOfMonth, endOfMonth, 
-  subMonths, isWithinInterval, startOfDay, endOfDay, format
+  subMonths, isWithinInterval, format
 } from 'date-fns'
 
 export default function AnalysisPage() {
+  const router = useRouter() // Initialize router
   const [transactions, setTransactions] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [view, setView] = useState('income') // Ξεκινάει από τα Έσοδα
+  const [view, setView] = useState('income') 
   const [period, setPeriod] = useState('month') 
   const [selectedDate, setSelectedDate] = useState(format(new Date(), 'yyyy-MM-dd'))
   const [filterCat, setFilterCat] = useState('all')
@@ -25,7 +27,6 @@ export default function AnalysisPage() {
     const { data } = await supabase.from('transactions').select('*, suppliers(name)')
     if (data) {
       setTransactions(data)
-      // Υπολογισμός "Στην Τσέπη" (όλες οι αναλήψεις με category 'pocket')
       const pocketSum = data
         .filter(t => t.category === 'pocket')
         .reduce((acc, t) => acc + Number(t.amount), 0)
@@ -34,9 +35,28 @@ export default function AnalysisPage() {
     setLoading(false)
   }
 
+  // ΣΥΝΑΡΤΗΣΗ ΔΙΑΓΡΑΦΗΣ
+  async function handleDelete(id: string) {
+    if (confirm('Θέλετε σίγουρα να διαγράψετε αυτή την κίνηση;')) {
+      const { error } = await supabase.from('transactions').delete().eq('id', id)
+      if (!error) {
+        // Ανανέωση των δεδομένων τοπικά
+        setTransactions(prev => prev.filter(t => t.id !== id))
+        fetchData() // Ξαναφέρνουμε για να ενημερωθούν σωστά τα σύνολα και η τσέπη
+      } else {
+        alert('Σφάλμα κατά τη διαγραφή')
+      }
+    }
+  }
+
+  // ΣΥΝΑΡΤΗΣΗ ΔΙΟΡΘΩΣΗΣ (Redirect στη φόρμα με το ID)
+  function handleEdit(t: any) {
+    const path = t.type === 'income' ? 'add-income' : 'add-expense'
+    router.push(`/${path}?id=${t.id}`)
+  }
+
   const now = new Date()
 
-  // ΣΥΝΑΡΤΗΣΗ ΦΙΛΤΡΑΡΙΣΜΑΤΟΣ ΗΜΕΡΟΜΗΝΙΩΝ
   const filterByTime = (data: any[], type: string, refDate: Date) => {
     return data.filter(t => {
       const d = new Date(t.date)
@@ -65,7 +85,6 @@ export default function AnalysisPage() {
   const totalDisplay = getSum(currentData, view, filterCat)
   const totalPrevMonth = getSum(prevMonthData, view, filterCat)
 
-  // TOP ΠΡΟΜΗΘΕΥΤΕΣ (Ranked από το μεγαλύτερο έξοδο)
   const topSuppliers = view === 'expenses' ? Object.entries(
     currentData.filter(t => (t.type === 'expense' || t.type === 'debt_payment') && (filterCat === 'all' || t.category === filterCat) && t.supplier_id)
     .reduce((acc: any, t) => {
@@ -81,19 +100,16 @@ export default function AnalysisPage() {
     <main style={{ backgroundColor: '#f8fafc', minHeight: '100vh', padding: '16px', fontFamily: 'sans-serif' }}>
       <div style={{ maxWidth: '500px', margin: '0 auto' }}>
         
-        {/* HEADER */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '15px', marginBottom: '20px' }}>
           <Link href="/" style={backBtnStyle}>←</Link>
           <h2 style={{ fontSize: '20px', fontWeight: '900', color: '#1e293b', margin: 0 }}>Ανάλυση</h2>
         </div>
 
-        {/* TABS ΕΣΟΔΑ / ΕΞΟΔΑ */}
         <div style={tabContainer}>
           <button onClick={() => {setView('income'); setFilterCat('all')}} style={{...tabBtn, backgroundColor: view === 'income' ? '#10b981' : 'white', color: view === 'income' ? 'white' : '#64748b'}}>ΕΣΟΔΑ</button>
           <button onClick={() => setView('expenses')} style={{...tabBtn, backgroundColor: view === 'expenses' ? '#ef4444' : 'white', color: view === 'expenses' ? 'white' : '#64748b'}}>ΕΞΟΔΑ</button>
         </div>
 
-        {/* ΦΙΛΤΡΑ & ΗΜΕΡΟΛΟΓΙΟ */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '15px' }}>
           <div style={{ display: 'flex', gap: '8px' }}>
             <select value={period} onChange={e => setPeriod(e.target.value)} style={{...selectStyle, flex: 1}}>
@@ -117,7 +133,6 @@ export default function AnalysisPage() {
           </div>
         </div>
 
-        {/* POCKET TOTAL (Μόνο στα Έσοδα) */}
         {view === 'income' && (
           <div style={pocketStyle}>
             <span style={labelMicro}>💰 ΣΥΝΟΛΟ ΣΤΗΝ ΤΣΕΠΗ</span>
@@ -125,14 +140,12 @@ export default function AnalysisPage() {
           </div>
         )}
 
-        {/* MAIN CARD */}
         <div style={{...mainCard, backgroundColor: view === 'income' ? '#064e3b' : '#450a0a'}}>
           <p style={labelMicro}>ΣΥΝΟΛΟ ΠΕΡΙΟΔΟΥ {period === 'custom_day' ? format(new Date(selectedDate), 'dd/MM/yyyy') : ''}</p>
           <h2 style={{ fontSize: '38px', fontWeight: '900', margin: '5px 0' }}>{totalDisplay.toFixed(2)}€</h2>
           <div style={miniBadge}>Προηγ. Μήνας: {totalPrevMonth.toFixed(0)}€</div>
         </div>
 
-        {/* TOP ΠΡΟΜΗΘΕΥΤΕΣ (ΜΟΝΟ ΣΤΑ ΕΞΟΔΑ) */}
         {view === 'expenses' && topSuppliers.length > 0 && (
           <div style={whiteCard}>
             <h3 style={sectionTitle}>TOP ΠΡΟΜΗΘΕΥΤΕΣ</h3>
@@ -145,7 +158,6 @@ export default function AnalysisPage() {
           </div>
         )}
 
-        {/* ΙΣΤΟΡΙΚΟ ΚΙΝΗΣΕΩΝ */}
         <div style={whiteCard}>
           <h3 style={sectionTitle}>ΚΙΝΗΣΕΙΣ ΠΕΡΙΟΔΟΥ</h3>
           {currentData.filter(t => {
@@ -154,12 +166,21 @@ export default function AnalysisPage() {
              return isType && isCat
           }).map(t => (
             <div key={t.id} style={rowStyle}>
-              <div>
+              <div style={{ flex: 1 }}>
                 <div style={{ fontWeight: '700', fontSize: '14px' }}>{t.suppliers?.name || t.notes || t.category}</div>
                 <div style={{ fontSize: '11px', color: '#94a3b8' }}>{format(new Date(t.date), 'dd/MM/yyyy')}</div>
               </div>
-              <div style={{ fontWeight: '900', color: view === 'income' ? '#16a34a' : '#dc2626' }}>
-                {view === 'income' ? '+' : '-'}{Number(t.amount).toFixed(2)}€
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ fontWeight: '900', color: view === 'income' ? '#16a34a' : '#dc2626' }}>
+                    {view === 'income' ? '+' : '-'}{Number(t.amount).toFixed(2)}€
+                  </div>
+                </div>
+                {/* ΚΟΥΜΠΙΑ EDIT & DELETE */}
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button onClick={() => handleEdit(t)} style={actionBtnStyle}>✏️</button>
+                  <button onClick={() => handleDelete(t.id)} style={actionBtnStyle}>🗑️</button>
+                </div>
               </div>
             </div>
           ))}
@@ -183,3 +204,4 @@ const miniBadge = { display: 'inline-block', backgroundColor: 'rgba(0,0,0,0.2)',
 const whiteCard = { backgroundColor: 'white', padding: '20px', borderRadius: '24px', border: '1px solid #f1f5f9', marginBottom: '20px' };
 const sectionTitle = { fontSize: '11px', fontWeight: '900' as const, color: '#64748b', marginBottom: '15px', textTransform: 'uppercase' as const };
 const rowStyle = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 0', borderBottom: '1px solid #f1f5f9' };
+const actionBtnStyle = { background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '6px 8px', cursor: 'pointer', fontSize: '14px' };
