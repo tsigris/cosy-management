@@ -104,18 +104,8 @@ function ExpenseFormFields() {
       </div>
 
       <div>
-        <label style={labelStyle}>ΣΗΜΕΙΩΣΕΙΣ</label>
+        <label style={labelStyle}>ΣΗΜΕΙΩΣΕΙΣ / ΠΕΡΙΓΡΑΦΗ</label>
         <input type="text" value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} style={inputStyle} placeholder="π.χ. Αρ. Τιμολογίου..." />
-      </div>
-
-      <div>
-        <label style={labelStyle}>ΚΑΤΗΓΟΡΙΑ</label>
-        <select value={formData.category} onChange={e => setFormData({...formData, category: e.target.value, employee_id: '', supplier_id: ''})} style={inputStyle}>
-          <option value="Αγορά Εμπορευμάτων">Αγορά Εμπορευμάτων</option>
-          <option value="Μισθοδοσία">Μισθοδοσία</option>
-          <option value="Ενοίκιο">Ενοίκιο</option>
-          <option value="Λογαριασμοί">Λογαριασμοί</option>
-        </select>
       </div>
 
       {formData.category === 'Αγορά Εμπορευμάτων' && (
