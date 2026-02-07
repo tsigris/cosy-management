@@ -36,7 +36,7 @@ function DashboardContent() {
       setLoading(true)
       const { data } = await supabase
         .from('transactions')
-        .select('*, suppliers(name)') 
+        .select('*, suppliers(name), fixed_assets(name)') // Προσθήκη fixed_assets
         .gte('date', `${selectedDate}T00:00:00`)
         .lte('date', `${selectedDate}T23:59:59`)
         .order('created_at', { ascending: false })
@@ -77,6 +77,8 @@ function DashboardContent() {
               <p style={menuSectionLabel}>ΔΙΑΧΕΙΡΙΣΗ</p>
               <Link href="/employees" style={menuItem} onClick={() => setIsMenuOpen(false)}>👤 Υπάλληλοι</Link>
               <Link href="/suppliers" style={menuItem} onClick={() => setIsMenuOpen(false)}>🛒 Προμηθευτές</Link>
+              {/* ΠΡΟΣΘΗΚΗ ΣΤΟ MENU */}
+              <Link href="/fixed-assets" style={menuItem} onClick={() => setIsMenuOpen(false)}>🔌 Πάγια</Link>
               <Link href="/suppliers-balance" style={menuItem} onClick={() => setIsMenuOpen(false)}>🚩 Καρτέλες (Χρέη)</Link>
               <Link href="/analysis" style={menuItem} onClick={() => setIsMenuOpen(false)}>📈 Ανάλυση</Link>
               
@@ -111,6 +113,13 @@ function DashboardContent() {
 
       <input type="date" value={selectedDate} onChange={(e) => router.push(`/?date=${e.target.value}`)} style={dateInputStyle} />
 
+      {/* ΝΕΑ ΓΡΑΜΜΗ ΓΙΑ ΓΡΗΓΟΡΗ ΠΡΟΣΒΑΣΗ ΣΤΑ ΠΑΓΙΑ */}
+      <div style={{ marginBottom: '25px' }}>
+         <Link href="/fixed-assets" style={quickLinkStyle}>
+            🔌 ΔΙΑΧΕΙΡΙΣΗ ΠΑΓΙΩΝ (ΔΕΗ, ΕΥΔΑΠ, ΚΛΠ)
+         </Link>
+      </div>
+
       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
         <p style={{ fontSize: '11px', fontWeight: '800', color: '#94a3b8', textTransform: 'uppercase' }}>Πρόσφατες Κινήσεις</p>
         {loading ? <p style={{ textAlign: 'center' }}>Φόρτωση...</p> : transactions.map(t => (
@@ -118,10 +127,12 @@ function DashboardContent() {
             <div style={{ flex: 1 }}>
               <p style={{ fontWeight: '800', margin: 0 }}>
                 {t.type === 'income' ? '💰 ' + (t.notes || 'ΕΙΣΠΡΑΞΗ') : (
-                    t.is_credit ? <span><span style={{color: '#f97316'}}>🚩 ΠΙΣΤΩΣΗ:</span> {t.suppliers?.name || 'Προμηθευτής'}</span> : '💸 ' + (t.suppliers?.name || t.category)
+                    t.is_credit ? <span><span style={{color: '#f97316'}}>🚩 ΠΙΣΤΩΣΗ:</span> {t.suppliers?.name || 'Προμηθευτής'}</span> : 
+                    t.category === 'Πάγια' ? <span>🔌 {t.fixed_assets?.name || 'Πάγιο'}</span> :
+                    '💸 ' + (t.suppliers?.name || t.category)
                 )}
               </p>
-              <p style={subLabelStyle}>{t.method} {t.description ? `• ${t.description}` : ''}</p>
+              <p style={subLabelStyle}>{t.method} {t.notes && !t.notes.includes('ΕΙΣΠΡΑΞΗ') ? `• ${t.notes}` : ''}</p>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
               <p style={{ fontWeight: '900', fontSize: '16px', color: t.is_credit ? '#94a3b8' : (t.type === 'income' ? '#16a34a' : '#dc2626'), margin: 0 }}>
@@ -148,6 +159,20 @@ export default function HomePage() {
     </main>
   )
 }
+
+// ΕΠΙΠΛΕΟΝ STYLE ΓΙΑ ΤΟ QUICK LINK
+const quickLinkStyle = {
+    display: 'block',
+    padding: '12px',
+    backgroundColor: '#eff6ff',
+    color: '#2563eb',
+    textAlign: 'center' as const,
+    borderRadius: '12px',
+    textDecoration: 'none',
+    fontSize: '12px',
+    fontWeight: '800' as const,
+    border: '1px dashed #3b82f6'
+};
 
 const menuBtnStyle = { backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', width: '40px', height: '40px', borderRadius: '12px', cursor: 'pointer', fontSize: '20px', color: '#64748b' };
 const dropdownStyle = { position: 'absolute' as const, top: '50px', right: '0', backgroundColor: 'white', minWidth: '200px', borderRadius: '20px', boxShadow: '0 10px 30px rgba(0,0,0,0.15)', padding: '12px', zIndex: 100, border: '1px solid #f1f5f9' };
