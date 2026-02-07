@@ -17,7 +17,6 @@ function DashboardContent() {
   const [storeName, setStoreName] = useState('ΚΑΤΑΣΤΗΜΑ')
 
   useEffect(() => {
-    // Λήψη ονόματος καταστήματος από το προφίλ
     async function fetchProfile() {
       const { data: { user } } = await supabase.auth.getUser()
       if (user) {
@@ -150,7 +149,6 @@ export default function HomePage() {
   )
 }
 
-// STYLES
 const menuBtnStyle = { backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', width: '40px', height: '40px', borderRadius: '12px', cursor: 'pointer', fontSize: '20px', color: '#64748b' };
 const dropdownStyle = { position: 'absolute' as const, top: '50px', right: '0', backgroundColor: 'white', minWidth: '200px', borderRadius: '20px', boxShadow: '0 10px 30px rgba(0,0,0,0.15)', padding: '12px', zIndex: 100, border: '1px solid #f1f5f9' };
 const menuItem = { display: 'block', padding: '12px', textDecoration: 'none', color: '#334155', fontWeight: '700' as const, fontSize: '14px', borderRadius: '10px' };
