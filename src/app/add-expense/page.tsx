@@ -33,7 +33,7 @@ function AddExpenseForm() {
       if (s) setSuppliers(s)
       if (f) setFixedAssets(f)
 
-      // ΑΥΤΟΜΑΤΗ ΣΥΜΠΛΗΡΩΣΗ ΑΠΟ URL (ΚΑΡΤΕΛΕΣ)
+      // ΑΥΤΟΜΑΤΗ ΣΥΜΠΛΗΡΩΣΗ ΑΠΟ URL (Για εξόφληση από Καρτέλες)
       const supIdFromUrl = searchParams.get('supId')
       const againstDebtFromUrl = searchParams.get('againstDebt')
       
@@ -168,7 +168,6 @@ function AddExpenseForm() {
   )
 }
 
-// Wrapper για το Suspense
 export default function AddExpensePage() {
   return (
     <Suspense fallback={<div style={{padding: '20px', textAlign: 'center'}}>Φόρτωση φόρμας...</div>}>
@@ -179,11 +178,11 @@ export default function AddExpensePage() {
 
 // STYLES
 const formCardStyle = { maxWidth: '500px', margin: '0 auto', backgroundColor: 'white', borderRadius: '28px', padding: '24px', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.05)', border: '1px solid #e2e8f0' };
-const labelStyle = { fontSize: '10px', fontWeight: '900', color: '#94a3b8', textTransform: 'uppercase' as const, letterSpacing: '0.5px' };
-const inputStyle = { width: '100%', padding: '14px', borderRadius: '14px', border: '1px solid #e2e8f0', fontSize: '15px', fontWeight: 'bold', backgroundColor: '#f8fafc', boxSizing: 'border-box' as const };
+const labelStyle: any = { fontSize: '10px', fontWeight: '900', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.5px' };
+const inputStyle: any = { width: '100%', padding: '14px', borderRadius: '14px', border: '1px solid #e2e8f0', fontSize: '15px', fontWeight: 'bold', backgroundColor: '#f8fafc', boxSizing: 'border-box' };
 const selectGroup = { marginBottom: '18px' };
-const addBtn = { textDecoration: 'none', backgroundColor: '#eff6ff', color: '#2563eb', width: '24px', height: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '6px', fontWeight: 'bold', fontSize: '18px' };
-const saveBtn = { width: '100%', padding: '18px', backgroundColor: '#2563eb', color: 'white', border: 'none', borderRadius: '16px', fontWeight: '900', fontSize: '16px', cursor: 'pointer', boxShadow: '0 4px 6px rgba(37, 99, 235, 0.2)' };
-const cancelBtn = { width: '100%', padding: '14px', backgroundColor: 'transparent', color: '#64748b', border: 'none', borderRadius: '16px', fontWeight: 'bold', fontSize: '14px', marginTop: '10px', cursor: 'pointer' };
+const addBtn: any = { textDecoration: 'none', backgroundColor: '#eff6ff', color: '#2563eb', width: '24px', height: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '6px', fontWeight: 'bold', fontSize: '18px' };
+const saveBtn: any = { width: '100%', padding: '18px', backgroundColor: '#2563eb', color: 'white', border: 'none', borderRadius: '16px', fontWeight: '900', fontSize: '16px', cursor: 'pointer', boxShadow: '0 4px 6px rgba(37, 99, 235, 0.2)' };
+const cancelBtn: any = { width: '100%', padding: '14px', backgroundColor: 'transparent', color: '#64748b', border: 'none', borderRadius: '16px', fontWeight: 'bold', fontSize: '14px', marginTop: '10px', cursor: 'pointer' };
 const checkboxStyle = { width: '18px', height: '18px', cursor: 'pointer' };
-const checkLabel = { fontSize: '13px', fontWeight: '800', color: '#1e293b', cursor: 'pointer' };
+const checkLabel: any = { fontSize: '13px', fontWeight: '800', color: '#1e293b', cursor: 'pointer' };
