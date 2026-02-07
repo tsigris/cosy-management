@@ -75,7 +75,8 @@ function ExpenseFormFields() {
         <div style={boxStyle('#fff1f2', '#fecaca')}>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px' }}>
             <label style={{...labelStyle, color: '#991b1b'}}>ΠΡΟΜΗΘΕΥΤΗΣ</label>
-            <Link href="/settings/suppliers" style={{ color: '#991b1b', fontWeight: 'bold', textDecoration: 'none' }}>[ + ]</Link>
+            {/* ΔΙΟΡΘΩΜΕΝΟ LINK ΕΔΩ */}
+            <Link href="/suppliers" style={{ color: '#991b1b', fontWeight: 'bold', textDecoration: 'none' }}>[ + ]</Link>
           </div>
           <select value={formData.supplier_id} onChange={e => setFormData({...formData, supplier_id: e.target.value})} style={inputStyle}>
             <option value="">— Επιλέξτε —</option>
