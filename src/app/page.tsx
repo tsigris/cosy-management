@@ -1,79 +1,80 @@
 'use client'
-import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
+// 1. Απαραίτητο για να μην χτυπάει το Vercel
+export const dynamic = 'force-dynamic'
+
+import { useEffect, useState, Suspense } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import SettingsMenu from '@/components/SettingsMenu'
 import Link from 'next/link'
 
-export default function HomePage() {
+// 2. Το κυρίως περιεχόμενο (Dashboard)
+function DashboardContent() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  
+  // Διαβάζουμε την ημερομηνία από το URL ή βάζουμε τη σημερινή
+  const selectedDate = searchParams.get('date') || new Date().toISOString().split('T')[0]
+  
   const [transactions, setTransactions] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [totals, setTotals] = useState({ income: 0, expense: 0 })
-  const [displayTitle, setDisplayTitle] = useState('ΚΑΤΑΣΤΗΜΑ') // Προεπιλεγμένος τίτλος
+  const [displayTitle, setDisplayTitle] = useState('ΚΑΤΑΣΤΗΜΑ')
 
+  // Φόρτωση δεδομένων κάθε φορά που αλλάζει η ημερομηνία
   useEffect(() => {
-    const checkUserAndData = async () => {
+    async function loadData() {
+      setLoading(true)
       const { data: { session } } = await supabase.auth.getSession()
       
       if (!session) {
         router.push('/login')
-      } else {
-        // Τραβάμε το όνομα του καταστήματος και τις κινήσεις ταυτόχρονα
-        await Promise.all([
-          fetchStoreName(session.user.id),
-          fetchDailyTransactions()
-        ])
+        return
       }
-    }
-    checkUserAndData()
-  }, [router])
 
-  // Λειτουργία για το δυναμικό όνομα καταστήματος
-  async function fetchStoreName(userId: string) {
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('store_name')
-      .eq('id', userId)
-      .single()
-    
-    if (data?.store_name) {
-      setDisplayTitle(data.store_name)
+      // Παίρνουμε όνομα καταστήματος και κινήσεις ταυτόχρονα
+      await Promise.all([
+        fetchStoreName(session.user.id),
+        fetchTransactions(selectedDate)
+      ])
+      setLoading(false)
     }
+    loadData()
+  }, [selectedDate, router])
+
+  async function fetchStoreName(userId: string) {
+    const { data } = await supabase.from('profiles').select('store_name').eq('id', userId).single()
+    if (data?.store_name) setDisplayTitle(data.store_name)
   }
 
-  async function fetchDailyTransactions() {
-    setLoading(true)
+  async function fetchTransactions(date: string) {
     const { data } = await supabase
       .from('transactions')
       .select('*, suppliers(name), employees(full_name)')
+      .eq('date_recorded', date) // Φιλτράρισμα βάσει της ημερομηνίας
       .order('created_at', { ascending: false })
-      .limit(50)
 
-    if (data) {
-      setTransactions(data)
-      const today = new Date().toISOString().split('T')[0]
-      const daily = data.filter(t => t.created_at.startsWith(today)).reduce((acc, t) => {
-        if (t.type === 'income') acc.income += Number(t.amount)
-        else acc.expense += Number(t.amount)
-        return acc
-      }, { income: 0, expense: 0 })
-      setTotals(daily)
-    }
-    setLoading(false)
+    if (data) setTransactions(data)
   }
 
   async function handleDelete(id: string) {
     if (!confirm('Διαγραφή κίνησης;')) return
     const { error } = await supabase.from('transactions').delete().eq('id', id)
-    if (!error) fetchDailyTransactions()
+    if (!error) fetchTransactions(selectedDate)
   }
 
+  // Υπολογισμός συνόλων
+  const totals = transactions.reduce((acc, t) => {
+    const amt = Number(t.amount) || 0
+    if (t.type === 'income') acc.income += amt
+    else acc.expense += amt
+    return acc
+  }, { income: 0, expense: 0 })
+
   return (
-    <main style={{ padding: '16px', maxWidth: '600px', margin: '0 auto', fontFamily: 'sans-serif', backgroundColor: '#f8fafc', minHeight: '100vh' }}>
+    <div style={{ padding: '16px', maxWidth: '600px', margin: '0 auto', fontFamily: 'sans-serif', backgroundColor: '#f8fafc', minHeight: '100vh' }}>
       
-      {/* HEADER: Ο ΔΥΝΑΜΙΚΟΣ ΤΙΤΛΟΣ ΑΡΙΣΤΕΡΑ - ΜΕΝΟΥ ΔΕΞΙΑ */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px' }}>
+      {/* HEADER */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
         <h1 style={{ fontSize: '24px', fontWeight: '900', color: '#0f172a', margin: 0, textTransform: 'uppercase' }}>
           {displayTitle}
         </h1>
@@ -81,7 +82,7 @@ export default function HomePage() {
       </div>
 
       {/* ΣΥΝΟΛΑ ΗΜΕΡΑΣ */}
-      <div style={{ display: 'flex', gap: '12px', marginBottom: '25px' }}>
+      <div style={{ display: 'flex', gap: '12px', marginBottom: '20px' }}>
         <div style={statsCard}>
           <p style={statsLabel}>ΕΣΟΔΑ ΗΜΕΡΑΣ</p>
           <p style={{ ...statsValue, color: '#16a34a' }}>{totals.income.toFixed(2)}€</p>
@@ -92,14 +93,24 @@ export default function HomePage() {
         </div>
       </div>
 
-      {/* ΚΥΡΙΑ ΚΟΥΜΠΙΑ ΠΡΟΣΘΕΣΗΣ */}
-      <div style={{ display: 'flex', gap: '12px', marginBottom: '30px' }}>
-        <Link href="/add-income" style={mainActionBtn('#6da36d')}>+ ΕΣΟΔΑ</Link>
-        <Link href="/add-expense" style={mainActionBtn('#c64d43')}>- ΕΞΟΔΑ</Link>
+      {/* ΚΟΥΜΠΙΑ ΕΝΕΡΓΕΙΩΝ (Στέλνουν και την ημερομηνία!) */}
+      <div style={{ display: 'flex', gap: '12px', marginBottom: '25px' }}>
+        <Link href={`/add-income?date=${selectedDate}`} style={mainActionBtn('#6da36d')}>+ ΕΣΟΔΑ</Link>
+        <Link href={`/add-expense?date=${selectedDate}`} style={mainActionBtn('#c64d43')}>- ΕΞΟΔΑ</Link>
+      </div>
+
+      {/* ΕΠΙΛΟΓΕΑΣ ΗΜΕΡΟΜΗΝΙΑΣ (ΤΟ ΠΡΟΣΘΕΣΑΜΕ ΞΑΝΑ) */}
+      <div style={{ marginBottom: '25px', backgroundColor: 'white', padding: '10px', borderRadius: '15px', border: '1px solid #e2e8f0' }}>
+        <input 
+          type="date" 
+          value={selectedDate} 
+          onChange={(e) => router.push(`/?date=${e.target.value}`)}
+          style={{ width: '100%', border: 'none', fontSize: '18px', fontWeight: 'bold', color: '#334155', textAlign: 'center', outline: 'none' }}
+        />
       </div>
 
       <div style={{ marginBottom: '15px' }}>
-        <p style={{ fontSize: '11px', fontWeight: '800', color: '#94a3b8', textTransform: 'uppercase' }}>Πρόσφατες Κινήσεις</p>
+        <p style={{ fontSize: '11px', fontWeight: '800', color: '#94a3b8', textTransform: 'uppercase' }}>Κινήσεις {selectedDate.split('-').reverse().join('/')}</p>
       </div>
 
       {/* ΛΙΣΤΑ ΚΙΝΗΣΕΩΝ */}
@@ -107,17 +118,17 @@ export default function HomePage() {
         {loading ? (
           <p style={{ textAlign: 'center', color: '#94a3b8', marginTop: '20px' }}>Φόρτωση...</p>
         ) : transactions.length === 0 ? (
-          <p style={{ textAlign: 'center', color: '#94a3b8', marginTop: '20px', fontSize: '14px' }}>Δεν υπάρχουν κινήσεις για σήμερα.</p>
+          <p style={{ textAlign: 'center', color: '#94a3b8', marginTop: '20px', fontSize: '14px' }}>Καμία κίνηση για αυτή τη μέρα.</p>
         ) : (
           transactions.map((t) => (
             <div key={t.id} style={transactionCard}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div>
                   <p style={{ margin: 0, fontWeight: '700', color: '#1e293b', fontSize: '15px' }}>
-                     {t.category === 'Μισθοδοσία' ? (t.employees?.full_name || 'Μισθοδοσία') : (t.suppliers?.name || t.category)}
+                     {t.category === 'Μισθοδοσία' ? (t.employees?.full_name || 'Μισθοδοσία') : (t.suppliers?.name || t.category || (t.type === 'income' ? 'Είσπραξη' : 'Έξοδο'))}
                   </p>
                   <p style={{ margin: '2px 0 0 0', fontSize: '11px', color: '#94a3b8' }}>
-                    {t.method} • {new Date(t.created_at).toLocaleTimeString('el-GR', {hour:'2-digit', minute:'2-digit'})}
+                    {t.method} • {t.notes || ''}
                   </p>
                 </div>
                 <div style={{ textAlign: 'right', display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -131,7 +142,16 @@ export default function HomePage() {
           ))
         )}
       </div>
-    </main>
+    </div>
+  )
+}
+
+// 3. Η σελίδα με το Suspense (ΑΠΑΡΑΙΤΗΤΟ για Vercel)
+export default function HomePage() {
+  return (
+    <Suspense fallback={<p style={{ textAlign: 'center', padding: '50px' }}>Φόρτωση εφαρμογής...</p>}>
+      <DashboardContent />
+    </Suspense>
   )
 }
 
