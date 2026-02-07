@@ -5,118 +5,90 @@ import { useEffect, useState, Suspense } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 
-function SuppliersContent() {
+function BalanceContent() {
   const router = useRouter()
-  const [suppliers, setSuppliers] = useState<any[]>([])
-  const [transactions, setTransactions] = useState<any[]>([])
+  const [debtors, setDebtors] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [isAdding, setIsAdding] = useState(false)
-  const [editingId, setEditingId] = useState<string | null>(null)
-  
-  const [formData, setFormData] = useState({ name: '', phone: '', vat_number: '' })
 
-  useEffect(() => { 
-    fetchInitialData() 
+  useEffect(() => {
+    async function fetchDebts() {
+      setLoading(true)
+      
+      // 1. Φέρνουμε όλους τους προμηθευτές
+      const { data: sups } = await supabase.from('suppliers').select('*').order('name')
+      
+      // 2. Φέρνουμε όλες τις κινήσεις που αφορούν πιστώσεις ή πληρωμές χρεών
+      const { data: trans } = await supabase
+        .from('transactions')
+        .select('*')
+        .or('is_credit.eq.true,is_debt_payment.eq.true')
+
+      if (sups && trans) {
+        const results = sups.map(s => {
+          const sTrans = trans.filter(t => t.supplier_id === s.id)
+          
+          // Υπολογισμός Πιστώσεων (Νέα χρέη)
+          const totalCredits = sTrans
+            .filter(t => t.is_credit === true)
+            .reduce((acc, t) => acc + (Number(t.amount) || 0), 0)
+          
+          // Υπολογισμός Πληρωμών (Έναντι παλαιού χρέους)
+          const totalPayments = sTrans
+            .filter(t => t.is_debt_payment === true)
+            .reduce((acc, t) => acc + (Number(t.amount) || 0), 0)
+
+          const currentBalance = totalCredits - totalPayments
+
+          return { ...s, currentBalance }
+        })
+        // ΦΙΛΤΡΟ: Κρατάμε ΜΟΝΟ όσους έχουν υπόλοιπο μεγαλύτερο από 0
+        .filter(item => item.currentBalance > 0)
+
+        setDebtors(results)
+      }
+      setLoading(false)
+    }
+    fetchDebts()
   }, [])
-
-  async function fetchInitialData() {
-    setLoading(true)
-    const { data: sups } = await supabase.from('suppliers').select('*').order('name')
-    const { data: trans } = await supabase.from('transactions').select('amount, supplier_id')
-    if (sups) setSuppliers(sups)
-    if (trans) setTransactions(trans)
-    setLoading(false)
-  }
-
-  // Υπολογισμός συνολικού τζίρου ανά προμηθευτή
-  const getTurnover = (id: string) => {
-    return transactions
-      .filter(t => t.supplier_id === id)
-      .reduce((acc, t) => acc + (Number(t.amount) || 0), 0)
-  }
-
-  async function handleSave() {
-    if (!formData.name.trim()) return alert('Το όνομα είναι υποχρεωτικό!')
-    setLoading(true)
-    
-    const payload = { 
-        name: formData.name.trim(),
-        phone: formData.phone.trim() || null,
-        vat_number: formData.vat_number.trim() || null
-    }
-
-    const { error } = editingId 
-      ? await supabase.from('suppliers').update(payload).eq('id', editingId)
-      : await supabase.from('suppliers').insert([payload])
-
-    if (!error) {
-      setEditingId(null)
-      setFormData({ name: '', phone: '', vat_number: '' })
-      setIsAdding(false)
-      fetchInitialData()
-    } else {
-      alert('Σφάλμα: ' + error.message)
-    }
-    setLoading(false)
-  }
-
-  async function handleDelete(id: string) {
-    if (!confirm('Προσοχή! Η διαγραφή του προμηθευτή θα επηρεάσει τις καρτέλες. Σίγουρα;')) return
-    const { error } = await supabase.from('suppliers').delete().eq('id', id)
-    if (!error) fetchInitialData()
-    else alert('Σφάλμα διαγραφής: ' + error.message)
-  }
 
   return (
     <div style={{ maxWidth: '500px', margin: '0 auto', padding: '20px', fontFamily: 'sans-serif' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+      
+      {/* HEADER */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '15px', marginBottom: '30px' }}>
         <button onClick={() => router.push('/')} style={backBtnStyle}>←</button>
-        <h2 style={{ fontWeight: '900', margin: 0 }}>Προμηθευτές</h2>
-        <button 
-          onClick={() => { setIsAdding(!isAdding); setEditingId(null); setFormData({name:'', phone:'', vat_number:''}); }}
-          style={addBtnStyle}
-        >
-          {isAdding ? 'Άκυρο' : '+ Νέος'}
-        </button>
+        <div>
+          <h2 style={{ fontWeight: '900', margin: 0, fontSize: '22px' }}>Καρτέλες Οφειλών</h2>
+          <p style={{ margin: 0, fontSize: '13px', color: '#64748b' }}>Έμποροι με υπόλοιπο επί πίστωση</p>
+        </div>
       </div>
 
-      {isAdding && (
-        <div style={formBoxStyle}>
-          <label style={labelStyle}>ΟΝΟΜΑ ΠΡΟΜΗΘΕΥΤΗ *</label>
-          <input value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} style={inputStyle} />
-          
-          <div style={{ display: 'flex', gap: '10px', marginBottom: '15px' }}>
-            <div style={{ flex: 1 }}>
-              <label style={labelStyle}>ΤΗΛΕΦΩΝΟ</label>
-              <input value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} style={inputStyle} />
-            </div>
-            <div style={{ flex: 1 }}>
-              <label style={labelStyle}>Α.Φ.Μ.</label>
-              <input value={formData.vat_number} onChange={e => setFormData({...formData, vat_number: e.target.value})} style={inputStyle} />
-            </div>
+      {/* ΛΙΣΤΑ ΟΦΕΙΛΕΤΩΝ */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+        {loading ? (
+          <p style={{ textAlign: 'center', color: '#94a3b8' }}>Υπολογισμός υπολοίπων...</p>
+        ) : debtors.length === 0 ? (
+          <div style={emptyStateStyle}>
+            <span style={{ fontSize: '40px' }}>🎉</span>
+            <p style={{ fontWeight: 'bold', margin: '10px 0 0 0' }}>Κανένα χρέος!</p>
+            <p style={{ fontSize: '12px', color: '#94a3b8' }}>Όλες οι πιστώσεις έχουν εξοφληθεί.</p>
           </div>
-          
-          <button onClick={handleSave} disabled={loading} style={saveBtnStyle}>
-            {loading ? 'ΠΕΡΙΜΕΝΕΤΕ...' : (editingId ? 'ΕΝΗΜΕΡΩΣΗ' : 'ΑΠΟΘΗΚΕΥΣΗ')}
-          </button>
-        </div>
-      )}
-      
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-        {suppliers.map(s => (
-          <div key={s.id} style={supplierCardStyle}>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontWeight: '800', fontSize: '16px' }}>{s.name}</div>
-              <div style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 'bold', marginTop: '4px' }}>
-                ΣΥΝ. ΤΖΙΡΟΣ: {getTurnover(s.id).toFixed(2)}€
+        ) : debtors.map(s => (
+          <div key={s.id} style={debtCardStyle}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div>
+                <span style={labelStyle}>ΠΡΟΜΗΘΕΥΤΗΣ</span>
+                <div style={{ fontWeight: '800', fontSize: '18px', color: '#1e293b', marginTop: '2px' }}>{s.name}</div>
+                {s.phone && <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>📞 {s.phone}</div>}
               </div>
+              <div style={badgeStyle}>ΕΠΙ ΠΙΣΤΩΣΕΙ</div>
             </div>
-            <div style={{ display: 'flex', gap: '10px' }}>
-              <button 
-                onClick={() => { setFormData({name: s.name, phone: s.phone || '', vat_number: s.vat_number || ''}); setEditingId(s.id); setIsAdding(true); }}
-                style={editIconBtn}
-              >✎</button>
-              <button onClick={() => handleDelete(s.id)} style={deleteIconBtn}>🗑️</button>
+
+            <div style={balanceBoxStyle}>
+              <span style={{ fontSize: '11px', fontWeight: '800', color: '#c2410c' }}>ΥΠΟΛΟΙΠΟ ΠΡΟΣ ΕΞΟΦΛΗΣΗ</span>
+              <div style={{ fontSize: '24px', fontWeight: '900', color: '#ea580c' }}>
+                {s.currentBalance.toFixed(2)}€
+              </div>
             </div>
           </div>
         ))}
@@ -125,21 +97,18 @@ function SuppliersContent() {
   )
 }
 
-export default function SuppliersPage() {
+export default function SuppliersBalancePage() {
   return (
-    <Suspense fallback={<div>Φόρτωση...</div>}>
-      <SuppliersContent />
+    <Suspense fallback={<div style={{ textAlign: 'center', padding: '50px' }}>Φόρτωση...</div>}>
+      <BalanceContent />
     </Suspense>
   )
 }
 
 // STYLES
-const backBtnStyle = { border: 'none', background: '#f1f5f9', width: '40px', height: '40px', borderRadius: '12px', fontSize: '20px', cursor: 'pointer' };
-const addBtnStyle = { backgroundColor: '#2563eb', color: 'white', border: 'none', padding: '10px 18px', borderRadius: '12px', fontWeight: 'bold', cursor: 'pointer' };
-const formBoxStyle = { padding: '20px', border: '2px solid #2563eb', borderRadius: '20px', marginBottom: '25px', backgroundColor: '#f8fafc' };
-const inputStyle = { width: '100%', padding: '12px', borderRadius: '10px', border: '1px solid #e2e8f0', marginBottom: '10px', boxSizing: 'border-box' as const };
-const labelStyle = { fontSize: '11px', fontWeight: 'bold', color: '#94a3b8', display: 'block', marginBottom: '5px' };
-const saveBtnStyle = { width: '100%', padding: '15px', backgroundColor: '#16a34a', color: 'white', border: 'none', borderRadius: '12px', fontWeight: 'bold', cursor: 'pointer' };
-const supplierCardStyle = { padding: '15px', backgroundColor: 'white', border: '1px solid #f1f5f9', borderRadius: '15px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' };
-const editIconBtn = { background: '#f1f5f9', border: 'none', borderRadius: '8px', width: '35px', height: '35px', cursor: 'pointer', fontSize: '16px' };
-const deleteIconBtn = { background: '#fee2e2', border: 'none', borderRadius: '8px', width: '35px', height: '35px', cursor: 'pointer', fontSize: '16px' };
+const backBtnStyle = { border: 'none', background: '#f1f5f9', width: '45px', height: '45px', borderRadius: '15px', fontSize: '20px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' };
+const debtCardStyle = { backgroundColor: 'white', padding: '20px', borderRadius: '25px', border: '1px solid #f1f5f9', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' };
+const labelStyle = { fontSize: '10px', fontWeight: '800', color: '#94a3b8', letterSpacing: '0.5px' };
+const balanceBoxStyle = { marginTop: '15px', padding: '15px', backgroundColor: '#fff7ed', borderRadius: '18px', border: '1px solid #ffedd5', textAlign: 'center' as const };
+const badgeStyle = { backgroundColor: '#fee2e2', color: '#ef4444', padding: '5px 10px', borderRadius: '8px', fontSize: '10px', fontWeight: '900' };
+const emptyStateStyle = { textAlign: 'center' as const, padding: '40px', backgroundColor: '#f0fdf4', borderRadius: '25px', border: '1px solid #dcfce7' };
