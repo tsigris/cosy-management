@@ -5,64 +5,118 @@ import { useEffect, useState, Suspense } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 
-function BalanceContent() {
+function SuppliersContent() {
   const router = useRouter()
-  const [data, setData] = useState<any[]>([])
+  const [suppliers, setSuppliers] = useState<any[]>([])
+  const [transactions, setTransactions] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [isAdding, setIsAdding] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  
+  const [formData, setFormData] = useState({ name: '', phone: '', vat_number: '' })
 
-  useEffect(() => {
-    async function calculateBalances() {
-      setLoading(true)
-      // Φέρνουμε όλους τους προμηθευτές και όλες τις συναλλαγές τους
-      const { data: sups } = await supabase.from('suppliers').select('*').order('name')
-      const { data: trans } = await supabase.from('transactions').select('*').not('supplier_id', 'is', null)
-
-      if (sups && trans) {
-        const report = sups.map(s => {
-          const sTrans = trans.filter(t => t.supplier_id === s.id)
-          
-          // Τζίρος: Όλα τα έξοδα (μετρητά + πιστώσεις)
-          const turnover = sTrans.reduce((acc, t) => acc + (Number(t.amount) || 0), 0)
-          
-          // Πιστώσεις (Χρέη που δημιουργήθηκαν)
-          const credits = sTrans.filter(t => t.is_credit).reduce((acc, t) => acc + (Number(t.amount) || 0), 0)
-          
-          // Πληρωμές έναντι παλαιού χρέους
-          const payments = sTrans.filter(t => t.is_debt_payment).reduce((acc, t) => acc + (Number(t.amount) || 0), 0)
-
-          return { ...s, turnover, balance: credits - payments }
-        })
-        setData(report)
-      }
-      setLoading(false)
-    }
-    calculateBalances()
+  useEffect(() => { 
+    fetchInitialData() 
   }, [])
+
+  async function fetchInitialData() {
+    setLoading(true)
+    const { data: sups } = await supabase.from('suppliers').select('*').order('name')
+    const { data: trans } = await supabase.from('transactions').select('amount, supplier_id')
+    if (sups) setSuppliers(sups)
+    if (trans) setTransactions(trans)
+    setLoading(false)
+  }
+
+  // Υπολογισμός συνολικού τζίρου ανά προμηθευτή
+  const getTurnover = (id: string) => {
+    return transactions
+      .filter(t => t.supplier_id === id)
+      .reduce((acc, t) => acc + (Number(t.amount) || 0), 0)
+  }
+
+  async function handleSave() {
+    if (!formData.name.trim()) return alert('Το όνομα είναι υποχρεωτικό!')
+    setLoading(true)
+    
+    const payload = { 
+        name: formData.name.trim(),
+        phone: formData.phone.trim() || null,
+        vat_number: formData.vat_number.trim() || null
+    }
+
+    const { error } = editingId 
+      ? await supabase.from('suppliers').update(payload).eq('id', editingId)
+      : await supabase.from('suppliers').insert([payload])
+
+    if (!error) {
+      setEditingId(null)
+      setFormData({ name: '', phone: '', vat_number: '' })
+      setIsAdding(false)
+      fetchInitialData()
+    } else {
+      alert('Σφάλμα: ' + error.message)
+    }
+    setLoading(false)
+  }
+
+  async function handleDelete(id: string) {
+    if (!confirm('Προσοχή! Η διαγραφή του προμηθευτή θα επηρεάσει τις καρτέλες. Σίγουρα;')) return
+    const { error } = await supabase.from('suppliers').delete().eq('id', id)
+    if (!error) fetchInitialData()
+    else alert('Σφάλμα διαγραφής: ' + error.message)
+  }
 
   return (
     <div style={{ maxWidth: '500px', margin: '0 auto', padding: '20px', fontFamily: 'sans-serif' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '15px', marginBottom: '25px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
         <button onClick={() => router.push('/')} style={backBtnStyle}>←</button>
-        <h2 style={{ fontWeight: '900', margin: 0 }}>Καρτέλες Προμηθευτών</h2>
+        <h2 style={{ fontWeight: '900', margin: 0 }}>Προμηθευτές</h2>
+        <button 
+          onClick={() => { setIsAdding(!isAdding); setEditingId(null); setFormData({name:'', phone:'', vat_number:''}); }}
+          style={addBtnStyle}
+        >
+          {isAdding ? 'Άκυρο' : '+ Νέος'}
+        </button>
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-        {loading ? <p>Υπολογισμός...</p> : data.map(s => (
-          <div key={s.id} style={cardStyle}>
-            <div style={{ borderBottom: '1px solid #f1f5f9', paddingBottom: '10px', marginBottom: '10px' }}>
-              <span style={{ fontWeight: '800', fontSize: '18px', color: '#1e293b' }}>{s.name}</span>
+      {isAdding && (
+        <div style={formBoxStyle}>
+          <label style={labelStyle}>ΟΝΟΜΑ ΠΡΟΜΗΘΕΥΤΗ *</label>
+          <input value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} style={inputStyle} />
+          
+          <div style={{ display: 'flex', gap: '10px', marginBottom: '15px' }}>
+            <div style={{ flex: 1 }}>
+              <label style={labelStyle}>ΤΗΛΕΦΩΝΟ</label>
+              <input value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} style={inputStyle} />
             </div>
-            
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-              <span style={labelStyle}>ΣΥΝΟΛΙΚΟΣ ΤΖΙΡΟΣ</span>
-              <span style={{ fontWeight: '700' }}>{s.turnover.toFixed(2)}€</span>
+            <div style={{ flex: 1 }}>
+              <label style={labelStyle}>Α.Φ.Μ.</label>
+              <input value={formData.vat_number} onChange={e => setFormData({...formData, vat_number: e.target.value})} style={inputStyle} />
             </div>
-
-            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px', backgroundColor: s.balance > 0 ? '#fff7ed' : '#f0fdf4', borderRadius: '12px' }}>
-              <span style={{ ...labelStyle, color: s.balance > 0 ? '#c2410c' : '#15803d' }}>ΥΠΟΛΟΙΠΟ ΟΦΕΙΛΗΣ</span>
-              <span style={{ fontWeight: '900', fontSize: '18px', color: s.balance > 0 ? '#ea580c' : '#16a34a' }}>
-                {s.balance.toFixed(2)}€
-              </span>
+          </div>
+          
+          <button onClick={handleSave} disabled={loading} style={saveBtnStyle}>
+            {loading ? 'ΠΕΡΙΜΕΝΕΤΕ...' : (editingId ? 'ΕΝΗΜΕΡΩΣΗ' : 'ΑΠΟΘΗΚΕΥΣΗ')}
+          </button>
+        </div>
+      )}
+      
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+        {suppliers.map(s => (
+          <div key={s.id} style={supplierCardStyle}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontWeight: '800', fontSize: '16px' }}>{s.name}</div>
+              <div style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 'bold', marginTop: '4px' }}>
+                ΣΥΝ. ΤΖΙΡΟΣ: {getTurnover(s.id).toFixed(2)}€
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <button 
+                onClick={() => { setFormData({name: s.name, phone: s.phone || '', vat_number: s.vat_number || ''}); setEditingId(s.id); setIsAdding(true); }}
+                style={editIconBtn}
+              >✎</button>
+              <button onClick={() => handleDelete(s.id)} style={deleteIconBtn}>🗑️</button>
             </div>
           </div>
         ))}
@@ -71,14 +125,21 @@ function BalanceContent() {
   )
 }
 
-export default function SuppliersBalancePage() {
+export default function SuppliersPage() {
   return (
     <Suspense fallback={<div>Φόρτωση...</div>}>
-      <BalanceContent />
+      <SuppliersContent />
     </Suspense>
   )
 }
 
+// STYLES
 const backBtnStyle = { border: 'none', background: '#f1f5f9', width: '40px', height: '40px', borderRadius: '12px', fontSize: '20px', cursor: 'pointer' };
-const cardStyle = { backgroundColor: 'white', padding: '18px', borderRadius: '20px', border: '1px solid #f1f5f9', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' };
-const labelStyle = { fontSize: '11px', fontWeight: '800', color: '#94a3b8' };
+const addBtnStyle = { backgroundColor: '#2563eb', color: 'white', border: 'none', padding: '10px 18px', borderRadius: '12px', fontWeight: 'bold', cursor: 'pointer' };
+const formBoxStyle = { padding: '20px', border: '2px solid #2563eb', borderRadius: '20px', marginBottom: '25px', backgroundColor: '#f8fafc' };
+const inputStyle = { width: '100%', padding: '12px', borderRadius: '10px', border: '1px solid #e2e8f0', marginBottom: '10px', boxSizing: 'border-box' as const };
+const labelStyle = { fontSize: '11px', fontWeight: 'bold', color: '#94a3b8', display: 'block', marginBottom: '5px' };
+const saveBtnStyle = { width: '100%', padding: '15px', backgroundColor: '#16a34a', color: 'white', border: 'none', borderRadius: '12px', fontWeight: 'bold', cursor: 'pointer' };
+const supplierCardStyle = { padding: '15px', backgroundColor: 'white', border: '1px solid #f1f5f9', borderRadius: '15px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' };
+const editIconBtn = { background: '#f1f5f9', border: 'none', borderRadius: '8px', width: '35px', height: '35px', cursor: 'pointer', fontSize: '16px' };
+const deleteIconBtn = { background: '#fee2e2', border: 'none', borderRadius: '8px', width: '35px', height: '35px', cursor: 'pointer', fontSize: '16px' };
