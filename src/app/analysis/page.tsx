@@ -10,7 +10,7 @@ import {
 export default function AnalysisPage() {
   const [transactions, setTransactions] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [view, setView] = useState('income') // Ξεκινάει από τα Έσοδα όπως στη φόρτοση
+  const [view, setView] = useState('income') 
   const [period, setPeriod] = useState('month') 
   const [selectedDate, setSelectedDate] = useState(format(new Date(), 'yyyy-MM-dd'))
   const [filterCat, setFilterCat] = useState('all')
@@ -27,7 +27,6 @@ export default function AnalysisPage() {
 
   const now = new Date()
 
-  // ΒΟΗΘΗΤΙΚΗ ΣΥΝΑΡΤΗΣΗ ΦΙΛΤΡΟΥ ΧΡΟΝΟΥ
   const filterByTime = (data: any[], type: string, refDate: Date) => {
     return data.filter(t => {
       const d = new Date(t.date)
@@ -85,15 +84,17 @@ export default function AnalysisPage() {
           <button onClick={() => setView('expenses')} style={{...tabBtn, backgroundColor: view === 'expenses' ? '#ef4444' : 'white', color: view === 'expenses' ? 'white' : '#64748b'}}>ΕΞΟΔΑ</button>
         </div>
 
-        {/* ΦΙΛΤΡΑ & ΗΜΕΡΟΛΟΓΙΟ */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '15px' }}>
+        {/* ΦΙΛΤΡΑ & ΠΑΝΤΑ ΟΡΑΤΟ ΗΜΕΡΟΛΟΓΙΟ */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '20px' }}>
+          
           <div style={{ display: 'flex', gap: '8px' }}>
             <select value={period} onChange={e => setPeriod(e.target.value)} style={{...selectStyle, flex: 1}}>
-              <option value="month">Μήνας</option>
-              <option value="custom_day">Ημερολόγιο</option>
-              <option value="week">Εβδομάδα</option>
-              <option value="year">Έτος</option>
+              <option value="month">Προβολή: Μήνας</option>
+              <option value="custom_day">Προβολή: Ημέρα</option>
+              <option value="week">Προβολή: Εβδομάδα</option>
+              <option value="year">Προβολή: Έτος</option>
             </select>
+            
             {view === 'expenses' && (
               <select value={filterCat} onChange={e => setFilterCat(e.target.value)} style={{...selectStyle, flex: 1}}>
                 <option value="all">Όλες οι Κατηγορίες</option>
@@ -104,23 +105,26 @@ export default function AnalysisPage() {
             )}
           </div>
 
-          {period === 'custom_day' && (
-            <div style={{ backgroundColor: 'white', padding: '12px', borderRadius: '14px', border: '1px solid #e2e8f0' }}>
-               <label style={{ fontSize: '10px', fontWeight: '900', color: '#94a3b8', display: 'block', marginBottom: '5px' }}>ΕΠΙΛΟΓΗ ΗΜΕΡΟΜΗΝΙΑΣ</label>
-               <input 
-                type="date" 
-                value={selectedDate} 
-                onChange={(e) => setSelectedDate(e.target.value)}
-                style={dateInputStyle}
-              />
-            </div>
-          )}
+          {/* ΤΟ ΗΜΕΡΟΛΟΓΙΟ */}
+          <div style={{ backgroundColor: 'white', padding: '12px', borderRadius: '16px', border: '1px solid #e2e8f0', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
+            <label style={{ fontSize: '10px', fontWeight: '900', color: '#94a3b8', display: 'block', marginBottom: '5px', textTransform: 'uppercase' }}>Επιλογή Ημερομηνίας</label>
+            <input 
+              type="date" 
+              value={selectedDate} 
+              onChange={(e) => {
+                setSelectedDate(e.target.value);
+                setPeriod('custom_day'); // Γυρνάει αυτόματα σε προβολή ημέρας μόλις διαλέξεις ημερομηνία
+              }}
+              style={dateInputStyle}
+            />
+          </div>
         </div>
 
         {/* MAIN CARD */}
         <div style={{...mainCard, backgroundColor: view === 'income' ? '#064e3b' : '#450a0a'}}>
           <p style={labelSmall}>
-            {view === 'income' ? 'ΣΥΝΟΛΟ ΕΣΟΔΩΝ' : 'ΣΥΝΟΛΟ ΕΞΟΔΩΝ'} {period === 'custom_day' ? `(${new Date(selectedDate).toLocaleDateString('el-GR')})` : ''}
+            {view === 'income' ? 'ΣΥΝΟΛΟ ΕΣΟΔΩΝ' : 'ΣΥΝΟΛΟ ΕΞΟΔΩΝ'} 
+            {period === 'custom_day' ? ` (${format(new Date(selectedDate), 'dd/MM/yyyy')})` : ` (${period === 'month' ? 'Μήνα' : period === 'week' ? 'Εβδομάδας' : 'Έτους'})`}
           </p>
           <h2 style={{ fontSize: '38px', fontWeight: '900', margin: '10px 0' }}>{totalDisplay.toFixed(2)}€</h2>
           <div style={{display: 'flex', justifyContent: 'center', gap: '10px'}}>
@@ -153,7 +157,7 @@ export default function AnalysisPage() {
             <div key={t.id} style={rowStyle}>
               <div>
                 <div style={{ fontWeight: '700', fontSize: '14px' }}>{t.suppliers?.name || t.notes || t.category}</div>
-                <div style={{ fontSize: '11px', color: '#94a3b8' }}>{new Date(t.date).toLocaleDateString('el-GR')}</div>
+                <div style={{ fontSize: '11px', color: '#94a3b8' }}>{format(new Date(t.date), 'dd/MM/yyyy')}</div>
               </div>
               <div style={{ fontWeight: '900', color: view === 'income' ? '#10b981' : '#ef4444' }}>
                 {view === 'income' ? '+' : '-'}{Number(t.amount).toFixed(2)}€
@@ -170,9 +174,9 @@ export default function AnalysisPage() {
 const backBtnStyle = { display: 'flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none', background: 'white', width: '40px', height: '40px', borderRadius: '12px', fontSize: '20px', color: '#64748b', border: '1px solid #e2e8f0', fontWeight: 'bold' as const };
 const tabContainer = { display: 'flex', backgroundColor: '#e2e8f0', borderRadius: '14px', padding: '4px', marginBottom: '15px' };
 const tabBtn = { flex: 1, border: 'none', padding: '10px', borderRadius: '10px', fontWeight: '900' as const, fontSize: '12px', cursor: 'pointer' };
-const selectStyle = { padding: '12px', borderRadius: '14px', border: '1px solid #e2e8f0', fontWeight: '800' as const, fontSize: '13px', backgroundColor: 'white' };
-const dateInputStyle = { width: '100%', border: 'none', background: 'transparent', fontWeight: '800' as const, fontSize: '16px', color: '#1e293b', outline: 'none' };
-const mainCard = { padding: '30px', borderRadius: '28px', color: 'white', textAlign: 'center' as const, marginBottom: '20px' };
+const selectStyle = { padding: '12px', borderRadius: '14px', border: '1px solid #e2e8f0', fontWeight: '800' as const, fontSize: '12px', backgroundColor: 'white', color: '#1e293b' };
+const dateInputStyle = { width: '100%', border: 'none', background: 'transparent', fontWeight: '800' as const, fontSize: '16px', color: '#1e293b', outline: 'none', cursor: 'pointer' };
+const mainCard = { padding: '30px', borderRadius: '28px', color: 'white', textAlign: 'center' as const, marginBottom: '20px', boxShadow: '0 10px 15px rgba(0,0,0,0.1)' };
 const labelSmall = { fontSize: '10px', fontWeight: '900' as const, color: 'rgba(255,255,255,0.6)', letterSpacing: '1px' };
 const compareBadge = { backgroundColor: 'rgba(0,0,0,0.2)', padding: '5px 10px', borderRadius: '12px', fontSize: '10px', fontWeight: '700' as const };
 const sectionCard = { backgroundColor: 'white', padding: '20px', borderRadius: '24px', border: '1px solid #f1f5f9', marginBottom: '20px' };
