@@ -3,16 +3,9 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
 
-// Η λίστα με τα προκαθορισμένα πάγια που ζήτησες
 const DEFAULT_ASSETS = [
-  'ΔΕΗ / Ρεύμα',
-  'Ενοίκιο',
-  'Νερό / ΕΥΔΑΠ',
-  'Λογιστής',
-  'Τηλεφωνία / Internet',
-  'Εφορία',
-  'ΕΦΚΑ',
-  'ΕΦΚΑ Υπαλλήλων'
+  'ΔΕΗ / Ρεύμα', 'Ενοίκιο', 'Νερό / ΕΥΔΑΠ', 'Λογιστής', 
+  'Τηλεφωνία / Internet', 'Εφορία', 'ΕΦΚΑ', 'ΕΦΚΑ Υπαλλήλων'
 ]
 
 export default function FixedAssetsPage() {
@@ -20,144 +13,112 @@ export default function FixedAssetsPage() {
   const [loading, setLoading] = useState(true)
   const [isAdding, setIsAdding] = useState(false)
   const [newName, setNewName] = useState('')
-  const [editingId, setEditingId] = useState<string | null>(null)
 
   useEffect(() => { fetchAssets() }, [])
 
   async function fetchAssets() {
     setLoading(true)
+    // Φέρνουμε τα πάγια
+    let { data: assetsData } = await supabase.from('fixed_assets').select('*').order('name')
     
-    // 1. Φέρνουμε τα υπάρχοντα πάγια
-    let { data, error } = await supabase.from('fixed_assets').select('*').order('name')
-    
-    // 2. Αν η λίστα είναι άδεια (νέος χρήστης), τα δημιουργούμε αυτόματα
-    if (data && data.length === 0) {
-      const initialAssets = DEFAULT_ASSETS.map(name => ({ name }))
-      const { data: insertedData, error: insertError } = await supabase
-        .from('fixed_assets')
-        .insert(initialAssets)
-        .select()
-      
-      if (!insertError && insertedData) {
-        data = insertedData
-      }
+    // Αν είναι άδεια η λίστα, δημιούργησε τα προεπιλεγμένα
+    if (assetsData && assetsData.length === 0) {
+      await supabase.from('fixed_assets').insert(DEFAULT_ASSETS.map(name => ({ name })))
+      const { data: newData } = await supabase.from('fixed_assets').select('*').order('name')
+      assetsData = newData
     }
 
-    if (data) setAssets(data)
+    // Φέρνουμε τις συναλλαγές για να βγάλουμε τα σύνολα
+    const { data: transData } = await supabase.from('transactions').select('amount, fixed_asset_id').eq('category', 'Πάγια')
+
+    if (assetsData) {
+      const enriched = assetsData.map(asset => {
+        const total = transData
+          ?.filter(t => t.fixed_asset_id === asset.id)
+          .reduce((sum, curr) => sum + (Number(curr.amount) || 0), 0) || 0
+        return { ...asset, total }
+      })
+      setAssets(enriched)
+    }
     setLoading(false)
   }
 
-  async function handleSave() {
+  async function handleAdd() {
     if (!newName.trim()) return
-    setLoading(true)
-    
-    const { error } = editingId 
-      ? await supabase.from('fixed_assets').update({ name: newName }).eq('id', editingId)
-      : await supabase.from('fixed_assets').insert([{ name: newName }])
-    
+    const { error } = await supabase.from('fixed_assets').insert([{ name: newName.trim() }])
     if (!error) {
       setNewName('')
-      setEditingId(null)
       setIsAdding(false)
       fetchAssets()
     }
-    setLoading(false)
   }
 
-  async function handleDelete(id: string) {
-    if (confirm('Προσοχή! Η διαγραφή του παγίου δεν θα διαγράψει τις παλιές συναλλαγές, αλλά θα αφαιρέσει την κατηγορία. Σίγουρα;')) {
+  async function handleDelete(id: string, e: React.MouseEvent) {
+    e.preventDefault() // Για να μην ανοίξει το Link
+    if (confirm('Διαγραφή παγίου και ιστορικού;')) {
       await supabase.from('fixed_assets').delete().eq('id', id)
       fetchAssets()
     }
   }
 
   return (
-    <main style={{ padding: '16px', maxWidth: '500px', margin: '0 auto', fontFamily: 'sans-serif', backgroundColor: '#f8fafc', minHeight: '100vh' }}>
-      
-      {/* HEADER */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px' }}>
-        <Link href="/" style={{ textDecoration: 'none', color: '#64748b', fontWeight: 'bold' }}>← Πίσω</Link>
-        <h1 style={{ fontSize: '20px', fontWeight: '900', color: '#1e293b', margin: 0 }}>Διαχείριση Παγίων</h1>
-        <button onClick={() => { setIsAdding(!isAdding); setEditingId(null); setNewName(''); }} style={addBtnStyle}>+</button>
-      </div>
-
-      {/* ΦΟΡΜΑ ΠΡΟΣΘΗΚΗΣ/ΕΠΕΞΕΡΓΑΣΙΑΣ */}
-      {isAdding && (
-        <div style={formCardStyle}>
-          <p style={labelStyle}>{editingId ? 'ΕΠΕΞΕΡΓΑΣΙΑ ΟΝΟΜΑΤΟΣ' : 'ΠΡΟΣΘΗΚΗ ΝΕΟΥ ΠΑΓΙΟΥ'}</p>
-          <input 
-            value={newName} 
-            onChange={e => setNewName(e.target.value)} 
-            placeholder="π.χ. Δημοτικά Τέλη" 
-            style={inputStyle} 
-            autoFocus
-          />
-          <div style={{ display: 'flex', gap: '10px' }}>
-            <button onClick={handleSave} style={saveBtnStyle}>Αποθήκευση</button>
-            <button onClick={() => setIsAdding(false)} style={cancelBtnStyle}>Άκυρο</button>
-          </div>
-        </div>
-      )}
-
-      {/* ΛΙΣΤΑ ΠΑΓΙΩΝ */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-        {loading && <p style={{ textAlign: 'center', color: '#64748b' }}>Φόρτωση...</p>}
+    <main style={{ backgroundColor: '#f8fafc', minHeight: '100vh', padding: '16px', fontFamily: 'sans-serif' }}>
+      <div style={{ maxWidth: '500px', margin: '0 auto' }}>
         
-        {!loading && assets.map(asset => (
-          <div key={asset.id} style={cardStyle}>
-            <span style={{ fontWeight: '800', color: '#334155' }}>{asset.name}</span>
-            <div style={{ display: 'flex', gap: '8px' }}>
-              <button onClick={() => {setEditingId(asset.id); setNewName(asset.name); setIsAdding(true)}} style={editBtn}>✎</button>
-              <button onClick={() => handleDelete(asset.id)} style={deleteBtn}>🗑️</button>
-            </div>
+        {/* HEADER */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <Link href="/" style={{ color: '#64748b', textDecoration: 'none', fontWeight: 'bold', fontSize: '14px' }}>← ΠΙΣΩ</Link>
+            <h1 style={{ fontSize: '22px', fontWeight: '900', color: '#1e293b', margin: 0 }}>Πάγια</h1>
           </div>
-        ))}
+          <button onClick={() => setIsAdding(!isAdding)} style={addBtn}>
+            {isAdding ? 'ΑΚΥΡΟ' : '+ ΝΕΟ'}
+          </button>
+        </div>
+
+        {isAdding && (
+          <div style={formCard}>
+            <input 
+              value={newName} 
+              onChange={e => setNewName(e.target.value)} 
+              placeholder="Όνομα παγίου..." 
+              style={inputStyle} 
+            />
+            <button onClick={handleAdd} style={saveBtn}>ΠΡΟΣΘΗΚΗ</button>
+          </div>
+        )}
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          {assets.map(asset => (
+            <Link 
+              key={asset.id} 
+              href={`/fixed-assets/history?id=${asset.id}&name=${asset.name}`}
+              style={{ textDecoration: 'none' }}
+            >
+              <div style={assetCard}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: '800', color: '#1e293b', fontSize: '16px' }}>{asset.name}</div>
+                  <div style={{ fontSize: '10px', color: '#94a3b8', fontWeight: '800', marginTop: '4px' }}>ΣΥΝΟΛΟ ΕΞΟΔΩΝ</div>
+                </div>
+                <div style={{ textAlign: 'right', display: 'flex', alignItems: 'center', gap: '15px' }}>
+                  <div style={{ fontWeight: '900', color: '#ef4444', fontSize: '17px' }}>
+                    {asset.total > 0 ? `-${asset.total.toFixed(2)}€` : '0.00€'}
+                  </div>
+                  <button onClick={(e) => handleDelete(asset.id, e)} style={delBtnSmall}>🗑️</button>
+                </div>
+              </div>
+            </Link>
+          ))}
+        </div>
       </div>
     </main>
   )
 }
 
-// STYLES - ΕΠΑΓΓΕΛΜΑΤΙΚΟ LOOK
-const cardStyle = { 
-  display: 'flex', 
-  justifyContent: 'space-between', 
-  alignItems: 'center', 
-  padding: '18px', 
-  backgroundColor: 'white', 
-  borderRadius: '16px', 
-  border: '1px solid #e2e8f0',
-  boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
-};
-
-const inputStyle = { 
-  width: '100%', 
-  padding: '14px', 
-  borderRadius: '12px', 
-  border: '1px solid #cbd5e1', 
-  marginBottom: '15px',
-  fontSize: '16px',
-  fontWeight: 'bold',
-  boxSizing: 'border-box' as const
-};
-
-const addBtnStyle = { 
-  width: '45px', 
-  height: '45px', 
-  borderRadius: '50%', 
-  border: 'none', 
-  backgroundColor: '#2563eb', 
-  color: 'white', 
-  fontSize: '28px', 
-  cursor: 'pointer',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  boxShadow: '0 4px 6px rgba(37, 99, 235, 0.2)'
-};
-
-const saveBtnStyle = { flex: 1, padding: '14px', backgroundColor: '#10b981', color: 'white', border: 'none', borderRadius: '12px', fontWeight: '900', cursor: 'pointer' };
-const cancelBtnStyle = { flex: 1, padding: '14px', backgroundColor: '#94a3b8', color: 'white', border: 'none', borderRadius: '12px', fontWeight: '900', cursor: 'pointer' };
-const formCardStyle = { backgroundColor: 'white', padding: '20px', borderRadius: '20px', border: '2px solid #e2e8f0', marginBottom: '20px' };
-const labelStyle = { fontSize: '10px', fontWeight: '900', color: '#94a3b8', marginBottom: '8px', textTransform: 'uppercase' as const };
-const editBtn = { border: 'none', background: '#eff6ff', color: '#2563eb', padding: '10px', borderRadius: '10px', cursor: 'pointer', fontWeight: 'bold' };
-const deleteBtn = { border: 'none', background: '#fef2f2', color: '#ef4444', padding: '10px', borderRadius: '10px', cursor: 'pointer' };
+// STYLES
+const assetCard = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '20px', backgroundColor: 'white', borderRadius: '20px', border: '1px solid #f1f5f9', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' };
+const addBtn = { padding: '8px 16px', backgroundColor: '#2563eb', color: 'white', border: 'none', borderRadius: '10px', fontWeight: '800', fontSize: '12px' };
+const formCard = { backgroundColor: 'white', padding: '15px', borderRadius: '18px', border: '1px solid #e2e8f0', marginBottom: '20px' };
+const inputStyle = { width: '100%', padding: '12px', borderRadius: '10px', border: '1px solid #e2e8f0', marginBottom: '10px', boxSizing: 'border-box' as const };
+const saveBtn = { width: '100%', padding: '12px', backgroundColor: '#10b981', color: 'white', border: 'none', borderRadius: '10px', fontWeight: '900' };
+const delBtnSmall = { background: 'none', border: 'none', fontSize: '16px', cursor: 'pointer', padding: '5px' };
