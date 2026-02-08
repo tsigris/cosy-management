@@ -5,7 +5,6 @@ import { supabase } from '@/lib/supabase'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 
-// Η φόρμα εγγραφής διαχωρισμένη για να λειτουργεί το Suspense
 function RegisterForm() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -14,9 +13,7 @@ function RegisterForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
 
-  // 1. ΔΙΑΒΑΣΜΑ ΠΑΡΑΜΕΤΡΩΝ ΑΠΟ ΤΟ LINK
-  // Αν υπάρχει invite, είναι το ID του καταστήματος (του Admin).
-  // Αν δεν υπάρχει, ο χρήστης φτιάχνει δικό του κατάστημα.
+  // 1. ΔΙΑΒΑΣΜΑ ΠΑΡΑΜΕΤΡΩΝ
   const inviteCode = searchParams.get('invite') 
   const requestedRole = searchParams.get('role') // 'admin' ή 'user'
 
@@ -40,24 +37,15 @@ function RegisterForm() {
       if (authError) throw authError
 
       if (authData.user) {
-        // 3. ΥΠΟΛΟΓΙΣΜΟΣ ΔΕΔΟΜΕΝΩΝ ΠΡΟΦΙΛ
-        // Αν υπάρχει inviteCode, ο χρήστης μπαίνει στο κατάστημα του Admin (inviteCode).
-        // Αν ΔΕΝ υπάρχει, ο χρήστης γίνεται Admin του εαυτού του (authData.user.id).
+        // 3. ΥΠΟΛΟΓΙΣΜΟΣ ΣΤΟΙΧΕΙΩΝ
+        // Αν έχεις invite, μπαίνεις στο μαγαζί του άλλου. Αν όχι, φτιάχνεις δικό σου.
         const targetStoreId = inviteCode ? inviteCode : authData.user.id
         const targetRole = inviteCode ? (requestedRole || 'user') : 'admin'
         
-        // Αν είναι Admin έχει πλήρη πρόσβαση. Αν είναι User, εξαρτάται (αρχικά κλειστά).
+        // Ο admin έχει πρόσβαση παντού
         const hasFullAccess = targetRole === 'admin'
 
-        console.log("Creating profile...", { 
-          uid: authData.user.id, 
-          role: targetRole, 
-          store: targetStoreId 
-        })
-
-        // 4. ΔΗΜΙΟΥΡΓΙΑ Ή ΕΝΗΜΕΡΩΣΗ ΠΡΟΦΙΛ (UPSERT)
-        // Χρησιμοποιούμε upsert για να καλύψουμε την περίπτωση που η βάση
-        // έχει ήδη δημιουργήσει αυτόματα ένα προφίλ (μέσω Trigger).
+        // 4. ΔΗΜΙΟΥΡΓΙΑ ΠΡΟΦΙΛ (PROFILES)
         const { error: profileError } = await supabase
           .from('profiles')
           .upsert({
@@ -65,21 +53,40 @@ function RegisterForm() {
             email: email.trim(),
             username: username || email.split('@')[0],
             role: targetRole,
-            store_id: targetStoreId, // <--- ΤΟ ΚΡΙΣΙΜΟ ΣΗΜΕΙΟ
+            store_id: targetStoreId, 
             can_view_analysis: hasFullAccess,
             can_view_history: hasFullAccess,
             can_edit_transactions: hasFullAccess,
             updated_at: new Date().toISOString(),
-          }, { onConflict: 'id' }) // Αν υπάρχει το ID, κάνε update, μην βγάλεις error
+          }, { onConflict: 'id' })
 
-        if (profileError) {
-          throw profileError
+        if (profileError) throw profileError
+
+        // ---[ Η ΔΙΟΡΘΩΣΗ ΕΙΝΑΙ ΕΔΩ ]---
+        
+        // 4.5. ΔΗΜΙΟΥΡΓΙΑ ΒΑΣΙΚΩΝ ΠΑΓΙΩΝ
+        // Το εκτελούμε ΜΟΝΟ αν ΔΕΝ υπάρχει inviteCode (δηλαδή είναι νέο κατάστημα/Admin).
+        // Οι υπάλληλοι (inviteCode exists) δεν επιτρέπεται να φτιάξουν πάγια, γι' αυτό το προσπερνούν.
+        if (!inviteCode) {
+            const defaultAssets = [
+                { name: 'Ενοίκιο', type: 'expense', store_id: targetStoreId },
+                { name: 'Ρεύμα', type: 'expense', store_id: targetStoreId },
+                { name: 'Τηλεφωνία/Internet', type: 'expense', store_id: targetStoreId },
+                { name: 'Νερό', type: 'expense', store_id: targetStoreId },
+                { name: 'Μισθοδοσία', type: 'expense', store_id: targetStoreId },
+            ]
+
+            const { error: assetError } = await supabase
+                .from('fixed_assets')
+                .insert(defaultAssets)
+            
+            // Δεν κάνουμε throw error εδώ, για να μην κολλήσει η εγγραφή αν κάτι πάει στραβά στα πάγια
+            if (assetError) console.error('Error creating default assets:', assetError)
         }
 
         // 5. ΕΠΙΤΥΧΙΑ
         alert(`Η εγγραφή ολοκληρώθηκε επιτυχώς!\nΡόλος: ${targetRole === 'admin' ? 'Διαχειριστής' : 'Υπάλληλος'}`)
         
-        // Ανακατεύθυνση στο Login ή στην Αρχική αν γίνεται αυτόματο login
         router.push('/') 
         router.refresh()
       }
@@ -97,7 +104,6 @@ function RegisterForm() {
         <h1 style={brandStyle}>COSY APP</h1>
         <div style={dividerStyle} />
         
-        {/* ΜΗΝΥΜΑ ΠΡΟΣΚΛΗΣΗΣ */}
         <div style={instructionStyle}>
           {inviteCode ? (
             <div style={inviteBox}>
@@ -172,11 +178,9 @@ function RegisterForm() {
   )
 }
 
-// Το βασικό Component της σελίδας που περιέχει το Suspense
 export default function RegisterPage() {
   return (
     <main style={containerStyle}>
-      {/* Το Suspense είναι απαραίτητο στο Next.js όταν διαβάζουμε searchParams */}
       <Suspense fallback={<div style={{textAlign:'center', marginTop:'50px'}}>Φόρτωση φόρμας...</div>}>
         <RegisterForm />
       </Suspense>
