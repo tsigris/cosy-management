@@ -16,10 +16,14 @@ function DashboardContent() {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [expandedTx, setExpandedTx] = useState<string | null>(null)
   const [isZExpanded, setIsZExpanded] = useState(false)
-  const [expandedEmpId, setExpandedEmpId] = useState<string | null>(null) // State για την ομαδοποίηση υπαλλήλων
+  const [expandedEmpId, setExpandedEmpId] = useState<string | null>(null)
   
   const [storeName, setStoreName] = useState('Cosy App')
-  const [permissions, setPermissions] = useState({ role: 'user', store_id: null as string | null })
+  const [permissions, setPermissions] = useState({ 
+    role: 'user', 
+    store_id: null as string | null,
+    can_view_analysis: false
+  })
 
   useEffect(() => {
     async function fetchAppData() {
@@ -30,9 +34,12 @@ function DashboardContent() {
           const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).maybeSingle()
           if (profile) {
             setStoreName(profile.store_name || 'Cosy App')
-            setPermissions({ role: profile.role || 'user', store_id: profile.store_id })
+            setPermissions({ 
+              role: profile.role || 'user', 
+              store_id: profile.store_id,
+              can_view_analysis: profile.can_view_analysis || false
+            })
 
-            // Φέρνουμε και το όνομα του υπαλλήλου από τη σχέση employees
             const { data: transData } = await supabase.from('transactions')
               .select('*, suppliers(name), fixed_assets(name), employees(full_name)')
               .eq('store_id', profile.store_id)
@@ -57,35 +64,27 @@ function DashboardContent() {
     setExpandedEmpId(null)
   }
 
-  // --- ΛΟΓΙΚΗ ΟΜΑΔΟΠΟΙΗΣΗΣ ---
-  
-  // 1. Ομαδοποίηση Ζ
+  const shiftDate = (days: number) => {
+    const d = new Date(selectedDate)
+    d.setDate(d.getDate() + days)
+    handleDateChange(d.toISOString().split('T')[0])
+  }
+
+  // ΛΟΓΙΚΗ ΟΜΑΔΟΠΟΙΗΣΗΣ
   const zEntries = transactions.filter(t => t.category === 'Εσοδα Ζ')
   const zTotal = zEntries.reduce((acc, t) => acc + Number(t.amount), 0)
 
-  // 2. Ομαδοποίηση Πληρωμών Προσωπικού
   const salaryEntries = transactions.filter(t => t.category === 'Προσωπικό')
   const groupedSalaries = salaryEntries.reduce((acc: any, t) => {
     const empId = t.employee_id || 'unknown';
-    if (!acc[empId]) {
-      acc[empId] = {
-        name: t.employees?.full_name || 'Προσωπικό',
-        total: 0,
-        items: []
-      }
-    }
+    if (!acc[empId]) { acc[empId] = { name: t.employees?.full_name || 'Προσωπικό', total: 0, items: [] } }
     acc[empId].total += Math.abs(Number(t.amount))
     acc[empId].items.push(t)
     return acc
   }, {})
 
-  // 3. Λοιπές Κινήσεις (όχι Ζ, όχι Προσωπικό, όχι Pocket)
-  const regularEntries = transactions.filter(t => 
-    t.category !== 'Εσοδα Ζ' && 
-    t.category !== 'Προσωπικό' && 
-    t.category !== 'pocket'
-  )
-
+  const regularEntries = transactions.filter(t => t.category !== 'Εσοδα Ζ' && t.category !== 'Προσωπικό' && t.category !== 'pocket')
+  
   const totalInc = transactions.filter(t => t.type === 'income').reduce((acc, t) => acc + Number(t.amount), 0)
   const totalExp = transactions.filter(t => t.type === 'expense' && !t.is_credit && t.category !== 'pocket').reduce((acc, t) => acc + Number(t.amount), 0)
   const expenseRatio = totalInc > 0 ? (totalExp / totalInc) * 100 : 0
@@ -94,17 +93,14 @@ function DashboardContent() {
   const handleDelete = async (id: string) => {
     if (confirm('Διαγραφή κίνησης;')) {
       const { error } = await supabase.from('transactions').delete().eq('id', id)
-      if (!error) {
-        setTransactions(prev => prev.filter(t => t.id !== id))
-        setExpandedTx(null)
-      }
+      if (!error) { setTransactions(prev => prev.filter(t => t.id !== id)); setExpandedTx(null); }
     }
   }
 
   return (
     <div style={{ maxWidth: '500px', margin: '0 auto', fontFamily: 'sans-serif', position: 'relative' }}>
       
-      {/* HEADER */}
+      {/* HEADER & DROPDOWN MENU - ΤΩΡΑ ΔΟΥΛΕΥΕΙ */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px', paddingTop: '15px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <div style={logoBoxStyle}><span style={{ fontSize: '20px' }}>📈</span></div>
@@ -113,25 +109,50 @@ function DashboardContent() {
             <p style={{ margin: '2px 0 0', fontSize: '10px', color: '#94a3b8', fontWeight: '800', textTransform: 'uppercase' }}>Business Dashboard</p>
           </div>
         </div>
-        <button onClick={() => setIsMenuOpen(!isMenuOpen)} style={menuBtnStyle}>⋮</button>
+        
+        <div style={{ position: 'relative', zIndex: 1001 }}>
+          <button onClick={() => setIsMenuOpen(!isMenuOpen)} style={menuBtnStyle}>⋮</button>
+          {isMenuOpen && (
+            <div style={dropdownStyle}>
+              <p style={menuSectionLabel}>ΔΙΑΧΕΙΡΙΣΗ</p>
+              {isAdmin && (
+                <>
+                  <Link href="/suppliers" style={menuItem} onClick={() => setIsMenuOpen(false)}>🛒 Προμηθευτές</Link>
+                  <Link href="/fixed-assets" style={menuItem} onClick={() => setIsMenuOpen(false)}>🔌 Πάγια</Link>
+                  <Link href="/employees" style={menuItem} onClick={() => setIsMenuOpen(false)}>👥 Υπάλληλοι</Link>
+                  <Link href="/suppliers-balance" style={menuItem} onClick={() => setIsMenuOpen(false)}>🚩 Καρτέλες (Χρέη)</Link>
+                </>
+              )}
+              {(isAdmin || permissions.can_view_analysis) && (
+                <Link href="/analysis" style={menuItem} onClick={() => setIsMenuOpen(false)}>📈 Ανάλυση</Link>
+              )}
+              <div style={divider} />
+              <p style={menuSectionLabel}>ΕΦΑΡΜΟΓΗ</p>
+              {isAdmin && <Link href="/admin/permissions" style={menuItem} onClick={() => setIsMenuOpen(false)}>🔐 Δικαιώματα</Link>}
+              <Link href="/subscription" style={menuItem} onClick={() => setIsMenuOpen(false)}>💳 Συνδρομή</Link>
+              <Link href="/settings" style={menuItem} onClick={() => setIsMenuOpen(false)}>⚙️ Ρυθμίσεις</Link>
+              <div style={divider} />
+              <button onClick={() => supabase.auth.signOut().then(() => window.location.href='/login')} style={logoutBtnStyle}>ΑΠΟΣΥΝΔΕΣΗ 🚪</button>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* DATE SELECTOR */}
       <div style={dateBarStyle}>
+        <button onClick={() => shiftDate(-1)} style={dateArrowStyle}>←</button>
         <div style={{ position: 'relative', flex: 1, textAlign: 'center' }}>
           <input type="date" value={selectedDate} onChange={(e) => handleDateChange(e.target.value)} style={dateInputStyle} />
           <span style={dateDisplayStyle}>
             {selectedDate === new Date().toISOString().split('T')[0] ? 'ΣΗΜΕΡΑ' : new Date(selectedDate).toLocaleDateString('el-GR', { weekday: 'long', day: 'numeric', month: 'short' }).toUpperCase()}
           </span>
         </div>
+        <button onClick={() => shiftDate(1)} style={dateArrowStyle}>→</button>
       </div>
 
       {/* STATS */}
       <div style={{ display: 'flex', gap: '15px', marginBottom: '20px' }}>
-        <div style={cardStyle}>
-          <p style={labelStyle}>ΕΣΟΔΑ ΗΜΕΡΑΣ</p>
-          <p style={{ color: '#16a34a', fontSize: '22px', fontWeight: '900', margin: 0 }}>{totalInc.toFixed(2)}€</p>
-        </div>
+        <div style={cardStyle}><p style={labelStyle}>ΕΣΟΔΑ ΗΜΕΡΑΣ</p><p style={{ color: '#16a34a', fontSize: '22px', fontWeight: '900', margin: 0 }}>{totalInc.toFixed(2)}€</p></div>
         <div style={cardStyle}>
           <p style={labelStyle}>ΕΞΟΔΑ ΗΜΕΡΑΣ</p>
           <p style={{ color: '#dc2626', fontSize: '22px', fontWeight: '900', margin: 0 }}>{totalExp.toFixed(2)}€</p>
@@ -154,28 +175,19 @@ function DashboardContent() {
         
         {loading ? <div style={{ textAlign: 'center', padding: '20px' }}>Φόρτωση...</div> : (
           <>
-            {/* 1. GROUPED DAILY Z */}
+            {/* 1. ΟΜΑΔΟΠΟΙΗΜΕΝΟ Ζ */}
             {zTotal > 0 && (
               <div style={{ marginBottom: '5px' }}>
                 <div onClick={() => isAdmin && setIsZExpanded(!isZExpanded)} style={{ ...itemStyle, backgroundColor: '#0f172a', color: 'white', borderRadius: isZExpanded ? '20px 20px 0 0' : '20px', cursor: isAdmin ? 'pointer' : 'default' }}>
-                  <div style={{ flex: 1 }}>
-                    <p style={{ fontWeight: '800', margin: 0, fontSize: '15px' }}>📟 ΚΛΕΙΣΙΜΟ ΤΑΜΕΙΟΥ (ΣΥΝΟΛΟ Ζ)</p>
-                    <span style={{ fontSize: '10px', opacity: 0.7 }}>{zEntries.length} Καταχωρήσεις</span>
-                  </div>
+                  <div style={{ flex: 1 }}><p style={{ fontWeight: '800', margin: 0, fontSize: '15px' }}>📟 ΚΛΕΙΣΙΜΟ ΤΑΜΕΙΟΥ (ΣΥΝΟΛΟ Ζ)</p><span style={{ fontSize: '10px', opacity: 0.7 }}>{zEntries.length} Καταχωρήσεις</span></div>
                   <p style={{ fontWeight: '900', fontSize: '18px', margin: 0 }}>+{zTotal.toFixed(2)}€</p>
                 </div>
                 {isZExpanded && (
                   <div style={zBreakdownPanel}>
                     {zEntries.map(z => (
                       <div key={z.id} style={zSubItem}>
-                        <div style={{ flex: 1 }}>
-                          <p style={{ fontWeight: '700', margin: 0, fontSize: '13px' }}>{z.method} (Ζ)</p>
-                          <p style={{ fontSize: '10px', color: '#94a3b8', margin: 0 }}>Ποσοστό: {((Number(z.amount) / zTotal) * 100).toFixed(1)}%</p>
-                        </div>
-                        <div style={{ textAlign: 'right', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                          <p style={{ fontWeight: '800', fontSize: '14px', margin: 0 }}>{Number(z.amount).toFixed(2)}€</p>
-                          <button onClick={() => handleDelete(z.id)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}>🗑️</button>
-                        </div>
+                        <div style={{ flex: 1 }}><p style={{ fontWeight: '700', margin: 0, fontSize: '13px' }}>{z.method} (Ζ)</p><p style={{ fontSize: '10px', color: '#94a3b8', margin: 0 }}>Ποσοστό: {((Number(z.amount) / zTotal) * 100).toFixed(1)}%</p></div>
+                        <div style={{ textAlign: 'right', display: 'flex', alignItems: 'center', gap: '10px' }}><p style={{ fontWeight: '800', fontSize: '14px', margin: 0 }}>{Number(z.amount).toFixed(2)}€</p><button onClick={() => handleDelete(z.id)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}>🗑️</button></div>
                       </div>
                     ))}
                   </div>
@@ -183,34 +195,22 @@ function DashboardContent() {
               </div>
             )}
 
-            {/* 2. GROUPED EMPLOYEE PAYMENTS - Η ΝΕΑ ΛΟΓΙΚΗ ΣΟΥ */}
+            {/* 2. ΟΜΑΔΟΠΟΙΗΜΕΝΟΙ ΥΠΑΛΛΗΛΟΙ */}
             {Object.keys(groupedSalaries).map(empId => {
               const group = groupedSalaries[empId];
               const isExpanded = expandedEmpId === empId;
               return (
                 <div key={empId} style={{ marginBottom: '5px' }}>
-                  <div 
-                    onClick={() => isAdmin && setExpandedEmpId(isExpanded ? null : empId)}
-                    style={{ ...itemStyle, backgroundColor: '#eff6ff', borderRadius: isExpanded ? '20px 20px 0 0' : '20px', border: '1px solid #dbeafe', cursor: isAdmin ? 'pointer' : 'default' }}
-                  >
-                    <div style={{ flex: 1 }}>
-                      <p style={{ fontWeight: '800', margin: 0, fontSize: '15px', color: '#1e40af' }}>👤 ΠΛΗΡΩΜΗ: {group.name.toUpperCase()}</p>
-                      <span style={{ fontSize: '10px', color: '#60a5fa', fontWeight: 'bold' }}>{group.items.length} Πληρωμές</span>
-                    </div>
+                  <div onClick={() => isAdmin && setExpandedEmpId(isExpanded ? null : empId)} style={{ ...itemStyle, backgroundColor: '#eff6ff', borderRadius: isExpanded ? '20px 20px 0 0' : '20px', border: '1px solid #dbeafe', cursor: isAdmin ? 'pointer' : 'default' }}>
+                    <div style={{ flex: 1 }}><p style={{ fontWeight: '800', margin: 0, fontSize: '15px', color: '#1e40af' }}>👤 ΠΛΗΡΩΜΗ: {group.name.toUpperCase()}</p><span style={{ fontSize: '10px', color: '#60a5fa', fontWeight: 'bold' }}>{group.items.length} Πληρωμές</span></div>
                     <p style={{ fontWeight: '900', fontSize: '18px', color: '#dc2626', margin: 0 }}>-{group.total.toFixed(2)}€</p>
                   </div>
                   {isExpanded && (
                     <div style={{ ...zBreakdownPanel, border: '1px solid #dbeafe', borderTop: 'none' }}>
                       {group.items.map((t: any) => (
                         <div key={t.id} style={zSubItem}>
-                          <div style={{ flex: 1 }}>
-                            <p style={{ fontWeight: '700', margin: 0, fontSize: '13px' }}>{t.method}</p>
-                            <p style={{ fontSize: '10px', color: '#94a3b8', margin: 0 }}>Ποσοστό: {((Math.abs(Number(t.amount)) / group.total) * 100).toFixed(1)}%</p>
-                          </div>
-                          <div style={{ textAlign: 'right', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                            <p style={{ fontWeight: '800', fontSize: '14px', margin: 0 }}>{Math.abs(Number(t.amount)).toFixed(2)}€</p>
-                            <button onClick={() => handleDelete(t.id)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}>🗑️</button>
-                          </div>
+                          <div style={{ flex: 1 }}><p style={{ fontWeight: '700', margin: 0, fontSize: '13px' }}>{t.method}</p><p style={{ fontSize: '10px', color: '#94a3b8', margin: 0 }}>Ποσοστό: {((Math.abs(Number(t.amount)) / group.total) * 100).toFixed(1)}%</p></div>
+                          <div style={{ textAlign: 'right', display: 'flex', alignItems: 'center', gap: '10px' }}><p style={{ fontWeight: '800', fontSize: '14px', margin: 0 }}>{Math.abs(Number(t.amount)).toFixed(2)}€</p><button onClick={() => handleDelete(t.id)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}>🗑️</button></div>
                         </div>
                       ))}
                     </div>
@@ -219,17 +219,12 @@ function DashboardContent() {
               );
             })}
 
-            {/* 3. REGULAR ENTRIES */}
+            {/* 3. ΛΟΙΠΕΣ ΚΙΝΗΣΕΙΣ */}
             {regularEntries.map(t => (
               <div key={t.id} style={{ marginBottom: '5px' }}>
                 <div onClick={() => isAdmin && setExpandedTx(expandedTx === t.id ? null : t.id)} style={{ ...itemStyle, borderRadius: expandedTx === t.id ? '20px 20px 0 0' : '20px', borderBottom: expandedTx === t.id ? 'none' : '1px solid #f1f5f9' }}>
                   <div style={{ flex: 1 }}>
-                    <p style={{ fontWeight: '800', margin: 0, fontSize: '15px' }}>
-                      {t.type === 'income' ? '💰 ' + (t.notes || 'ΕΙΣΠΡΑΞΗ') : (
-                        t.is_credit ? '🚩 ΠΙΣΤΩΣΗ: ' + (t.suppliers?.name || 'Προμηθευτής') : 
-                        t.category === 'Πάγια' ? '🔌 ' + (t.fixed_assets?.name || 'Πάγιο') : '💸 ' + (t.suppliers?.name || t.category)
-                      )}
-                    </p>
+                    <p style={{ fontWeight: '800', margin: 0, fontSize: '15px' }}>{t.type === 'income' ? '💰 ' + (t.notes || 'ΕΙΣΠΡΑΞΗ') : (t.is_credit ? '🚩 ΠΙΣΤΩΣΗ: ' + (t.suppliers?.name || 'Προμηθευτής') : t.category === 'Πάγια' ? '🔌 ' + (t.fixed_assets?.name || 'Πάγιο') : '💸 ' + (t.suppliers?.name || t.category))}</p>
                     <div style={{ display: 'flex', gap: '6px', marginTop: '4px' }}><span style={subLabelStyle}>{t.method}</span><span style={userBadge}>👤 {t.created_by_name}</span></div>
                   </div>
                   <p style={{ fontWeight: '900', fontSize: '16px', color: t.type === 'income' ? '#16a34a' : '#dc2626', margin: 0 }}>{t.type === 'income' ? '+' : '-'}{Number(t.amount).toFixed(2)}€</p>
@@ -249,12 +244,18 @@ function DashboardContent() {
   )
 }
 
-// ΣΤΥΛ (Διατηρούνται ίδια με προηγουμένως για ομοιομορφία)
+// ΣΤΥΛ (Fixed with :any)
 const logoBoxStyle: any = { width: '42px', height: '42px', backgroundColor: '#0f172a', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 10px rgba(15, 23, 42, 0.15)' };
 const dateBarStyle: any = { display: 'flex', alignItems: 'center', backgroundColor: 'white', padding: '10px 15px', borderRadius: '20px', marginBottom: '20px', border: '1px solid #f1f5f9' };
+const dateArrowStyle: any = { background: 'none', border: 'none', fontSize: '18px', color: '#0f172a', fontWeight: '900', cursor: 'pointer' };
 const dateInputStyle: any = { position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', opacity: 0, cursor: 'pointer' };
 const dateDisplayStyle: any = { fontSize: '13px', fontWeight: '900', color: '#0f172a' };
 const menuBtnStyle: any = { backgroundColor: 'white', border: '1px solid #e2e8f0', width: '40px', height: '40px', borderRadius: '12px', fontSize: '20px', color: '#64748b', cursor: 'pointer' };
+const dropdownStyle: any = { position: 'absolute' as any, top: '50px', right: '0', backgroundColor: 'white', minWidth: '220px', borderRadius: '20px', boxShadow: '0 10px 30px rgba(0,0,0,0.15)', padding: '12px', zIndex: 1100, border: '1px solid #f1f5f9' };
+const menuItem: any = { display: 'block', padding: '12px', textDecoration: 'none', color: '#334155', fontWeight: '700', fontSize: '14px', borderRadius: '10px' };
+const logoutBtnStyle: any = { ...menuItem, color: '#ef4444', border: 'none', background: '#fee2e2', width: '100%', cursor: 'pointer', textAlign: 'left', marginTop: '5px' };
+const menuSectionLabel: any = { fontSize: '9px', fontWeight: '800', color: '#94a3b8', marginBottom: '8px', paddingLeft: '12px', marginTop: '8px' };
+const divider: any = { height: '1px', backgroundColor: '#f1f5f9', margin: '8px 0' };
 const cardStyle: any = { flex: 1, backgroundColor: 'white', padding: '15px', borderRadius: '22px', textAlign: 'center', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.02)' };
 const labelStyle: any = { fontSize: '9px', fontWeight: '800', color: '#94a3b8', marginBottom: '4px' };
 const btnStyle: any = { flex: 1, padding: '16px', borderRadius: '18px', color: 'white', textDecoration: 'none', textAlign: 'center', fontWeight: '800', fontSize: '14px' };
