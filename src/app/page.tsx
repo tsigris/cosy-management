@@ -76,8 +76,7 @@ function DashboardContent() {
   const totalInc = transactions.filter(t => t.type === 'income').reduce((acc, t) => acc + Number(t.amount), 0)
   const totalExp = transactions.filter(t => t.type === 'expense' && !t.is_credit && t.category !== 'pocket').reduce((acc, t) => acc + Number(t.amount), 0)
   
-  // Υπολογισμός Ποσοστού Εξόδων επί των Εσόδων
-  const expenseRatio = totalInc > 0 ? Math.min((totalExp / totalInc) * 100, 100) : 0
+  const expenseRatio = totalInc > 0 ? (totalExp / totalInc) * 100 : 0
   const isAdmin = permissions.role === 'admin'
 
   const handleDelete = async (id: string) => {
@@ -136,26 +135,19 @@ function DashboardContent() {
         <button onClick={() => shiftDate(1)} style={dateArrowStyle}>→</button>
       </div>
 
-      {/* STATS CARDS */}
-      <div style={{ display: 'flex', gap: '15px', marginBottom: '10px' }}>
+      {/* STATS CARDS WITH PERCENTAGES */}
+      <div style={{ display: 'flex', gap: '15px', marginBottom: '20px' }}>
         <div style={cardStyle}>
           <p style={labelStyle}>ΕΣΟΔΑ ΗΜΕΡΑΣ</p>
           <p style={{ color: '#16a34a', fontSize: '22px', fontWeight: '900', margin: 0 }}>{totalInc.toFixed(2)}€</p>
+          <p style={{ fontSize: '9px', fontWeight: '800', color: '#94a3b8', marginTop: '4px' }}>100% ΤΖΙΡΟΣ</p>
         </div>
         <div style={cardStyle}>
           <p style={labelStyle}>ΕΞΟΔΑ ΗΜΕΡΑΣ</p>
           <p style={{ color: '#dc2626', fontSize: '22px', fontWeight: '900', margin: 0 }}>{totalExp.toFixed(2)}€</p>
-        </div>
-      </div>
-
-      {/* NEW: QUICK GLANCE RATIO BAR */}
-      <div style={{ marginBottom: '20px', padding: '0 5px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px' }}>
-            <span style={{ fontSize: '10px', fontWeight: '800', color: '#94a3b8' }}>ΣΧΕΣΗ ΕΞΟΔΩΝ / ΕΣΟΔΩΝ</span>
-            <span style={{ fontSize: '10px', fontWeight: '900', color: expenseRatio > 70 ? '#ef4444' : '#64748b' }}>{expenseRatio.toFixed(1)}%</span>
-        </div>
-        <div style={{ height: '8px', backgroundColor: '#e2e8f0', borderRadius: '4px', overflow: 'hidden' }}>
-            <div style={{ width: `${expenseRatio}%`, height: '100%', backgroundColor: expenseRatio > 70 ? '#ef4444' : (expenseRatio > 40 ? '#f59e0b' : '#10b981'), transition: 'width 0.5s ease' }} />
+          <p style={{ fontSize: '9px', fontWeight: '900', color: expenseRatio > 70 ? '#ef4444' : '#64748b', marginTop: '4px' }}>
+            {expenseRatio.toFixed(1)}% ΤΟΥ ΤΖΙΡΟΥ
+          </p>
         </div>
       </div>
 
@@ -173,7 +165,6 @@ function DashboardContent() {
         <p style={{ fontSize: '11px', fontWeight: '800', color: '#94a3b8', textTransform: 'uppercase' }}>Κινήσεις Ημερομηνίας</p>
         {loading ? <div style={{ textAlign: 'center', padding: '20px' }}>Φόρτωση...</div> : (
           <>
-            {/* GROUPED DAILY Z */}
             {zTotal > 0 && (
               <div style={{ marginBottom: '5px' }}>
                 <div onClick={() => isAdmin && setIsZExpanded(!isZExpanded)} style={{ ...itemStyle, backgroundColor: '#0f172a', color: 'white', borderRadius: isZExpanded ? '20px 20px 0 0' : '20px', cursor: isAdmin ? 'pointer' : 'default' }}>
@@ -193,7 +184,6 @@ function DashboardContent() {
               </div>
             )}
 
-            {/* REGULAR TRANSACTIONS */}
             {regularEntries.map(t => (
               <div key={t.id} style={{ marginBottom: '5px' }}>
                 <div onClick={() => isAdmin && setExpandedTx(expandedTx === t.id ? null : t.id)} style={{ ...itemStyle, borderRadius: expandedTx === t.id ? '20px 20px 0 0' : '20px', borderBottom: expandedTx === t.id ? 'none' : '1px solid #f1f5f9' }}>
@@ -218,13 +208,13 @@ function DashboardContent() {
   )
 }
 
-// STYLES DEFINITION (Fixed with :any to avoid VS Code errors)
+// STYLES (Fixed with :any to avoid build errors)
 const dateBarStyle: any = { display: 'flex', alignItems: 'center', backgroundColor: 'white', padding: '10px 15px', borderRadius: '20px', marginBottom: '20px', border: '1px solid #f1f5f9' };
 const dateArrowStyle: any = { background: 'none', border: 'none', fontSize: '18px', color: '#0f172a', fontWeight: '900', cursor: 'pointer' };
 const dateInputStyle: any = { position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', opacity: 0, cursor: 'pointer' };
 const dateDisplayStyle: any = { fontSize: '13px', fontWeight: '900', color: '#0f172a' };
 const menuBtnStyle: any = { backgroundColor: 'white', border: '1px solid #e2e8f0', width: '40px', height: '40px', borderRadius: '12px', fontSize: '20px', color: '#64748b', cursor: 'pointer' };
-const dropdownStyle: any = { position: 'absolute' as any, top: '50px', right: '0', backgroundColor: 'white', minWidth: '220px', borderRadius: '20px', boxShadow: '0 10px 30px rgba(0,0,0,0.15)', padding: '12px', zIndex: 1100, border: '1px solid #f1f5f9' };
+const dropdownStyle: any = { position: 'absolute', top: '50px', right: '0', backgroundColor: 'white', minWidth: '220px', borderRadius: '20px', boxShadow: '0 10px 30px rgba(0,0,0,0.15)', padding: '12px', zIndex: 1100, border: '1px solid #f1f5f9' };
 const menuItem: any = { display: 'block', padding: '12px', textDecoration: 'none', color: '#334155', fontWeight: '700', fontSize: '14px', borderRadius: '10px' };
 const logoutBtnStyle: any = { ...menuItem, color: '#ef4444', border: 'none', background: '#fee2e2', width: '100%', cursor: 'pointer', textAlign: 'left', marginTop: '5px' };
 const menuSectionLabel: any = { fontSize: '9px', fontWeight: '800', color: '#94a3b8', marginBottom: '8px', paddingLeft: '12px', marginTop: '8px' };
