@@ -5,17 +5,15 @@
   --foreground: #000000;
 }
 
-/* ΔΙΟΡΘΩΣΗ SCROLLING ΓΙΑ IPHONE APP */
 html, body {
-  /* Χρησιμοποιούμε dvh για να υπολογίζει σωστά τα όρια του iPhone */
-  height: 100dvh; 
+  height: 100%;
   width: 100%;
   margin: 0;
   padding: 0;
-  /* Απαγορεύουμε το κούνημα όλης της σελίδας (bounce) */
+  /* Κλειδώνει το "σώμα" για να δουλέψει το εσωτερικό scroll του main */
   overflow: hidden; 
   background-color: #f8fafc;
-  position: fixed; /* Κλειδώνει το background για να δουλέψει το εσωτερικό scroll */
+  position: fixed; 
 }
 
 body {
@@ -23,30 +21,19 @@ body {
   flex-direction: column;
   color: #000000;
   font-family: -apple-system, BlinkMacSystemFont, sans-serif;
-  -webkit-font-smoothing: antialiased;
 }
 
-/* ΤΟ ΚΕΝΤΡΙΚΟ CONTAINER ΠΟΥ ΘΑ ΣΚΡΟΛΑΡΕΙ */
 main {
   flex: 1;
   overflow-y: auto !important;
-  /* Ενεργοποιεί το ομαλό «γλίστρημα» στο iPhone */
   -webkit-overflow-scrolling: touch !important; 
-  padding-bottom: env(safe-area-inset-bottom, 20px);
+  padding-bottom: 100px; /* Χώρος για τη μπάρα του iPhone */
 }
 
-/* ΔΙΟΡΘΩΣΗ ΓΙΑ ΤΑ ΠΕΔΙΑ ΠΟΥ ΦΑΙΝΟΝΤΑΝ ΑΧΝΑ */
-input, select, textarea {
+/* ΕΝΤΟΝΑ ΓΡΑΜΜΑΤΑ ΠΑΝΤΟΥ */
+input, select, textarea, button {
   color: #000000 !important;
   font-weight: 700 !important;
-  font-size: 16px !important; /* Σταματάει το αυτόματο ζουμ στο iPhone */
-  background-color: #ffffff !important;
-  border: 2px solid #cbd5e1 !important;
-  appearance: none; /* Καθαρό UI στο iOS */
-}
-
-label {
-  color: #0f172a !important;
-  font-weight: 900 !important;
-  font-size: 13px !important;
+  font-size: 16px !important;
+  border: 2px solid #000000 !important;
 }
