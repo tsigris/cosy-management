@@ -9,6 +9,7 @@ function SuppliersContent() {
   const [suppliers, setSuppliers] = useState<any[]>([])
   const [transactions, setTransactions] = useState<any[]>([])
   
+  // State για τη φόρμα
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
   const [afm, setAfm] = useState('') 
@@ -26,7 +27,9 @@ function SuppliersContent() {
     try {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
+
       const { data: profile } = await supabase.from('profiles').select('store_id').eq('id', user.id).single()
+      
       if (profile?.store_id) {
         setStoreId(profile.store_id)
         const [sData, tData] = await Promise.all([
@@ -47,26 +50,46 @@ function SuppliersContent() {
 
   async function handleSave() {
     if (!name) return alert('Συμπληρώστε το όνομα')
+    
     if (afm && (afm.length !== 9 || isNaN(Number(afm)))) {
       return alert('Το ΑΦΜ πρέπει να έχει ακριβώς 9 ψηφία.')
     }
 
     setLoading(true)
     try {
-      const supplierData = { name, phone, vat_number: afm, category, store_id: storeId }
-      if (editingId) {
-        await supabase.from('suppliers').update(supplierData).eq('id', editingId)
-      } else {
-        await supabase.from('suppliers').insert([supplierData])
+      const supplierData = { 
+        name, 
+        phone, 
+        vat_number: afm, 
+        category,
+        store_id: storeId 
       }
-      resetForm(); fetchData();
-    } catch (error: any) { alert(error.message) } finally { setLoading(false) }
+
+      if (editingId) {
+        const { error } = await supabase.from('suppliers').update(supplierData).eq('id', editingId)
+        if (error) throw error
+      } else {
+        const { error } = await supabase.from('suppliers').insert([supplierData])
+        if (error) throw error
+      }
+
+      resetForm()
+      fetchData()
+    } catch (error: any) {
+      alert('Σφάλμα: ' + error.message)
+    } finally {
+      setLoading(false)
+    }
   }
 
   const handleEdit = (s: any) => {
-    setEditingId(s.id); setName(s.name); setPhone(s.phone || '');
-    setAfm(s.vat_number || ''); setCategory(s.category || 'Εμπορεύματα');
+    setEditingId(s.id); 
+    setName(s.name); 
+    setPhone(s.phone || '');
+    setAfm(s.vat_number || ''); 
+    setCategory(s.category || 'Εμπορεύματα');
     setIsFormOpen(true);
+    window.scrollTo(0, 0);
   }
 
   const resetForm = () => {
@@ -80,112 +103,128 @@ function SuppliersContent() {
     return '🏦'
   }
 
+  const handleDelete = async (id: string) => {
+    if (confirm('Θέλετε να διαγράψετε αυτόν τον προμηθευτή;')) {
+      const { error } = await supabase.from('suppliers').delete().eq('id', id)
+      if (!error) fetchData()
+      else alert(error.message)
+    }
+  }
+
   return (
-    <div style={{ maxWidth: '500px', margin: '0 auto', padding: '15px', paddingBottom: '120px' }}>
+    <div style={{ maxWidth: '500px', margin: '0 auto', padding: '16px' }}>
       
       {/* HEADER */}
-      <div style={headerStyle}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px', paddingTop: '10px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <div style={logoStyle}>🛒</div>
+          <div style={logoBoxStyle}>🛒</div>
           <div>
-            <h1 style={{ fontWeight: '950', fontSize: '22px', margin: 0, color: '#000000' }}>Προμηθευτές</h1>
-            <p style={{ fontSize: '10px', color: '#000', fontWeight: '900', textTransform: 'uppercase' }}>Διαχείριση</p>
+            <h1 style={{ fontWeight: '900', fontSize: '22px', margin: 0, color: '#0f172a' }}>Προμηθευτές</h1>
+            <p style={{ margin: 0, fontSize: '10px', color: '#64748b', fontWeight: '800', textTransform: 'uppercase' }}>Διαχείριση Συνεργατών</p>
           </div>
         </div>
-        <Link href="/" style={backBtn}>✕</Link>
+        <Link href="/" style={backBtnStyle}>✕</Link>
       </div>
 
-      <button onClick={() => { if(isFormOpen) resetForm(); setIsFormOpen(!isFormOpen); }} style={isFormOpen ? cancelBtn : addBtn}>
+      <button onClick={() => { if(isFormOpen) resetForm(); setIsFormOpen(!isFormOpen); }} style={isFormOpen ? cancelBtnStyle : addBtnStyle}>
         {isFormOpen ? 'ΑΚΥΡΩΣΗ' : '+ ΝΕΟΣ ΠΡΟΜΗΘΕΥΤΗΣ'}
       </button>
 
+      {/* ΦΟΡΜΑ ΚΑΤΑΧΩΡΗΣΗΣ */}
       {isFormOpen && (
-        <div style={{ ...formCard, border: editingId ? '3px solid #f59e0b' : '3px solid #000' }}>
-          <p style={labelStyle}>ΕΠΩΝΥΜΙΑ ΠΡΟΜΗΘΕΥΤΗ</p>
-          <input value={name} onChange={(e) => setName(e.target.value)} style={inputStyle} placeholder="Όνομα..." />
+        <div style={{ ...formCard, border: editingId ? '2px solid #f59e0b' : '1px solid #e2e8f0' }}>
+          <label>ΕΠΩΝΥΜΙΑ ΠΡΟΜΗΘΕΥΤΗ</label>
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="π.χ. Coffee Experts" />
 
           <div style={{ display: 'flex', gap: '10px', marginTop: '16px' }}>
-            <div style={{ flex: 1 }}><p style={labelStyle}>ΤΗΛΕΦΩΝΟ</p><input value={phone} onChange={(e) => setPhone(e.target.value)} style={inputStyle} /></div>
-            <div style={{ flex: 1 }}><p style={labelStyle}>ΑΦΜ</p><input maxLength={9} value={afm} onChange={(e) => setAfm(e.target.value)} style={inputStyle} /></div>
+            <div style={{ flex: 1 }}>
+              <label>ΤΗΛΕΦΩΝΟ</label>
+              <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="210..." />
+            </div>
+            <div style={{ flex: 1 }}>
+              <label>Α.Φ.Μ. (9 ΨΗΦΙΑ)</label>
+              <input maxLength={9} value={afm} onChange={(e) => setAfm(e.target.value)} placeholder="123456789" />
+            </div>
           </div>
 
-          <p style={{ ...labelStyle, marginTop: '16px' }}>ΚΑΤΗΓΟΡΙΑ</p>
-          <select value={category} onChange={(e) => setCategory(e.target.value)} style={inputStyle}>
+          <label style={{ marginTop: '16px' }}>ΚΑΤΗΓΟΡΙΑ</label>
+          <select value={category} onChange={(e) => setCategory(e.target.value)} style={{ width: '100%' }}>
             <option value="Εμπορεύματα">🛒 Εμπορεύματα</option>
             <option value="Πάγια">🏢 Πάγια / Λογαριασμοί</option>
             <option value="Λοιπά">📦 Λοιπά Έξοδα</option>
           </select>
 
-          <button onClick={handleSave} disabled={loading} style={{ ...saveBtn, backgroundColor: editingId ? '#f59e0b' : '#000' }}>
-            {loading ? 'ΚΑΤΑΧΩΡΗΣΗ...' : (editingId ? 'ΕΝΗΜΕΡΩΣΗ ΣΤΟΙΧΕΙΩΝ' : 'ΔΗΜΙΟΥΡΓΙΑ ΠΡΟΜΗΘΕΥΤΗ')}
+          <button onClick={handleSave} disabled={loading} style={{ ...saveBtn, backgroundColor: editingId ? '#f59e0b' : '#0f172a' }}>
+            {loading ? 'ΑΠΟΘΗΚΕΥΣΗ...' : (editingId ? 'ΕΝΗΜΕΡΩΣΗ ΣΤΟΙΧΕΙΩΝ' : 'ΔΗΜΙΟΥΡΓΙΑ ΠΡΟΜΗΘΕΥΤΗ')}
           </button>
         </div>
       )}
 
-      {/* ΛΙΣΤΑ */}
-      <div style={{ marginTop: '15px' }}>
-        <p style={{ fontSize: '11px', fontWeight: '950', color: '#000', marginBottom: '15px' }}>ΛΙΣΤΑ ΣΥΝΕΡΓΑΤΩΝ ({suppliers.length})</p>
+      {/* ΛΙΣΤΑ ΣΥΝΕΡΓΑΤΩΝ */}
+      <div style={{ marginTop: '12px' }}>
+        <p style={{ fontSize: '11px', fontWeight: '900', color: '#64748b', marginBottom: '15px', textTransform: 'uppercase' }}>ΛΙΣΤΑ ΣΥΝΕΡΓΑΤΩΝ ({suppliers.length})</p>
+        
         {suppliers.map(s => (
-          <div key={s.id} style={{ marginBottom: '15px' }}>
-            <div style={supplierCard}>
-              <div style={{ flex: 1 }} onClick={() => setShowTransactions(showTransactions === s.id ? null : s.id)}>
-                <p style={{ fontWeight: '950', margin: 0, fontSize: '17px', color: '#000' }}>{s.name.toUpperCase()}</p>
-                <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginTop: '6px' }}>
-                   <span style={badgeStyle}>{s.category}</span>
-                   <span style={{ fontSize: '14px', color: '#000', fontWeight: '950' }}>{getSupplierTurnover(s.id).toFixed(2)}€</span>
+          <div key={s.id} style={{ marginBottom: '12px' }}>
+            <div style={supplierItem}>
+              <div style={{ flex: 1, cursor: 'pointer' }} onClick={() => setShowTransactions(showTransactions === s.id ? null : s.id)}>
+                <p style={{ fontWeight: '800', margin: 0, fontSize: '16px', color: '#0f172a' }}>{s.name.toUpperCase()}</p>
+                <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginTop: '4px' }}>
+                   <span style={badgeStyle}>{s.category || 'Εμπορεύματα'}</span>
+                   <span style={{ fontSize: '13px', color: '#1e293b', fontWeight: '800' }}>Τζίρος: {getSupplierTurnover(s.id).toFixed(2)}€</span>
                 </div>
               </div>
-              <div style={{ display: 'flex', gap: '8px' }}>
-                <button onClick={() => handleEdit(s)} style={editBtn}>✎</button>
-                <button onClick={() => { if(confirm('Διαγραφή;')) { supabase.from('suppliers').delete().eq('id', s.id).then(() => fetchData()); } }} style={deleteBtn}>🗑️</button>
+              <div style={{ display: 'flex', gap: '6px' }}>
+                <button onClick={() => handleEdit(s)} style={editBtnStyle}>✎</button>
+                <button onClick={() => handleDelete(s.id)} style={deleteBtnStyle}>🗑️</button>
               </div>
             </div>
 
-            {/* ΙΣΤΟΡΙΚΟ */}
+            {/* ΕΠΕΚΤΑΣΗ ΙΣΤΟΡΙΚΟΥ */}
             {showTransactions === s.id && (
               <div style={transList}>
                 <p style={transHeader}>ΙΣΤΟΡΙΚΟ ΣΥΝΑΛΛΑΓΩΝ</p>
                 {transactions.filter(t => t.supplier_id === s.id).length > 0 ? (
                   transactions.filter(t => t.supplier_id === s.id).map(t => (
-                    <div key={t.id} style={transRow}>
-                      <span style={{ fontWeight: '800' }}>{t.date.split('T')[0]}</span>
+                    <div key={t.id} style={transItem}>
+                      <span style={{ color: '#475569', fontWeight: '700' }}>{t.date.split('T')[0]}</span>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <span>{getPaymentIcon(t.method)}</span>
-                        <span style={{ fontWeight: '950' }}>{Number(t.amount).toFixed(2)}€</span>
+                        <span style={{ fontSize: '14px' }}>{getPaymentIcon(t.method)}</span>
+                        <span style={{ fontWeight: '800', color: '#0f172a' }}>{Number(t.amount).toFixed(2)}€</span>
                       </div>
                     </div>
                   ))
-                ) : <p style={{ textAlign: 'center', fontSize: '13px', padding: '10px', fontWeight: '800' }}>Δεν υπάρχουν κινήσεις</p>}
+                ) : <p style={{ fontSize: '12px', color: '#94a3b8', textAlign: 'center', padding: '10px' }}>Δεν υπάρχουν κινήσεις</p>}
               </div>
             )}
           </div>
         ))}
       </div>
+
+      {/* SAFE AREA ΓΙΑ IPHONE */}
+      <div style={{ height: '100px' }} />
     </div>
   )
 }
 
-// STYLES - FULL CONTRAST & iOS READY
-const headerStyle: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px', paddingTop: '10px' };
-const logoStyle: any = { width: '45px', height: '45px', backgroundColor: '#000', color: '#fff', borderRadius: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px' };
-const backBtn: any = { textDecoration: 'none', color: '#000', fontSize: '20px', fontWeight: '950', width: '38px', height: '38px', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2.5px solid #000', borderRadius: '12px' };
-const addBtn: any = { width: '100%', padding: '18px', backgroundColor: '#000', color: '#fff', border: 'none', borderRadius: '18px', fontWeight: '950', fontSize: '14px' };
-const cancelBtn: any = { ...addBtn, backgroundColor: '#f1f5f9', color: '#000', border: '2.5px solid #000' };
-const formCard: any = { backgroundColor: '#fff', padding: '24px', borderRadius: '28px', marginBottom: '25px', boxShadow: '0 10px 15px rgba(0,0,0,0.1)' };
-const labelStyle: any = { fontSize: '11px', fontWeight: '950', color: '#000', marginBottom: '6px', textTransform: 'uppercase' };
-const inputStyle: any = { width: '100%', padding: '16px', borderRadius: '16px', border: '2.5px solid #000', fontWeight: '800', color: '#000', boxSizing: 'border-box' };
-const saveBtn: any = { width: '100%', padding: '18px', color: '#fff', border: 'none', borderRadius: '16px', fontWeight: '950', marginTop: '20px' };
-const supplierCard: any = { backgroundColor: '#fff', padding: '18px', borderRadius: '22px', border: '2.5px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' };
-const badgeStyle: any = { fontSize: '10px', fontWeight: '950', backgroundColor: '#000', padding: '4px 10px', borderRadius: '8px', color: '#fff' };
-const editBtn: any = { background: '#fef3c7', border: '2px solid #f59e0b', padding: '10px', borderRadius: '12px', fontSize: '18px' };
-const deleteBtn: any = { background: '#fee2e2', border: '2px solid #ef4444', padding: '10px', borderRadius: '12px', fontSize: '18px' };
-const transList: any = { backgroundColor: '#f8fafc', padding: '20px', borderRadius: '0 0 28px 28px', border: '2.5px solid #e2e8f0', borderTop: 'none', marginTop: '-12px' };
-const transHeader: any = { fontSize: '10px', fontWeight: '950', color: '#000', borderBottom: '2px solid #000', paddingBottom: '5px', marginBottom: '10px' };
-const transRow: any = { display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderBottom: '1px dashed #cbd5e1', fontSize: '14px' };
+// STYLES
+const logoBoxStyle: any = { width: '42px', height: '42px', backgroundColor: '#f1f5f9', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px' };
+const backBtnStyle: any = { textDecoration: 'none', color: '#64748b', fontSize: '18px', fontWeight: 'bold', width: '36px', height: '36px', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#fff', borderRadius: '10px', border: '1px solid #e2e8f0' };
+const addBtnStyle: any = { width: '100%', padding: '18px', backgroundColor: '#0f172a', color: 'white', border: 'none', borderRadius: '18px', fontWeight: '900', fontSize: '14px', marginBottom: '20px' };
+const cancelBtnStyle: any = { ...addBtnStyle, backgroundColor: '#f1f5f9', color: '#64748b', border: '1px solid #e2e8f0' };
+const formCard: any = { backgroundColor: 'white', padding: '24px', borderRadius: '28px', border: '1px solid #e2e8f0', marginBottom: '25px', boxShadow: '0 4px 6px rgba(0,0,0,0.02)' };
+const saveBtn: any = { width: '100%', padding: '18px', color: 'white', border: 'none', borderRadius: '14px', fontWeight: '900', marginTop: '20px' };
+const supplierItem: any = { backgroundColor: 'white', padding: '18px', borderRadius: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: '1px solid #f1f5f9' };
+const badgeStyle: any = { fontSize: '10px', fontWeight: '800', backgroundColor: '#f1f5f9', padding: '4px 10px', borderRadius: '8px', color: '#475569' };
+const editBtnStyle: any = { background: '#f1f5f9', border: 'none', padding: '10px', borderRadius: '10px', cursor: 'pointer', fontSize: '16px' };
+const deleteBtnStyle: any = { background: '#fee2e2', border: 'none', padding: '10px', borderRadius: '10px', cursor: 'pointer', fontSize: '16px' };
+const transList: any = { backgroundColor: '#f8fafc', padding: '15px', borderRadius: '0 0 20px 20px', marginTop: '-12px', border: '1px solid #f1f5f9', borderTop: 'none' };
+const transHeader: any = { fontSize: '10px', fontWeight: '900', color: '#64748b', marginBottom: '10px', borderBottom: '1px solid #e2e8f0', paddingBottom: '5px' };
+const transItem: any = { display: 'flex', justifyContent: 'space-between', fontSize: '13px', padding: '10px 0', borderBottom: '1px dashed #e2e8f0' };
 
 export default function SuppliersPage() {
   return (
-    <main>
+    <main style={{ backgroundColor: '#f8fafc', minHeight: '100vh', padding: '0 5px' }}>
       <Suspense fallback={<div>Φόρτωση...</div>}><SuppliersContent /></Suspense>
     </main>
   )
