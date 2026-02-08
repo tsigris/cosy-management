@@ -25,45 +25,39 @@ function DashboardContent() {
 
   useEffect(() => {
     async function fetchAppData() {
-      setLoading(true)
+      // Αν έχουμε ήδη δεδομένα, δεν δείχνουμε το "Φόρτωση" για να μην τρεμοπαίζει η οθόνη
+      if (transactions.length === 0) setLoading(true)
+      
       const { data: { user } } = await supabase.auth.getUser()
       
       if (user) {
-        // 1. Φόρτωση Προφίλ & Δικαιωμάτων
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('store_name, role, can_view_history, can_view_analysis, enable_payroll')
-          .eq('id', user.id)
-          .single()
-        
-        let userRole = 'user'
-        if (profile) {
-          userRole = profile.role || 'user'
+        // PARALLEL FETCH: Τραβάμε προφίλ και συναλλαγές ταυτόχρονα για μέγιστη ταχύτητα
+        const [profileRes, transRes] = await Promise.all([
+          supabase.from('profiles').select('*').eq('id', user.id).single(),
+          supabase.from('transactions')
+            .select('*, suppliers(name), fixed_assets(name)')
+            .gte('date', `${selectedDate}T00:00:00`)
+            .lte('date', `${selectedDate}T23:59:59`)
+            .order('created_at', { ascending: false })
+        ])
+
+        if (profileRes.data) {
+          const profile = profileRes.data
           setStoreName(profile.store_name || 'ΚΑΤΑΣΤΗΜΑ')
           setPermissions({
-            role: userRole,
+            role: profile.role || 'user',
             can_view_history: profile.can_view_history || false,
             can_view_analysis: profile.can_view_analysis || false,
             enable_payroll: profile.enable_payroll || false
           })
+
+          // Φιλτράρισμα: Ο Admin βλέπει τα πάντα, ο User μόνο τα δικά του
+          let data = transRes.data || []
+          if (profile.role !== 'admin') {
+            data = data.filter(t => t.user_id === user.id)
+          }
+          setTransactions(data)
         }
-
-        // 2. Query Συναλλαγών με φιλτράρισμα ρόλου
-        let query = supabase
-          .from('transactions')
-          .select('*, suppliers(name), fixed_assets(name)')
-          .gte('date', `${selectedDate}T00:00:00`)
-          .lte('date', `${selectedDate}T23:59:59`)
-
-        // ΑΝ ΕΙΝΑΙ USER: Βλέπει μόνο τα δικά του
-        // ΑΝ ΕΙΝΑΙ ADMIN: Βλέπει τα πάντα του καταστήματος (λόγω RLS στη βάση)
-        if (userRole !== 'admin') {
-          query = query.eq('user_id', user.id)
-        }
-
-        const { data: transData } = await query.order('created_at', { ascending: false })
-        
-        if (transData) setTransactions(transData)
       }
       setLoading(false)
     }
@@ -85,7 +79,6 @@ function DashboardContent() {
     }
   }
 
-  // Υπολογισμός συνόλων βάσει αυτών που εμφανίζονται στην οθόνη
   const totals = transactions.reduce((acc, t) => {
     const amt = Number(t.amount) || 0
     if (t.type === 'income') acc.inc += amt
@@ -102,7 +95,6 @@ function DashboardContent() {
   return (
     <div style={{ maxWidth: '500px', margin: '0 auto', fontFamily: 'sans-serif' }}>
       
-      {/* HEADER & MENU */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', paddingTop: '10px' }}>
         <h1 style={{ fontWeight: '900', fontSize: '26px', margin: 0, color: '#0f172a' }}>
           {storeName.toUpperCase()}
@@ -147,7 +139,6 @@ function DashboardContent() {
         </div>
       </div>
 
-      {/* SUMMARY CARDS */}
       <div style={{ display: 'flex', gap: '15px', marginBottom: '20px' }}>
         <div style={cardStyle}>
             <p style={labelStyle}>{isAdmin ? 'ΕΣΟΔΑ ΗΜΕΡΑΣ' : 'ΔΙΚΑ ΜΟΥ ΕΣΟΔΑ'}</p>
@@ -159,7 +150,6 @@ function DashboardContent() {
         </div>
       </div>
 
-      {/* QUICK ACTIONS */}
       <div style={{ display: 'flex', gap: '12px', marginBottom: '12px' }}>
         <Link href={`/add-income?date=${selectedDate}`} style={{ ...btnStyle, backgroundColor: '#10b981' }}>+ ΕΣΟΔΑ</Link>
         <Link href={`/add-expense?date=${selectedDate}`} style={{ ...btnStyle, backgroundColor: '#ef4444' }}>- ΕΞΟΔΑ</Link>
@@ -173,20 +163,19 @@ function DashboardContent() {
 
       <div style={{ marginBottom: '20px' }} />
 
-      {/* TRANSACTION LIST */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
         <p style={{ fontSize: '11px', fontWeight: '800', color: '#94a3b8', textTransform: 'uppercase' }}>
-          {isAdmin ? 'Καθημερινές Κινήσεις Καταστήματος' : 'Οι Καταχωρήσεις μου'}
+            {isAdmin ? 'Καθημερινές Κινήσεις' : 'Οι Καταχωρήσεις μου'}
         </p>
         
         {loading ? (
-          <p style={{ textAlign: 'center', padding: '20px' }}>Φόρτωση...</p>
+          <p style={{ textAlign: 'center', padding: '20px', color: '#94a3b8' }}>Φόρτωση...</p>
         ) : (
           filteredForList.length > 0 ? (
             filteredForList.map(t => (
               <div key={t.id} style={itemStyle}>
                 <div style={{ flex: 1 }}>
-                  <p style={{ fontWeight: '800', margin: 0, fontSize: '15px' }}>
+                  <p style={{ fontWeight: '800', margin: 0, fontSize: '15px', color: '#1e293b' }}>
                     {t.type === 'income' ? '💰 ' + (t.notes || 'ΕΙΣΠΡΑΞΗ') : (
                         t.is_credit ? <span>🚩 ΠΙΣΤΩΣΗ: {t.suppliers?.name}</span> : 
                         t.category === 'Πάγια' ? <span>🔌 {t.fixed_assets?.name}</span> :
@@ -207,7 +196,7 @@ function DashboardContent() {
               </div>
             ))
           ) : (
-            <div style={emptyState}>Δεν βρέθηκαν κινήσεις για αυτή την ημερομηνία.</div>
+            <div style={emptyState}>Δεν βρέθηκαν κινήσεις.</div>
           )
         )}
       </div>
