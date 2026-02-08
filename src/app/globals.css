@@ -1,51 +1,63 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f8fafc; /* Ελαφρύ γκρι-μπλε φόντο */
-  --foreground: #0f172a; /* Σκούρο Slate για ξεκούραστο διάβασμα */
+  /* Επαναφορά των Premium χρωμάτων */
+  --background: #f8fafc; /* Πολύ απαλό γκρι-μπλε */
+  --foreground: #1e293b; /* Σκούρο Slate (όχι κατάμαυρο) για ξεκούραστο διάβασμα */
 }
 
 html, body {
-  background-color: #f8fafc;
+  height: auto;
+  min-height: 100%;
+  width: 100%;
   margin: 0;
   padding: 0;
-  min-height: 100%;
-  /* Επιτρέπει το φυσικό σκρολάρισμα σε κάθε κινητό */
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  /* Επαναφορά φυσικού scrolling για iPhone & Android */
   overflow-x: hidden;
   overflow-y: auto;
-  -webkit-font-smoothing: antialiased;
+  -webkit-overflow-scrolling: touch;
 }
 
-body {
-  color: #0f172a;
-  font-family: 'Inter', -apple-system, system-ui, sans-serif;
-}
-
-/* ΠΕΔΙΑ: Καθαρά, λευκά με απαλό περίγραμμα */
+/* ΠΕΔΙΑ: Κομψά, λευκά, με απαλό περίγραμμα */
 input, select, textarea {
-  color: #0f172a !important;
-  font-weight: 600 !important;
-  font-size: 16px !important;
   background-color: #ffffff !important;
-  border: 1px solid #e2e8f0 !important; /* Πολύ πιο "μαλακό" από πριν */
-  border-radius: 14px !important;
-  padding: 12px !important;
-  transition: all 0.2s;
-}
-
-input:focus {
-  border-color: #3b82f6 !important;
-  box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.05);
+  border: 1px solid #e2e8f0 !important; /* Λεπτό, απαλό γκρι */
+  color: #1e293b !important;
+  border-radius: 12px !important;
+  padding: 12px 16px !important;
+  font-size: 15px !important;
+  font-weight: 600 !important;
   outline: none;
+  transition: all 0.2s ease-in-out;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
 }
 
-/* LABELS: Κομψά και επαγγελματικά */
+/* Όταν πατάς μέσα στο πεδίο */
+input:focus, select:focus, textarea:focus {
+  border-color: #3b82f6 !important; /* Απαλό μπλε */
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1) !important;
+}
+
+/* LABELS: Διακριτικά και επαγγελματικά */
 label {
-  color: #64748b !important;
-  font-weight: 800 !important;
+  color: #64748b !important; /* Μεσαίο γκρι */
   font-size: 11px !important;
+  font-weight: 700 !important;
   text-transform: uppercase;
   letter-spacing: 0.5px;
   margin-bottom: 6px;
   display: block;
+}
+
+/* ΚΟΥΜΠΙΑ (γενικό στυλ) */
+button {
+  font-weight: 700;
+  transition: transform 0.1s ease;
+}
+button:active {
+  transform: scale(0.98); /* Ελαφρύ εφέ όταν το πατάς */
 }
