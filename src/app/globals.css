@@ -2,62 +2,57 @@
 
 :root {
   --background: #ffffff;
-  --foreground: #0f172a; /* Πολύ σκούρο μπλε-μαύρο για κείμενα */
+  --foreground: #000000;
 }
 
-/* Force Light Mode - Σταθερότητα σε κάθε κινητό */
-:root {
-  --background: #ffffff;
-  --foreground: #0f172a;
+/* Διόρθωση για iPhone Home Screen App */
+html, body {
+  height: 100%;
+  overflow-x: hidden;
+  /* Επιτρέπει το scrolling στο iOS */
+  overflow-y: auto; 
+  -webkit-overflow-scrolling: touch;
+  background-color: #f8fafc;
 }
 
 body {
-  background-color: #f8fafc; /* Ελαφρύ γκρι φόντο για να "πετάνε" οι άσπρες κάρτες */
-  color: #0f172a;
-  font-family: system-ui, -apple-system, sans-serif;
+  color: #000000;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  /* Βελτίωση εμφάνισης γραμματοσειράς */
   -webkit-font-smoothing: antialiased;
-  text-rendering: optimizeLegibility;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-/* --- ΔΙΟΡΘΩΣΗ ΟΡΑΤΟΤΗΤΑΣ ΣΕ ΟΛΑ ΤΑ ΠΕΔΙΑ --- */
+/* --- ΕΝΤΟΝΑ ΓΡΑΜΜΑΤΑ & contrast --- */
 
-/* Κείμενο που γράφεις μέσα στα κουτάκια */
+/* Κείμενο μέσα στα πεδία (π.χ. ποσό 200) */
 input, select, textarea {
-  color: #000000 !important; /* Απόλυτο μαύρο για να φαίνεται καθαρά */
-  background-color: #ffffff !important;
+  color: #000000 !important;
   font-weight: 700 !important;
-  font-size: 16px !important; /* Αποφυγή zoom σε iPhone */
+  font-size: 16px !important; /* Σημαντικό: Εμποδίζει το αυτόματο ζουμ στο iPhone */
+  background-color: #ffffff !important;
+  border: 1.5px solid #cbd5e1 !important;
 }
 
-/* Placeholder (το αχνό κείμενο πριν γράψεις) */
+/* Placeholders (π.χ. "Επιλογή...") */
 ::placeholder {
-  color: #94a3b8 !important; /* Καθαρό γκρι */
+  color: #475569 !important;
   opacity: 1 !important;
-  font-weight: 500;
 }
 
-/* Labels (π.χ. "ΠΟΣΟ", "ΜΕΘΟΔΟΣ") */
-label, .label-text {
-  color: #334155 !important; /* Σκούρο Slate */
+/* Labels (π.χ. "ΠΡΟΜΗΘΕΥΤΗΣ") */
+label {
+  color: #0f172a !important;
   font-weight: 900 !important;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
   font-size: 11px;
+  display: block;
+  margin-bottom: 6px;
 }
 
-/* Διόρθωση για τα αχνά κείμενα σε όλο το app */
-span, p, div {
-  /* Αν κάτι είναι Slate-400 ή 500, το κάνουμε πιο σκούρο αυτόματα */
-  --tw-text-opacity: 1 !important;
-}
-
-/* --- ΠΡΟΣΑΡΜΟΓΗ ΓΙΑ ΤΑ ΠΕΔΙΑ ΠΟΥ ΗΤΑΝ ΑΧΝΑ ΣΤΙΣ ΦΩΤΟ --- */
-input[type="number"], input[type="text"], select {
-  border: 1.5px solid #e2e8f0 !important; /* Πιο έντονο περίγραμμα */
-  border-radius: 14px;
-}
-
-input:focus {
-  border-color: #3b82f6 !important; /* Μπλε όταν το πατάς */
-  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+/* Εξασφάλιση ότι τα containers σκρολάρουν */
+main {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
