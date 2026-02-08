@@ -9,7 +9,6 @@ function SuppliersContent() {
   const [suppliers, setSuppliers] = useState<any[]>([])
   const [transactions, setTransactions] = useState<any[]>([])
   
-  // State για τη φόρμα
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
   const [afm, setAfm] = useState('') 
@@ -32,7 +31,6 @@ function SuppliersContent() {
       
       if (profile?.store_id) {
         setStoreId(profile.store_id)
-        // Φιλτράρισμα βάσει store_id για ασφάλεια
         const [sData, tData] = await Promise.all([
           supabase.from('suppliers').select('*').eq('store_id', profile.store_id).order('name'),
           supabase.from('transactions').select('*').eq('store_id', profile.store_id).order('date', { ascending: false })
@@ -51,30 +49,17 @@ function SuppliersContent() {
 
   async function handleSave() {
     if (!name) return alert('Συμπληρώστε το όνομα')
-    
-    // ΕΛΕΓΧΟΣ ΑΦΜ (9 ΨΗΦΙΑ)
-    if (afm && (afm.length !== 9 || isNaN(Number(afm)))) {
-      return alert('Το ΑΦΜ πρέπει να έχει ακριβώς 9 ψηφία.')
-    }
+    if (afm && afm.length !== 9) return alert('Το ΑΦΜ πρέπει να έχει 9 ψηφία.')
 
     setLoading(true)
     try {
-      const supplierData = { 
-        name, 
-        phone, 
-        vat_number: afm, 
-        category,
-        store_id: storeId 
-      }
+      const supplierData = { name, phone, vat_number: afm, category, store_id: storeId }
 
       if (editingId) {
-        const { error } = await supabase.from('suppliers').update(supplierData).eq('id', editingId)
-        if (error) throw error
+        await supabase.from('suppliers').update(supplierData).eq('id', editingId)
       } else {
-        const { error } = await supabase.from('suppliers').insert([supplierData])
-        if (error) throw error
+        await supabase.from('suppliers').insert([supplierData])
       }
-
       resetForm()
       fetchData()
     } catch (error: any) {
@@ -85,13 +70,9 @@ function SuppliersContent() {
   }
 
   const handleEdit = (s: any) => {
-    setEditingId(s.id); 
-    setName(s.name); 
-    setPhone(s.phone || '');
-    setAfm(s.vat_number || ''); 
-    setCategory(s.category || 'Εμπορεύματα');
+    setEditingId(s.id); setName(s.name); setPhone(s.phone || '');
+    setAfm(s.vat_number || ''); setCategory(s.category || 'Εμπορεύματα');
     setIsFormOpen(true);
-    window.scrollTo(0, 0);
   }
 
   const resetForm = () => {
@@ -99,48 +80,33 @@ function SuppliersContent() {
     setEditingId(null); setIsFormOpen(false);
   }
 
-  const getPaymentIcon = (method: string) => {
-    if (method === 'Μετρητά') return '💵'
-    if (method === 'Κάρτα' || method === 'POS') return '💳'
-    return '🏦'
-  }
-
   return (
     <div style={{ maxWidth: '500px', margin: '0 auto', fontFamily: 'sans-serif' }}>
       
-      {/* PROFESSIONAL GRAPHIC HEADER */}
+      {/* HEADER */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '25px', paddingTop: '15px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <div style={logoBoxStyle}>
-            <span style={{ fontSize: '20px' }}>🛒</span>
-          </div>
+          <div style={logoBoxStyle}>🛒</div>
           <div>
-            <h1 style={{ fontWeight: '900', fontSize: '22px', margin: 0, color: '#0f172a', lineHeight: '1.1' }}>
-              Προμηθευτές
-            </h1>
-            <p style={{ margin: '2px 0 0', fontSize: '10px', color: '#94a3b8', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '1px' }}>
-              ΔΙΑΧΕΙΡΙΣΗ ΣΥΝΕΡΓΑΤΩΝ
-            </p>
+            <h1 style={{ fontWeight: '950', fontSize: '22px', margin: 0, color: '#000000' }}>Προμηθευτές</h1>
+            <p style={{ margin: '2px 0 0', fontSize: '10px', color: '#475569', fontWeight: '900', textTransform: 'uppercase' }}>Διαχείριση Συνεργατών</p>
           </div>
         </div>
         <Link href="/" style={backBtnStyle}>✕</Link>
       </div>
 
-      <button 
-        onClick={() => { if(isFormOpen) resetForm(); setIsFormOpen(!isFormOpen); }} 
-        style={isFormOpen ? cancelBtnStyle : addBtnStyle}
-      >
+      <button onClick={() => { if(isFormOpen) resetForm(); setIsFormOpen(!isFormOpen); }} style={isFormOpen ? cancelBtnStyle : addBtnStyle}>
         {isFormOpen ? 'ΑΚΥΡΩΣΗ' : '+ ΝΕΟΣ ΠΡΟΜΗΘΕΥΤΗΣ'}
       </button>
 
       {isFormOpen && (
-        <div style={{ ...formCard, border: editingId ? '2px solid #f59e0b' : '2px solid #0f172a' }}>
-          <p style={labelStyle}>ΕΠΩΝΥΜΙΑ ΠΡΟΜΗΘΕΥΤΗ</p>
-          <input value={name} onChange={(e) => setName(e.target.value)} style={inputStyle} placeholder="π.χ. Coffee Experts" />
+        <div style={{ ...formCard, border: editingId ? '2.5px solid #f59e0b' : '2.5px solid #000000' }}>
+          <p style={labelStyle}>ΕΠΩΝΥΜΙΑ</p>
+          <input value={name} onChange={(e) => setName(e.target.value)} style={inputStyle} placeholder="Όνομα Προμηθευτή" />
 
           <div style={{ display: 'flex', gap: '10px', marginTop: '16px' }}>
-            <div style={{ flex: 1 }}><p style={labelStyle}>ΤΗΛΕΦΩΝΟ</p><input value={phone} onChange={(e) => setPhone(e.target.value)} style={inputStyle} placeholder="210..." /></div>
-            <div style={{ flex: 1 }}><p style={labelStyle}>Α.Φ.Μ. (9 ΨΗΦΙΑ)</p><input maxLength={9} value={afm} onChange={(e) => setAfm(e.target.value)} style={inputStyle} placeholder="123456789" /></div>
+            <div style={{ flex: 1 }}><p style={labelStyle}>ΤΗΛΕΦΩΝΟ</p><input value={phone} onChange={(e) => setPhone(e.target.value)} style={inputStyle} /></div>
+            <div style={{ flex: 1 }}><p style={labelStyle}>ΑΦΜ</p><input maxLength={9} value={afm} onChange={(e) => setAfm(e.target.value)} style={inputStyle} /></div>
           </div>
 
           <p style={{ ...labelStyle, marginTop: '16px' }}>ΚΑΤΗΓΟΡΙΑ</p>
@@ -150,25 +116,26 @@ function SuppliersContent() {
             <option value="Λοιπά">📦 Λοιπά Έξοδα</option>
           </select>
 
-          <button onClick={handleSave} disabled={loading} style={{ ...saveBtn, backgroundColor: editingId ? '#f59e0b' : '#0f172a' }}>
-            {loading ? 'ΑΠΟΘΗΚΕΥΣΗ...' : (editingId ? 'ΕΝΗΜΕΡΩΣΗ ΣΤΟΙΧΕΙΩΝ' : 'ΔΗΜΙΟΥΡΓΙΑ ΠΡΟΜΗΘΕΥΤΗ')}
+          <button onClick={handleSave} disabled={loading} style={{ ...saveBtn, backgroundColor: editingId ? '#f59e0b' : '#000000' }}>
+            {loading ? 'ΠΑΡΑΚΑΛΩ ΠΕΡΙΜΕΝΕΤΕ...' : (editingId ? 'ΕΝΗΜΕΡΩΣΗ' : 'ΔΗΜΙΟΥΡΓΙΑ')}
           </button>
         </div>
       )}
 
-      <div style={{ marginTop: '12px' }}>
-        <p style={{ fontSize: '11px', fontWeight: '800', color: '#94a3b8', marginBottom: '12px', textTransform: 'uppercase' }}>ΛΙΣΤΑ ΣΥΝΕΡΓΑΤΩΝ ({suppliers.length})</p>
+      {/* ΣΗΜΑΝΤΙΚΟ: wrapper για iOS scrolling */}
+      <div style={scrollWrapperStyle}>
+        <p style={sectionLabelStyle}>ΛΙΣΤΑ ΣΥΝΕΡΓΑΤΩΝ ({suppliers.length})</p>
         {suppliers.map(s => (
           <div key={s.id} style={{ marginBottom: '12px' }}>
             <div style={supplierItem}>
               <div style={{ flex: 1, cursor: 'pointer' }} onClick={() => setShowTransactions(showTransactions === s.id ? null : s.id)}>
-                <p style={{ fontWeight: '800', margin: 0, fontSize: '15px', color: '#1e293b' }}>{s.name.toUpperCase()}</p>
-                <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginTop: '4px' }}>
+                <p style={{ fontWeight: '950', margin: 0, fontSize: '16px', color: '#000000' }}>{s.name.toUpperCase()}</p>
+                <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginTop: '6px' }}>
                    <span style={badgeStyle}>{s.category || 'Εμπορεύματα'}</span>
-                   <span style={{ fontSize: '12px', color: '#64748b', fontWeight: 'bold' }}>Τζίρος: {getSupplierTurnover(s.id).toFixed(2)}€</span>
+                   <span style={{ fontSize: '13px', color: '#1e293b', fontWeight: '900' }}>{getSupplierTurnover(s.id).toFixed(2)}€</span>
                 </div>
               </div>
-              <div style={{ display: 'flex', gap: '6px' }}>
+              <div style={{ display: 'flex', gap: '8px' }}>
                 <button onClick={() => handleEdit(s)} style={editBtnStyle}>✎</button>
                 <button onClick={() => { if(confirm('Διαγραφή;')) { supabase.from('suppliers').delete().eq('id', s.id).then(() => fetchData()); } }} style={deleteBtnStyle}>🗑️</button>
               </div>
@@ -176,46 +143,55 @@ function SuppliersContent() {
 
             {showTransactions === s.id && (
               <div style={transList}>
-                <p style={{ fontSize: '10px', fontWeight: '900', color: '#64748b', marginBottom: '10px', borderBottom: '1px solid #e2e8f0', paddingBottom: '5px' }}>ΙΣΤΟΡΙΚΟ ΣΥΝΑΛΛΑΓΩΝ</p>
+                <p style={transHeaderStyle}>ΙΣΤΟΡΙΚΟ ΣΥΝΑΛΛΑΓΩΝ</p>
                 {transactions.filter(t => t.supplier_id === s.id).length > 0 ? (
                   transactions.filter(t => t.supplier_id === s.id).map(t => (
                     <div key={t.id} style={transItem}>
-                      <span style={{ color: '#64748b' }}>{t.date.split('T')[0]}</span>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <span style={{ fontSize: '14px' }}>{getPaymentIcon(t.method)}</span>
-                        <span style={{ fontWeight: '800', color: '#1e293b' }}>{Number(t.amount).toFixed(2)}€</span>
-                      </div>
+                      <span style={{ color: '#475569', fontWeight: '700' }}>{t.date.split('T')[0]}</span>
+                      <span style={{ fontWeight: '900', color: '#000000' }}>{Number(t.amount).toFixed(2)}€</span>
                     </div>
                   ))
-                ) : <p style={{ fontSize: '12px', color: '#94a3b8', textAlign: 'center' }}>Δεν υπάρχουν κινήσεις</p>}
+                ) : <p style={{ fontSize: '12px', color: '#64748b', textAlign: 'center', padding: '10px' }}>Δεν βρέθηκαν κινήσεις.</p>}
               </div>
             )}
           </div>
         ))}
+        {/* Padding στο τέλος για να μη "χάνεται" η λίστα πίσω από το iPhone home bar */}
+        <div style={{ height: '100px' }} />
       </div>
     </div>
   )
 }
 
-// STYLES (Fixed for TypeScript compatibility)
-const logoBoxStyle: any = { width: '42px', height: '42px', backgroundColor: '#e2e8f0', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' };
-const backBtnStyle: any = { textDecoration: 'none', color: '#94a3b8', fontSize: '18px', fontWeight: 'bold', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#fff', borderRadius: '10px', border: '1px solid #e2e8f0' };
-const addBtnStyle: any = { width: '100%', padding: '16px', backgroundColor: '#0f172a', color: 'white', border: 'none', borderRadius: '16px', fontWeight: '900', fontSize: '13px', cursor: 'pointer', marginBottom: '20px' };
-const cancelBtnStyle: any = { ...addBtnStyle, backgroundColor: '#f1f5f9', color: '#64748b' };
-const formCard: any = { backgroundColor: 'white', padding: '20px', borderRadius: '24px', marginBottom: '20px', boxShadow: '0 4px 12px rgba(0,0,0,0.05)' };
-const labelStyle: any = { fontSize: '10px', fontWeight: '900', color: '#94a3b8', marginBottom: '6px', textTransform: 'uppercase' };
-const inputStyle: any = { width: '100%', padding: '14px', borderRadius: '14px', border: '1px solid #e2e8f0', backgroundColor: '#f8fafc', fontSize: '15px', fontWeight: 'bold', boxSizing: 'border-box' };
-const saveBtn: any = { width: '100%', padding: '16px', color: 'white', border: 'none', borderRadius: '14px', fontWeight: '800', fontSize: '15px', cursor: 'pointer', marginTop: '20px' };
-const supplierItem: any = { backgroundColor: 'white', padding: '16px', borderRadius: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: '1px solid #f1f5f9' };
-const badgeStyle: any = { fontSize: '9px', fontWeight: '800', backgroundColor: '#f1f5f9', padding: '4px 8px', borderRadius: '6px', color: '#64748b' };
-const editBtnStyle: any = { background: '#fef3c7', border: 'none', padding: '10px', borderRadius: '12px', cursor: 'pointer' };
-const deleteBtnStyle: any = { background: '#fee2e2', border: 'none', padding: '10px', borderRadius: '12px', cursor: 'pointer' };
-const transList: any = { backgroundColor: 'white', padding: '16px', borderRadius: '0 0 20px 20px', marginTop: '-10px', border: '1px solid #f1f5f9', borderTop: 'none' };
-const transItem: any = { display: 'flex', justifyContent: 'space-between', fontSize: '13px', padding: '8px 0', borderBottom: '1px dotted #e2e8f0' };
+// STYLES - ΔΙΟΡΘΩΜΕΝΑ ΓΙΑ ΜΕΓΙΣΤΗ ΑΝΤΙΘΕΣΗ & SCROLLING
+const logoBoxStyle: any = { width: '45px', height: '45px', backgroundColor: '#0f172a', color: 'white', borderRadius: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px' };
+const backBtnStyle: any = { textDecoration: 'none', color: '#000000', fontSize: '20px', fontWeight: '950', width: '36px', height: '36px', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#fff', borderRadius: '12px', border: '1.5px solid #000' };
+const addBtnStyle: any = { width: '100%', padding: '18px', backgroundColor: '#000000', color: 'white', border: 'none', borderRadius: '18px', fontWeight: '950', fontSize: '14px', cursor: 'pointer', marginBottom: '20px' };
+const cancelBtnStyle: any = { ...addBtnStyle, backgroundColor: '#f1f5f9', color: '#000000', border: '1.5px solid #000' };
+const formCard: any = { backgroundColor: 'white', padding: '24px', borderRadius: '28px', marginBottom: '25px', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' };
+const labelStyle: any = { fontSize: '11px', fontWeight: '950', color: '#1e293b', marginBottom: '6px', textTransform: 'uppercase' };
+const inputStyle: any = { width: '100%', padding: '16px', borderRadius: '16px', border: '1.5px solid #000', backgroundColor: '#fff', fontSize: '16px', fontWeight: '800', boxSizing: 'border-box', color: '#000' };
+const saveBtn: any = { width: '100%', padding: '18px', color: 'white', border: 'none', borderRadius: '16px', fontWeight: '950', fontSize: '15px', cursor: 'pointer', marginTop: '20px' };
+
+const scrollWrapperStyle: any = { 
+  display: 'flex', 
+  flexDirection: 'column', 
+  overflowY: 'auto', 
+  WebkitOverflowScrolling: 'touch' 
+};
+
+const supplierItem: any = { backgroundColor: 'white', padding: '18px', borderRadius: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: '1.5px solid #e2e8f0' };
+const sectionLabelStyle: any = { fontSize: '11px', fontWeight: '950', color: '#475569', marginBottom: '15px', textTransform: 'uppercase', letterSpacing: '0.8px' };
+const badgeStyle: any = { fontSize: '10px', fontWeight: '900', backgroundColor: '#0f172a', padding: '4px 10px', borderRadius: '8px', color: '#fff' };
+const editBtnStyle: any = { background: '#fef3c7', border: '1.5px solid #f59e0b', padding: '10px', borderRadius: '12px', cursor: 'pointer', fontSize: '16px' };
+const deleteBtnStyle: any = { background: '#fee2e2', border: '1.5px solid #ef4444', padding: '10px', borderRadius: '12px', cursor: 'pointer', fontSize: '16px' };
+const transList: any = { backgroundColor: '#f8fafc', padding: '20px', borderRadius: '0 0 24px 24px', marginTop: '-12px', border: '1.5px solid #e2e8f0', borderTop: 'none' };
+const transHeaderStyle: any = { fontSize: '10px', fontWeight: '950', color: '#0f172a', marginBottom: '12px', borderBottom: '1.5px solid #cbd5e1', paddingBottom: '6px' };
+const transItem: any = { display: 'flex', justifyContent: 'space-between', fontSize: '14px', padding: '10px 0', borderBottom: '1px dashed #cbd5e1' };
 
 export default function SuppliersPage() {
   return (
-    <main style={{ backgroundColor: '#f8fafc', minHeight: '100vh', padding: '15px' }}>
+    <main style={{ backgroundColor: '#f8fafc', minHeight: '100vh', padding: '15px', overflowY: 'auto', WebkitOverflowScrolling: 'touch' }}>
       <Suspense fallback={<div>Φόρτωση...</div>}><SuppliersContent /></Suspense>
     </main>
   )
