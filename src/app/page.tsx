@@ -10,14 +10,18 @@ function DashboardContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
 
-  // 1. ΥΠΟΛΟΓΙΣΜΟΣ ΕΠΙΧΕΙΡΗΜΑΤΙΚΗΣ ΗΜΕΡΑΣ (Αλλαγή στις 07:00)
+  // 1. ΣΩΣΤΟΣ ΥΠΟΛΟΓΙΣΜΟΣ ΤΟΠΙΚΗΣ ΗΜΕΡΟΜΗΝΙΑΣ (Business Day Logic - Αλλαγή στις 07:00)
+  // Αποφεύγουμε το toISOString() που μπερδεύει τις ζώνες ώρας
   const getBusinessDate = () => {
     const now = new Date()
-    // Αν η ώρα είναι από 00:00 έως 06:59, θεωρούμε ότι είναι ακόμα η προηγούμενη μέρα
+    // Αν είναι πριν τις 07:00 το πρωί, θεωρούμε ότι είναι η προηγούμενη μέρα
     if (now.getHours() < 7) {
       now.setDate(now.getDate() - 1)
     }
-    return now.toISOString().split('T')[0]
+    const year = now.getFullYear()
+    const month = String(now.getMonth() + 1).padStart(2, '0')
+    const day = String(now.getDate()).padStart(2, '0')
+    return `${year}-${month}-${day}`
   }
 
   const [businessToday, setBusinessToday] = useState(getBusinessDate())
@@ -38,35 +42,34 @@ function DashboardContent() {
     can_view_history: false
   })
 
-  // Βοηθητική συνάρτηση για τη μορφοποίηση της ώρας
+  // Βοηθητική συνάρτηση για τη μορφοποίηση της τοπικής ώρας (π.μ. / μ.μ.)
   const formatTime = (dateString: string) => {
     try {
       return new Date(dateString).toLocaleTimeString('el-GR', {
         hour: '2-digit',
         minute: '2-digit',
+        hour12: true
       })
-    } catch (e) {
-      return '--:--'
-    }
+    } catch (e) { return '--:--' }
   }
 
-  // ΑΥΤΟΜΑΤΟΣ ΕΛΕΓΧΟΣ ΓΙΑ ΑΛΛΑΓΗ ΗΜΕΡΑΣ (Κάθε 1 λεπτό)
+  // ΑΥΤΟΜΑΤΟΣ ΕΛΕΓΧΟΣ ΓΙΑ ΑΛΛΑΓΗ ΗΜΕΡΑΣ (Κάθε 30 δευτερόλεπτα)
   useEffect(() => {
     const timer = setInterval(() => {
       const currentBD = getBusinessDate()
       if (currentBD !== businessToday) {
         setBusinessToday(currentBD)
+        // Αν ο χρήστης δεν έχει επιλέξει manual ημερομηνία, ανανεώνουμε τη σελίδα
         if (!searchParams.get('date')) {
           router.refresh()
         }
       }
-    }, 60000)
+    }, 30000)
     return () => clearInterval(timer)
   }, [businessToday, searchParams, router])
 
   const fetchAppData = useCallback(async () => {
     try {
-      // Χρησιμοποιούμε getSession για πιο γρήγορη απόκριση στο iPhone
       const { data: { session } } = await supabase.auth.getSession()
       const user = session?.user
 
@@ -89,7 +92,7 @@ function DashboardContent() {
         const { data: transData } = await supabase.from('transactions')
           .select('*, suppliers(name), fixed_assets(name), employees(full_name)')
           .eq('store_id', profile.store_id)
-          .eq('date', selectedDate)
+          .eq('date', selectedDate) 
           .order('created_at', { ascending: false })
 
         setTransactions(transData || [])
@@ -97,7 +100,6 @@ function DashboardContent() {
     } catch (err) { 
       console.error(err) 
     } finally { 
-      // Εγγυημένη απενεργοποίηση του loading
       setLoading(false) 
     }
   }, [selectedDate]);
@@ -123,8 +125,12 @@ function DashboardContent() {
   }
 
   const shiftDate = (days: number) => {
-    const d = new Date(selectedDate); d.setDate(d.getDate() + days)
-    router.push(`/?date=${d.toISOString().split('T')[0]}`)
+    const d = new Date(selectedDate)
+    d.setDate(d.getDate() + days)
+    const year = d.getFullYear()
+    const month = String(d.getMonth() + 1).padStart(2, '0')
+    const day = String(d.getDate()).padStart(2, '0')
+    router.push(`/?date=${year}-${month}-${day}`)
     setIsMenuOpen(false); setExpandedTx(null); setIsZExpanded(false); setExpandedEmpId(null);
   }
 
@@ -180,7 +186,6 @@ function DashboardContent() {
                   </>
                 )}
                 {(isAdmin || permissions.can_view_analysis) && <Link href="/analysis" style={menuItem} onClick={() => setIsMenuOpen(false)}>📊 Ανάλυση</Link>}
-                
                 <div style={divider} />
                 <p style={menuSectionLabel}>ΕΦΑΡΜΟΓΗ</p>
                 <Link href="/help" style={menuItem} onClick={() => setIsMenuOpen(false)}>❓ Οδηγίες Χρήσης</Link>
@@ -289,7 +294,7 @@ function DashboardContent() {
                       <p style={{ fontWeight: '800', margin: 0, fontSize: '17px', color: '#1e293b' }}>
                           {t.suppliers?.name || t.category.toUpperCase()}
                       </p>
-                      <div style={{ display: 'flex', gap: '8px', marginTop: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
+                      <div style={{ display: 'flex', gap: '8px', marginTop: '4px', alignItems: 'center', flexWrap: 'wrap' }}>
                         <span style={{ fontSize: '12px', color: '#64748b', fontWeight: '800' }}>
                           {getPaymentIcon(t.method)} {t.method.toUpperCase()}
                         </span>
