@@ -15,7 +15,6 @@ function DashboardContent() {
   const [loading, setLoading] = useState(true)
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   
-  // 1. ΜΗΔΕΝΙΚΟ ΤΡΕΜΟΠΑΙΓΜΑ: Ξεκινάμε αμέσως με το "Cosy App"
   const [storeName, setStoreName] = useState(() => {
     if (typeof window !== 'undefined') {
       return localStorage.getItem('cachedStoreName') || 'Cosy App'
@@ -31,11 +30,13 @@ function DashboardContent() {
   })
 
   useEffect(() => {
+    // Προ-φόρτωση της σελίδας εξόδων για να ανοίγει ακαριαία
+    router.prefetch('/add-expense')
+    
     async function fetchAppData() {
       const { data: { user } } = await supabase.auth.getUser()
       
       if (user) {
-        // 2. ΤΑΥΤΟΧΡΟΝΗ ΦΟΡΤΩΣΗ: Προφίλ και Συναλλαγές μαζί για μέγιστη ταχύτητα
         const [profileRes, transRes] = await Promise.all([
           supabase.from('profiles').select('*').eq('id', user.id).single(),
           supabase.from('transactions')
@@ -61,7 +62,6 @@ function DashboardContent() {
             enable_payroll: profile.enable_payroll || false
           })
 
-          // 3. ΦΙΛΤΡΑΡΙΣΜΑ: Ο Admin βλέπει τα πάντα, ο User μόνο τα δικά του
           let data = transRes.data || []
           if (profile.role !== 'admin') {
             data = data.filter(t => t.user_id === user.id)
@@ -73,21 +73,7 @@ function DashboardContent() {
     }
 
     fetchAppData()
-  }, [selectedDate])
-
-  async function handleLogout() {
-    await supabase.auth.signOut()
-    router.push('/login')
-  }
-
-  async function handleDelete(id: string) {
-    if (confirm('Θέλετε να διαγράψετε αυτή την κίνηση;')) {
-      const { error } = await supabase.from('transactions').delete().eq('id', id)
-      if (!error) {
-        setTransactions(prev => prev.filter(t => t.id !== id))
-      }
-    }
-  }
+  }, [selectedDate, router])
 
   const totals = transactions.reduce((acc, t) => {
     const amt = Number(t.amount) || 0
@@ -103,23 +89,16 @@ function DashboardContent() {
   const isAdmin = permissions.role === 'admin'
 
   return (
-    <div style={{ maxWidth: '500px', margin: '0 auto', fontFamily: 'sans-serif' }}>
+    <div style={{ maxWidth: '500px', margin: '0 auto', fontFamily: 'sans-serif', position: 'relative' }}>
       
       {/* HEADER */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', paddingTop: '10px' }}>
-        <h1 style={{ 
-          fontWeight: '900', 
-          fontSize: '24px', 
-          margin: 0, 
-          color: '#0f172a',
-          letterSpacing: '-0.5px'
-        }}>
+        <h1 style={{ fontWeight: '900', fontSize: '24px', margin: 0, color: '#0f172a', letterSpacing: '-0.5px' }}>
           {storeName.toUpperCase()}
         </h1>
         
-        <div style={{ position: 'relative' }}>
+        <div style={{ position: 'relative', zIndex: 1001 }}>
           <button onClick={() => setIsMenuOpen(!isMenuOpen)} style={menuBtnStyle}>⋮</button>
-
           {isMenuOpen && (
             <div style={dropdownStyle}>
               <p style={menuSectionLabel}>ΔΙΑΧΕΙΡΙΣΗ</p>
@@ -128,19 +107,8 @@ function DashboardContent() {
                   <Link href="/suppliers" style={menuItem} onClick={() => setIsMenuOpen(false)}>🛒 Προμηθευτές</Link>
                   <Link href="/fixed-assets" style={menuItem} onClick={() => setIsMenuOpen(false)}>🔌 Πάγια</Link>
                   <Link href="/employees" style={menuItem} onClick={() => setIsMenuOpen(false)}>👥 Υπάλληλοι</Link>
-                  <Link href="/suppliers-balance" style={menuItem} onClick={() => setIsMenuOpen(false)}>🚩 Καρτέλες (Χρέη)</Link>
                 </>
               )}
-              {(isAdmin || permissions.can_view_analysis) && (
-                <Link href="/analysis" style={menuItem} onClick={() => setIsMenuOpen(false)}>📈 Ανάλυση</Link>
-              )}
-              <div style={divider} />
-              <p style={menuSectionLabel}>ΕΦΑΡΜΟΓΗ</p>
-              {isAdmin && (
-                <Link href="/admin/permissions" style={menuItem} onClick={() => setIsMenuOpen(false)}>🔐 Δικαιώματα</Link>
-              )}
-              <Link href="/subscription" style={menuItem} onClick={() => setIsMenuOpen(false)}>💳 Συνδρομή</Link>
-              <Link href="/settings" style={menuItem} onClick={() => setIsMenuOpen(false)}>⚙️ Ρυθμίσεις</Link>
               <div style={divider} />
               <button onClick={handleLogout} style={logoutBtnStyle}>ΑΠΟΣΥΝΔΕΣΗ 🚪</button>
             </div>
@@ -160,14 +128,14 @@ function DashboardContent() {
         </div>
       </div>
 
-      {/* QUICK ACTIONS */}
-      <div style={{ display: 'flex', gap: '12px', marginBottom: '12px' }}>
-        <Link href={`/add-income?date=${selectedDate}`} style={{ ...btnStyle, backgroundColor: '#10b981' }}>+ ΕΣΟΔΑ</Link>
-        <Link href={`/add-expense?date=${selectedDate}`} style={{ ...btnStyle, backgroundColor: '#ef4444' }}>- ΕΞΟΔΑ</Link>
+      {/* QUICK ACTIONS - ΔΙΟΡΘΩΜΕΝΟ Z-INDEX */}
+      <div style={{ display: 'flex', gap: '12px', marginBottom: '12px', position: 'relative', zIndex: 10 }}>
+        <Link href={`/add-income?date=${selectedDate}`} style={{ ...btnStyle, backgroundColor: '#10b981', display: 'block' }}>+ ΕΣΟΔΑ</Link>
+        <Link href={`/add-expense?date=${selectedDate}`} style={{ ...btnStyle, backgroundColor: '#ef4444', display: 'block' }}>- ΕΞΟΔΑ</Link>
       </div>
 
       {isAdmin && (
-        <Link href="/daily-z" style={zBtnStyle}>📟 ΚΛΕΙΣΙΜΟ ΤΑΜΕΙΟΥ (Ζ)</Link>
+        <Link href="/daily-z" style={{...zBtnStyle, display: 'block'}}>📟 ΚΛΕΙΣΙΜΟ ΤΑΜΕΙΟΥ (Ζ)</Link>
       )}
 
       <div style={{ marginBottom: '25px' }} />
@@ -197,7 +165,7 @@ function DashboardContent() {
                   </p>
                   <div style={{ display: 'flex', gap: '6px', marginTop: '4px' }}>
                     <span style={subLabelStyle}>{t.method}</span>
-                    {t.created_by_name && <span style={userBadge}>👤 {t.created_by_name}</span>}
+                    <span style={userBadge}>👤 {t.created_by_name}</span>
                   </div>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -218,18 +186,18 @@ function DashboardContent() {
 }
 
 // STYLES
-const menuBtnStyle = { backgroundColor: 'white', border: '1px solid #e2e8f0', width: '40px', height: '40px', borderRadius: '12px', cursor: 'pointer', fontSize: '20px', color: '#64748b', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' };
-const dropdownStyle = { position: 'absolute' as const, top: '50px', right: '0', backgroundColor: 'white', minWidth: '220px', borderRadius: '20px', boxShadow: '0 10px 30px rgba(0,0,0,0.15)', padding: '12px', zIndex: 100, border: '1px solid #f1f5f9' };
+const menuBtnStyle = { backgroundColor: 'white', border: '1px solid #e2e8f0', width: '40px', height: '40px', borderRadius: '12px', cursor: 'pointer', fontSize: '20px', color: '#64748b' };
+const dropdownStyle = { position: 'absolute' as const, top: '50px', right: '0', backgroundColor: 'white', minWidth: '220px', borderRadius: '20px', boxShadow: '0 10px 30px rgba(0,0,0,0.15)', padding: '12px', zIndex: 1100, border: '1px solid #f1f5f9' };
 const menuItem = { display: 'block', padding: '12px', textDecoration: 'none', color: '#334155', fontWeight: '700' as const, fontSize: '14px', borderRadius: '10px' };
 const logoutBtnStyle = { ...menuItem, color: '#ef4444', border: 'none', background: '#fee2e2', width: '100%', cursor: 'pointer', textAlign: 'left' as const, marginTop: '5px' };
-const menuSectionLabel = { fontSize: '9px', fontWeight: '800' as const, color: '#94a3b8', marginBottom: '8px', paddingLeft: '12px', marginTop: '8px', letterSpacing: '0.5px' };
+const menuSectionLabel = { fontSize: '9px', fontWeight: '800' as const, color: '#94a3b8', marginBottom: '8px', paddingLeft: '12px', marginTop: '8px' };
 const divider = { height: '1px', backgroundColor: '#f1f5f9', margin: '8px 0' };
-const cardStyle = { flex: 1, backgroundColor: 'white', padding: '18px', borderRadius: '22px', textAlign: 'center' as const, boxShadow: '0 4px 6px -1px rgba(0,0,0,0.02)' };
+const cardStyle = { flex: 1, backgroundColor: 'white', padding: '18px', borderRadius: '22px', textAlign: 'center' as const, boxShadow: '0 2px 4px rgba(0,0,0,0.02)' };
 const labelStyle = { fontSize: '10px', fontWeight: '800', color: '#94a3b8', marginBottom: '4px' };
-const btnStyle = { flex: 1, padding: '18px', borderRadius: '18px', color: 'white', textDecoration: 'none', textAlign: 'center' as const, fontWeight: '800', fontSize: '15px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' };
+const btnStyle = { flex: 1, padding: '18px', borderRadius: '18px', color: 'white', textDecoration: 'none', textAlign: 'center' as const, fontWeight: '800', fontSize: '15px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)', cursor: 'pointer' };
 const zBtnStyle = { display: 'block', padding: '16px', borderRadius: '18px', backgroundColor: '#0f172a', color: 'white', textDecoration: 'none', textAlign: 'center' as const, fontWeight: '900', fontSize: '14px', marginTop: '10px' };
-const itemStyle = { backgroundColor: 'white', padding: '15px', borderRadius: '20px', border: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center', boxShadow: '0 2px 4px rgba(0,0,0,0.01)' };
-const subLabelStyle = { fontSize: '11px', color: '#94a3b8', textTransform: 'uppercase' as const, margin: '0', fontWeight: 'bold' };
+const itemStyle = { backgroundColor: 'white', padding: '15px', borderRadius: '20px', border: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' };
+const subLabelStyle = { fontSize: '11px', color: '#94a3b8', textTransform: 'uppercase' as const, fontWeight: 'bold' };
 const delBtnStyle = { background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer', opacity: 0.3 };
 const userBadge = { fontSize: '9px', backgroundColor: '#f1f5f9', color: '#64748b', padding: '2px 6px', borderRadius: '6px', fontWeight: 'bold' };
 const emptyState = { textAlign: 'center' as const, padding: '40px', color: '#94a3b8', background: 'white', borderRadius: '20px', border: '1px dashed #e2e8f0' };
