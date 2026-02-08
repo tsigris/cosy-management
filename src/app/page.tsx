@@ -103,29 +103,39 @@ function DashboardContent() {
           {isMenuOpen && (
             <div style={dropdownStyle}>
               <p style={menuSectionLabel}>ΔΙΑΧΕΙΡΙΣΗ</p>
-              {/* ΚΡΥΒΟΥΜΕ ΕΠΙΛΟΓΕΣ ΑΠΟ ΤΟΥΣ USERS */}
+              
+              {/* Κουμπί Δικαιωμάτων - Μόνο για Admin */}
+              {isAdmin && (
+                <Link href="/admin/permissions" style={menuItem} onClick={() => setIsMenuOpen(false)}>
+                  🔐 Δικαιώματα Χρηστών
+                </Link>
+              )}
+
               {isAdmin && (
                 <>
-                  <Link href="/admin/permissions" style={menuItem}>🔐 Δικαιώματα Χρηστών</Link>
-                  <Link href="/suppliers" style={menuItem}>🛒 Προμηθευτές</Link>
-                  <Link href="/fixed-assets" style={menuItem}>🔌 Πάγια</Link>
-                  <Link href="/suppliers-balance" style={menuItem}>🚩 Καρτέλες (Χρέη)</Link>
+                  <Link href="/suppliers" style={menuItem} onClick={() => setIsMenuOpen(false)}>🛒 Προμηθευτές</Link>
+                  <Link href="/fixed-assets" style={menuItem} onClick={() => setIsMenuOpen(false)}>🔌 Πάγια</Link>
+                  <Link href="/suppliers-balance" style={menuItem} onClick={() => setIsMenuOpen(false)}>🚩 Καρτέλες (Χρέη)</Link>
                 </>
               )}
               
               {(isAdmin || permissions.can_view_analysis) && (
-                <Link href="/analysis" style={menuItem}>📈 Ανάλυση</Link>
+                <Link href="/analysis" style={menuItem} onClick={() => setIsMenuOpen(false)}>📈 Ανάλυση</Link>
               )}
               
               <div style={divider} />
-              <Link href="/settings" style={menuItem}>⚙️ Ρυθμίσεις</Link>
+              <p style={menuSectionLabel}>ΕΦΑΡΜΟΓΗ</p>
+              <Link href="/subscription" style={menuItem} onClick={() => setIsMenuOpen(false)}>💳 Συνδρομή</Link>
+              <Link href="/settings" style={menuItem} onClick={() => setIsMenuOpen(false)}>⚙️ Ρυθμίσεις</Link>
+              
+              <div style={divider} />
               <button onClick={handleLogout} style={logoutBtnStyle}>ΑΠΟΣΥΝΔΕΣΗ 🚪</button>
             </div>
           )}
         </div>
       </div>
 
-      {/* ΣΤΑΤΙΣΤΙΚΑ ΗΜΕΡΑΣ - ΕΜΦΑΝΙΣΗ ΜΟΝΟ ΣΕ ADMIN Η ΜΕ ΑΔΕΙΑ */}
+      {/* ΣΤΑΤΙΣΤΙΚΑ ΗΜΕΡΑΣ */}
       {(isAdmin || permissions.can_view_history) && (
         <div style={{ display: 'flex', gap: '15px', marginBottom: '20px' }}>
           <div style={cardStyle}>
@@ -139,7 +149,7 @@ function DashboardContent() {
         </div>
       )}
 
-      {/* QUICK BUTTONS - ΠΑΝΤΑ ΟΡΑΤΑ */}
+      {/* QUICK BUTTONS */}
       <div style={{ display: 'flex', gap: '12px', marginBottom: '12px' }}>
         <Link href={`/add-income?date=${selectedDate}`} style={{ ...btnStyle, backgroundColor: '#10b981' }}>+ ΕΣΟΔΑ</Link>
         <Link href={`/add-expense?date=${selectedDate}`} style={{ ...btnStyle, backgroundColor: '#ef4444' }}>- ΕΞΟΔΑ</Link>
@@ -151,7 +161,7 @@ function DashboardContent() {
 
       <div style={{ marginBottom: '20px' }} />
 
-      {/* ΛΙΣΤΑ ΚΙΝΗΣΕΩΝ - ΕΛΕΓΧΟΣ ΔΙΚΑΙΩΜΑΤΩΝ */}
+      {/* ΛΙΣΤΑ ΚΙΝΗΣΕΩΝ */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
         <p style={{ fontSize: '11px', fontWeight: '800', color: '#94a3b8', textTransform: 'uppercase' }}>Καθημερινές Κινήσεις</p>
         
@@ -199,7 +209,6 @@ function DashboardContent() {
 const userBadge = { fontSize: '9px', backgroundColor: '#f1f5f9', color: '#64748b', padding: '2px 5px', borderRadius: '4px', fontWeight: 'bold' };
 const lockedState = { textAlign: 'center' as const, padding: '40px', backgroundColor: 'white', borderRadius: '20px', border: '1px dashed #cbd5e1', color: '#94a3b8', fontSize: '14px' };
 const emptyState = { textAlign: 'center' as const, padding: '30px', color: '#94a3b8', background: 'white', borderRadius: '20px' };
-// ... (κρατάμε τα υπόλοιπα styles όπως τα είχες)
 const menuBtnStyle = { backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', width: '40px', height: '40px', borderRadius: '12px', cursor: 'pointer', fontSize: '20px', color: '#64748b' };
 const dropdownStyle = { position: 'absolute' as const, top: '50px', right: '0', backgroundColor: 'white', minWidth: '220px', borderRadius: '20px', boxShadow: '0 10px 30px rgba(0,0,0,0.15)', padding: '12px', zIndex: 100, border: '1px solid #f1f5f9' };
 const menuItem = { display: 'block', padding: '12px', textDecoration: 'none', color: '#334155', fontWeight: '700' as const, fontSize: '14px', borderRadius: '10px' };

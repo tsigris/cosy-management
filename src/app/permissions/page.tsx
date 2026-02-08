@@ -45,7 +45,7 @@ export default function PermissionsPage() {
   }
 
   async function updateField(userId: string, field: string, newValue: any) {
-    if (userId === myId && field === 'role') {
+    if (userId === myId && field === 'role' && newValue !== 'admin') {
       alert("Δεν μπορείτε να αφαιρέσετε τον ρόλο Admin από τον εαυτό σας!");
       return;
     }
@@ -59,6 +59,14 @@ export default function PermissionsPage() {
     else alert("Σφάλμα: " + error.message)
   }
 
+  async function handleDelete(userId: string) {
+    if (userId === myId) return alert("Δεν μπορείτε να διαγράψετε τον εαυτό σας!");
+    if (confirm('Θέλετε σίγουρα να αφαιρέσετε αυτόν τον χρήστη;')) {
+      const { error } = await supabase.from('profiles').delete().eq('id', userId)
+      if (!error) fetchUsers()
+    }
+  }
+
   if (loading) return <div style={{padding: '50px', textAlign: 'center', fontWeight: 'bold'}}>Φόρτωση χρηστών...</div>
 
   const admins = users.filter(u => u.role === 'admin')
@@ -66,96 +74,84 @@ export default function PermissionsPage() {
 
   return (
     <main style={{ backgroundColor: '#f8fafc', minHeight: '100vh', padding: '16px', fontFamily: 'sans-serif' }}>
-      <div style={{ maxWidth: '600px', margin: '0 auto' }}>
+      <div style={{ maxWidth: '700px', margin: '0 auto' }}>
         
         {/* HEADER */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '15px', marginBottom: '25px' }}>
           <Link href="/" style={backBtnStyle}>←</Link>
-          <h2 style={{ fontSize: '20px', fontWeight: '900', color: '#1e293b', margin: 0 }}>Δικαιώματα & Ρόλοι</h2>
+          <h2 style={{ fontSize: '22px', fontWeight: '900', color: '#1e293b', margin: 0 }}>Δικαιώματα & Ρόλοι</h2>
         </div>
 
-        {/* ΔΙΑΧΕΙΡΙΣΤΕΣ */}
+        {/* ΕΝΟΤΗΤΑ 1: ΔΙΑΧΕΙΡΙΣΤΕΣ */}
         <div style={sectionCard}>
-          <h3 style={sectionTitle}>🏢 ΔΙΑΧΕΙΡΙΣΤΕΣ ΕΤΑΙΡΕΙΑΣ</h3>
-          <p style={sectionSub}>Έχουν πλήρη πρόσβαση σε όλα τα δεδομένα και τις ρυθμίσεις.</p>
+          <h3 style={sectionTitle}>🏢 Διαχειριστές εταιρείας</h3>
+          <p style={sectionSub}>Οι διαχειριστές της εταιρείας μπορούν να βλέπουν και να κάνουν τα πάντα.</p>
           
-          <div style={tableWrapper}>
-            <table style={tableStyle}>
-              <thead>
-                <tr>
-                  <th style={thStyle}>ΧΡΗΣΤΗΣ</th>
-                  <th style={thStyle}>ΡΟΛΟΣ</th>
+          <table style={tableStyle}>
+            <thead>
+              <tr style={headerRow}>
+                <th style={thStyle}>ΟΝΟΜΑ</th>
+                <th style={thStyle}>EMAIL</th>
+                <th style={{...thStyle, textAlign: 'center'}}>ΕΝΕΡΓΕΙΑ</th>
+              </tr>
+            </thead>
+            <tbody>
+              {admins.map(u => (
+                <tr key={u.id} style={trStyle}>
+                  <td style={tdStyle}><b>{u.username || 'Admin'}</b></td>
+                  <td style={tdStyle}>{u.email}</td>
+                  <td style={{...tdStyle, textAlign: 'center'}}>
+                    <button onClick={() => handleDelete(u.id)} style={delBtn}>🗑️</button>
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {admins.map(u => (
-                  <tr key={u.id} style={trStyle}>
-                    <td style={tdStyle}>
-                       <div style={{fontWeight:'700'}}>{u.username || 'Admin'}</div>
-                       <div style={{fontSize:'10px', color:'#94a3b8'}}>{u.email}</div>
-                    </td>
-                    <td style={tdStyle}>
-                       <select 
-                        value={u.role} 
-                        onChange={(e) => updateField(u.id, 'role', e.target.value)}
-                        style={miniSelect}
-                       >
-                         <option value="admin">ADMIN</option>
-                         <option value="user">USER</option>
-                       </select>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+              ))}
+            </tbody>
+          </table>
+          <Link href="/admin/invite" style={inviteLinkText}>Προσκάλεσε διαχειριστή στην εταιρεία</Link>
         </div>
 
-        {/* ΧΡΗΣΤΕΣ ΕΠΙΧΕΙΡΗΣΗΣ */}
+        {/* ΕΝΟΤΗΤΑ 2: ΧΡΗΣΤΕΣ ΕΠΙΧΕΙΡΗΣΗΣ */}
         <div style={sectionCard}>
-          <h3 style={sectionTitle}>🏨 ΧΡΗΣΤΕΣ ΕΠΙΧΕΙΡΗΣΗΣ</h3>
+          <h3 style={sectionTitle}>🏨 Χρήστες επιχείρησης</h3>
           <div style={legendBox}>
             <div>📊 <b>Ανάλυση:</b> Πρόσβαση σε τζίρους & ποσοστά.</div>
             <div>📜 <b>Ιστορικό:</b> Προβολή κινήσεων στην αρχική.</div>
             <div>✏️ <b>Edit:</b> Δυνατότητα διαγραφής/επεξεργασίας.</div>
           </div>
 
-          <div style={tableWrapper}>
-            <table style={tableStyle}>
-              <thead>
-                <tr>
-                  <th style={thStyle}>ΧΡΗΣΤΗΣ</th>
-                  <th style={thStyle}>ΔΙΚΑΙΩΜΑΤΑ</th>
+          <table style={tableStyle}>
+            <thead>
+              <tr style={headerRow}>
+                <th style={thStyle}>ΟΝΟΜΑ</th>
+                <th style={thStyle}>EMAIL</th>
+                <th style={{...thStyle, textAlign: 'center'}}>ΡΟΛΟΣ / ΠΡΟΣΒΑΣΗ</th>
+              </tr>
+            </thead>
+            <tbody>
+              {staff.map(u => (
+                <tr key={u.id} style={trStyle}>
+                  <td style={tdStyle}><b>{u.username || 'User'}</b></td>
+                  <td style={tdStyle}>{u.email}</td>
+                  <td style={{...tdStyle, textAlign: 'center'}}>
+                    <div style={{display:'flex', gap:'8px', justifyContent:'center'}}>
+                       <button onClick={() => updateField(u.id, 'can_view_analysis', !u.can_view_analysis)} 
+                               style={{...permBtn, opacity: u.can_view_analysis ? 1 : 0.3}}>📊</button>
+                       <button onClick={() => updateField(u.id, 'can_view_history', !u.can_view_history)} 
+                               style={{...permBtn, opacity: u.can_view_history ? 1 : 0.3}}>📜</button>
+                       <button onClick={() => updateField(u.id, 'can_edit_transactions', !u.can_edit_transactions)} 
+                               style={{...permBtn, opacity: u.can_edit_transactions ? 1 : 0.3}}>✏️</button>
+                       <button onClick={() => updateField(u.id, 'role', 'admin')} 
+                               style={{...permBtn, backgroundColor:'#f1f5f9'}}>🆙</button>
+                    </div>
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {staff.map(u => (
-                  <tr key={u.id} style={trStyle}>
-                    <td style={tdStyle}>
-                       <div style={{fontWeight:'700'}}>{u.username || 'User'}</div>
-                       <div style={{fontSize:'10px', color:'#94a3b8'}}>{u.email}</div>
-                    </td>
-                    <td style={tdStyle}>
-                       <div style={{display:'flex', gap:'5px'}}>
-                          <button onClick={() => updateField(u.id, 'can_view_analysis', !u.can_view_analysis)} 
-                            style={{...permIcon, backgroundColor: u.can_view_analysis ? '#10b981' : '#e2e8f0'}}>📊</button>
-                          <button onClick={() => updateField(u.id, 'can_view_history', !u.can_view_history)} 
-                            style={{...permIcon, backgroundColor: u.can_view_history ? '#3b82f6' : '#e2e8f0'}}>📜</button>
-                          <button onClick={() => updateField(u.id, 'can_edit_transactions', !u.can_edit_transactions)} 
-                            style={{...permIcon, backgroundColor: u.can_edit_transactions ? '#f59e0b' : '#e2e8f0'}}>✏️</button>
-                          <button onClick={() => updateField(u.id, 'role', 'admin')} style={{...permIcon, backgroundColor:'#f1f5f9'}}>🆙</button>
-                       </div>
-                    </td>
-                  </tr>
-                ))}
-                {staff.length === 0 && <tr><td colSpan={2} style={{padding:'20px', textAlign:'center', color:'#94a3b8', fontSize:'12px'}}>Δεν υπάρχουν απλοί χρήστες</td></tr>}
-              </tbody>
-            </table>
-          </div>
-
-          <Link href="/admin/invite" style={inviteBtn}>
-            ➕ ΠΡΟΣΚΛΗΣΗ ΝΕΟΥ ΧΡΗΣΤΗ
-          </Link>
+              ))}
+              {staff.length === 0 && (
+                <tr><td colSpan={3} style={{padding:'20px', textAlign:'center', color:'#94a3b8'}}>Δεν υπάρχουν απλοί χρήστες.</td></tr>
+              )}
+            </tbody>
+          </table>
+          <Link href="/admin/invite" style={inviteLinkText}>Προσκάλεσε χρήστη στην επιχείρηση</Link>
         </div>
 
       </div>
@@ -163,17 +159,17 @@ export default function PermissionsPage() {
   )
 }
 
-// STYLES
-const sectionCard = { backgroundColor: 'white', padding: '20px', borderRadius: '24px', marginBottom: '20px', border: '1px solid #e2e8f0' };
-const sectionTitle = { fontSize: '14px', fontWeight: '900', color: '#0f172a', margin: '0 0 5px 0' };
-const sectionSub = { fontSize: '11px', color: '#64748b', marginBottom: '15px' };
-const legendBox = { backgroundColor: '#f8fafc', padding: '12px', borderRadius: '12px', fontSize: '11px', color: '#475569', marginBottom: '15px', lineHeight: '1.6' };
-const tableWrapper = { overflowX: 'auto' as const };
+// STYLES ΓΙΑ ΠΛΗΡΗ ΤΑΥΤΙΣΗ ΜΕ ΤΟ ΠΡΟΤΥΠΟ
+const sectionCard = { backgroundColor: 'white', padding: '25px', borderRadius: '16px', marginBottom: '25px', border: '1px solid #e2e8f0', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' };
+const sectionTitle = { fontSize: '17px', fontWeight: '800', color: '#0f172a', margin: '0 0 5px 0' };
+const sectionSub = { fontSize: '13px', color: '#64748b', marginBottom: '20px' };
+const legendBox = { backgroundColor: '#f8fafc', padding: '15px', borderRadius: '12px', fontSize: '12px', color: '#475569', marginBottom: '20px', lineHeight: '1.6', border: '1px solid #f1f5f9' };
 const tableStyle = { width: '100%', borderCollapse: 'collapse' as const };
-const thStyle = { textAlign: 'left' as const, fontSize: '10px', color: '#94a3b8', padding: '10px', borderBottom: '1px solid #f1f5f9' };
-const tdStyle = { padding: '12px 10px', borderBottom: '1px solid #f8fafc', fontSize: '13px' };
-const trStyle = { verticalAlign: 'middle' as const };
-const miniSelect = { padding: '4px 8px', borderRadius: '6px', border: '1px solid #e2e8f0', fontSize: '11px', fontWeight: '700' };
-const permIcon = { border: 'none', padding: '6px', borderRadius: '8px', cursor: 'pointer', fontSize: '14px', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center' };
-const inviteBtn = { display: 'block', textAlign: 'center' as const, backgroundColor: '#0f172a', color: 'white', padding: '14px', borderRadius: '12px', textDecoration: 'none', fontWeight: '900', fontSize: '12px', marginTop: '15px' };
-const backBtnStyle = { display: 'flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none', background: 'white', width: '35px', height: '35px', borderRadius: '10px', color: '#64748b', border: '1px solid #e2e8f0' };
+const headerRow = { borderBottom: '2px solid #f1f5f9' };
+const thStyle = { textAlign: 'left' as const, fontSize: '11px', color: '#94a3b8', padding: '12px 10px', fontWeight: '800', letterSpacing: '0.5px' };
+const tdStyle = { padding: '15px 10px', borderBottom: '1px solid #f8fafc', fontSize: '14px', color: '#334155' };
+const trStyle = { transition: '0.2s' };
+const permBtn = { border: 'none', background: 'none', cursor: 'pointer', fontSize: '18px', padding: '5px' };
+const delBtn = { border: 'none', background: 'none', cursor: 'pointer', fontSize: '16px', opacity: 0.6 };
+const inviteLinkText = { display: 'inline-block', marginTop: '20px', color: '#2563eb', fontWeight: '700', fontSize: '14px', textDecoration: 'none' };
+const backBtnStyle = { display: 'flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none', background: 'white', width: '40px', height: '40px', borderRadius: '12px', color: '#64748b', border: '1px solid #e2e8f0' };
