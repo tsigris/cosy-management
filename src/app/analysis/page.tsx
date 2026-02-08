@@ -17,26 +17,53 @@ export default function AnalysisPage() {
   const [selectedDate, setSelectedDate] = useState(format(new Date(), 'yyyy-MM-dd'))
   const [pocketTotal, setPocketTotal] = useState(0)
   const [currentUsername, setCurrentUsername] = useState('')
+  
+  // STATE ΓΙΑ ΔΙΚΑΙΩΜΑΤΑ
+  const [permissions, setPermissions] = useState({
+    role: 'user',
+    can_view_analysis: false,
+    can_edit_transactions: false
+  })
 
   useEffect(() => {
-    fetchData()
-    fetchUserInfo()
+    checkAccessAndFetch()
   }, [])
 
-  async function fetchUserInfo() {
+  async function checkAccessAndFetch() {
+    setLoading(true)
     const { data: { user } } = await supabase.auth.getUser()
+    
     if (user) {
-      const { data } = await supabase
+      // 1. Έλεγχος Δικαιωμάτων
+      const { data: profile } = await supabase
         .from('profiles')
-        .select('username')
+        .select('username, role, can_view_analysis, can_edit_transactions')
         .eq('id', user.id)
         .single()
-      if (data?.username) setCurrentUsername(data.username)
+
+      if (profile) {
+        // Αν δεν είναι Admin ΚΑΙ δεν έχει άδεια για ανάλυση, τον διώχνουμε
+        if (profile.role !== 'admin' && !profile.can_view_analysis) {
+          alert("Δεν έχετε δικαίωμα πρόσβασης στην Ανάλυση.")
+          router.push('/')
+          return
+        }
+
+        setCurrentUsername(profile.username || 'Admin')
+        setPermissions({
+          role: profile.role || 'user',
+          can_view_analysis: profile.can_view_analysis || false,
+          can_edit_transactions: profile.can_edit_transactions || false
+        })
+      }
+
+      // 2. Φόρτωση Δεδομένων
+      await fetchData()
     }
+    setLoading(false)
   }
 
   async function fetchData() {
-    setLoading(true)
     const { data } = await supabase
       .from('transactions')
       .select('*, suppliers(name)')
@@ -49,12 +76,16 @@ export default function AnalysisPage() {
         .reduce((acc, t) => acc + Number(t.amount), 0)
       setPocketTotal(pocketSum)
     }
-    setLoading(false)
   }
 
   async function handleAdjustPocket() {
-    const newAmount = prompt("Ορίστε το πραγματικό ποσό που έχετε στην τσέπη (π.χ. 500):", pocketTotal.toString());
-    
+    // Μόνο Admin ή όποιος έχει δικαίωμα επεξεργασίας μπορεί να διορθώσει την τσέπη
+    if (permissions.role !== 'admin' && !permissions.can_edit_transactions) {
+      alert("Δεν έχετε δικαίωμα διόρθωσης υπολοίπου.")
+      return
+    }
+
+    const newAmount = prompt("Ορίστε το πραγματικό ποσό στην τσέπη:", pocketTotal.toString());
     if (newAmount !== null && newAmount !== "") {
       const target = Number(newAmount);
       const diff = target - pocketTotal;
@@ -67,11 +98,10 @@ export default function AnalysisPage() {
         notes: 'ΧΕΙΡΟΚΙΝΗΤΗ ΔΙΟΡΘΩΣΗ ΥΠΟΛΟΙΠΟΥ',
         date: new Date().toISOString().split('T')[0],
         method: 'Μετρητά',
-        created_by_name: currentUsername || 'Admin'
+        created_by_name: currentUsername
       }]);
 
       if (!error) fetchData();
-      else alert("Σφάλμα διόρθωσης: " + error.message);
     }
   }
 
@@ -87,6 +117,7 @@ export default function AnalysisPage() {
     router.push(`/${path}?id=${t.id}`)
   }
 
+  // --- ΛΟΓΙΚΗ ΦΙΛΤΡΩΝ ---
   const now = new Date()
   const filterByTime = (data: any[], type: string, refDate: Date) => {
     return data.filter(t => {
@@ -115,7 +146,9 @@ export default function AnalysisPage() {
 
   const getPercent = (val: number) => totalIncome > 0 ? ((val / totalIncome) * 100).toFixed(1) : "0"
 
-  if (loading) return <div style={{padding: '50px', textAlign: 'center', fontWeight: 'bold'}}>Φόρτωση Ανάλυσης...</div>
+  if (loading) return <div style={{padding: '50px', textAlign: 'center', fontWeight: 'bold'}}>Προστατευμένη Σύνδεση...</div>
+
+  const canEdit = permissions.role === 'admin' || permissions.can_edit_transactions
 
   return (
     <main style={{ backgroundColor: '#f8fafc', minHeight: '100vh', padding: '16px', fontFamily: 'sans-serif' }}>
@@ -131,6 +164,7 @@ export default function AnalysisPage() {
           <button onClick={() => setView('expenses')} style={{...tabBtn, backgroundColor: view === 'expenses' ? '#ef4444' : 'white', color: view === 'expenses' ? 'white' : '#64748b'}}>ΕΞΟΔΑ</button>
         </div>
 
+        {/* ... Φίλτρα και Σύνολα ... */}
         <div style={whiteCard}>
            <select value={period} onChange={e => setPeriod(e.target.value)} style={selectStyle}>
               <option value="month">Προβολή: Μήνας</option>
@@ -148,7 +182,7 @@ export default function AnalysisPage() {
                 <span style={{ fontSize: '11px', fontWeight: '900', color: '#64748b' }}>💰 ΣΥΝΟΛΟ ΣΤΗΝ ΤΣΕΠΗ</span>
                 <div style={{ fontSize: '20px', fontWeight: '900', color: '#8b5cf6' }}>{pocketTotal.toLocaleString('el-GR')}€</div>
               </div>
-              <button onClick={handleAdjustPocket} style={adjustBtnStyle}>⚙️ Διόρθωση</button>
+              {canEdit && <button onClick={handleAdjustPocket} style={adjustBtnStyle}>⚙️ Διόρθωση</button>}
             </div>
           </div>
         )}
@@ -156,8 +190,8 @@ export default function AnalysisPage() {
         {view === 'income' && totalIncome > 0 && (
           <div style={whiteCard}>
             <p style={sectionTitle}>ΚΑΤΑΝΟΜΗ ΤΖΙΡΟΥ (%)</p>
-            <div style={statsRow}><span>💳 Κάρτα (POS):</span><b>{stats.posZ.toFixed(2)}€ ({getPercent(stats.posZ)}%)</b></div>
-            <div style={statsRow}><span>📟 Μετρητά (Z):</span><b>{stats.cashZ.toFixed(2)}€ ({getPercent(stats.cashZ)}%)</b></div>
+            <div style={statsRow}><span>💳 Κάρτα:</span><b>{stats.posZ.toFixed(2)}€ ({getPercent(stats.posZ)}%)</b></div>
+            <div style={statsRow}><span>📟 Μετρητά:</span><b>{stats.cashZ.toFixed(2)}€ ({getPercent(stats.cashZ)}%)</b></div>
             <div style={statsRow}><span>🤫 Χωρίς Σήμανση:</span><b>{stats.noTax.toFixed(2)}€ ({getPercent(stats.noTax)}%)</b></div>
           </div>
         )}
@@ -171,35 +205,29 @@ export default function AnalysisPage() {
 
         <div style={whiteCard}>
           <h3 style={sectionTitle}>ΚΙΝΗΣΕΙΣ ΠΕΡΙΟΔΟΥ</h3>
-          {currentData.filter(t => {
-            if (view === 'income') return t.type === 'income';
-            return t.type === 'expense' || t.category === 'pocket';
-          }).map(t => (
+          {currentData.filter(t => (view === 'income' ? t.type === 'income' : t.type === 'expense' || t.category === 'pocket')).map(t => (
             <div key={t.id} style={rowStyle}>
               <div style={{ flex: 1 }}>
                 <div style={{ fontWeight: '700', fontSize: '14px' }}>
-                  {t.category === 'pocket' ? (t.amount > 0 ? '🏠 ΑΝΑΛΗΨΗ' : '🏠 ΠΛΗΡΩΜΗ/ΔΙΟΡΘΩΣΗ ΤΣΕΠΗΣ') : (t.suppliers?.name || t.notes || t.category)}
+                   {t.category === 'pocket' ? (t.amount > 0 ? '🏠 ΑΝΑΛΗΨΗ' : '🏠 ΠΛΗΡΩΜΗ/ΔΙΟΡΘΩΣΗ') : (t.suppliers?.name || t.notes || t.category)}
                 </div>
                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '4px' }}>
                   <span style={{ fontSize: '11px', color: '#94a3b8' }}>{format(new Date(t.date), 'dd/MM/yyyy')}</span>
-                  {t.created_by_name && (
-                    <span style={userBadgeStyle}>👤 {t.created_by_name.toUpperCase()}</span>
-                  )}
+                  {t.created_by_name && <span style={userBadgeStyle}>👤 {t.created_by_name.toUpperCase()}</span>}
                 </div>
               </div>
               
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <div style={{ 
-                  fontWeight: '900', 
-                  color: t.category === 'pocket' ? '#8b5cf6' : (t.type === 'income' ? '#10b981' : '#ef4444'), 
-                  textAlign: 'right' 
-                }}>
+                <div style={{ fontWeight: '900', color: t.category === 'pocket' ? '#8b5cf6' : (t.type === 'income' ? '#10b981' : '#ef4444'), textAlign: 'right' }}>
                   {t.amount > 0 ? '+' : ''}{Number(t.amount).toFixed(2)}€
                 </div>
-                <div style={{ display: 'flex', gap: '5px' }}>
-                  <button onClick={() => handleEdit(t)} style={actionBtn}>✏️</button>
-                  <button onClick={() => handleDelete(t.id)} style={actionBtn}>🗑️</button>
-                </div>
+                {/* ΕΜΦΑΝΙΣΗ EDIT/DELETE ΜΟΝΟ ΑΝ ΕΧΕΙ ΔΙΚΑΙΩΜΑ */}
+                {canEdit && (
+                  <div style={{ display: 'flex', gap: '5px' }}>
+                    <button onClick={() => handleEdit(t)} style={actionBtn}>✏️</button>
+                    <button onClick={() => handleDelete(t.id)} style={actionBtn}>🗑️</button>
+                  </div>
+                )}
               </div>
             </div>
           ))}
@@ -209,6 +237,7 @@ export default function AnalysisPage() {
   )
 }
 
+// ... Τα styles παραμένουν ίδια ...
 const userBadgeStyle = { fontSize: '9px', backgroundColor: '#e0f2fe', color: '#0369a1', padding: '2px 6px', borderRadius: '6px', fontWeight: '900' as const };
 const backBtnStyle = { display: 'flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none', background: 'white', width: '40px', height: '40px', borderRadius: '12px', color: '#64748b', border: '1px solid #e2e8f0' };
 const tabContainer = { display: 'flex', backgroundColor: '#e2e8f0', borderRadius: '14px', padding: '4px', marginBottom: '15px' };

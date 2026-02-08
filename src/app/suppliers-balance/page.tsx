@@ -10,29 +10,53 @@ function BalancesContent() {
   const router = useRouter()
   const [data, setData] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [permissions, setPermissions] = useState({ role: 'user', can_view_analysis: false })
 
   useEffect(() => {
-    fetchBalances()
+    checkAccessAndFetch()
   }, [])
 
-  async function fetchBalances() {
+  async function checkAccessAndFetch() {
     setLoading(true)
+    const { data: { user } } = await supabase.auth.getUser()
+    
+    if (user) {
+      // 1. Έλεγχος Δικαιωμάτων
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('role, can_view_analysis')
+        .eq('id', user.id)
+        .single()
+
+      if (profile) {
+        // Αν δεν είναι admin και δεν έχει άδεια ανάλυσης, δεν πρέπει να βλέπει συνολικά χρέη
+        if (profile.role !== 'admin' && !profile.can_view_analysis) {
+          alert("Δεν έχετε πρόσβαση στις καρτέλες οφειλών.")
+          router.push('/')
+          return
+        }
+        setPermissions(profile)
+      }
+      
+      await fetchBalances()
+    }
+    setLoading(false)
+  }
+
+  async function fetchBalances() {
     const { data: sups } = await supabase.from('suppliers').select('*').order('name')
     const { data: trans } = await supabase.from('transactions').select('*')
 
     if (sups && trans) {
       const balanceList = sups.map(s => {
         const sTrans = trans.filter(t => t.supplier_id === s.id)
-        // Υπολογισμός Πιστώσεων (Νέα Χρέη)
         const totalCredit = sTrans.filter(t => t.is_credit).reduce((acc, t) => acc + Number(t.amount), 0)
-        // Υπολογισμός Πληρωμών (Έναντι - type: debt_payment)
         const totalPaid = sTrans.filter(t => t.type === 'debt_payment').reduce((acc, t) => acc + Number(t.amount), 0)
         return { ...s, balance: totalCredit - totalPaid }
       }).filter(s => s.balance > 0)
 
       setData(balanceList)
     }
-    setLoading(false)
   }
 
   const totalDebt = data.reduce((acc, s) => acc + s.balance, 0)
@@ -45,6 +69,7 @@ function BalancesContent() {
         <h2 style={{ fontWeight: '900', fontSize: '22px', color: '#1e293b', margin: 0 }}>Καρτέλες (Οφειλές)</h2>
       </div>
 
+      {/* ΣΥΝΟΛΙΚΟ ΧΡΕΟΣ - ΜΟΝΟ ΓΙΑ ADMIN */}
       <div style={totalCardStyle}>
         <p style={{ margin: 0, fontSize: '10px', fontWeight: '800', color: '#94a3b8', letterSpacing: '1px' }}>ΣΥΝΟΛΙΚΟ ΑΝΟΙΧΤΟ ΥΠΟΛΟΙΠΟ</p>
         <p style={{ margin: '5px 0 0 0', fontSize: '32px', fontWeight: '900', color: '#fb923c' }}>
@@ -67,7 +92,6 @@ function BalancesContent() {
               
               <div style={{ textAlign: 'right' }}>
                 <p style={{ fontWeight: '900', fontSize: '18px', color: '#ea580c', margin: 0 }}>{s.balance.toFixed(2)}€</p>
-                {/* ΔΙΟΡΘΩΜΕΝΟ ΚΟΥΜΠΙ */}
                 <button 
                   onClick={() => router.push(`/add-expense?supId=${s.id}&againstDebt=true`)}
                   style={payBtnStyle}
@@ -88,7 +112,7 @@ function BalancesContent() {
   )
 }
 
-// STYLES
+// ... STYLES (Παραμένουν ίδια) ...
 const backBtnStyle = { display: 'flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none', background: 'white', width: '40px', height: '40px', borderRadius: '12px', fontSize: '20px', color: '#64748b', border: '1px solid #e2e8f0', fontWeight: 'bold' as const };
 const totalCardStyle = { backgroundColor: '#0f172a', padding: '25px', borderRadius: '24px', marginBottom: '25px', textAlign: 'center' as const, color: 'white', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)' };
 const supplierCardStyle = { backgroundColor: 'white', padding: '18px', borderRadius: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: '1px solid #f1f5f9', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' };
