@@ -8,7 +8,7 @@ import Link from 'next/link'
 
 function InviteContent() {
   const searchParams = useSearchParams()
-  // Παίρνουμε το ρόλο από το URL (?role=admin ή ?role=user)
+  // Αν το URL δεν έχει ?role=admin, τότε το roleToInvite γίνεται 'user'
   const roleToInvite = searchParams.get('role') === 'admin' ? 'admin' : 'user'
   
   const [storeId, setStoreId] = useState('')
@@ -20,7 +20,6 @@ function InviteContent() {
       try {
         const { data: { user } } = await supabase.auth.getUser()
         if (user) {
-          // Παίρνουμε το σωστό store_id από το προφίλ του χρήστη
           const { data: profile } = await supabase
             .from('profiles')
             .select('store_id')
@@ -40,7 +39,6 @@ function InviteContent() {
     getBusinessData()
   }, [])
 
-  // Κατασκευή του συνδέσμου με το σωστό store_id και το δυναμικό role
   const inviteLink = typeof window !== 'undefined' && storeId
     ? `${window.location.origin}/register?invite=${storeId}&role=${roleToInvite}`
     : ''
@@ -55,7 +53,7 @@ function InviteContent() {
   return (
     <div style={{ maxWidth: '500px', margin: '0 auto', fontFamily: 'sans-serif' }}>
       
-      {/* PROFESSIONAL HEADER */}
+      {/* HEADER */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '25px', paddingTop: '15px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <div style={logoBoxStyle}>
@@ -75,7 +73,7 @@ function InviteContent() {
 
       <div style={cardStyle}>
         <p style={{ fontSize: '14px', color: '#64748b', marginBottom: '20px', lineHeight: '1.5' }}>
-          Αντιγράψτε και στείλτε τον παρακάτω σύνδεσμο στον συνεργάτη σας. Με την εγγραφή του, θα συνδεθεί αυτόματα στην επιχείρησή σας ως <b>{roleToInvite === 'admin' ? 'Διαχειριστής' : 'Απλός Χρήστης'}</b>.
+          Αντιγράψτε τον παρακάτω σύνδεσμο. Ο συνεργάτης σας θα συνδεθεί ως <b>{roleToInvite === 'admin' ? 'Διαχειριστής' : 'Απλός Χρήστης'}</b>.
         </p>
 
         {loading ? (
