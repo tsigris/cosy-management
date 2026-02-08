@@ -10,7 +10,7 @@ function DashboardContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
 
-  // 1. ΣΥΝΑΡΤΗΣΗ ΥΠΟΛΟΓΙΣΜΟΥ ΕΠΙΧΕΙΡΗΜΑΤΙΚΗΣ ΗΜΕΡΑΣ (Αλλαγή στις 07:00)
+  // 1. ΥΠΟΛΟΓΙΣΜΟΣ ΕΠΙΧΕΙΡΗΜΑΤΙΚΗΣ ΗΜΕΡΑΣ (Αλλαγή στις 07:00)
   const getBusinessDate = () => {
     const now = new Date()
     // Αν η ώρα είναι από 00:00 έως 06:59, θεωρούμε ότι είναι ακόμα η προηγούμενη μέρα
@@ -40,10 +40,14 @@ function DashboardContent() {
 
   // Βοηθητική συνάρτηση για τη μορφοποίηση της ώρας
   const formatTime = (dateString: string) => {
-    return new Date(dateString).toLocaleTimeString('el-GR', {
-      hour: '2-digit',
-      minute: '2-digit',
-    })
+    try {
+      return new Date(dateString).toLocaleTimeString('el-GR', {
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+    } catch (e) {
+      return '--:--'
+    }
   }
 
   // ΑΥΤΟΜΑΤΟΣ ΕΛΕΓΧΟΣ ΓΙΑ ΑΛΛΑΓΗ ΗΜΕΡΑΣ (Κάθε 1 λεπτό)
@@ -52,7 +56,6 @@ function DashboardContent() {
       const currentBD = getBusinessDate()
       if (currentBD !== businessToday) {
         setBusinessToday(currentBD)
-        // Αν ο χρήστης δεν έχει επιλέξει manual ημερομηνία, ανανεώνουμε την προβολή
         if (!searchParams.get('date')) {
           router.refresh()
         }
@@ -63,8 +66,14 @@ function DashboardContent() {
 
   const fetchAppData = useCallback(async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) return
+      // Χρησιμοποιούμε getSession για πιο γρήγορη απόκριση στο iPhone
+      const { data: { session } } = await supabase.auth.getSession()
+      const user = session?.user
+
+      if (!user) {
+        setLoading(false)
+        return
+      }
       
       const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).maybeSingle()
       
@@ -80,17 +89,15 @@ function DashboardContent() {
         const { data: transData } = await supabase.from('transactions')
           .select('*, suppliers(name), fixed_assets(name), employees(full_name)')
           .eq('store_id', profile.store_id)
-          .eq('date', selectedDate) // Φιλτράρισμα βάσει της επιχειρηματικής ημέρας
+          .eq('date', selectedDate)
           .order('created_at', { ascending: false })
 
-        if (transData) {
-          const canSeeAll = profile.role === 'admin' || profile.can_view_history;
-          setTransactions(canSeeAll ? transData : transData.filter(t => t.user_id === user.id))
-        }
+        setTransactions(transData || [])
       }
     } catch (err) { 
       console.error(err) 
     } finally { 
+      // Εγγυημένη απενεργοποίηση του loading
       setLoading(false) 
     }
   }, [selectedDate]);
@@ -187,7 +194,7 @@ function DashboardContent() {
           </div>
         </div>
 
-        {/* DATE SELECTOR - Με Business logic "Βάρδια Σήμερα" */}
+        {/* DATE SELECTOR */}
         <div style={dateBarStyle}>
           <button onClick={() => shiftDate(-1)} style={arrowStyle}>←</button>
           <div style={{ flex: 1, textAlign: 'center', fontWeight: '900', color: '#0f172a', fontSize: '15px' }}>
@@ -212,7 +219,7 @@ function DashboardContent() {
         <div style={{ marginTop: '35px' }}>
           <p style={{ fontSize: '11px', fontWeight: '900', color: '#64748b', marginBottom: '15px', letterSpacing: '1px' }}>ΚΙΝΗΣΕΙΣ ΗΜΕΡΑΣ</p>
           
-          {loading ? <p style={{ textAlign: 'center', fontWeight: '800', color: '#94a3b8' }}>Φόρτωση...</p> : (
+          {loading ? <p style={{ textAlign: 'center', fontWeight: '800', color: '#94a3b8', padding: '20px' }}>Φόρτωση...</p> : (
             <>
               {/* 1. Ζ ΟΜΑΔΟΠΟΙΗΣΗ */}
               {zTotal > 0 && (
@@ -308,6 +315,9 @@ function DashboardContent() {
                   )}
                 </div>
               ))}
+              {transactions.length === 0 && !loading && (
+                <p style={{ textAlign: 'center', padding: '40px', color: '#94a3b8', fontWeight: '700' }}>Καμία κίνηση για αυτή τη βάρδια.</p>
+              )}
             </>
           )}
         </div>
@@ -343,7 +353,6 @@ const editBtn: any = { flex: 1, background: '#fef3c7', color: '#92400e', border:
 const deleteBtn: any = { flex: 1, background: '#fee2e2', color: '#991b1b', border: 'none', padding: '12px', borderRadius: '12px', fontWeight: '800', fontSize: '12px', cursor: 'pointer' };
 const iconBtnSmallRed: any = { background: '#fee2e2', border: 'none', padding: '5px 8px', borderRadius: '8px', cursor: 'pointer', fontSize: '12px', color: '#dc2626' };
 
-// STYLE ΓΙΑ ΤΟ BADGE ΤΗΣ ΩΡΑΣ
 const timeBadge: any = { 
   fontSize: '10px', 
   backgroundColor: '#eff6ff', 
