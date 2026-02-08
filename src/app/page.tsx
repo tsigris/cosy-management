@@ -10,14 +10,14 @@ function DashboardContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   
-  // Σταθερή ημερομηνία
+  // Σταθερή ημερομηνία από το URL ή σημερινή
   const selectedDate = searchParams.get('date') || new Date().toISOString().split('T')[0]
   
   const [transactions, setTransactions] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   
-  // 1. ΜΗΔΕΝΙΚΟ ΤΡΕΜΟΠΑΙΓΜΑ: Χρήση localStorage για το όνομα καταστήματος
+  // 1. ΜΗΔΕΝΙΚΟ ΤΡΕΜΟΠΑΙΓΜΑ: Χρήση localStorage για άμεση εμφάνιση ονόματος
   const [storeName, setStoreName] = useState(() => {
     if (typeof window !== 'undefined') {
       return localStorage.getItem('cachedStoreName') || 'Cosy App'
@@ -66,7 +66,7 @@ function DashboardContent() {
             })
 
             let data = transRes.data || []
-            // Φιλτράρισμα: Ο User βλέπει μόνο τα δικά του, ο Admin τα πάντα
+            // Φιλτράρισμα: Ο Admin βλέπει τα πάντα, ο User μόνο τα δικά του
             if (p.role !== 'admin') {
               data = data.filter(t => t.user_id === user.id)
             }
@@ -82,6 +82,7 @@ function DashboardContent() {
     fetchAppData()
   }, [selectedDate])
 
+  // Υπολογισμός συνόλων
   const totals = transactions.reduce((acc, t) => {
     const amt = Number(t.amount) || 0
     if (t.type === 'income') acc.inc += amt
@@ -90,6 +91,11 @@ function DashboardContent() {
   }, { inc: 0, exp: 0 })
 
   const isAdmin = permissions.role === 'admin'
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut()
+    router.push('/login')
+  }
 
   return (
     <div style={{ maxWidth: '500px', margin: '0 auto', fontFamily: 'sans-serif', position: 'relative' }}>
@@ -116,14 +122,25 @@ function DashboardContent() {
               {(isAdmin || permissions.can_view_analysis) && (
                 <Link href="/analysis" style={menuItem} onClick={() => setIsMenuOpen(false)}>📈 Ανάλυση</Link>
               )}
+              
               <div style={divider} />
-              <button onClick={() => supabase.auth.signOut().then(() => router.push('/login'))} style={logoutBtnStyle}>ΕΞΟΔΟΣ 🚪</button>
+              <p style={menuSectionLabel}>ΕΦΑΡΜΟΓΗ</p>
+              
+              {/* ΠΡΟΣΘΗΚΗ ΤΩΝ LINKS ΠΟΥ ΕΛΕΙΠΑΝ */}
+              {isAdmin && (
+                <Link href="/admin/permissions" style={menuItem} onClick={() => setIsMenuOpen(false)}>🔐 Δικαιώματα</Link>
+              )}
+              <Link href="/subscription" style={menuItem} onClick={() => setIsMenuOpen(false)}>💳 Συνδρομή</Link>
+              <Link href="/settings" style={menuItem} onClick={() => setIsMenuOpen(false)}>⚙️ Ρυθμίσεις</Link>
+              
+              <div style={divider} />
+              <button onClick={handleLogout} style={logoutBtnStyle}>ΑΠΟΣΥΝΔΕΣΗ 🚪</button>
             </div>
           )}
         </div>
       </div>
 
-      {/* CARDS */}
+      {/* STAT CARDS */}
       <div style={{ display: 'flex', gap: '15px', marginBottom: '20px' }}>
         <div style={cardStyle}>
             <p style={labelStyle}>{isAdmin ? 'ΕΣΟΔΑ ΗΜΕΡΑΣ' : 'ΔΙΚΑ ΜΟΥ ΕΣΟΔΑ'}</p>
@@ -161,33 +178,42 @@ function DashboardContent() {
       )}
 
       <div style={{ marginTop: '20px' }}>
-        <p style={{ fontSize: '11px', fontWeight: '800', color: '#94a3b8', textTransform: 'uppercase' }}>
+        <p style={{ fontSize: '11px', fontWeight: '800', color: '#94a3b8', textTransform: 'uppercase', marginBottom: '10px' }}>
           {isAdmin ? 'Καθημερινές Κινήσεις' : 'Οι Καταχωρήσεις μου'}
         </p>
         
         {loading ? (
-          <p style={{ textAlign: 'center', padding: '20px' }}>Φόρτωση...</p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+             <div style={{ height: '65px', backgroundColor: '#f1f5f9', borderRadius: '15px' }}></div>
+             <div style={{ height: '65px', backgroundColor: '#f1f5f9', borderRadius: '15px' }}></div>
+          </div>
         ) : (
-          transactions.filter(t => t.category !== 'Εσοδα Ζ' && t.category !== 'pocket').map(t => (
-            <div key={t.id} style={itemStyle}>
-              <div style={{ flex: 1 }}>
-                <p style={{ fontWeight: '800', margin: 0 }}>
-                  {t.type === 'income' ? '💰 ' + (t.notes || 'ΕΙΣΠΡΑΞΗ') : (
-                      t.is_credit ? '🚩 ΠΙΣΤΩΣΗ: ' + t.suppliers?.name : 
-                      t.category === 'Πάγια' ? '🔌 ' + t.fixed_assets?.name :
-                      '💸 ' + (t.suppliers?.name || t.category)
-                  )}
-                </p>
-                <div style={{ display: 'flex', gap: '6px', marginTop: '4px' }}>
-                  <span style={subLabelStyle}>{t.method}</span>
-                  <span style={userBadge}>👤 {t.created_by_name}</span>
+          transactions.filter(t => t.category !== 'Εσοδα Ζ' && t.category !== 'pocket').length > 0 ? (
+            transactions.filter(t => t.category !== 'Εσοδα Ζ' && t.category !== 'pocket').map(t => (
+              <div key={t.id} style={itemStyle}>
+                <div style={{ flex: 1 }}>
+                  <p style={{ fontWeight: '800', margin: 0, fontSize: '15px' }}>
+                    {t.type === 'income' ? '💰 ' + (t.notes || 'ΕΙΣΠΡΑΞΗ') : (
+                        t.is_credit ? '🚩 ΠΙΣΤΩΣΗ: ' + (t.suppliers?.name || 'Προμηθευτής') : 
+                        t.category === 'Πάγια' ? '🔌 ' + (t.fixed_assets?.name || 'Πάγιο') :
+                        '💸 ' + (t.suppliers?.name || t.category || 'Έξοδο')
+                    )}
+                  </p>
+                  <div style={{ display: 'flex', gap: '6px', marginTop: '4px' }}>
+                    <span style={subLabelStyle}>{t.method}</span>
+                    <span style={userBadge}>👤 {t.created_by_name || 'User'}</span>
+                  </div>
                 </div>
+                <p style={{ fontWeight: '900', fontSize: '16px', color: t.is_credit ? '#94a3b8' : (t.type === 'income' ? '#16a34a' : '#dc2626'), margin: 0 }}>
+                  {t.type === 'income' ? '+' : '-'}{Number(t.amount).toFixed(2)}€
+                </p>
               </div>
-              <p style={{ fontWeight: '900', fontSize: '16px', color: t.is_credit ? '#94a3b8' : (t.type === 'income' ? '#16a34a' : '#dc2626'), margin: 0 }}>
-                {t.type === 'income' ? '+' : '-'}{Number(t.amount).toFixed(2)}€
-              </p>
+            ))
+          ) : (
+            <div style={{ textAlign: 'center', padding: '30px', color: '#94a3b8', backgroundColor: 'white', borderRadius: '15px', border: '1px dashed #e2e8f0' }}>
+              Δεν βρέθηκαν κινήσεις.
             </div>
-          ))
+          )
         )}
       </div>
     </div>
@@ -195,11 +221,11 @@ function DashboardContent() {
 }
 
 // STYLES
-const menuBtnStyle = { backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', width: '40px', height: '40px', borderRadius: '12px', fontSize: '20px', color: '#64748b' };
-const dropdownStyle = { position: 'absolute' as const, top: '50px', right: '0', backgroundColor: 'white', minWidth: '200px', borderRadius: '15px', boxShadow: '0 10px 25px rgba(0,0,0,0.1)', padding: '10px', border: '1px solid #f1f5f9' };
-const menuItem = { display: 'block', padding: '10px', textDecoration: 'none', color: '#334155', fontWeight: '700' as const, fontSize: '14px', borderRadius: '8px' };
-const logoutBtnStyle = { ...menuItem, color: '#ef4444', border: 'none', background: '#fee2e2', width: '100%', cursor: 'pointer', textAlign: 'left' as const, borderRadius: '8px' };
-const menuSectionLabel = { fontSize: '9px', fontWeight: '800' as const, color: '#94a3b8', marginBottom: '5px', paddingLeft: '10px' };
+const menuBtnStyle = { backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', width: '40px', height: '40px', borderRadius: '12px', fontSize: '20px', color: '#64748b', cursor: 'pointer' };
+const dropdownStyle = { position: 'absolute' as const, top: '50px', right: '0', backgroundColor: 'white', minWidth: '220px', borderRadius: '15px', boxShadow: '0 10px 25px rgba(0,0,0,0.1)', padding: '10px', border: '1px solid #f1f5f9' };
+const menuItem = { display: 'block', padding: '12px', textDecoration: 'none', color: '#334155', fontWeight: '700' as const, fontSize: '14px', borderRadius: '8px' };
+const logoutBtnStyle = { ...menuItem, color: '#ef4444', border: 'none', background: '#fee2e2', width: '100%', cursor: 'pointer', textAlign: 'left' as const, marginTop: '5px' };
+const menuSectionLabel = { fontSize: '9px', fontWeight: '800' as const, color: '#94a3b8', marginBottom: '5px', paddingLeft: '10px', marginTop: '5px' };
 const divider = { height: '1px', backgroundColor: '#f1f5f9', margin: '8px 0' };
 const cardStyle = { flex: 1, backgroundColor: 'white', padding: '15px', borderRadius: '18px', textAlign: 'center' as const, border: '1px solid #f1f5f9' };
 const labelStyle = { fontSize: '10px', fontWeight: '800', color: '#94a3b8', marginBottom: '4px' };
@@ -212,7 +238,7 @@ const userBadge = { fontSize: '9px', backgroundColor: '#f1f5f9', color: '#64748b
 export default function HomePage() {
   return (
     <main style={{ backgroundColor: '#f8fafc', minHeight: '100vh', padding: '15px' }}>
-      <Suspense fallback={<div>Φόρτωση...</div>}>
+      <Suspense fallback={<div style={{textAlign:'center', padding:'50px'}}>Φόρτωση Cosy App...</div>}>
         <DashboardContent />
       </Suspense>
     </main>
