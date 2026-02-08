@@ -59,7 +59,6 @@ function DashboardContent() {
     fetchAppData()
   }, [selectedDate])
 
-  // Βοηθητική συνάρτηση για τα σύμβολα πληρωμής
   const getPaymentIcon = (method: string) => {
     const m = method?.toLowerCase() || '';
     if (m.includes('μετρητά')) return '💵';
@@ -126,11 +125,15 @@ function DashboardContent() {
                 </>
               )}
               {(isAdmin || permissions.can_view_analysis) && <Link href="/analysis" style={menuItem} onClick={() => setIsMenuOpen(false)}>📊 Ανάλυση</Link>}
+              
               <div style={divider} />
               <p style={menuSectionLabel}>ΕΦΑΡΜΟΓΗ</p>
+              <Link href="/help" style={menuItem} onClick={() => setIsMenuOpen(false)}>❓ Οδηγίες Χρήσης</Link>
               {isAdmin && <Link href="/admin/permissions" style={menuItem} onClick={() => setIsMenuOpen(false)}>🔐 Δικαιώματα</Link>}
               <Link href="/subscription" style={menuItem} onClick={() => setIsMenuOpen(false)}>💳 Συνδρομή</Link>
               <Link href="/settings" style={menuItem} onClick={() => setIsMenuOpen(false)}>⚙️ Ρυθμίσεις</Link>
+              
+              <div style={divider} />
               <button onClick={() => supabase.auth.signOut().then(() => window.location.href='/login')} style={logoutBtnStyle}>ΑΠΟΣΥΝΔΕΣΗ 🚪</button>
             </div>
           )}
