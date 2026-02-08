@@ -17,7 +17,8 @@ function AnalysisContent() {
   const [transactions, setTransactions] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [view, setView] = useState('income') 
-  const [period, setPeriod] = useState('month') 
+  // ΠΡΟΕΠΙΛΟΓΗ: ΗΜΕΡΑ
+  const [period, setPeriod] = useState('custom_day') 
   const [selectedDate, setSelectedDate] = useState(format(new Date(), 'yyyy-MM-dd'))
   const [isZExpanded, setIsZExpanded] = useState(false)
 
@@ -29,7 +30,6 @@ function AnalysisContent() {
         if (!user) return
         const { data: profile } = await supabase.from('profiles').select('store_id').eq('id', user.id).single()
         if (profile?.store_id) {
-          // Φέρνουμε δεδομένα και από πέρυσι για τη σύγκριση
           const { data } = await supabase.from('transactions')
             .select('*, suppliers(name)')
             .eq('store_id', profile.store_id)
@@ -41,7 +41,7 @@ function AnalysisContent() {
     loadData()
   }, [])
 
-  // --- ΛΟΓΙΚΗ ΥΠΟΛΟΓΙΣΜΟΥ ΠΕΡΙΟΔΩΝ (ΤΩΡΑ & ΠΕΡΣΙ) ---
+  // --- ΥΠΟΛΟΓΙΣΜΟΣ ΣΤΑΤΙΣΤΙΚΩΝ & ΣΥΓΚΡΙΣΗΣ ---
   const stats = useMemo(() => {
     const now = parseISO(selectedDate)
     const lastYear = subYears(now, 1)
@@ -81,7 +81,7 @@ function AnalysisContent() {
     const diff = currentTotal - prevTotal
     const percent = prevTotal !== 0 ? (diff / prevTotal) * 100 : 0
 
-    return { currentTotal, prevTotal, diff, percent, currentViewData, currentData }
+    return { currentTotal, prevTotal, percent, currentViewData }
   }, [transactions, period, selectedDate, view])
 
   const zEntries = stats.currentViewData.filter(t => t.category === 'Εσοδα Ζ')
@@ -114,8 +114,8 @@ function AnalysisContent() {
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <div style={logoBoxStyle}>📊</div>
           <div>
-            <h1 style={{ fontWeight: '900', fontSize: '22px', margin: 0, color: '#0f172a' }}>Ανάλυση</h1>
-            <p style={{ margin: '2px 0 0', fontSize: '10px', color: '#94a3b8', fontWeight: '800', textTransform: 'uppercase' }}>Insights & Statistics</p>
+            <h1 style={{ fontWeight: '900', fontSize: '20px', margin: 0, color: '#0f172a' }}>Ανάλυση</h1>
+            <p style={{ margin: '2px 0 0', fontSize: '10px', color: '#94a3b8', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.5px' }}>ΣΤΑΤΙΣΤΙΚΑ ΕΠΙΧΕΙΡΗΣΗΣ</p>
           </div>
         </div>
         <Link href="/" style={backBtnStyle}>✕</Link>
@@ -127,7 +127,7 @@ function AnalysisContent() {
         <button onClick={() => setView('expenses')} style={{...tabBtn, backgroundColor: view === 'expenses' ? '#ef4444' : 'transparent', color: view === 'expenses' ? 'white' : '#64748b'}}>ΕΞΟΔΑ</button>
       </div>
 
-      {/* FILTER BAR WITH PERMANENT CALENDAR */}
+      {/* FILTER BAR WITH CALENDAR ICON */}
       <div style={filterBar}>
         <select value={period} onChange={e => setPeriod(e.target.value)} style={selectStyle}>
           <option value="custom_day">Προβολή: Ημέρα</option>
@@ -145,18 +145,18 @@ function AnalysisContent() {
         </div>
       </div>
 
+      {/* HERO CARD WITH YEARLY COMPARISON */}
       <div style={{...heroCard, backgroundColor: view === 'income' ? '#0f172a' : '#450a0a'}}>
-        <p style={labelMicro}>ΚΑΘΑΡΟΣ ΤΖΙΡΟΣ ΠΕΡΙΟΔΟΥ</p>
+        <p style={labelMicro}>{view === 'income' ? 'ΚΑΘΑΡΟΣ ΤΖΙΡΟΣ ΠΕΡΙΟΔΟΥ' : 'ΣΥΝΟΛΙΚΑ ΕΞΟΔΑ ΠΕΡΙΟΔΟΥ'}</p>
         <h2 style={{ fontSize: '38px', fontWeight: '900', margin: '5px 0' }}>{stats.currentTotal.toLocaleString('el-GR')}€</h2>
         
-        {/* ΣΥΓΚΡΙΣΗ ΜΕ ΠΕΡΣΙ */}
         <div style={{ marginTop: '10px', fontSize: '12px', fontWeight: '700', color: stats.percent >= 0 ? '#4ade80' : '#f87171' }}>
             {stats.percent >= 0 ? '↑' : '↓'} {Math.abs(stats.percent).toFixed(1)}% <span style={{opacity:0.7, color:'white', marginLeft: '5px'}}>vs Πέρυσι ({stats.prevTotal.toFixed(0)}€)</span>
         </div>
       </div>
 
-      {/* AREA CHART */}
-      {period === 'month' && (
+      {/* GRAPH (SHOW ONLY ON MONTH VIEW) */}
+      {period === 'month' && chartData.length > 0 && (
         <div style={chartCard}>
           <p style={chartTitle}>ΔΙΑΚΥΜΑΝΣΗ ΜΗΝΑ (€)</p>
           <div style={{ width: '100%', height: 180 }}>
@@ -178,7 +178,7 @@ function AnalysisContent() {
         </div>
       )}
 
-      {/* GROUPED Z */}
+      {/* GROUPED Z ACCORDION */}
       {view === 'income' && zStats.total > 0 && (
         <div style={{ marginBottom: '15px' }}>
           <div onClick={() => setIsZExpanded(!isZExpanded)} style={zHeader}>
@@ -201,6 +201,7 @@ function AnalysisContent() {
         </div>
       )}
 
+      {/* ANALYTICAL LIST */}
       <div style={listWrapper}>
         {stats.currentViewData.filter(t => t.category !== 'Εσοδα Ζ').map(t => (
           <div key={t.id} style={rowStyle}>
@@ -238,9 +239,5 @@ const listWrapper: any = { backgroundColor: 'white', padding: '10px 22px', borde
 const rowStyle: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '18px 0', borderBottom: '1px solid #f8fafc' };
 
 export default function AnalysisPage() {
-  return (
-    <main style={{ backgroundColor: '#f8fafc', minHeight: '100vh', padding: '15px' }}>
-      <Suspense fallback={<div>Φόρτωση...</div>}><AnalysisContent /></Suspense>
-    </main>
-  )
+  return <main style={{ backgroundColor: '#f8fafc', minHeight: '100vh', padding: '15px' }}><Suspense fallback={<div>Φόρτωση...</div>}><AnalysisContent /></Suspense></main>
 }
