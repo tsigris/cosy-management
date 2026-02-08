@@ -19,7 +19,8 @@ function DashboardContent() {
   const [permissions, setPermissions] = useState({
     role: 'user',
     can_view_history: false,
-    can_view_analysis: false
+    can_view_analysis: false,
+    enable_payroll: false // Προσθήκη για έλεγχο μισθοδοσίας αν χρειαστεί
   })
 
   useEffect(() => {
@@ -30,7 +31,7 @@ function DashboardContent() {
       if (user) {
         const { data: profile } = await supabase
           .from('profiles')
-          .select('store_name, role, can_view_history, can_view_analysis')
+          .select('store_name, role, can_view_history, can_view_analysis, enable_payroll')
           .eq('id', user.id)
           .single()
         
@@ -39,7 +40,8 @@ function DashboardContent() {
           setPermissions({
             role: profile.role || 'user',
             can_view_history: profile.can_view_history || false,
-            can_view_analysis: profile.can_view_analysis || false
+            can_view_analysis: profile.can_view_analysis || false,
+            enable_payroll: profile.enable_payroll || false
           })
         }
 
@@ -104,6 +106,10 @@ function DashboardContent() {
                 <>
                   <Link href="/suppliers" style={menuItem} onClick={() => setIsMenuOpen(false)}>🛒 Προμηθευτές</Link>
                   <Link href="/fixed-assets" style={menuItem} onClick={() => setIsMenuOpen(false)}>🔌 Πάγια</Link>
+                  
+                  {/* ΔΙΟΡΘΩΣΗ: Προσθήκη επιλογής Υπαλλήλων */}
+                  <Link href="/employees" style={menuItem} onClick={() => setIsMenuOpen(false)}>👥 Υπάλληλοι</Link>
+                  
                   <Link href="/suppliers-balance" style={menuItem} onClick={() => setIsMenuOpen(false)}>🚩 Καρτέλες (Χρέη)</Link>
                 </>
               )}
@@ -115,7 +121,6 @@ function DashboardContent() {
               <div style={divider} />
               <p style={menuSectionLabel}>ΕΦΑΡΜΟΓΗ</p>
               
-              {/* ΝΕΑ ΘΕΣΗ: Δικαιώματα πριν τις ρυθμίσεις */}
               {isAdmin && (
                 <Link href="/admin/permissions" style={menuItem} onClick={() => setIsMenuOpen(false)}>
                   🔐 Δικαιώματα Χρηστών
@@ -199,7 +204,7 @@ function DashboardContent() {
   )
 }
 
-// STYLES
+// STYLES (Παραμένουν ίδια)
 const userBadge = { fontSize: '9px', backgroundColor: '#f1f5f9', color: '#64748b', padding: '2px 5px', borderRadius: '4px', fontWeight: 'bold' };
 const lockedState = { textAlign: 'center' as const, padding: '40px', backgroundColor: 'white', borderRadius: '20px', border: '1px dashed #cbd5e1', color: '#94a3b8', fontSize: '14px' };
 const emptyState = { textAlign: 'center' as const, padding: '30px', color: '#94a3b8', background: 'white', borderRadius: '20px' };
