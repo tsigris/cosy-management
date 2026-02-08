@@ -9,7 +9,19 @@ import { useRouter, useSearchParams } from 'next/navigation'
 function DashboardContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const selectedDate = searchParams.get('date') || new Date().toISOString().split('T')[0]
+
+  // 1. ΣΥΝΑΡΤΗΣΗ ΥΠΟΛΟΓΙΣΜΟΥ ΕΠΙΧΕΙΡΗΜΑΤΙΚΗΣ ΗΜΕΡΑΣ (Αλλαγή στις 07:00)
+  const getBusinessDate = () => {
+    const now = new Date()
+    // Αν η ώρα είναι από 00:00 έως 06:59, θεωρούμε ότι είναι ακόμα η προηγούμενη μέρα
+    if (now.getHours() < 7) {
+      now.setDate(now.getDate() - 1)
+    }
+    return now.toISOString().split('T')[0]
+  }
+
+  const [businessToday, setBusinessToday] = useState(getBusinessDate())
+  const selectedDate = searchParams.get('date') || businessToday
   
   const [transactions, setTransactions] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
@@ -34,6 +46,21 @@ function DashboardContent() {
     })
   }
 
+  // ΑΥΤΟΜΑΤΟΣ ΕΛΕΓΧΟΣ ΓΙΑ ΑΛΛΑΓΗ ΗΜΕΡΑΣ (Κάθε 1 λεπτό)
+  useEffect(() => {
+    const timer = setInterval(() => {
+      const currentBD = getBusinessDate()
+      if (currentBD !== businessToday) {
+        setBusinessToday(currentBD)
+        // Αν ο χρήστης δεν έχει επιλέξει manual ημερομηνία, ανανεώνουμε την προβολή
+        if (!searchParams.get('date')) {
+          router.refresh()
+        }
+      }
+    }, 60000)
+    return () => clearInterval(timer)
+  }, [businessToday, searchParams, router])
+
   const fetchAppData = useCallback(async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser()
@@ -53,8 +80,7 @@ function DashboardContent() {
         const { data: transData } = await supabase.from('transactions')
           .select('*, suppliers(name), fixed_assets(name), employees(full_name)')
           .eq('store_id', profile.store_id)
-          .gte('date', `${selectedDate}T00:00:00`)
-          .lte('date', `${selectedDate}T23:59:59`)
+          .eq('date', selectedDate) // Φιλτράρισμα βάσει της επιχειρηματικής ημέρας
           .order('created_at', { ascending: false })
 
         if (transData) {
@@ -71,21 +97,14 @@ function DashboardContent() {
 
   useEffect(() => {
     fetchAppData()
-
     const channel = supabase
       .channel('realtime-transactions')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'transactions' },
-        () => {
-          fetchAppData()
-        }
-      )
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'transactions' }, () => {
+        fetchAppData()
+      })
       .subscribe()
 
-    return () => {
-      supabase.removeChannel(channel)
-    }
+    return () => { supabase.removeChannel(channel) }
   }, [selectedDate, fetchAppData])
 
   const getPaymentIcon = (method: string) => {
@@ -161,7 +180,6 @@ function DashboardContent() {
                 {isAdmin && <Link href="/admin/permissions" style={menuItem} onClick={() => setIsMenuOpen(false)}>🔐 Δικαιώματα</Link>}
                 <Link href="/subscription" style={menuItem} onClick={() => setIsMenuOpen(false)}>💳 Συνδρομή</Link>
                 <Link href="/settings" style={menuItem} onClick={() => setIsMenuOpen(false)}>⚙️ Ρυθμίσεις</Link>
-                
                 <div style={divider} />
                 <button onClick={() => supabase.auth.signOut().then(() => window.location.href='/login')} style={logoutBtnStyle}>ΑΠΟΣΥΝΔΕΣΗ 🚪</button>
               </div>
@@ -169,11 +187,11 @@ function DashboardContent() {
           </div>
         </div>
 
-        {/* DATE SELECTOR */}
+        {/* DATE SELECTOR - Με Business logic "Βάρδια Σήμερα" */}
         <div style={dateBarStyle}>
           <button onClick={() => shiftDate(-1)} style={arrowStyle}>←</button>
           <div style={{ flex: 1, textAlign: 'center', fontWeight: '900', color: '#0f172a', fontSize: '15px' }}>
-            {selectedDate === new Date().toISOString().split('T')[0] ? 'ΣΗΜΕΡΑ' : new Date(selectedDate).toLocaleDateString('el-GR', { day: 'numeric', month: 'short' }).toUpperCase()}
+            {selectedDate === businessToday ? 'ΒΑΡΔΙΑ ΣΗΜΕΡΑ' : new Date(selectedDate).toLocaleDateString('el-GR', { day: 'numeric', month: 'short' }).toUpperCase()}
           </div>
           <button onClick={() => shiftDate(1)} style={arrowStyle}>→</button>
         </div>
@@ -215,12 +233,7 @@ function DashboardContent() {
                           </div>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                              <p style={{ fontWeight: '900', fontSize: '14px', margin: 0, color: '#1e293b' }}>{Number(z.amount).toFixed(2)}€</p>
-                             {isAdmin && (
-                               <>
-                                 <button onClick={() => router.push(`/add-income?editId=${z.id}`)} style={iconBtnSmall}>✎</button>
-                                 <button onClick={() => handleDelete(z.id)} style={iconBtnSmallRed}>🗑️</button>
-                               </>
-                             )}
+                             {isAdmin && <button onClick={() => handleDelete(z.id)} style={iconBtnSmallRed}>🗑️</button>}
                           </div>
                         </div>
                       ))}
@@ -251,12 +264,7 @@ function DashboardContent() {
                             </div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                               <p style={{ fontWeight: '900', fontSize: '14px', margin: 0, color: '#1e293b' }}>{Math.abs(Number(t.amount)).toFixed(2)}€</p>
-                              {isAdmin && (
-                                <>
-                                  <button onClick={() => router.push(`/add-expense?editId=${t.id}`)} style={iconBtnSmall}>✎</button>
-                                  <button onClick={() => handleDelete(t.id)} style={iconBtnSmallRed}>🗑️</button>
-                                </>
-                              )}
+                              {isAdmin && <button onClick={() => handleDelete(t.id)} style={iconBtnSmallRed}>🗑️</button>}
                             </div>
                           </div>
                         ))}
@@ -333,8 +341,7 @@ const userBadge: any = { fontSize: '10px', backgroundColor: '#f1f5f9', color: '#
 const actionPanel: any = { backgroundColor: 'white', padding: '10px 20px 20px', borderRadius: '0 0 24px 24px', border: '1px solid #f1f5f9', borderTop: 'none', display: 'flex', gap: '10px', marginTop: '-15px', marginBottom: '15px', boxShadow: '0 4px 12px rgba(0,0,0,0.02)' };
 const editBtn: any = { flex: 1, background: '#fef3c7', color: '#92400e', border: 'none', padding: '12px', borderRadius: '12px', fontWeight: '800', fontSize: '12px', cursor: 'pointer' };
 const deleteBtn: any = { flex: 1, background: '#fee2e2', color: '#991b1b', border: 'none', padding: '12px', borderRadius: '12px', fontWeight: '800', fontSize: '12px', cursor: 'pointer' };
-const iconBtnSmall: any = { background: '#f1f5f9', border: 'none', padding: '5px 8px', borderRadius: '8px', cursor: 'pointer', fontSize: '12px' };
-const iconBtnSmallRed: any = { ...iconBtnSmall, background: '#fee2e2', color: '#dc2626' };
+const iconBtnSmallRed: any = { background: '#fee2e2', border: 'none', padding: '5px 8px', borderRadius: '8px', cursor: 'pointer', fontSize: '12px', color: '#dc2626' };
 
 // STYLE ΓΙΑ ΤΟ BADGE ΤΗΣ ΩΡΑΣ
 const timeBadge: any = { 
