@@ -1,26 +1,51 @@
 @import "tailwindcss";
 
 :root {
+  /* BACKGROUND: Καθαρό λευκό για μέγιστη φωτεινότητα */
   --background: #ffffff;
-  --foreground: #171717;
+  /* FOREGROUND: Τέρμα σκούρο (σχεδόν μαύρο) για να "πετάγεται" το κείμενο */
+  --foreground: #000000; 
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+/* Force Light Mode - Επειδή η εφαρμογή είναι SaaS, 
+   θέλουμε σταθερά χρώματα ανεξάρτητα από τις ρυθμίσεις του κινητού */
+:root {
+  --background: #ffffff;
+  --foreground: #000000;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  /* Διόρθωση για να μην είναι αχνά τα γράμματα */
+  text-rendering: optimizeLegibility;
+}
+
+/* --- ΚΡΙΣΙΜΕΣ ΔΙΟΡΘΩΣΕΙΣ ΓΙΑ ΤΗΝ ΟΡΑΤΟΤΗΤΑ --- */
+
+/* 1. Κάνουμε τα placeholders (το κείμενο μέσα στα κουτάκια) πιο σκούρα */
+::placeholder {
+  color: #64748b !important; 
+  opacity: 1 !important;
+}
+
+/* 2. Κάνουμε όλα τα inputs και τα κουμπιά να έχουν έντονο κείμενο */
+input, select, textarea, button {
+  color: #0f172a !important;
+  font-weight: 600;
+}
+
+/* 3. Διόρθωση για τα Labels (π.χ. "ΟΝΟΜΑ", "ΑΦΜ") */
+label {
+  color: #1e293b !important; /* Πολύ σκούρο γκρι-μπλε */
+  font-weight: 800 !important;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* 4. Βελτίωση για τα "αχνά" γκρι που χρησιμοποιούμε στις σελίδες */
+.text-slate-400, .text-slate-500 {
+  color: #475569 !important; /* Σκούρο γκρι που διαβάζεται εύκολα */
 }
