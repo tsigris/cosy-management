@@ -6,10 +6,13 @@ import Link from 'next/link'
 export default function SuppliersPage() {
   const [suppliers, setSuppliers] = useState<any[]>([])
   const [transactions, setTransactions] = useState<any[]>([])
+  
+  // State για τη φόρμα
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
-  const [afm, setAfm] = useState('')
+  const [afm, setAfm] = useState('') // Εδώ το λέμε afm, αλλά στη βάση θα το στείλουμε ως vat_number
   const [category, setCategory] = useState('Εμπορεύματα')
+  
   const [editingId, setEditingId] = useState<string | null>(null)
   const [showTransactions, setShowTransactions] = useState<string | null>(null)
   const [isFormOpen, setIsFormOpen] = useState(false)
@@ -24,7 +27,7 @@ export default function SuppliersPage() {
       .select('*')
       .order('name')
     
-    // Φέρνουμε τις συναλλαγές για τον υπολογισμό τζίρου
+    // Φέρνουμε τις συναλλαγές
     const { data: tData, error: tError } = await supabase
       .from('transactions')
       .select('*')
@@ -42,22 +45,21 @@ export default function SuppliersPage() {
       .reduce((acc, t) => acc + (Number(t.amount) || 0), 0)
   }
 
-  // --- Η ΔΙΟΡΘΩΜΕΝΗ ΣΥΝΑΡΤΗΣΗ ---
+  // --- Η ΔΙΟΡΘΩΜΕΝΗ ΣΥΝΑΡΤΗΣΗ ΑΠΟΘΗΚΕΥΣΗΣ ---
   async function handleSave() {
     if (!name) return alert('Δώσε όνομα')
     setLoading(true)
 
     try {
-      // 1. Βρίσκουμε τον τρέχοντα χρήστη
+      // 1. Βρίσκουμε τον χρήστη
       const { data: { user } } = await supabase.auth.getUser()
       
       if (!user) {
         alert('Δεν βρέθηκε συνδεδεμένος χρήστης!')
-        setLoading(false)
         return
       }
 
-      // 2. Βρίσκουμε το store_id από το προφίλ του
+      // 2. Βρίσκουμε το store_id του
       const { data: profile } = await supabase
         .from('profiles')
         .select('store_id')
@@ -66,21 +68,20 @@ export default function SuppliersPage() {
 
       if (!profile?.store_id) {
         alert('Δεν βρέθηκε κατάστημα στο προφίλ!')
-        setLoading(false)
         return
       }
 
-      // 3. Ετοιμάζουμε τα δεδομένα ΜΑΖΙ με το store_id
+      // 3. Ετοιμάζουμε τα δεδομένα (ΔΙΟΡΘΩΣΗ: vat_number αντί για afm)
       const supplierData = { 
         name, 
         phone, 
-        afm, 
+        vat_number: afm, // <--- Στέλνουμε το 'afm' στη στήλη 'vat_number'
         category,
-        store_id: profile.store_id // <--- ΑΥΤΟ ΗΤΑΝ ΤΟ ΚΛΕΙΔΙ
+        store_id: profile.store_id // <--- Στέλνουμε και το store_id
       }
 
       if (editingId) {
-        // Ενημέρωση
+        // Update
         const { error } = await supabase
           .from('suppliers')
           .update(supplierData)
@@ -90,7 +91,7 @@ export default function SuppliersPage() {
         setEditingId(null)
 
       } else {
-        // Εισαγωγή
+        // Insert
         const { error } = await supabase
           .from('suppliers')
           .insert([supplierData])
@@ -98,13 +99,13 @@ export default function SuppliersPage() {
         if (error) throw error
       }
 
-      // 4. Καθαρισμός και ανανέωση
+      // 4. Καθαρισμός
       resetForm()
       fetchData()
 
     } catch (error: any) {
-      console.error('Error saving supplier:', error)
-      alert('Σφάλμα κατά την αποθήκευση: ' + error.message)
+      console.error('Error saving:', error)
+      alert('Σφάλμα: ' + error.message)
     } finally {
       setLoading(false)
     }
@@ -115,9 +116,13 @@ export default function SuppliersPage() {
     setEditingId(null); setIsFormOpen(false);
   }
 
+  // --- Η ΔΙΟΡΘΩΜΕΝΗ ΣΥΝΑΡΤΗΣΗ ΕΠΕΞΕΡΓΑΣΙΑΣ ---
   const handleEdit = (s: any) => {
-    setEditingId(s.id); setName(s.name); setPhone(s.phone || '');
-    setAfm(s.afm || ''); setCategory(s.category || 'Εμπορεύματα');
+    setEditingId(s.id); 
+    setName(s.name); 
+    setPhone(s.phone || '');
+    setAfm(s.vat_number || ''); // <--- ΔΙΟΡΘΩΣΗ: Διαβάζουμε το vat_number από τη βάση
+    setCategory(s.category || 'Εμπορεύματα');
     setIsFormOpen(true);
     window.scrollTo(0, 0);
   }
@@ -208,6 +213,7 @@ export default function SuppliersPage() {
   )
 }
 
+// Στυλ (ίδια με πριν)
 const addBtn = { padding: '8px 16px', backgroundColor: '#2563eb', color: 'white', border: 'none', borderRadius: '10px', fontWeight: '800', cursor: 'pointer', fontSize: '12px' };
 const cancelBtn = { padding: '8px 16px', backgroundColor: '#f1f5f9', color: '#64748b', border: 'none', borderRadius: '10px', fontWeight: '800', cursor: 'pointer', fontSize: '12px' };
 const formCard = { backgroundColor: 'white', padding: '20px', borderRadius: '24px', border: '2px solid', marginBottom: '20px', boxShadow: '0 4px 12px rgba(0,0,0,0.05)' };
