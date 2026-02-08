@@ -1,20 +1,25 @@
 'use client'
-import { useState } from 'react'
+import { useState, Suspense } from 'react'
 import { supabase } from '@/lib/supabase'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 
-export default function RegisterPage() {
+function RegisterForm() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const router = useRouter()
+  const searchParams = useSearchParams()
+
+  // Πιάνουμε τον κωδικό πρόσκλησης από το URL (π.χ. ?invite=ID_ADMIN)
+  const inviteCode = searchParams.get('invite')
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!email || password.length < 6) return alert('Ο κωδικός πρέπει να είναι τουλάχιστον 6 χαρακτήρες.')
     setLoading(true)
     
+    // 1. Εγγραφή στο Auth του Supabase
     const { data, error } = await supabase.auth.signUp({ 
       email: email.trim(), 
       password: password.trim()
@@ -23,58 +28,88 @@ export default function RegisterPage() {
     if (error) {
       alert('Σφάλμα: ' + error.message)
     } else if (data.user) {
-      alert('Επιτυχής εγγραφή! Τώρα μπορείτε να συνδεθείτε.')
-      router.push('/login')
+      // 2. Δημιουργία Προφίλ με Δικαιώματα
+      // Αν ΔΕΝ υπάρχει inviteCode, ο χρήστης είναι ADMIN του δικού του καταστήματος
+      const isEmployee = Boolean(inviteCode)
+      
+      const { error: profileError } = await supabase.from('profiles').insert([{
+        id: data.user.id,
+        email: email.trim(),
+        username: email.split('@')[0], // Προσωρινό username το πρώτο μέρος του email
+        role: isEmployee ? 'user' : 'admin',
+        store_id: isEmployee ? inviteCode : data.user.id, // Οι υπάλληλοι παίρνουν το ID του Admin, οι Admin το δικό τους
+        can_view_analysis: !isEmployee, // True αν είναι Admin, False αν είναι υπάλληλος
+        can_view_history: !isEmployee,
+        can_edit_transactions: !isEmployee
+      }])
+
+      if (!profileError) {
+        alert(isEmployee ? 'Επιτυχής εγγραφή ως υπάλληλος!' : 'Επιτυχής εγγραφή ως διαχειριστής!')
+        router.push('/login')
+      } else {
+        alert('Σφάλμα προφίλ: ' + profileError.message)
+      }
     }
     setLoading(false)
   }
 
   return (
-    <main style={containerStyle}>
-      <div style={cardStyle}>
-        <div style={headerStyle}>
-          <h1 style={brandStyle}>COSY APP</h1>
-          <div style={dividerStyle} />
-          <p style={instructionStyle}>Δημιουργία Νέου Λογαριασμού</p>
-        </div>
-        
-        <form onSubmit={handleSignUp} style={formStyle}>
-          <div style={fieldGroup}>
-            <label style={labelStyle}>EMAIL ΕΡΓΑΣΙΑΣ</label>
-            <input 
-              type="email" 
-              value={email} 
-              onChange={e => setEmail(e.target.value)} 
-              style={inputStyle} 
-              placeholder="email@example.com" 
-              required 
-            />
-          </div>
-          <div style={fieldGroup}>
-            <label style={labelStyle}>ΚΩΔΙΚΟΣ ΠΡΟΣΒΑΣΗΣ</label>
-            <input 
-              type="password" 
-              value={password} 
-              onChange={e => setPassword(e.target.value)} 
-              style={inputStyle} 
-              placeholder="Τουλάχιστον 6 χαρακτήρες" 
-              required 
-            />
-          </div>
-          <button type="submit" disabled={loading} style={submitBtnStyle}>
-            {loading ? 'ΔΗΜΙΟΥΡΓΙΑ...' : 'ΕΓΓΡΑΦΗ'}
-          </button>
-        </form>
-
-        <div style={footerStyle}>
-          <Link href="/login" style={linkStyle}>← ΕΠΙΣΤΡΟΦΗ ΣΤΗ ΣΥΝΔΕΣΗ</Link>
-        </div>
+    <div style={cardStyle}>
+      <div style={headerStyle}>
+        <h1 style={brandStyle}>COSY APP</h1>
+        <div style={dividerStyle} />
+        <p style={instructionStyle}>
+          {inviteCode ? 'Εγγραφή Υπαλλήλου (Με Πρόσκληση)' : 'Δημιουργία Νέου Διαχειριστή'}
+        </p>
       </div>
+      
+      <form onSubmit={handleSignUp} style={formStyle}>
+        <div style={fieldGroup}>
+          <label style={labelStyle}>EMAIL ΕΡΓΑΣΙΑΣ</label>
+          <input 
+            type="email" 
+            value={email} 
+            onChange={e => setEmail(e.target.value)} 
+            style={inputStyle} 
+            placeholder="email@example.com" 
+            required 
+          />
+        </div>
+        <div style={fieldGroup}>
+          <label style={labelStyle}>ΚΩΔΙΚΟΣ ΠΡΟΣΒΑΣΗΣ</label>
+          <input 
+            type="password" 
+            value={password} 
+            onChange={e => setPassword(e.target.value)} 
+            style={inputStyle} 
+            placeholder="Τουλάχιστον 6 χαρακτήρες" 
+            required 
+          />
+        </div>
+        <button type="submit" disabled={loading} style={submitBtnStyle}>
+          {loading ? 'ΔΗΜΙΟΥΡΓΙΑ...' : 'ΕΓΓΡΑΦΗ'}
+        </button>
+      </form>
+
+      <div style={footerStyle}>
+        <Link href="/login" style={linkStyle}>← ΕΠΙΣΤΡΟΦΗ ΣΤΗ ΣΥΝΔΕΣΗ</Link>
+      </div>
+    </div>
+  )
+}
+
+// Χρησιμοποιούμε Suspense γιατί το useSearchParams το απαιτεί στο Next.js
+export default function RegisterPage() {
+  return (
+    <main style={containerStyle}>
+      <Suspense fallback={<div>Φόρτωση...</div>}>
+        <RegisterForm />
+      </Suspense>
     </main>
   )
 }
 
-// ΕΠΑΓΓΕΛΜΑΤΙΚΑ STYLES (ΣΥΜΒΑΤΑ ΜΕ ΤΟ LOGIN)
+// STYLES (Κρατάμε τα δικά σου όπως ήταν)
 const containerStyle = { minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#f1f5f9', fontFamily: 'sans-serif', padding: '20px' };
 const cardStyle = { backgroundColor: '#ffffff', width: '100%', maxWidth: '420px', padding: '48px', borderRadius: '4px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', borderTop: '5px solid #10b981' };
 const headerStyle = { textAlign: 'center' as const, marginBottom: '32px' };
