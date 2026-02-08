@@ -1,51 +1,63 @@
 @import "tailwindcss";
 
 :root {
-  /* BACKGROUND: Καθαρό λευκό για μέγιστη φωτεινότητα */
   --background: #ffffff;
-  /* FOREGROUND: Τέρμα σκούρο (σχεδόν μαύρο) για να "πετάγεται" το κείμενο */
-  --foreground: #000000; 
+  --foreground: #0f172a; /* Πολύ σκούρο μπλε-μαύρο για κείμενα */
 }
 
-/* Force Light Mode - Επειδή η εφαρμογή είναι SaaS, 
-   θέλουμε σταθερά χρώματα ανεξάρτητα από τις ρυθμίσεις του κινητού */
+/* Force Light Mode - Σταθερότητα σε κάθε κινητό */
 :root {
   --background: #ffffff;
-  --foreground: #000000;
+  --foreground: #0f172a;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
+  background-color: #f8fafc; /* Ελαφρύ γκρι φόντο για να "πετάνε" οι άσπρες κάρτες */
+  color: #0f172a;
   font-family: system-ui, -apple-system, sans-serif;
   -webkit-font-smoothing: antialiased;
-  /* Διόρθωση για να μην είναι αχνά τα γράμματα */
   text-rendering: optimizeLegibility;
 }
 
-/* --- ΚΡΙΣΙΜΕΣ ΔΙΟΡΘΩΣΕΙΣ ΓΙΑ ΤΗΝ ΟΡΑΤΟΤΗΤΑ --- */
+/* --- ΔΙΟΡΘΩΣΗ ΟΡΑΤΟΤΗΤΑΣ ΣΕ ΟΛΑ ΤΑ ΠΕΔΙΑ --- */
 
-/* 1. Κάνουμε τα placeholders (το κείμενο μέσα στα κουτάκια) πιο σκούρα */
+/* Κείμενο που γράφεις μέσα στα κουτάκια */
+input, select, textarea {
+  color: #000000 !important; /* Απόλυτο μαύρο για να φαίνεται καθαρά */
+  background-color: #ffffff !important;
+  font-weight: 700 !important;
+  font-size: 16px !important; /* Αποφυγή zoom σε iPhone */
+}
+
+/* Placeholder (το αχνό κείμενο πριν γράψεις) */
 ::placeholder {
-  color: #64748b !important; 
+  color: #94a3b8 !important; /* Καθαρό γκρι */
   opacity: 1 !important;
+  font-weight: 500;
 }
 
-/* 2. Κάνουμε όλα τα inputs και τα κουμπιά να έχουν έντονο κείμενο */
-input, select, textarea, button {
-  color: #0f172a !important;
-  font-weight: 600;
-}
-
-/* 3. Διόρθωση για τα Labels (π.χ. "ΟΝΟΜΑ", "ΑΦΜ") */
-label {
-  color: #1e293b !important; /* Πολύ σκούρο γκρι-μπλε */
-  font-weight: 800 !important;
+/* Labels (π.χ. "ΠΟΣΟ", "ΜΕΘΟΔΟΣ") */
+label, .label-text {
+  color: #334155 !important; /* Σκούρο Slate */
+  font-weight: 900 !important;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.5px;
+  font-size: 11px;
 }
 
-/* 4. Βελτίωση για τα "αχνά" γκρι που χρησιμοποιούμε στις σελίδες */
-.text-slate-400, .text-slate-500 {
-  color: #475569 !important; /* Σκούρο γκρι που διαβάζεται εύκολα */
+/* Διόρθωση για τα αχνά κείμενα σε όλο το app */
+span, p, div {
+  /* Αν κάτι είναι Slate-400 ή 500, το κάνουμε πιο σκούρο αυτόματα */
+  --tw-text-opacity: 1 !important;
+}
+
+/* --- ΠΡΟΣΑΡΜΟΓΗ ΓΙΑ ΤΑ ΠΕΔΙΑ ΠΟΥ ΗΤΑΝ ΑΧΝΑ ΣΤΙΣ ΦΩΤΟ --- */
+input[type="number"], input[type="text"], select {
+  border: 1.5px solid #e2e8f0 !important; /* Πιο έντονο περίγραμμα */
+  border-radius: 14px;
+}
+
+input:focus {
+  border-color: #3b82f6 !important; /* Μπλε όταν το πατάς */
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
 }
