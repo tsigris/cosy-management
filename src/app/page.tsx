@@ -20,7 +20,7 @@ function DashboardContent() {
     role: 'user',
     can_view_history: false,
     can_view_analysis: false,
-    enable_payroll: false // Προσθήκη για έλεγχο μισθοδοσίας αν χρειαστεί
+    enable_payroll: false
   })
 
   useEffect(() => {
@@ -29,28 +29,38 @@ function DashboardContent() {
       const { data: { user } } = await supabase.auth.getUser()
       
       if (user) {
+        // 1. Φέρνουμε το προφίλ για τα δικαιώματα
         const { data: profile } = await supabase
           .from('profiles')
           .select('store_name, role, can_view_history, can_view_analysis, enable_payroll')
           .eq('id', user.id)
           .single()
         
+        let userRole = 'user'
         if (profile) {
+          userRole = profile.role || 'user'
           setStoreName(profile.store_name || 'ΚΑΤΑΣΤΗΜΑ')
           setPermissions({
-            role: profile.role || 'user',
+            role: userRole,
             can_view_history: profile.can_view_history || false,
             can_view_analysis: profile.can_view_analysis || false,
             enable_payroll: profile.enable_payroll || false
           })
         }
 
-        const { data: transData } = await supabase
+        // 2. Φέρνουμε τις συναλλαγές με "Εξυπνο Φίλτρο"
+        let query = supabase
           .from('transactions')
           .select('*, suppliers(name), fixed_assets(name)')
           .gte('date', `${selectedDate}T00:00:00`)
           .lte('date', `${selectedDate}T23:59:59`)
-          .order('created_at', { ascending: false })
+
+        // ΑΝ ΔΕΝ ΕΙΝΑΙ ADMIN, δείξε μόνο τα δικά του
+        if (userRole !== 'admin') {
+          query = query.eq('user_id', user.id)
+        }
+
+        const { data: transData } = await query.order('created_at', { ascending: false })
         
         if (transData) setTransactions(transData)
       }
@@ -106,10 +116,7 @@ function DashboardContent() {
                 <>
                   <Link href="/suppliers" style={menuItem} onClick={() => setIsMenuOpen(false)}>🛒 Προμηθευτές</Link>
                   <Link href="/fixed-assets" style={menuItem} onClick={() => setIsMenuOpen(false)}>🔌 Πάγια</Link>
-                  
-                  {/* ΔΙΟΡΘΩΣΗ: Προσθήκη επιλογής Υπαλλήλων */}
                   <Link href="/employees" style={menuItem} onClick={() => setIsMenuOpen(false)}>👥 Υπάλληλοι</Link>
-                  
                   <Link href="/suppliers-balance" style={menuItem} onClick={() => setIsMenuOpen(false)}>🚩 Καρτέλες (Χρέη)</Link>
                 </>
               )}
@@ -137,36 +144,39 @@ function DashboardContent() {
         </div>
       </div>
 
-      {(isAdmin || permissions.can_view_history) && (
-        <div style={{ display: 'flex', gap: '15px', marginBottom: '20px' }}>
-          <div style={cardStyle}>
-              <p style={labelStyle}>ΕΣΟΔΑ ΗΜΕΡΑΣ</p>
-              <p style={{ color: '#16a34a', fontSize: '24px', fontWeight: '900', margin: 0 }}>{totals.inc.toFixed(2)}€</p>
-          </div>
-          <div style={cardStyle}>
-              <p style={labelStyle}>ΕΞΟΔΑ ΗΜΕΡΑΣ</p>
-              <p style={{ color: '#dc2626', fontSize: '24px', fontWeight: '900', margin: 0 }}>{totals.exp.toFixed(2)}€</p>
-          </div>
+      {/* Τα σύνολα τα βλέπουν όλοι, αλλά ο user βλέπει μόνο τα δικά του σύνολα */}
+      <div style={{ display: 'flex', gap: '15px', marginBottom: '20px' }}>
+        <div style={cardStyle}>
+            <p style={labelStyle}>ΕΣΟΔΑ ΗΜΕΡΑΣ</p>
+            <p style={{ color: '#16a34a', fontSize: '24px', fontWeight: '900', margin: 0 }}>{totals.inc.toFixed(2)}€</p>
         </div>
-      )}
+        <div style={cardStyle}>
+            <p style={labelStyle}>ΕΞΟΔΑ ΗΜΕΡΑΣ</p>
+            <p style={{ color: '#dc2626', fontSize: '24px', fontWeight: '900', margin: 0 }}>{totals.exp.toFixed(2)}€</p>
+        </div>
+      </div>
 
       <div style={{ display: 'flex', gap: '12px', marginBottom: '12px' }}>
         <Link href={`/add-income?date=${selectedDate}`} style={{ ...btnStyle, backgroundColor: '#10b981' }}>+ ΕΣΟΔΑ</Link>
         <Link href={`/add-expense?date=${selectedDate}`} style={{ ...btnStyle, backgroundColor: '#ef4444' }}>- ΕΞΟΔΑ</Link>
       </div>
 
-      <Link href="/daily-z" style={zBtnStyle}>
-        📟 ΚΛΕΙΣΙΜΟ ΤΑΜΕΙΟΥ (Ζ) & ΑΝΑΛΗΨΗ
-      </Link>
+      {isAdmin && (
+        <Link href="/daily-z" style={zBtnStyle}>
+          📟 ΚΛΕΙΣΙΜΟ ΤΑΜΕΙΟΥ (Ζ) & ΑΝΑΛΗΨΗ
+        </Link>
+      )}
 
       <div style={{ marginBottom: '20px' }} />
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-        <p style={{ fontSize: '11px', fontWeight: '800', color: '#94a3b8', textTransform: 'uppercase' }}>Καθημερινές Κινήσεις</p>
+        <p style={{ fontSize: '11px', fontWeight: '800', color: '#94a3b8', textTransform: 'uppercase' }}>
+          {isAdmin ? 'Όλες οι Κινήσεις' : 'Οι Κινήσεις μου'}
+        </p>
         
         {loading ? (
           <p style={{ textAlign: 'center', padding: '20px' }}>Φόρτωση...</p>
-        ) : (isAdmin || permissions.can_view_history) ? (
+        ) : (
           filteredForList.length > 0 ? (
             filteredForList.map(t => (
               <div key={t.id} style={itemStyle}>
@@ -192,12 +202,8 @@ function DashboardContent() {
               </div>
             ))
           ) : (
-            <div style={emptyState}>Καμία καθημερινή κίνηση.</div>
+            <div style={emptyState}>Δεν βρέθηκαν κινήσεις.</div>
           )
-        ) : (
-          <div style={lockedState}>
-            <p>🔒 Το ιστορικό είναι κλειδωμένο από τον διαχειριστή.</p>
-          </div>
         )}
       </div>
     </div>
@@ -206,8 +212,7 @@ function DashboardContent() {
 
 // STYLES (Παραμένουν ίδια)
 const userBadge = { fontSize: '9px', backgroundColor: '#f1f5f9', color: '#64748b', padding: '2px 5px', borderRadius: '4px', fontWeight: 'bold' };
-const lockedState = { textAlign: 'center' as const, padding: '40px', backgroundColor: 'white', borderRadius: '20px', border: '1px dashed #cbd5e1', color: '#94a3b8', fontSize: '14px' };
-const emptyState = { textAlign: 'center' as const, padding: '30px', color: '#94a3b8', background: 'white', borderRadius: '20px' };
+const emptyState = { textAlign: 'center' as const, padding: '30px', color: '#94a3b8', background: 'white', borderRadius: '20px', border: '1px solid #f1f5f9' };
 const menuBtnStyle = { backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', width: '40px', height: '40px', borderRadius: '12px', cursor: 'pointer', fontSize: '20px', color: '#64748b' };
 const dropdownStyle = { position: 'absolute' as const, top: '50px', right: '0', backgroundColor: 'white', minWidth: '220px', borderRadius: '20px', boxShadow: '0 10px 30px rgba(0,0,0,0.15)', padding: '12px', zIndex: 100, border: '1px solid #f1f5f9' };
 const menuItem = { display: 'block', padding: '12px', textDecoration: 'none', color: '#334155', fontWeight: '700' as const, fontSize: '14px', borderRadius: '10px' };
@@ -217,7 +222,7 @@ const divider = { height: '1px', backgroundColor: '#f1f5f9', margin: '8px 0' };
 const cardStyle = { flex: 1, backgroundColor: 'white', padding: '18px', borderRadius: '20px', textAlign: 'center' as const, boxShadow: '0 2px 4px rgba(0,0,0,0.02)' };
 const labelStyle = { fontSize: '10px', fontWeight: '800', color: '#94a3b8', marginBottom: '4px' };
 const btnStyle = { flex: 1, padding: '18px', borderRadius: '16px', color: 'white', textDecoration: 'none', textAlign: 'center' as const, fontWeight: '800', fontSize: '15px' };
-const zBtnStyle = { display: 'block', padding: '16px', borderRadius: '16px', backgroundColor: '#0f172a', color: 'white', textDecoration: 'none', textAlign: 'center' as const, fontWeight: '900', fontSize: '14px' };
+const zBtnStyle = { display: 'block', padding: '16px', borderRadius: '16px', backgroundColor: '#0f172a', color: 'white', textDecoration: 'none', textAlign: 'center' as const, fontWeight: '900', fontSize: '14px', marginBottom: '10px' };
 const itemStyle = { backgroundColor: 'white', padding: '14px', borderRadius: '18px', border: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' };
 const subLabelStyle = { fontSize: '11px', color: '#94a3b8', textTransform: 'uppercase' as const, margin: '0', fontWeight: 'bold' };
 const delBtnStyle = { background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer', opacity: 0.3 };
