@@ -32,6 +32,7 @@ function DashboardContent() {
         if (user) {
           const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).maybeSingle()
           if (profile) {
+            // Εδώ τραβάμε το όνομα δυναμικά από το προφίλ του χρήστη
             setStoreName(profile.store_name || 'Cosy App')
             setPermissions({ 
               role: profile.role || 'user', 
@@ -92,9 +93,24 @@ function DashboardContent() {
   return (
     <div style={{ maxWidth: '500px', margin: '0 auto', fontFamily: 'sans-serif', position: 'relative' }}>
       
-      {/* HEADER & MENU */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', paddingTop: '10px' }}>
-        <h1 style={{ fontWeight: '900', fontSize: '24px', margin: 0, color: '#0f172a' }}>{storeName.toUpperCase()}</h1>
+      {/* PROFESSIONAL GRAPHIC HEADER */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px', paddingTop: '15px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          {/* Logo Box */}
+          <div style={logoBoxStyle}>
+            <span style={{ fontSize: '20px' }}>📈</span>
+          </div>
+          {/* Text Section */}
+          <div>
+            <h1 style={{ fontWeight: '900', fontSize: '22px', margin: 0, color: '#0f172a', lineHeight: '1.1', letterSpacing: '-0.5px' }}>
+              {storeName}
+            </h1>
+            <p style={{ margin: '2px 0 0', fontSize: '10px', color: '#94a3b8', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '1px' }}>
+              Business Dashboard
+            </p>
+          </div>
+        </div>
+        
         <div style={{ position: 'relative', zIndex: 1001 }}>
           <button onClick={() => setIsMenuOpen(!isMenuOpen)} style={menuBtnStyle}>⋮</button>
           {isMenuOpen && (
@@ -140,7 +156,6 @@ function DashboardContent() {
         <div style={cardStyle}>
           <p style={labelStyle}>ΕΣΟΔΑ ΗΜΕΡΑΣ</p>
           <p style={{ color: '#16a34a', fontSize: '22px', fontWeight: '900', margin: 0 }}>{totalInc.toFixed(2)}€</p>
-          {/* Αφαιρέθηκε το 100% Τζίρος από εδώ */}
         </div>
         <div style={cardStyle}>
           <p style={labelStyle}>ΕΞΟΔΑ ΗΜΕΡΑΣ</p>
@@ -188,7 +203,7 @@ function DashboardContent() {
               <div key={t.id} style={{ marginBottom: '5px' }}>
                 <div onClick={() => isAdmin && setExpandedTx(expandedTx === t.id ? null : t.id)} style={{ ...itemStyle, borderRadius: expandedTx === t.id ? '20px 20px 0 0' : '20px', borderBottom: expandedTx === t.id ? 'none' : '1px solid #f1f5f9' }}>
                   <div style={{ flex: 1 }}>
-                    <p style={{ fontWeight: '800', margin: 0, fontSize: '15px' }}>{t.type === 'income' ? '💰 ' + (t.notes || 'ΕΙΣΠΡΑΞΗ') : (t.is_credit ? '🚩 ΠΙΣΤΩΣΗ: ' + t.suppliers?.name : t.category === 'Πάγια' ? '🔌 ' + t.fixed_assets?.name : '💸 ' + (t.suppliers?.name || t.category))}</p>
+                    <p style={{ fontWeight: '800', margin: 0, fontSize: '15px' }}>{t.type === 'income' ? '💰 ' + (t.notes || 'ΕΙΣΠΡΑΞΗ') : (t.is_credit ? '🚩 ΠΙΣΤΩΣΗ: ' + (t.suppliers?.name || 'Προμηθευτής') : t.category === 'Πάγια' ? '🔌 ' + (t.fixed_assets?.name || 'Πάγιο') : '💸 ' + (t.suppliers?.name || t.category))}</p>
                     <div style={{ display: 'flex', gap: '6px', marginTop: '4px' }}><span style={subLabelStyle}>{t.method}</span><span style={userBadge}>👤 {t.created_by_name}</span></div>
                   </div>
                   <p style={{ fontWeight: '900', fontSize: '16px', color: t.type === 'income' ? '#16a34a' : '#dc2626', margin: 0 }}>{t.type === 'income' ? '+' : '-'}{Number(t.amount).toFixed(2)}€</p>
@@ -208,7 +223,8 @@ function DashboardContent() {
   )
 }
 
-// Σταθερά στυλ με δήλωση :any για αποφυγή σφαλμάτων TypeScript
+// Σταθερά στυλ
+const logoBoxStyle: any = { width: '42px', height: '42px', backgroundColor: '#0f172a', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 10px rgba(15, 23, 42, 0.15)' };
 const dateBarStyle: any = { display: 'flex', alignItems: 'center', backgroundColor: 'white', padding: '10px 15px', borderRadius: '20px', marginBottom: '20px', border: '1px solid #f1f5f9' };
 const dateArrowStyle: any = { background: 'none', border: 'none', fontSize: '18px', color: '#0f172a', fontWeight: '900', cursor: 'pointer' };
 const dateInputStyle: any = { position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', opacity: 0, cursor: 'pointer' };
