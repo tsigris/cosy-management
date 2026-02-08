@@ -16,7 +16,6 @@ function DashboardContent() {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [storeName, setStoreName] = useState('ΚΑΤΑΣΤΗΜΑ')
   
-  // STATE ΓΙΑ ΔΙΚΑΙΩΜΑΤΑ
   const [permissions, setPermissions] = useState({
     role: 'user',
     can_view_history: false,
@@ -29,7 +28,6 @@ function DashboardContent() {
       const { data: { user } } = await supabase.auth.getUser()
       
       if (user) {
-        // 1. Φόρτωση Προφίλ & Δικαιωμάτων
         const { data: profile } = await supabase
           .from('profiles')
           .select('store_name, role, can_view_history, can_view_analysis')
@@ -45,7 +43,6 @@ function DashboardContent() {
           })
         }
 
-        // 2. Φόρτωση Συναλλαγών (Μόνο αν έχει δικαίωμα ή είναι Admin)
         const { data: transData } = await supabase
           .from('transactions')
           .select('*, suppliers(name), fixed_assets(name)')
@@ -91,7 +88,6 @@ function DashboardContent() {
   return (
     <div style={{ maxWidth: '500px', margin: '0 auto', fontFamily: 'sans-serif' }}>
       
-      {/* HEADER */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', paddingTop: '10px' }}>
         <h1 style={{ fontWeight: '900', fontSize: '26px', margin: 0, color: '#0f172a' }}>
           {storeName.toUpperCase()}
@@ -104,13 +100,6 @@ function DashboardContent() {
             <div style={dropdownStyle}>
               <p style={menuSectionLabel}>ΔΙΑΧΕΙΡΙΣΗ</p>
               
-              {/* Κουμπί Δικαιωμάτων - Μόνο για Admin */}
-              {isAdmin && (
-                <Link href="/admin/permissions" style={menuItem} onClick={() => setIsMenuOpen(false)}>
-                  🔐 Δικαιώματα Χρηστών
-                </Link>
-              )}
-
               {isAdmin && (
                 <>
                   <Link href="/suppliers" style={menuItem} onClick={() => setIsMenuOpen(false)}>🛒 Προμηθευτές</Link>
@@ -125,6 +114,14 @@ function DashboardContent() {
               
               <div style={divider} />
               <p style={menuSectionLabel}>ΕΦΑΡΜΟΓΗ</p>
+              
+              {/* ΝΕΑ ΘΕΣΗ: Δικαιώματα πριν τις ρυθμίσεις */}
+              {isAdmin && (
+                <Link href="/admin/permissions" style={menuItem} onClick={() => setIsMenuOpen(false)}>
+                  🔐 Δικαιώματα Χρηστών
+                </Link>
+              )}
+
               <Link href="/subscription" style={menuItem} onClick={() => setIsMenuOpen(false)}>💳 Συνδρομή</Link>
               <Link href="/settings" style={menuItem} onClick={() => setIsMenuOpen(false)}>⚙️ Ρυθμίσεις</Link>
               
@@ -135,7 +132,6 @@ function DashboardContent() {
         </div>
       </div>
 
-      {/* ΣΤΑΤΙΣΤΙΚΑ ΗΜΕΡΑΣ */}
       {(isAdmin || permissions.can_view_history) && (
         <div style={{ display: 'flex', gap: '15px', marginBottom: '20px' }}>
           <div style={cardStyle}>
@@ -149,7 +145,6 @@ function DashboardContent() {
         </div>
       )}
 
-      {/* QUICK BUTTONS */}
       <div style={{ display: 'flex', gap: '12px', marginBottom: '12px' }}>
         <Link href={`/add-income?date=${selectedDate}`} style={{ ...btnStyle, backgroundColor: '#10b981' }}>+ ΕΣΟΔΑ</Link>
         <Link href={`/add-expense?date=${selectedDate}`} style={{ ...btnStyle, backgroundColor: '#ef4444' }}>- ΕΞΟΔΑ</Link>
@@ -161,7 +156,6 @@ function DashboardContent() {
 
       <div style={{ marginBottom: '20px' }} />
 
-      {/* ΛΙΣΤΑ ΚΙΝΗΣΕΩΝ */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
         <p style={{ fontSize: '11px', fontWeight: '800', color: '#94a3b8', textTransform: 'uppercase' }}>Καθημερινές Κινήσεις</p>
         
