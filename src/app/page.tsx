@@ -61,6 +61,7 @@ function DashboardContent() {
 
   const handleDateChange = (newDate: string) => {
     router.push(`/?date=${newDate}`)
+    setIsMenuOpen(false)
   }
 
   const shiftDate = (days: number) => {
@@ -69,7 +70,6 @@ function DashboardContent() {
     handleDateChange(d.toISOString().split('T')[0])
   }
 
-  // --- ΛΟΓΙΚΗ ΟΜΑΔΟΠΟΙΗΣΗΣ ---
   const zEntries = transactions.filter(t => t.category === 'Εσοδα Ζ')
   const zTotal = zEntries.reduce((acc, t) => acc + Number(t.amount), 0)
   const regularEntries = transactions.filter(t => t.category !== 'Εσοδα Ζ' && t.category !== 'pocket')
@@ -78,23 +78,16 @@ function DashboardContent() {
   const totalExp = transactions.filter(t => t.type === 'expense' && !t.is_credit && t.category !== 'pocket').reduce((acc, t) => acc + Number(t.amount), 0)
   const isAdmin = permissions.role === 'admin'
 
-  const handleDelete = async (id: string) => {
-    if (confirm('Διαγραφή κίνησης;')) {
-      const { error } = await supabase.from('transactions').delete().eq('id', id)
-      if (!error) setTransactions(prev => prev.filter(t => t.id !== id))
-    }
-  }
-
   return (
-    <div style={{ maxWidth: '500px', margin: '0 auto', fontFamily: 'sans-serif' }}>
+    <div style={{ maxWidth: '500px', margin: '0 auto', fontFamily: 'sans-serif', position: 'relative' }}>
       
       {/* HEADER */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px', paddingTop: '15px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <div style={logoBoxStyle}><span style={{ fontSize: '20px' }}>📈</span></div>
           <div>
-            <h1 style={{ fontWeight: '900', fontSize: '22px', margin: 0, color: '#000000' }}>{storeName}</h1>
-            <p style={{ margin: 0, fontSize: '10px', color: '#475569', fontWeight: '900', textTransform: 'uppercase' }}>Business Dashboard</p>
+            <h1 style={{ fontWeight: '950', fontSize: '22px', margin: 0, color: '#000000' }}>{storeName}</h1>
+            <p style={{ margin: 0, fontSize: '10px', color: '#475569', fontWeight: '950', textTransform: 'uppercase' }}>Business Dashboard</p>
           </div>
         </div>
         
@@ -102,11 +95,23 @@ function DashboardContent() {
           <button onClick={() => setIsMenuOpen(!isMenuOpen)} style={menuBtnStyle}>⋮</button>
           {isMenuOpen && (
             <div style={dropdownStyle}>
+              <p style={menuSectionLabel}>ΔΙΑΧΕΙΡΙΣΗ</p>
               <Link href="/suppliers" style={menuItem} onClick={() => setIsMenuOpen(false)}>🛒 Προμηθευτές</Link>
               <Link href="/fixed-assets" style={menuItem} onClick={() => setIsMenuOpen(false)}>🔌 Πάγια</Link>
               {isAdmin && <Link href="/employees" style={menuItem} onClick={() => setIsMenuOpen(false)}>👥 Υπάλληλοι</Link>}
-              {(isAdmin || permissions.can_view_analysis) && <Link href="/analysis" style={menuItem} onClick={() => setIsMenuOpen(false)}>📊 Ανάλυση</Link>}
+              {isAdmin && <Link href="/suppliers-balance" style={menuItem} onClick={() => setIsMenuOpen(false)}>🚩 Καρτέλες (Χρέη)</Link>}
+              
+              {(isAdmin || permissions.can_view_analysis) && (
+                <Link href="/analysis" style={menuItem} onClick={() => setIsMenuOpen(false)}>📊 Ανάλυση</Link>
+              )}
+              
+              <div style={divider} />
+              <p style={menuSectionLabel}>ΕΦΑΡΜΟΓΗ</p>
               {isAdmin && <Link href="/admin/permissions" style={menuItem} onClick={() => setIsMenuOpen(false)}>🔐 Δικαιώματα</Link>}
+              <Link href="/subscription" style={menuItem} onClick={() => setIsMenuOpen(false)}>💳 Συνδρομή</Link>
+              <Link href="/settings" style={menuItem} onClick={() => setIsMenuOpen(false)}>⚙️ Ρυθμίσεις</Link>
+              
+              <div style={divider} />
               <button onClick={() => supabase.auth.signOut().then(() => window.location.href='/login')} style={logoutBtnStyle}>ΑΠΟΣΥΝΔΕΣΗ 🚪</button>
             </div>
           )}
@@ -125,53 +130,44 @@ function DashboardContent() {
         <button onClick={() => shiftDate(1)} style={dateArrowStyle}>→</button>
       </div>
 
-      {/* STATS CARDS */}
       <div style={{ display: 'flex', gap: '15px', marginBottom: '20px' }}>
-        <div style={cardStyle}><p style={labelStyle}>ΕΣΟΔΑ ΗΜΕΡΑΣ</p><p style={{ color: '#16a34a', fontSize: '24px', fontWeight: '900', margin: 0 }}>{totalInc.toFixed(2)}€</p></div>
-        <div style={cardStyle}><p style={labelStyle}>ΕΞΟΔΑ ΗΜΕΡΑΣ</p><p style={{ color: '#dc2626', fontSize: '24px', fontWeight: '900', margin: 0 }}>{totalExp.toFixed(2)}€</p></div>
+        <div style={cardStyle}><p style={labelStyle}>ΕΣΟΔΑ ΗΜΕΡΑΣ</p><p style={{ color: '#16a34a', fontSize: '24px', fontWeight: '950', margin: 0 }}>{totalInc.toFixed(2)}€</p></div>
+        <div style={cardStyle}><p style={labelStyle}>ΕΞΟΔΑ ΗΜΕΡΑΣ</p><p style={{ color: '#dc2626', fontSize: '24px', fontWeight: '950', margin: 0 }}>{totalExp.toFixed(2)}€</p></div>
       </div>
 
-      {/* ACTIONS */}
       <div style={{ display: 'flex', gap: '12px', marginBottom: '12px' }}>
         <Link href={`/add-income?date=${selectedDate}`} style={{ ...btnStyle, backgroundColor: '#10b981' }}>+ ΕΣΟΔΑ</Link>
         <Link href={`/add-expense?date=${selectedDate}`} style={{ ...btnStyle, backgroundColor: '#ef4444' }}>- ΕΞΟΔΑ</Link>
       </div>
       {isAdmin && <Link href="/daily-z" style={zBtnStyle}>📟 ΚΛΕΙΣΙΜΟ ΤΑΜΕΙΟΥ (Ζ)</Link>}
 
-      {/* LIST OF MOVEMENTS */}
+      {/* LIST SECTION */}
       <div style={{ marginTop: '25px' }}>
-        <p style={{ fontSize: '11px', fontWeight: '900', color: '#000', marginBottom: '12px', textTransform: 'uppercase' }}>Κινήσεις Ημέρας</p>
-        
-        {loading ? <div style={{ textAlign: 'center', padding: '20px', fontWeight: '800' }}>ΦΟΡΤΩΣΗ...</div> : (
+        <p style={{ fontSize: '11px', fontWeight: '950', color: '#000', marginBottom: '15px', textTransform: 'uppercase' }}>Κινήσεις Ημέρας</p>
+        {loading ? <div style={{ textAlign: 'center', padding: '20px', fontWeight: '950' }}>ΦΟΡΤΩΣΗ...</div> : (
           <>
-            {/* 1. Ζ SECTION */}
             {zTotal > 0 && (
               <div style={{ marginBottom: '10px' }}>
                 <div onClick={() => isAdmin && setIsZExpanded(!isZExpanded)} style={zItemHeader}>
-                  <div style={{ flex: 1 }}><p style={{ fontWeight: '900', margin: 0, fontSize: '15px' }}>📟 ΣΥΝΟΛΟ Ζ</p><span style={{ fontSize: '10px', opacity: 0.8 }}>{zEntries.length} Εγγραφές</span></div>
-                  <p style={{ fontWeight: '900', fontSize: '18px', margin: 0 }}>+{zTotal.toFixed(2)}€</p>
+                  <div style={{ flex: 1 }}><p style={{ fontWeight: '950', margin: 0, fontSize: '15px' }}>📟 ΣΥΝΟΛΟ Ζ</p><span style={{ fontSize: '10px', opacity: 0.8 }}>{zEntries.length} Εγγραφές</span></div>
+                  <p style={{ fontWeight: '950', fontSize: '18px', margin: 0 }}>+{zTotal.toFixed(2)}€</p>
                 </div>
                 {isZExpanded && (
                   <div style={zBreakdownPanel}>
                     {zEntries.map(z => (
                       <div key={z.id} style={zSubItem}>
-                        <div style={{ flex: 1 }}><p style={{ fontWeight: '800', margin: 0, fontSize: '13px' }}>{z.method}</p></div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                          <p style={{ fontWeight: '900', fontSize: '14px', margin: 0 }}>{Number(z.amount).toFixed(2)}€</p>
-                          <button onClick={() => handleDelete(z.id)} style={{ background: 'none', border: 'none' }}>🗑️</button>
-                        </div>
+                        <div style={{ flex: 1 }}><p style={{ fontWeight: '950', margin: 0, fontSize: '13px' }}>{z.method}</p></div>
+                        <p style={{ fontWeight: '950', fontSize: '14px', margin: 0 }}>{Number(z.amount).toFixed(2)}€</p>
                       </div>
                     ))}
                   </div>
                 )}
               </div>
             )}
-
-            {/* 2. REGULAR TRANSACTIONS */}
             {regularEntries.map(t => (
               <div key={t.id} style={itemStyle}>
                 <div style={{ flex: 1 }}>
-                  <p style={{ fontWeight: '900', margin: 0, fontSize: '15px', color: '#000000' }}>
+                  <p style={{ fontWeight: '950', margin: 0, fontSize: '16px', color: '#000000' }}>
                     {t.type === 'income' ? '💰 ' + (t.notes || 'ΕΣΟΔΟ') : (t.suppliers?.name || t.category.toUpperCase())}
                   </p>
                   <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
@@ -179,54 +175,49 @@ function DashboardContent() {
                     <span style={userBadge}>👤 {t.created_by_name?.toUpperCase()}</span>
                   </div>
                 </div>
-                <div style={{ textAlign: 'right' }}>
-                  <p style={{ fontWeight: '900', fontSize: '17px', color: t.type === 'income' ? '#16a34a' : '#dc2626', margin: 0 }}>
-                    {t.type === 'income' ? '+' : '-'}{Math.abs(Number(t.amount)).toFixed(2)}€
-                  </p>
-                  {isAdmin && (
-                    <button onClick={() => handleDelete(t.id)} style={{ background: 'none', border: 'none', marginTop: '5px', fontSize: '14px' }}>🗑️</button>
-                  )}
-                </div>
+                <p style={{ fontWeight: '950', fontSize: '17px', color: t.type === 'income' ? '#16a34a' : '#dc2626', margin: 0 }}>
+                  {t.type === 'income' ? '+' : '-'}{Math.abs(Number(t.amount)).toFixed(2)}€
+                </p>
               </div>
             ))}
-            
-            {transactions.length === 0 && (
-              <div style={{ textAlign: 'center', padding: '40px', backgroundColor: 'white', borderRadius: '20px', border: '2px dashed #e2e8f0' }}>
-                <p style={{ fontSize: '14px', color: '#475569', fontWeight: '800', margin: 0 }}>Καμία κίνηση για σήμερα.</p>
-              </div>
-            )}
           </>
         )}
       </div>
-      <div style={{ height: '80px' }} />
+      <div style={{ height: '100px' }} />
     </div>
   )
 }
 
 // STYLES
 const logoBoxStyle: any = { width: '42px', height: '42px', backgroundColor: '#0f172a', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' };
-const menuBtnStyle: any = { backgroundColor: 'white', border: '1.5px solid #000', width: '40px', height: '40px', borderRadius: '12px', fontSize: '20px', cursor: 'pointer' };
-const dropdownStyle: any = { position: 'absolute', top: '50px', right: '0', backgroundColor: 'white', minWidth: '200px', borderRadius: '20px', boxShadow: '0 10px 25px rgba(0,0,0,0.1)', padding: '10px', zIndex: 1100, border: '1px solid #e2e8f0' };
-const menuItem: any = { display: 'block', padding: '12px', textDecoration: 'none', color: '#000', fontWeight: '900', fontSize: '14px' };
-const logoutBtnStyle: any = { ...menuItem, color: '#ef4444', border: 'none', background: '#fee2e2', width: '100%', cursor: 'pointer', textAlign: 'left', marginTop: '5px', borderRadius: '10px' };
-const dateBarStyle: any = { display: 'flex', alignItems: 'center', backgroundColor: 'white', padding: '12px', borderRadius: '20px', marginBottom: '20px', border: '1.5px solid #000' };
-const dateArrowStyle: any = { background: 'none', border: 'none', fontSize: '20px', fontWeight: '900', cursor: 'pointer' };
+const menuBtnStyle: any = { backgroundColor: 'white', border: '2px solid #000', width: '40px', height: '40px', borderRadius: '12px', fontSize: '20px', cursor: 'pointer', fontWeight: '950' };
+const dropdownStyle: any = { 
+  position: 'absolute' as any, top: '55px', right: '0', backgroundColor: 'white', minWidth: '240px', 
+  borderRadius: '24px', boxShadow: '0 20px 40px rgba(0,0,0,0.2)', padding: '12px', zIndex: 1100, 
+  border: '2px solid #000', maxHeight: '75dvh', overflowY: 'auto' 
+};
+const menuItem: any = { display: 'block', padding: '15px', textDecoration: 'none', color: '#000', fontWeight: '950', fontSize: '15px', borderBottom: '1px solid #f1f5f9' };
+const logoutBtnStyle: any = { ...menuItem, color: '#ef4444', border: 'none', background: '#fee2e2', width: '100%', cursor: 'pointer', textAlign: 'left', marginTop: '10px', borderRadius: '14px' };
+const menuSectionLabel: any = { fontSize: '10px', fontWeight: '950', color: '#475569', marginBottom: '8px', paddingLeft: '12px', marginTop: '12px' };
+const divider: any = { height: '1.5px', backgroundColor: '#000', margin: '10px 0', opacity: 0.1 };
+const dateBarStyle: any = { display: 'flex', alignItems: 'center', backgroundColor: 'white', padding: '12px', borderRadius: '20px', marginBottom: '20px', border: '2px solid #000' };
+const dateArrowStyle: any = { background: 'none', border: 'none', fontSize: '22px', fontWeight: '950', cursor: 'pointer' };
 const dateInputStyle: any = { position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', opacity: 0, cursor: 'pointer' };
-const dateDisplayStyle: any = { fontSize: '14px', fontWeight: '900', color: '#000' };
-const cardStyle: any = { flex: 1, backgroundColor: 'white', padding: '18px', borderRadius: '24px', textAlign: 'center', border: '1px solid #f1f5f9' };
-const labelStyle: any = { fontSize: '10px', fontWeight: '900', color: '#475569', marginBottom: '5px' };
-const btnStyle: any = { flex: 1, padding: '18px', borderRadius: '20px', color: 'white', textDecoration: 'none', textAlign: 'center', fontWeight: '900', fontSize: '14px' };
-const zBtnStyle: any = { display: 'block', padding: '18px', borderRadius: '20px', backgroundColor: '#0f172a', color: 'white', textDecoration: 'none', textAlign: 'center', fontWeight: '900', fontSize: '14px', marginTop: '10px' };
-const itemStyle: any = { backgroundColor: 'white', padding: '18px', borderRadius: '22px', border: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' };
+const dateDisplayStyle: any = { fontSize: '15px', fontWeight: '950', color: '#000' };
+const cardStyle: any = { flex: 1, backgroundColor: 'white', padding: '20px', borderRadius: '24px', textAlign: 'center', border: '2px solid #f1f5f9' };
+const labelStyle: any = { fontSize: '11px', fontWeight: '950', color: '#475569', marginBottom: '5px' };
+const btnStyle: any = { flex: 1, padding: '20px', borderRadius: '20px', color: 'white', textDecoration: 'none', textAlign: 'center', fontWeight: '950', fontSize: '15px' };
+const zBtnStyle: any = { display: 'block', padding: '18px', borderRadius: '20px', backgroundColor: '#0f172a', color: 'white', textDecoration: 'none', textAlign: 'center', fontWeight: '950', fontSize: '15px', marginTop: '10px' };
+const itemStyle: any = { backgroundColor: 'white', padding: '20px', borderRadius: '24px', border: '2px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' };
 const zItemHeader: any = { ...itemStyle, backgroundColor: '#0f172a', color: 'white' };
-const subLabelStyle: any = { fontSize: '11px', color: '#1e293b', textTransform: 'uppercase', fontWeight: '900' };
-const userBadge: any = { fontSize: '10px', backgroundColor: '#e2e8f0', color: '#000', padding: '3px 8px', borderRadius: '8px', fontWeight: '900' };
-const zBreakdownPanel: any = { backgroundColor: 'white', padding: '10px 18px', borderRadius: '0 0 22px 22px', border: '2px solid #0f172a', borderTop: 'none', marginTop: '-15px', marginBottom: '15px' };
+const subLabelStyle: any = { fontSize: '12px', color: '#1e293b', textTransform: 'uppercase', fontWeight: '950' };
+const userBadge: any = { fontSize: '11px', backgroundColor: '#e2e8f0', color: '#000', padding: '4px 10px', borderRadius: '10px', fontWeight: '950' };
+const zBreakdownPanel: any = { backgroundColor: 'white', padding: '15px 20px', borderRadius: '0 0 24px 24px', border: '2.5px solid #0f172a', borderTop: 'none', marginTop: '-15px', marginBottom: '15px' };
 const zSubItem: any = { display: 'flex', justifyContent: 'space-between', padding: '12px 0', borderBottom: '1px solid #f1f5f9' };
 
 export default function HomePage() {
   return (
-    <main style={{ backgroundColor: '#f8fafc', minHeight: '100vh', padding: '15px' }}>
+    <main style={{ backgroundColor: '#f8fafc', minHeight: '100dvh', padding: '15px' }}>
       <Suspense fallback={<div>Φόρτωση...</div>}><DashboardContent /></Suspense>
     </main>
   )
