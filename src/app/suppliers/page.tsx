@@ -2,230 +2,265 @@
 export const dynamic = 'force-dynamic'
 
 import { useEffect, useState, Suspense } from 'react'
-import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
+import { supabase } from '@/lib/supabase'
+import { useRouter, useSearchParams } from 'next/navigation'
 
-function SuppliersContent() {
-  const [suppliers, setSuppliers] = useState<any[]>([])
+function DashboardContent() {
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const selectedDate = searchParams.get('date') || new Date().toISOString().split('T')[0]
+  
   const [transactions, setTransactions] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [isMenuOpen, setIsMenuOpen] = useState(false)
+  const [expandedTx, setExpandedTx] = useState<string | null>(null)
+  const [isZExpanded, setIsZExpanded] = useState(false)
+  const [expandedEmpId, setExpandedEmpId] = useState<string | null>(null)
   
-  // State για τη φόρμα
-  const [name, setName] = useState('')
-  const [phone, setPhone] = useState('')
-  const [afm, setAfm] = useState('') 
-  const [category, setCategory] = useState('Εμπορεύματα')
-  
-  const [editingId, setEditingId] = useState<string | null>(null)
-  const [showTransactions, setShowTransactions] = useState<string | null>(null)
-  const [isFormOpen, setIsFormOpen] = useState(false)
-  const [loading, setLoading] = useState(false)
-  const [storeId, setStoreId] = useState<string | null>(null)
+  const [storeName, setStoreName] = useState('Cosy App')
+  const [permissions, setPermissions] = useState({ 
+    role: 'user', 
+    store_id: null as string | null,
+    can_view_analysis: false,
+    can_view_history: false
+  })
 
-  useEffect(() => { fetchData() }, [])
+  useEffect(() => {
+    async function fetchAppData() {
+      try {
+        setLoading(true)
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) return
+        const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).maybeSingle()
+        if (profile) {
+          setStoreName(profile.store_name || 'Cosy App')
+          setPermissions({ 
+            role: profile.role || 'user', 
+            store_id: profile.store_id,
+            can_view_analysis: profile.can_view_analysis || false,
+            can_view_history: profile.can_view_history || false
+          })
 
-  async function fetchData() {
-    try {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) return
+          const { data: transData } = await supabase.from('transactions')
+            .select('*, suppliers(name), fixed_assets(name), employees(full_name)')
+            .eq('store_id', profile.store_id)
+            .gte('date', `${selectedDate}T00:00:00`)
+            .lte('date', `${selectedDate}T23:59:59`)
+            .order('created_at', { ascending: false })
 
-      const { data: profile } = await supabase.from('profiles').select('store_id').eq('id', user.id).single()
-      
-      if (profile?.store_id) {
-        setStoreId(profile.store_id)
-        const [sData, tData] = await Promise.all([
-          supabase.from('suppliers').select('*').eq('store_id', profile.store_id).order('name'),
-          supabase.from('transactions').select('*').eq('store_id', profile.store_id).order('date', { ascending: false })
-        ])
-        if (sData.data) setSuppliers(sData.data)
-        if (tData.data) setTransactions(tData.data)
-      }
-    } catch (err) { console.error(err) }
-  }
-
-  const getSupplierTurnover = (supplierId: string) => {
-    return transactions
-      .filter(t => t.supplier_id === supplierId)
-      .reduce((acc, t) => acc + (Number(t.amount) || 0), 0)
-  }
-
-  async function handleSave() {
-    if (!name) return alert('Συμπληρώστε το όνομα')
-    
-    if (afm && (afm.length !== 9 || isNaN(Number(afm)))) {
-      return alert('Το ΑΦΜ πρέπει να έχει ακριβώς 9 ψηφία.')
+          if (transData) {
+            const canSeeAll = profile.role === 'admin' || profile.can_view_history;
+            setTransactions(canSeeAll ? transData : transData.filter(t => t.user_id === user.id))
+          }
+        }
+      } catch (err) { console.error(err) } finally { setLoading(false) }
     }
+    fetchAppData()
+  }, [selectedDate])
 
-    setLoading(true)
-    try {
-      const supplierData = { 
-        name, 
-        phone, 
-        vat_number: afm, 
-        category,
-        store_id: storeId 
-      }
-
-      if (editingId) {
-        const { error } = await supabase.from('suppliers').update(supplierData).eq('id', editingId)
-        if (error) throw error
-      } else {
-        const { error } = await supabase.from('suppliers').insert([supplierData])
-        if (error) throw error
-      }
-
-      resetForm()
-      fetchData()
-    } catch (error: any) {
-      alert('Σφάλμα: ' + error.message)
-    } finally {
-      setLoading(false)
-    }
+  const shiftDate = (days: number) => {
+    const d = new Date(selectedDate); d.setDate(d.getDate() + days)
+    router.push(`/?date=${d.toISOString().split('T')[0]}`)
+    setIsMenuOpen(false); setExpandedTx(null); setIsZExpanded(false); setExpandedEmpId(null);
   }
 
-  const handleEdit = (s: any) => {
-    setEditingId(s.id); 
-    setName(s.name); 
-    setPhone(s.phone || '');
-    setAfm(s.vat_number || ''); 
-    setCategory(s.category || 'Εμπορεύματα');
-    setIsFormOpen(true);
-    window.scrollTo(0, 0);
-  }
+  // --- ΛΟΓΙΚΗ ΟΜΑΔΟΠΟΙΗΣΗΣ ---
+  const zEntries = transactions.filter(t => t.category === 'Εσοδα Ζ')
+  const zTotal = zEntries.reduce((acc, t) => acc + Number(t.amount), 0)
 
-  const resetForm = () => {
-    setName(''); setPhone(''); setAfm(''); setCategory('Εμπορεύματα');
-    setEditingId(null); setIsFormOpen(false);
-  }
+  const salaryEntries = transactions.filter(t => t.category === 'Προσωπικό')
+  const groupedSalaries = salaryEntries.reduce((acc: any, t) => {
+    const empId = t.employee_id || 'unknown';
+    if (!acc[empId]) { acc[empId] = { name: t.employees?.full_name || 'Προσωπικό', total: 0, items: [] } }
+    acc[empId].total += Math.abs(Number(t.amount))
+    acc[empId].items.push(t)
+    return acc
+  }, {})
 
-  const getPaymentIcon = (method: string) => {
-    if (method === 'Μετρητά') return '💵'
-    if (method === 'Κάρτα' || method === 'POS') return '💳'
-    return '🏦'
-  }
+  const regularEntries = transactions.filter(t => t.category !== 'Εσοδα Ζ' && t.category !== 'Προσωπικό' && t.category !== 'pocket')
+  const totalInc = transactions.filter(t => t.type === 'income').reduce((acc, t) => acc + Number(t.amount), 0)
+  const totalExp = transactions.filter(t => t.type === 'expense' && !t.is_credit && t.category !== 'pocket').reduce((acc, t) => acc + Number(t.amount), 0)
+  const isAdmin = permissions.role === 'admin'
 
   const handleDelete = async (id: string) => {
-    if (confirm('Θέλετε να διαγράψετε αυτόν τον προμηθευτή;')) {
-      const { error } = await supabase.from('suppliers').delete().eq('id', id)
-      if (!error) fetchData()
-      else alert(error.message)
+    if (confirm('Διαγραφή κίνησης;')) {
+      const { error } = await supabase.from('transactions').delete().eq('id', id)
+      if (!error) setTransactions(prev => prev.filter(t => t.id !== id))
     }
   }
 
   return (
-    <div style={{ maxWidth: '500px', margin: '0 auto', padding: '16px' }}>
+    <div style={{ maxWidth: '500px', margin: '0 auto', padding: '20px' }}>
       
       {/* HEADER */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px', paddingTop: '10px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <div style={logoBoxStyle}>🛒</div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+          <div style={logoBoxStyle}>📈</div>
           <div>
-            <h1 style={{ fontWeight: '900', fontSize: '22px', margin: 0, color: '#0f172a' }}>Προμηθευτές</h1>
-            <p style={{ margin: 0, fontSize: '10px', color: '#64748b', fontWeight: '800', textTransform: 'uppercase' }}>Διαχείριση Συνεργατών</p>
+            <h1 style={{ fontWeight: '900', fontSize: '24px', margin: 0, color: '#0f172a' }}>{storeName}</h1>
+            <p style={{ margin: 0, fontSize: '10px', color: '#64748b', fontWeight: '800', letterSpacing: '1px' }}>BUSINESS DASHBOARD</p>
           </div>
         </div>
-        <Link href="/" style={backBtnStyle}>✕</Link>
+        
+        <div style={{ position: 'relative' }}>
+          <button onClick={() => setIsMenuOpen(!isMenuOpen)} style={menuBtnStyle}>⋮</button>
+          {isMenuOpen && (
+            <div style={dropdownStyle}>
+              <p style={menuSectionLabel}>ΔΙΑΧΕΙΡΙΣΗ</p>
+              <Link href="/suppliers" style={menuItem}>🛒 Προμηθευτές</Link>
+              <Link href="/fixed-assets" style={menuItem}>🔌 Πάγια</Link>
+              {isAdmin && (
+                <>
+                  <Link href="/employees" style={menuItem}>👥 Υπάλληλοι</Link>
+                  <Link href="/suppliers-balance" style={menuItem}>🚩 Καρτέλες (Χρέη)</Link>
+                </>
+              )}
+              {(isAdmin || permissions.can_view_analysis) && <Link href="/analysis" style={menuItem}>📊 Ανάλυση</Link>}
+              <div style={divider} />
+              <p style={menuSectionLabel}>ΕΦΑΡΜΟΓΗ</p>
+              {isAdmin && <Link href="/admin/permissions" style={menuItem}>🔐 Δικαιώματα</Link>}
+              <Link href="/subscription" style={menuItem}>💳 Συνδρομή</Link>
+              <Link href="/settings" style={menuItem}>⚙️ Ρυθμίσεις</Link>
+              <button onClick={() => supabase.auth.signOut().then(() => window.location.href='/login')} style={logoutBtnStyle}>ΑΠΟΣΥΝΔΕΣΗ 🚪</button>
+            </div>
+          )}
+        </div>
       </div>
 
-      <button onClick={() => { if(isFormOpen) resetForm(); setIsFormOpen(!isFormOpen); }} style={isFormOpen ? cancelBtnStyle : addBtnStyle}>
-        {isFormOpen ? 'ΑΚΥΡΩΣΗ' : '+ ΝΕΟΣ ΠΡΟΜΗΘΕΥΤΗΣ'}
-      </button>
-
-      {/* ΦΟΡΜΑ ΚΑΤΑΧΩΡΗΣΗΣ */}
-      {isFormOpen && (
-        <div style={{ ...formCard, border: editingId ? '2px solid #f59e0b' : '1px solid #e2e8f0' }}>
-          <label>ΕΠΩΝΥΜΙΑ ΠΡΟΜΗΘΕΥΤΗ</label>
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="π.χ. Coffee Experts" />
-
-          <div style={{ display: 'flex', gap: '10px', marginTop: '16px' }}>
-            <div style={{ flex: 1 }}>
-              <label>ΤΗΛΕΦΩΝΟ</label>
-              <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="210..." />
-            </div>
-            <div style={{ flex: 1 }}>
-              <label>Α.Φ.Μ. (9 ΨΗΦΙΑ)</label>
-              <input maxLength={9} value={afm} onChange={(e) => setAfm(e.target.value)} placeholder="123456789" />
-            </div>
-          </div>
-
-          <label style={{ marginTop: '16px' }}>ΚΑΤΗΓΟΡΙΑ</label>
-          <select value={category} onChange={(e) => setCategory(e.target.value)} style={{ width: '100%' }}>
-            <option value="Εμπορεύματα">🛒 Εμπορεύματα</option>
-            <option value="Πάγια">🏢 Πάγια / Λογαριασμοί</option>
-            <option value="Λοιπά">📦 Λοιπά Έξοδα</option>
-          </select>
-
-          <button onClick={handleSave} disabled={loading} style={{ ...saveBtn, backgroundColor: editingId ? '#f59e0b' : '#0f172a' }}>
-            {loading ? 'ΑΠΟΘΗΚΕΥΣΗ...' : (editingId ? 'ΕΝΗΜΕΡΩΣΗ ΣΤΟΙΧΕΙΩΝ' : 'ΔΗΜΙΟΥΡΓΙΑ ΠΡΟΜΗΘΕΥΤΗ')}
-          </button>
+      {/* DATE */}
+      <div style={dateBarStyle}>
+        <button onClick={() => shiftDate(-1)} style={arrowStyle}>←</button>
+        <div style={{ flex: 1, textAlign: 'center', fontWeight: '900', color: '#0f172a', fontSize: '15px' }}>
+          {selectedDate === new Date().toISOString().split('T')[0] ? 'ΣΗΜΕΡΑ' : new Date(selectedDate).toLocaleDateString('el-GR', { day: 'numeric', month: 'short' }).toUpperCase()}
         </div>
-      )}
+        <button onClick={() => shiftDate(1)} style={arrowStyle}>→</button>
+      </div>
 
-      {/* ΛΙΣΤΑ ΣΥΝΕΡΓΑΤΩΝ */}
-      <div style={{ marginTop: '12px' }}>
-        <p style={{ fontSize: '11px', fontWeight: '900', color: '#64748b', marginBottom: '15px', textTransform: 'uppercase' }}>ΛΙΣΤΑ ΣΥΝΕΡΓΑΤΩΝ ({suppliers.length})</p>
+      {/* STATS */}
+      <div style={{ display: 'flex', gap: '15px', marginBottom: '25px' }}>
+        <div style={cardStyle}><p style={cardLabel}>ΕΣΟΔΑ</p><p style={{ color: '#10b981', fontSize: '26px', fontWeight: '900', margin: 0 }}>{totalInc.toFixed(2)}€</p></div>
+        <div style={cardStyle}><p style={cardLabel}>ΕΞΟΔΑ</p><p style={{ color: '#ef4444', fontSize: '26px', fontWeight: '900', margin: 0 }}>{totalExp.toFixed(2)}€</p></div>
+      </div>
+
+      <div style={{ display: 'flex', gap: '12px', marginBottom: '12px' }}>
+        <Link href={`/add-income?date=${selectedDate}`} style={{ ...actionBtn, backgroundColor: '#10b981' }}>+ ΕΣΟΔΑ</Link>
+        <Link href={`/add-expense?date=${selectedDate}`} style={{ ...actionBtn, backgroundColor: '#ef4444' }}>- ΕΞΟΔΑ</Link>
+      </div>
+      {isAdmin && <Link href="/daily-z" style={zBtnStyle}>📟 ΚΛΕΙΣΙΜΟ ΤΑΜΕΙΟΥ (Ζ)</Link>}
+
+      {/* LIST */}
+      <div style={{ marginTop: '35px' }}>
+        <p style={{ fontSize: '11px', fontWeight: '900', color: '#64748b', marginBottom: '15px', letterSpacing: '1px' }}>ΚΙΝΗΣΕΙΣ ΗΜΕΡΑΣ</p>
         
-        {suppliers.map(s => (
-          <div key={s.id} style={{ marginBottom: '12px' }}>
-            <div style={supplierItem}>
-              <div style={{ flex: 1, cursor: 'pointer' }} onClick={() => setShowTransactions(showTransactions === s.id ? null : s.id)}>
-                <p style={{ fontWeight: '800', margin: 0, fontSize: '16px', color: '#0f172a' }}>{s.name.toUpperCase()}</p>
-                <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginTop: '4px' }}>
-                   <span style={badgeStyle}>{s.category || 'Εμπορεύματα'}</span>
-                   <span style={{ fontSize: '13px', color: '#1e293b', fontWeight: '800' }}>Τζίρος: {getSupplierTurnover(s.id).toFixed(2)}€</span>
+        {loading ? <p style={{ textAlign: 'center', fontWeight: '800', color: '#94a3b8' }}>Φόρτωση...</p> : (
+          <>
+            {/* 1. Ζ ΟΜΑΔΟΠΟΙΗΣΗ */}
+            {zTotal > 0 && (
+              <div style={{ marginBottom: '10px' }}>
+                <div onClick={() => isAdmin && setIsZExpanded(!isZExpanded)} style={zItemHeader}>
+                  <div style={{ flex: 1 }}><p style={{ fontWeight: '900', margin: 0, fontSize: '15px' }}>📟 ΣΥΝΟΛΟ Ζ</p></div>
+                  <p style={{ fontWeight: '900', fontSize: '18px', margin: 0 }}>+{zTotal.toFixed(2)}€</p>
                 </div>
-              </div>
-              <div style={{ display: 'flex', gap: '6px' }}>
-                <button onClick={() => handleEdit(s)} style={editBtnStyle}>✎</button>
-                <button onClick={() => handleDelete(s.id)} style={deleteBtnStyle}>🗑️</button>
-              </div>
-            </div>
-
-            {/* ΕΠΕΚΤΑΣΗ ΙΣΤΟΡΙΚΟΥ */}
-            {showTransactions === s.id && (
-              <div style={transList}>
-                <p style={transHeader}>ΙΣΤΟΡΙΚΟ ΣΥΝΑΛΛΑΓΩΝ</p>
-                {transactions.filter(t => t.supplier_id === s.id).length > 0 ? (
-                  transactions.filter(t => t.supplier_id === s.id).map(t => (
-                    <div key={t.id} style={transItem}>
-                      <span style={{ color: '#475569', fontWeight: '700' }}>{t.date.split('T')[0]}</span>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <span style={{ fontSize: '14px' }}>{getPaymentIcon(t.method)}</span>
-                        <span style={{ fontWeight: '800', color: '#0f172a' }}>{Number(t.amount).toFixed(2)}€</span>
+                {isZExpanded && (
+                  <div style={zBreakdownPanel}>
+                    {zEntries.map(z => (
+                      <div key={z.id} style={zSubItem}>
+                        <div style={{ flex: 1 }}><p style={{ fontWeight: '800', margin: 0, fontSize: '13px' }}>{z.method}</p></div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                           <p style={{ fontWeight: '900', fontSize: '14px', margin: 0 }}>{Number(z.amount).toFixed(2)}€</p>
+                           <button onClick={() => handleDelete(z.id)} style={{ background: 'none', border: 'none' }}>🗑️</button>
+                        </div>
                       </div>
-                    </div>
-                  ))
-                ) : <p style={{ fontSize: '12px', color: '#94a3b8', textAlign: 'center', padding: '10px' }}>Δεν υπάρχουν κινήσεις</p>}
+                    ))}
+                  </div>
+                )}
               </div>
             )}
-          </div>
-        ))}
-      </div>
 
-      {/* SAFE AREA ΓΙΑ IPHONE */}
+            {/* 2. ΥΠΑΛΛΗΛΟΙ ΟΜΑΔΟΠΟΙΗΣΗ */}
+            {Object.keys(groupedSalaries).map(empId => {
+              const group = groupedSalaries[empId];
+              const isExpanded = expandedEmpId === empId;
+              return (
+                <div key={empId} style={{ marginBottom: '10px' }}>
+                  <div onClick={() => isAdmin && setExpandedEmpId(isExpanded ? null : empId)} style={salaryItemHeader}>
+                    <div style={{ flex: 1 }}><p style={{ fontWeight: '900', margin: 0, fontSize: '15px', color: '#1e40af' }}>👤 {group.name.toUpperCase()}</p></div>
+                    <p style={{ fontWeight: '900', fontSize: '18px', color: '#dc2626', margin: 0 }}>-{group.total.toFixed(2)}€</p>
+                  </div>
+                  {isExpanded && (
+                    <div style={salaryBreakdownPanel}>
+                      {group.items.map((t: any) => (
+                        <div key={t.id} style={zSubItem}>
+                          <div style={{ flex: 1 }}><p style={{ fontWeight: '800', margin: 0, fontSize: '13px' }}>{t.method}</p></div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                            <p style={{ fontWeight: '900', fontSize: '14px', margin: 0 }}>{Math.abs(Number(t.amount)).toFixed(2)}€</p>
+                            <button onClick={() => handleDelete(t.id)} style={{ background: 'none', border: 'none' }}>🗑️</button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+
+            {/* 3. ΛΟΙΠΕΣ ΚΙΝΗΣΕΙΣ */}
+            {regularEntries.map(t => (
+              <div key={t.id} style={{ marginBottom: '10px' }}>
+                <div onClick={() => isAdmin && setExpandedTx(expandedTx === t.id ? null : t.id)} style={itemCard}>
+                  <div style={{ flex: 1 }}>
+                    <p style={{ fontWeight: '800', margin: 0, fontSize: '16px', color: '#1e293b' }}>
+                        {t.type === 'income' ? '💰 ΕΙΣΠΡΑΞΗ' : (t.suppliers?.name || t.category.toUpperCase())}
+                    </p>
+                    <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
+                      <span style={{ fontSize: '11px', color: '#64748b', fontWeight: '700' }}>{t.method}</span>
+                      <span style={userBadge}>👤 {t.created_by_name?.toUpperCase()}</span>
+                    </div>
+                  </div>
+                  <p style={{ fontWeight: '900', fontSize: '18px', color: t.type === 'income' ? '#10b981' : '#ef4444', margin: 0 }}>
+                    {t.type === 'income' ? '+' : '-'}{Math.abs(Number(t.amount)).toFixed(2)}€
+                  </p>
+                </div>
+                {isAdmin && expandedTx === t.id && (
+                  <div style={actionPanel}>
+                    <button onClick={() => router.push(`/${t.type === 'income' ? 'add-income' : 'add-expense'}?editId=${t.id}`)} style={editBtn}>ΕΠΕΞΕΡΓΑΣΙΑ ✎</button>
+                    <button onClick={() => handleDelete(t.id)} style={deleteBtn}>ΔΙΑΓΡΑΦΗ 🗑️</button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </>
+        )}
+      </div>
       <div style={{ height: '100px' }} />
     </div>
   )
 }
 
-// STYLES
-const logoBoxStyle: any = { width: '42px', height: '42px', backgroundColor: '#f1f5f9', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px' };
-const backBtnStyle: any = { textDecoration: 'none', color: '#64748b', fontSize: '18px', fontWeight: 'bold', width: '36px', height: '36px', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#fff', borderRadius: '10px', border: '1px solid #e2e8f0' };
-const addBtnStyle: any = { width: '100%', padding: '18px', backgroundColor: '#0f172a', color: 'white', border: 'none', borderRadius: '18px', fontWeight: '900', fontSize: '14px', marginBottom: '20px' };
-const cancelBtnStyle: any = { ...addBtnStyle, backgroundColor: '#f1f5f9', color: '#64748b', border: '1px solid #e2e8f0' };
-const formCard: any = { backgroundColor: 'white', padding: '24px', borderRadius: '28px', border: '1px solid #e2e8f0', marginBottom: '25px', boxShadow: '0 4px 6px rgba(0,0,0,0.02)' };
-const saveBtn: any = { width: '100%', padding: '18px', color: 'white', border: 'none', borderRadius: '14px', fontWeight: '900', marginTop: '20px' };
-const supplierItem: any = { backgroundColor: 'white', padding: '18px', borderRadius: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: '1px solid #f1f5f9' };
-const badgeStyle: any = { fontSize: '10px', fontWeight: '800', backgroundColor: '#f1f5f9', padding: '4px 10px', borderRadius: '8px', color: '#475569' };
-const editBtnStyle: any = { background: '#f1f5f9', border: 'none', padding: '10px', borderRadius: '10px', cursor: 'pointer', fontSize: '16px' };
-const deleteBtnStyle: any = { background: '#fee2e2', border: 'none', padding: '10px', borderRadius: '10px', cursor: 'pointer', fontSize: '16px' };
-const transList: any = { backgroundColor: '#f8fafc', padding: '15px', borderRadius: '0 0 20px 20px', marginTop: '-12px', border: '1px solid #f1f5f9', borderTop: 'none' };
-const transHeader: any = { fontSize: '10px', fontWeight: '900', color: '#64748b', marginBottom: '10px', borderBottom: '1px solid #e2e8f0', paddingBottom: '5px' };
-const transItem: any = { display: 'flex', justifyContent: 'space-between', fontSize: '13px', padding: '10px 0', borderBottom: '1px dashed #e2e8f0' };
+// PREMIUM STYLES
+const logoBoxStyle: any = { width: '48px', height: '48px', backgroundColor: '#0f172a', borderRadius: '15px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '22px', boxShadow: '0 8px 16px rgba(15, 23, 42, 0.1)' };
+const menuBtnStyle: any = { width: '42px', height: '42px', borderRadius: '14px', border: '1px solid #e2e8f0', background: 'white', fontSize: '22px', cursor: 'pointer', color: '#1e293b' };
+const dropdownStyle: any = { position: 'absolute' as any, top: '55px', right: 0, background: 'white', minWidth: '240px', borderRadius: '24px', boxShadow: '0 20px 50px rgba(0,0,0,0.15)', padding: '12px', zIndex: 1000, border: '1px solid #f1f5f9', maxHeight: '80vh', overflowY: 'auto' };
+const menuItem: any = { display: 'block', padding: '14px', textDecoration: 'none', color: '#1e293b', fontWeight: '700', fontSize: '15px', borderRadius: '12px' };
+const menuSectionLabel: any = { fontSize: '10px', fontWeight: '900', color: '#94a3b8', paddingLeft: '14px', marginTop: '12px', marginBottom: '6px', letterSpacing: '1px' };
+const logoutBtnStyle: any = { ...menuItem, width: '100%', textAlign: 'left', background: '#fee2e2', color: '#ef4444', border: 'none', marginTop: '10px', fontWeight: '900' };
+const divider: any = { height: '1px', backgroundColor: '#f1f5f9', margin: '10px 0' };
+const dateBarStyle: any = { display: 'flex', alignItems: 'center', background: 'white', padding: '12px', borderRadius: '18px', marginBottom: '25px', border: '1px solid #f1f5f9' };
+const arrowStyle: any = { background: 'none', border: 'none', fontSize: '20px', fontWeight: '900', color: '#0f172a', cursor: 'pointer', padding: '0 10px' };
+const cardStyle: any = { flex: 1, background: 'white', padding: '22px 15px', borderRadius: '28px', textAlign: 'center', boxShadow: '0 10px 20px rgba(0,0,0,0.03)', border: '1px solid #f8fafc' };
+const cardLabel: any = { fontSize: '11px', fontWeight: '900', color: '#64748b', marginBottom: '6px' };
+const actionBtn: any = { flex: 1, padding: '18px', borderRadius: '20px', color: 'white', textDecoration: 'none', textAlign: 'center', fontWeight: '900', fontSize: '15px' };
+const zBtnStyle: any = { display: 'block', padding: '18px', borderRadius: '20px', backgroundColor: '#0f172a', color: 'white', textDecoration: 'none', textAlign: 'center', fontWeight: '900', fontSize: '15px', marginTop: '12px' };
+const itemCard: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'white', padding: '20px', borderRadius: '24px', border: '1px solid #f1f5f9' };
+const zItemHeader: any = { ...itemCard, background: '#0f172a', color: 'white', border: 'none' };
+const salaryItemHeader: any = { ...itemCard, background: '#eff6ff', border: '1px solid #dbeafe' };
+const zBreakdownPanel: any = { backgroundColor: 'white', padding: '15px 20px', borderRadius: '0 0 24px 24px', border: '2px solid #0f172a', borderTop: 'none', marginTop: '-15px', marginBottom: '15px' };
+const salaryBreakdownPanel: any = { backgroundColor: 'white', padding: '15px 20px', borderRadius: '0 0 24px 24px', border: '2px solid #dbeafe', borderTop: 'none', marginTop: '-15px', marginBottom: '15px' };
+const zSubItem: any = { display: 'flex', justifyContent: 'space-between', padding: '12px 0', borderBottom: '1px solid #f1f5f9' };
+const userBadge: any = { fontSize: '10px', backgroundColor: '#f1f5f9', color: '#64748b', padding: '2px 8px', borderRadius: '8px', fontWeight: '800' };
+const actionPanel: any = { backgroundColor: 'white', padding: '10px 20px 20px', borderRadius: '0 0 24px 24px', border: '1px solid #f1f5f9', borderTop: 'none', display: 'flex', gap: '10px', marginTop: '-15px', marginBottom: '15px' };
+const editBtn: any = { flex: 1, background: '#fef3c7', color: '#92400e', border: 'none', padding: '12px', borderRadius: '12px', fontWeight: '800', fontSize: '12px' };
+const deleteBtn: any = { flex: 1, background: '#fee2e2', color: '#991b1b', border: 'none', padding: '12px', borderRadius: '12px', fontWeight: '800', fontSize: '12px' };
 
-export default function SuppliersPage() {
-  return (
-    <main style={{ backgroundColor: '#f8fafc', minHeight: '100vh', padding: '0 5px' }}>
-      <Suspense fallback={<div>Φόρτωση...</div>}><SuppliersContent /></Suspense>
-    </main>
-  )
-}
+export default function HomePage() { return <main><Suspense fallback={<div>Φόρτωση...</div>}><DashboardContent /></Suspense></main> }

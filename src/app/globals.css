@@ -1,41 +1,51 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #000000;
+  --background: #f8fafc; /* Ελαφρύ γκρι-μπλε φόντο */
+  --foreground: #0f172a; /* Σκούρο Slate για ξεκούραστο διάβασμα */
 }
 
-/* ΑΠΕΛΕΥΘΕΡΩΣΗ SCROLLING ΓΙΑ ANDROID & IPHONE */
 html, body {
-  height: auto;
-  min-height: 100%;
-  width: 100%;
+  background-color: #f8fafc;
   margin: 0;
   padding: 0;
-  background-color: #f8fafc;
-  /* Επιτρέπουμε το κανονικό σκρολάρισμα */
+  min-height: 100%;
+  /* Επιτρέπει το φυσικό σκρολάρισμα σε κάθε κινητό */
   overflow-x: hidden;
-  overflow-y: auto; 
-}
-
-body {
-  color: #000000;
-  font-family: system-ui, -apple-system, sans-serif;
+  overflow-y: auto;
   -webkit-font-smoothing: antialiased;
 }
 
-/* ΤΕΡΜΑ ΤΑ ΑΧΝΑ ΓΡΑΜΜΑΤΑ - ΥΨΗΛΗ ΑΝΤΙΘΕΣΗ */
-input, select, textarea, button {
-  color: #000000 !important;
-  font-weight: 700 !important;
-  font-size: 16px !important;
-  border: 1.5px solid #cbd5e1 !important;
-  background-color: #ffffff !important;
+body {
+  color: #0f172a;
+  font-family: 'Inter', -apple-system, system-ui, sans-serif;
 }
 
-label {
+/* ΠΕΔΙΑ: Καθαρά, λευκά με απαλό περίγραμμα */
+input, select, textarea {
   color: #0f172a !important;
-  font-weight: 900 !important;
+  font-weight: 600 !important;
+  font-size: 16px !important;
+  background-color: #ffffff !important;
+  border: 1px solid #e2e8f0 !important; /* Πολύ πιο "μαλακό" από πριν */
+  border-radius: 14px !important;
+  padding: 12px !important;
+  transition: all 0.2s;
+}
+
+input:focus {
+  border-color: #3b82f6 !important;
+  box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.05);
+  outline: none;
+}
+
+/* LABELS: Κομψά και επαγγελματικά */
+label {
+  color: #64748b !important;
+  font-weight: 800 !important;
+  font-size: 11px !important;
   text-transform: uppercase;
-  font-size: 12px;
+  letter-spacing: 0.5px;
+  margin-bottom: 6px;
+  display: block;
 }
