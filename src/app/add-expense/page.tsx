@@ -15,12 +15,7 @@ function DashboardContent() {
   const [loading, setLoading] = useState(true)
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   
-  const [storeName, setStoreName] = useState(() => {
-    if (typeof window !== 'undefined') {
-      return localStorage.getItem('cachedStoreName') || 'Cosy App'
-    }
-    return 'Cosy App'
-  })
+  const [storeName, setStoreName] = useState('Cosy App')
   
   const [permissions, setPermissions] = useState({
     role: 'user',
@@ -30,46 +25,47 @@ function DashboardContent() {
   })
 
   useEffect(() => {
-    // Προ-φόρτωση της σελίδας εξόδων για να ανοίγει ακαριαία
+    // Προ-φόρτωση της σελίδας εξόδων
     router.prefetch('/add-expense')
     
     async function fetchAppData() {
-      const { data: { user } } = await supabase.auth.getUser()
-      
-      if (user) {
-        const [profileRes, transRes] = await Promise.all([
-          supabase.from('profiles').select('*').eq('id', user.id).single(),
-          supabase.from('transactions')
-            .select('*, suppliers(name), fixed_assets(name)')
-            .gte('date', `${selectedDate}T00:00:00`)
-            .lte('date', `${selectedDate}T23:59:59`)
-            .order('created_at', { ascending: false })
-        ])
+      try {
+        setLoading(true)
+        const { data: { user } } = await supabase.auth.getUser()
+        
+        if (user) {
+          const [profileRes, transRes] = await Promise.all([
+            supabase.from('profiles').select('*').eq('id', user.id).maybeSingle(),
+            supabase.from('transactions')
+              .select('*, suppliers(name), fixed_assets(name)')
+              .gte('date', `${selectedDate}T00:00:00`)
+              .lte('date', `${selectedDate}T23:59:59`)
+              .order('created_at', { ascending: false })
+          ])
 
-        if (profileRes.data) {
-          const profile = profileRes.data
-          const name = profile.store_name || 'Cosy App'
-          
-          setStoreName(name)
-          if (typeof window !== 'undefined') {
-            localStorage.setItem('cachedStoreName', name)
+          if (profileRes.data) {
+            const profile = profileRes.data
+            setStoreName(profile.store_name || 'Cosy App')
+
+            setPermissions({
+              role: profile.role || 'user',
+              can_view_history: profile.can_view_history || false,
+              can_view_analysis: profile.can_view_analysis || false,
+              enable_payroll: profile.enable_payroll || false
+            })
+
+            let data = transRes.data || []
+            if (profile.role !== 'admin') {
+              data = data.filter(t => t.user_id === user.id)
+            }
+            setTransactions(data)
           }
-
-          setPermissions({
-            role: profile.role || 'user',
-            can_view_history: profile.can_view_history || false,
-            can_view_analysis: profile.can_view_analysis || false,
-            enable_payroll: profile.enable_payroll || false
-          })
-
-          let data = transRes.data || []
-          if (profile.role !== 'admin') {
-            data = data.filter(t => t.user_id === user.id)
-          }
-          setTransactions(data)
         }
+      } catch (err) {
+        console.error("Error fetching data:", err)
+      } finally {
+        setLoading(false)
       }
-      setLoading(false)
     }
 
     fetchAppData()
@@ -88,12 +84,25 @@ function DashboardContent() {
 
   const isAdmin = permissions.role === 'admin'
 
+  const handleLogout = async () => {
+    await supabase.auth.signOut()
+    window.location.href = '/login'
+  }
+
+  const handleDelete = async (id: string) => {
+    if (confirm('Θέλετε να διαγράψετε αυτή την κίνηση;')) {
+      const { error } = await supabase.from('transactions').delete().eq('id', id)
+      if (!error) {
+        setTransactions(prev => prev.filter(t => t.id !== id))
+      }
+    }
+  }
+
   return (
     <div style={{ maxWidth: '500px', margin: '0 auto', fontFamily: 'sans-serif', position: 'relative' }}>
       
-      {/* HEADER */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', paddingTop: '10px' }}>
-        <h1 style={{ fontWeight: '900', fontSize: '24px', margin: 0, color: '#0f172a', letterSpacing: '-0.5px' }}>
+        <h1 style={{ fontWeight: '900', fontSize: '24px', margin: 0, color: '#0f172a' }}>
           {storeName.toUpperCase()}
         </h1>
         
@@ -116,7 +125,6 @@ function DashboardContent() {
         </div>
       </div>
 
-      {/* STAT CARDS */}
       <div style={{ display: 'flex', gap: '15px', marginBottom: '20px' }}>
         <div style={cardStyle}>
             <p style={labelStyle}>{isAdmin ? 'ΕΣΟΔΑ ΗΜΕΡΑΣ' : 'ΔΙΚΑ ΜΟΥ ΕΣΟΔΑ'}</p>
@@ -128,7 +136,6 @@ function DashboardContent() {
         </div>
       </div>
 
-      {/* QUICK ACTIONS - ΔΙΟΡΘΩΜΕΝΟ Z-INDEX */}
       <div style={{ display: 'flex', gap: '12px', marginBottom: '12px', position: 'relative', zIndex: 10 }}>
         <Link href={`/add-income?date=${selectedDate}`} style={{ ...btnStyle, backgroundColor: '#10b981', display: 'block' }}>+ ΕΣΟΔΑ</Link>
         <Link href={`/add-expense?date=${selectedDate}`} style={{ ...btnStyle, backgroundColor: '#ef4444', display: 'block' }}>- ΕΞΟΔΑ</Link>
@@ -140,17 +147,13 @@ function DashboardContent() {
 
       <div style={{ marginBottom: '25px' }} />
 
-      {/* TRANSACTIONS LIST */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
         <p style={{ fontSize: '11px', fontWeight: '800', color: '#94a3b8', textTransform: 'uppercase' }}>
           {isAdmin ? 'Κινήσεις Καταστήματος' : 'Οι Καταχωρήσεις μου'}
         </p>
         
         {loading ? (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-             <div style={{ height: '65px', backgroundColor: '#f1f5f9', borderRadius: '18px' }}></div>
-             <div style={{ height: '65px', backgroundColor: '#f1f5f9', borderRadius: '18px' }}></div>
-          </div>
+          <div style={{ padding: '20px', textAlign: 'center', color: '#94a3b8' }}>Φόρτωση...</div>
         ) : (
           filteredForList.length > 0 ? (
             filteredForList.map(t => (
@@ -185,16 +188,16 @@ function DashboardContent() {
   )
 }
 
-// STYLES
+// Σταθερά Styles
 const menuBtnStyle = { backgroundColor: 'white', border: '1px solid #e2e8f0', width: '40px', height: '40px', borderRadius: '12px', cursor: 'pointer', fontSize: '20px', color: '#64748b' };
 const dropdownStyle = { position: 'absolute' as const, top: '50px', right: '0', backgroundColor: 'white', minWidth: '220px', borderRadius: '20px', boxShadow: '0 10px 30px rgba(0,0,0,0.15)', padding: '12px', zIndex: 1100, border: '1px solid #f1f5f9' };
 const menuItem = { display: 'block', padding: '12px', textDecoration: 'none', color: '#334155', fontWeight: '700' as const, fontSize: '14px', borderRadius: '10px' };
 const logoutBtnStyle = { ...menuItem, color: '#ef4444', border: 'none', background: '#fee2e2', width: '100%', cursor: 'pointer', textAlign: 'left' as const, marginTop: '5px' };
 const menuSectionLabel = { fontSize: '9px', fontWeight: '800' as const, color: '#94a3b8', marginBottom: '8px', paddingLeft: '12px', marginTop: '8px' };
 const divider = { height: '1px', backgroundColor: '#f1f5f9', margin: '8px 0' };
-const cardStyle = { flex: 1, backgroundColor: 'white', padding: '18px', borderRadius: '22px', textAlign: 'center' as const, boxShadow: '0 2px 4px rgba(0,0,0,0.02)' };
+const cardStyle = { flex: 1, backgroundColor: 'white', padding: '18px', borderRadius: '22px', textAlign: 'center' as const };
 const labelStyle = { fontSize: '10px', fontWeight: '800', color: '#94a3b8', marginBottom: '4px' };
-const btnStyle = { flex: 1, padding: '18px', borderRadius: '18px', color: 'white', textDecoration: 'none', textAlign: 'center' as const, fontWeight: '800', fontSize: '15px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)', cursor: 'pointer' };
+const btnStyle = { flex: 1, padding: '18px', borderRadius: '18px', color: 'white', textDecoration: 'none', textAlign: 'center' as const, fontWeight: '800', fontSize: '15px' };
 const zBtnStyle = { display: 'block', padding: '16px', borderRadius: '18px', backgroundColor: '#0f172a', color: 'white', textDecoration: 'none', textAlign: 'center' as const, fontWeight: '900', fontSize: '14px', marginTop: '10px' };
 const itemStyle = { backgroundColor: 'white', padding: '15px', borderRadius: '20px', border: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' };
 const subLabelStyle = { fontSize: '11px', color: '#94a3b8', textTransform: 'uppercase' as const, fontWeight: 'bold' };
