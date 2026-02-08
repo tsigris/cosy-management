@@ -14,7 +14,7 @@ function DashboardContent() {
   const [transactions, setTransactions] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [isMenuOpen, setIsMenuOpen] = useState(false)
-  const [expandedTx, setExpandedTx] = useState<string | null>(null) // State για το ποια κίνηση είναι ανοιχτή
+  const [expandedTx, setExpandedTx] = useState<string | null>(null)
   
   const [storeName, setStoreName] = useState(() => {
     if (typeof window !== 'undefined') {
@@ -96,7 +96,7 @@ function DashboardContent() {
   return (
     <div style={{ maxWidth: '500px', margin: '0 auto', fontFamily: 'sans-serif', position: 'relative' }}>
       
-      {/* HEADER */}
+      {/* HEADER & FULL DROPDOWN MENU */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', paddingTop: '10px' }}>
         <h1 style={{ fontWeight: '900', fontSize: '24px', margin: 0, color: '#0f172a' }}>
           {storeName.toUpperCase()}
@@ -109,13 +109,22 @@ function DashboardContent() {
               <p style={menuSectionLabel}>ΔΙΑΧΕΙΡΙΣΗ</p>
               {isAdmin && (
                 <>
-                  <Link href="/suppliers" style={menuItem}>🛒 Προμηθευτές</Link>
-                  <Link href="/fixed-assets" style={menuItem}>🔌 Πάγια</Link>
-                  <Link href="/employees" style={menuItem}>👥 Υπάλληλοι</Link>
-                  <Link href="/suppliers-balance" style={menuItem}>🚩 Καρτέλες (Χρέη)</Link>
+                  <Link href="/suppliers" style={menuItem} onClick={() => setIsMenuOpen(false)}>🛒 Προμηθευτές</Link>
+                  <Link href="/fixed-assets" style={menuItem} onClick={() => setIsMenuOpen(false)}>🔌 Πάγια</Link>
+                  <Link href="/employees" style={menuItem} onClick={() => setIsMenuOpen(false)}>👥 Υπάλληλοι</Link>
+                  <Link href="/suppliers-balance" style={menuItem} onClick={() => setIsMenuOpen(false)}>🚩 Καρτέλες (Χρέη)</Link>
                 </>
               )}
-              <Link href="/analysis" style={menuItem}>📈 Ανάλυση</Link>
+              <Link href="/analysis" style={menuItem} onClick={() => setIsMenuOpen(false)}>📈 Ανάλυση</Link>
+              
+              <div style={divider} />
+              <p style={menuSectionLabel}>ΕΦΑΡΜΟΓΗ</p>
+              {isAdmin && (
+                <Link href="/admin/permissions" style={menuItem} onClick={() => setIsMenuOpen(false)}>🔐 Δικαιώματα</Link>
+              )}
+              <Link href="/subscription" style={menuItem} onClick={() => setIsMenuOpen(false)}>💳 Συνδρομή</Link>
+              <Link href="/settings" style={menuItem} onClick={() => setIsMenuOpen(false)}>⚙️ Ρυθμίσεις</Link>
+              
               <div style={divider} />
               <button onClick={() => supabase.auth.signOut().then(() => window.location.href='/login')} style={logoutBtnStyle}>ΑΠΟΣΥΝΔΕΣΗ 🚪</button>
             </div>
@@ -123,7 +132,7 @@ function DashboardContent() {
         </div>
       </div>
 
-      {/* STAT CARDS */}
+      {/* SUMMARY CARDS */}
       <div style={{ display: 'flex', gap: '15px', marginBottom: '20px' }}>
         <div style={cardStyle}>
             <p style={labelStyle}>{isAdmin ? 'ΕΣΟΔΑ ΗΜΕΡΑΣ' : 'ΔΙΚΑ ΜΟΥ ΕΣΟΔΑ'}</p>
@@ -136,7 +145,7 @@ function DashboardContent() {
       </div>
 
       {/* QUICK ACTIONS */}
-      <div style={{ display: 'flex', gap: '12px', marginBottom: '12px', position: 'relative', zIndex: 10 }}>
+      <div style={{ display: 'flex', gap: '12px', marginBottom: '12px' }}>
         <Link href={`/add-income?date=${selectedDate}`} style={{ ...btnStyle, backgroundColor: '#10b981', display: 'block' }}>+ ΕΣΟΔΑ</Link>
         <Link href={`/add-expense?date=${selectedDate}`} style={{ ...btnStyle, backgroundColor: '#ef4444', display: 'block' }}>- ΕΞΟΔΑ</Link>
       </div>
@@ -147,7 +156,7 @@ function DashboardContent() {
 
       <div style={{ marginBottom: '25px' }} />
 
-      {/* TRANSACTIONS LIST */}
+      {/* TRANSACTION LIST WITH EXPANDABLE PANEL */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
         <p style={{ fontSize: '11px', fontWeight: '800', color: '#94a3b8', textTransform: 'uppercase' }}>
           {isAdmin ? 'Κινήσεις Καταστήματος' : 'Οι Καταχωρήσεις μου'}
@@ -158,13 +167,13 @@ function DashboardContent() {
         ) : (
           transactions.filter(t => t.category !== 'Εσοδα Ζ' && t.category !== 'pocket').map(t => (
             <div key={t.id} style={{ marginBottom: '5px' }}>
-              {/* ΤΟ ΚΥΡΙΩΣ ΣΤΟΙΧΕΙΟ ΤΗΣ ΚΙΝΗΣΗΣ */}
               <div 
                 onClick={() => isAdmin && setExpandedTx(expandedTx === t.id ? null : t.id)}
                 style={{ 
                   ...itemStyle, 
                   cursor: isAdmin ? 'pointer' : 'default',
-                  borderRadius: expandedTx === t.id ? '20px 20px 0 0' : '20px'
+                  borderRadius: (isAdmin && expandedTx === t.id) ? '20px 20px 0 0' : '20px',
+                  borderBottom: (isAdmin && expandedTx === t.id) ? 'none' : '1px solid #f1f5f9'
                 }}
               >
                 <div style={{ flex: 1 }}>
@@ -185,7 +194,7 @@ function DashboardContent() {
                 </p>
               </div>
 
-              {/* ΤΟ PANEL ΕΝΕΡΓΕΙΩΝ (ΕΜΦΑΝΙΖΕΤΑΙ ΜΟΝΟ ΑΝ ΠΑΤΗΘΕΙ & ΕΙΝΑΙ ADMIN) */}
+              {/* ACTION PANEL (Photo 2) - Visible only for Admin when expanded */}
               {isAdmin && expandedTx === t.id && (
                 <div style={actionPanelStyle}>
                   <button onClick={() => handleEdit(t)} style={actionBtnEdit}>ΕΠΕΞΕΡΓΑΣΙΑ ✎</button>
@@ -209,44 +218,16 @@ const menuSectionLabel = { fontSize: '9px', fontWeight: '800' as const, color: '
 const divider = { height: '1px', backgroundColor: '#f1f5f9', margin: '8px 0' };
 const cardStyle = { flex: 1, backgroundColor: 'white', padding: '18px', borderRadius: '22px', textAlign: 'center' as const, boxShadow: '0 4px 6px -1px rgba(0,0,0,0.02)' };
 const labelStyle = { fontSize: '10px', fontWeight: '800', color: '#94a3b8', marginBottom: '4px' };
-const btnStyle = { flex: 1, padding: '18px', borderRadius: '18px', color: 'white', textDecoration: 'none', textAlign: 'center' as const, fontWeight: '800', fontSize: '15px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' };
+const btnStyle = { flex: 1, padding: '18px', borderRadius: '18px', color: 'white', textDecoration: 'none', textAlign: 'center' as const, fontWeight: '800', fontSize: '15px' };
 const zBtnStyle = { display: 'block', padding: '16px', borderRadius: '18px', backgroundColor: '#0f172a', color: 'white', textDecoration: 'none', textAlign: 'center' as const, fontWeight: '900', fontSize: '14px', marginTop: '10px' };
 const itemStyle = { backgroundColor: 'white', padding: '15px', border: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' };
 const subLabelStyle = { fontSize: '11px', color: '#94a3b8', textTransform: 'uppercase' as const, fontWeight: 'bold' };
 const userBadge = { fontSize: '9px', backgroundColor: '#f1f5f9', color: '#64748b', padding: '2px 6px', borderRadius: '6px', fontWeight: 'bold' };
 
-// ACTION PANEL STYLES (Φωτογραφία 2)
-const actionPanelStyle = { 
-  backgroundColor: 'white', 
-  padding: '10px 15px 15px', 
-  borderRadius: '0 0 20px 20px', 
-  border: '1px solid #f1f5f9', 
-  borderTop: 'none',
-  display: 'flex', 
-  gap: '10px' 
-};
-const actionBtnEdit = { 
-  flex: 1, 
-  background: '#fef3c7', 
-  color: '#92400e', 
-  border: 'none', 
-  padding: '12px', 
-  borderRadius: '12px', 
-  fontWeight: '800', 
-  fontSize: '12px', 
-  cursor: 'pointer' 
-};
-const actionBtnDelete = { 
-  flex: 1, 
-  background: '#fee2e2', 
-  color: '#991b1b', 
-  border: 'none', 
-  padding: '12px', 
-  borderRadius: '12px', 
-  fontWeight: '800', 
-  fontSize: '12px', 
-  cursor: 'pointer' 
-};
+// ACTION PANEL STYLES (Photo 2)
+const actionPanelStyle = { backgroundColor: 'white', padding: '10px 15px 15px', borderRadius: '0 0 20px 20px', border: '1px solid #f1f5f9', borderTop: 'none', display: 'flex', gap: '10px' };
+const actionBtnEdit = { flex: 1, background: '#fef3c7', color: '#92400e', border: 'none', padding: '12px', borderRadius: '12px', fontWeight: '800', fontSize: '12px', cursor: 'pointer' };
+const actionBtnDelete = { flex: 1, background: '#fee2e2', color: '#991b1b', border: 'none', padding: '12px', borderRadius: '12px', fontWeight: '800', fontSize: '12px', cursor: 'pointer' };
 
 export default function HomePage() {
   return (
