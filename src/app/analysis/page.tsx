@@ -15,12 +15,25 @@ export default function AnalysisPage() {
   const [view, setView] = useState('income') 
   const [period, setPeriod] = useState('month') 
   const [selectedDate, setSelectedDate] = useState(format(new Date(), 'yyyy-MM-dd'))
-  const [filterCat, setFilterCat] = useState('all')
   const [pocketTotal, setPocketTotal] = useState(0)
+  const [currentUsername, setCurrentUsername] = useState('')
 
   useEffect(() => {
     fetchData()
+    fetchUserInfo()
   }, [])
+
+  async function fetchUserInfo() {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (user) {
+      const { data } = await supabase
+        .from('profiles')
+        .select('username')
+        .eq('id', user.id)
+        .single()
+      if (data?.username) setCurrentUsername(data.username)
+    }
+  }
 
   async function fetchData() {
     setLoading(true)
@@ -31,7 +44,6 @@ export default function AnalysisPage() {
 
     if (data) {
       setTransactions(data)
-      // ΥΠΟΛΟΓΙΣΜΟΣ POCKET: Προσθέτει τις αναλήψεις (+) και αφαιρεί τις πληρωμές (-)
       const pocketSum = data
         .filter(t => t.category === 'pocket')
         .reduce((acc, t) => acc + Number(t.amount), 0)
@@ -40,14 +52,12 @@ export default function AnalysisPage() {
     setLoading(false)
   }
 
-  // ΣΥΝΑΡΤΗΣΗ ΔΙΟΡΘΩΣΗΣ ΤΣΕΠΗΣ
   async function handleAdjustPocket() {
     const newAmount = prompt("Ορίστε το πραγματικό ποσό που έχετε στην τσέπη (π.χ. 500):", pocketTotal.toString());
     
     if (newAmount !== null && newAmount !== "") {
       const target = Number(newAmount);
       const diff = target - pocketTotal;
-      
       if (diff === 0) return;
 
       const { error } = await supabase.from('transactions').insert([{
@@ -56,14 +66,12 @@ export default function AnalysisPage() {
         category: 'pocket',
         notes: 'ΧΕΙΡΟΚΙΝΗΤΗ ΔΙΟΡΘΩΣΗ ΥΠΟΛΟΙΠΟΥ',
         date: new Date().toISOString().split('T')[0],
-        method: 'Μετρητά'
+        method: 'Μετρητά',
+        created_by_name: currentUsername || 'Admin'
       }]);
 
-      if (!error) {
-        fetchData();
-      } else {
-        alert("Σφάλμα διόρθωσης: " + error.message);
-      }
+      if (!error) fetchData();
+      else alert("Σφάλμα διόρθωσης: " + error.message);
     }
   }
 
@@ -80,7 +88,6 @@ export default function AnalysisPage() {
   }
 
   const now = new Date()
-
   const filterByTime = (data: any[], type: string, refDate: Date) => {
     return data.filter(t => {
       const d = new Date(t.date)
@@ -134,7 +141,6 @@ export default function AnalysisPage() {
             {period === 'custom_day' && <input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} style={dateInputStyle} />}
         </div>
 
-        {/* ΚΟΥΜΠΑΡΑΣ POCKET ΜΕ ΚΟΥΜΠΙ ΔΙΟΡΘΩΣΗΣ */}
         {view === 'income' && (
           <div style={pocketMiniCard}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -174,7 +180,12 @@ export default function AnalysisPage() {
                 <div style={{ fontWeight: '700', fontSize: '14px' }}>
                   {t.category === 'pocket' ? (t.amount > 0 ? '🏠 ΑΝΑΛΗΨΗ' : '🏠 ΠΛΗΡΩΜΗ/ΔΙΟΡΘΩΣΗ ΤΣΕΠΗΣ') : (t.suppliers?.name || t.notes || t.category)}
                 </div>
-                <div style={{ fontSize: '11px', color: '#94a3b8' }}>{format(new Date(t.date), 'dd/MM/yyyy')}</div>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '4px' }}>
+                  <span style={{ fontSize: '11px', color: '#94a3b8' }}>{format(new Date(t.date), 'dd/MM/yyyy')}</span>
+                  {t.created_by_name && (
+                    <span style={userBadgeStyle}>👤 {t.created_by_name.toUpperCase()}</span>
+                  )}
+                </div>
               </div>
               
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -198,18 +209,18 @@ export default function AnalysisPage() {
   )
 }
 
-// STYLES
+const userBadgeStyle = { fontSize: '9px', backgroundColor: '#e0f2fe', color: '#0369a1', padding: '2px 6px', borderRadius: '6px', fontWeight: '900' as const };
 const backBtnStyle = { display: 'flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none', background: 'white', width: '40px', height: '40px', borderRadius: '12px', color: '#64748b', border: '1px solid #e2e8f0' };
 const tabContainer = { display: 'flex', backgroundColor: '#e2e8f0', borderRadius: '14px', padding: '4px', marginBottom: '15px' };
 const tabBtn = { flex: 1, border: 'none', padding: '10px', borderRadius: '10px', fontWeight: '900' as const, fontSize: '12px', cursor: 'pointer' };
 const whiteCard = { backgroundColor: 'white', padding: '15px', borderRadius: '20px', marginBottom: '15px', border: '1px solid #f1f5f9' };
-const selectStyle = { width: '100%', padding: '12px', borderRadius: '12px', border: '1px solid #e2e8f0', outline: 'none', fontWeight: 'bold' };
-const dateInputStyle = { width: '100%', padding: '12px', borderRadius: '12px', border: '1px solid #e2e8f0', marginTop: '10px', fontWeight: 'bold' };
+const selectStyle = { width: '100%', padding: '12px', borderRadius: '12px', border: '1px solid #e2e8f0', outline: 'none', fontWeight: 'bold' as const };
+const dateInputStyle = { width: '100%', padding: '12px', borderRadius: '12px', border: '1px solid #e2e8f0', marginTop: '10px', fontWeight: 'bold' as const };
 const pocketMiniCard = { backgroundColor: '#f1f5f9', padding: '18px', borderRadius: '20px', marginBottom: '15px', border: '1px solid #e2e8f0' };
-const adjustBtnStyle = { background: '#e2e8f0', border: 'none', padding: '8px 12px', borderRadius: '10px', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer', color: '#475569' };
+const adjustBtnStyle = { background: '#e2e8f0', border: 'none', padding: '8px 12px', borderRadius: '10px', fontSize: '11px', fontWeight: 'bold' as const, cursor: 'pointer', color: '#475569' };
 const statsRow = { display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderBottom: '1px solid #f8fafc', fontSize: '13px' };
 const mainCard = { padding: '30px', borderRadius: '28px', color: 'white', textAlign: 'center' as const, marginBottom: '20px' };
-const labelMicro = { fontSize: '10px', fontWeight: '900', opacity: 0.7, letterSpacing: '1px' };
-const sectionTitle = { fontSize: '11px', fontWeight: '900', color: '#94a3b8', marginBottom: '12px', textTransform: 'uppercase' as const };
+const labelMicro = { fontSize: '10px', fontWeight: '900' as const, opacity: 0.7, letterSpacing: '1px' };
+const sectionTitle = { fontSize: '11px', fontWeight: '900' as const, color: '#94a3b8', marginBottom: '12px', textTransform: 'uppercase' as const };
 const rowStyle = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 0', borderBottom: '1px solid #f8fafc' };
 const actionBtn = { background: '#f1f5f9', border: 'none', borderRadius: '8px', padding: '6px 8px', cursor: 'pointer', fontSize: '14px' };

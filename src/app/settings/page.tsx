@@ -10,6 +10,7 @@ export default function SettingsPage() {
   const [formData, setFormData] = useState({
     store_name: '',
     company_name: '',
+    username: '', // ΠΡΟΣΘΗΚΗ ΧΡΗΣΤΗ
     afm: '',
     phone: '',
     address: '',
@@ -29,6 +30,7 @@ export default function SettingsPage() {
         setFormData({
           store_name: data.store_name || '',
           company_name: data.company_name || '',
+          username: data.username || '', // ΠΡΟΣΘΗΚΗ ΧΡΗΣΤΗ
           afm: data.afm || '',
           phone: data.phone || '',
           address: data.address || '',
@@ -60,7 +62,6 @@ export default function SettingsPage() {
   const handleWhatsAppRedirect = () => {
     const message = `Γεια σας, θα ήθελα να διαγράψω την επιχείρηση: ${formData.company_name || formData.store_name || 'Χωρίς Όνομα'}. \nEmail χρήστη: ${formData.email}`;
     const encodedMessage = encodeURIComponent(message);
-    // ΕΝΗΜΕΡΩΜΕΝΟ ΤΗΛΕΦΩΝΟ: 6942216191
     window.open(`https://wa.me/306942216191?text=${encodedMessage}`, '_blank');
   }
 
@@ -73,6 +74,21 @@ export default function SettingsPage() {
       </div>
 
       <div style={{ backgroundColor: 'white', padding: '20px', borderRadius: '24px', border: '1px solid #f1f5f9', boxShadow: '0 4px 6px rgba(0,0,0,0.02)', marginBottom: '30px' }}>
+        
+        {/* ΠΡΟΣΘΗΚΗ ΠΕΔΙΟΥ USERNAME */}
+        <div style={{ marginBottom: '25px', padding: '15px', backgroundColor: '#f0f9ff', borderRadius: '16px', border: '1px solid #e0f2fe' }}>
+          <label style={{ ...labelStyle, color: '#0369a1' }}>👤 Το όνομά σας (Υπογραφή)</label>
+          <input 
+            style={{ ...inputStyle, borderColor: '#bae6fd' }} 
+            value={formData.username} 
+            onChange={e => setFormData({...formData, username: e.target.value})} 
+            placeholder="π.χ. ΓΙΑΝΝΗΣ"
+          />
+          <p style={{ fontSize: '10px', color: '#0ea5e9', marginTop: '5px', marginInline: '5px' }}>
+            Αυτό το όνομα θα φαίνεται δίπλα σε κάθε κίνηση που καταχωρείτε.
+          </p>
+        </div>
+
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginBottom: '20px' }}>
           <div><label style={labelStyle}>Όνομα εταιρείας</label><input style={inputStyle} value={formData.company_name} onChange={e => setFormData({...formData, company_name: e.target.value})} /></div>
           <div><label style={labelStyle}>Όνομα επιχείρησης</label><input style={inputStyle} value={formData.store_name} onChange={e => setFormData({...formData, store_name: e.target.value})} /></div>
@@ -114,6 +130,7 @@ export default function SettingsPage() {
   )
 }
 
+// STYLES
 const labelStyle = { fontSize: '11px', color: '#94a3b8', fontWeight: '800', marginBottom: '6px', display: 'block', textTransform: 'uppercase' as const };
 const inputStyle = { width: '100%', padding: '14px', borderRadius: '12px', border: '1px solid #e2e8f0', fontSize: '16px', outline: 'none' };
 const saveBtn = { width: '100%', backgroundColor: '#2563eb', color: 'white', padding: '18px', borderRadius: '14px', border: 'none', fontWeight: '900', fontSize: '16px', cursor: 'pointer' };

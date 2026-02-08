@@ -1,48 +1,62 @@
 'use client'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 
 export default function DailyZPage() {
   const router = useRouter()
-  const [cashZ, setCashZ] = useState('')      // Μετρητά Ταμειακής
-  const [posZ, setPosZ] = useState('')        // Κάρτα / POS
-  const [noTax, setNoTax] = useState('')      // Χωρίς Απόδειξη (Μαύρα)
-  const [withdraw, setWithdraw] = useState('') // Ποσό για Τσέπη (Pocket)
+  const [cashZ, setCashZ] = useState('')      
+  const [posZ, setPosZ] = useState('')        
+  const [noTax, setNoTax] = useState('')      
+  const [withdraw, setWithdraw] = useState('') 
   const [date, setDate] = useState(new Date().toISOString().split('T')[0])
   const [loading, setLoading] = useState(false)
+  const [username, setUsername] = useState('Admin')
 
-  // Υπολογισμός συνολικού τζίρου που δηλώνεται
+  // Βρίσκουμε το Username του χρήστη από τις Ρυθμίσεις
+  useEffect(() => {
+    async function fetchUser() {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
+        const { data } = await supabase
+          .from('profiles')
+          .select('username')
+          .eq('id', user.id)
+          .single()
+        if (data?.username) setUsername(data.username)
+      }
+    }
+    fetchUser()
+  }, [])
+
   const totalSales = Number(cashZ) + Number(posZ) + Number(noTax)
 
   async function handleSaveZ() {
     if (totalSales <= 0) return alert('Παρακαλώ συμπληρώστε τα ποσά της ημέρας.')
     setLoading(true)
 
-    // 1. Προετοιμασία των 3 τύπων εσόδων
-    // Χρησιμοποιούμε την κατηγορία 'Εσοδα Ζ' για να τα φιλτράρουμε από την αρχική
+    // Προετοιμασία των κινήσεων με τη "σφραγίδα" του χρήστη
     const incomeTransactions = [
-      { amount: Number(cashZ), method: 'Μετρητά (Ζ)', notes: 'Ζ ΤΑΜΕΙΑΚΗΣ', type: 'income', date, category: 'Εσοδα Ζ' },
-      { amount: Number(posZ), method: 'Κάρτα', notes: 'Ζ ΤΑΜΕΙΑΚΗΣ (POS)', type: 'income', date, category: 'Εσοδα Ζ' },
-      { amount: Number(noTax), method: 'Μετρητά', notes: 'ΧΩΡΙΣ ΣΗΜΑΝΣΗ', type: 'income', date, category: 'Εσοδα Ζ' }
+      { amount: Number(cashZ), method: 'Μετρητά (Ζ)', notes: 'Ζ ΤΑΜΕΙΑΚΗΣ', type: 'income', date, category: 'Εσοδα Ζ', created_by_name: username },
+      { amount: Number(posZ), method: 'Κάρτα', notes: 'Ζ ΤΑΜΕΙΑΚΗΣ (POS)', type: 'income', date, category: 'Εσοδα Ζ', created_by_name: username },
+      { amount: Number(noTax), method: 'Μετρητά', notes: 'ΧΩΡΙΣ ΣΗΜΑΝΣΗ', type: 'income', date, category: 'Εσοδα Ζ', created_by_name: username }
     ].filter(t => t.amount > 0)
 
-    // 2. Προετοιμασία της Ανάληψης για την Τσέπη
-    // Χρησιμοποιούμε την κατηγορία 'pocket' για τον κουμπαρά
     const pocketTransaction = Number(withdraw) > 0 ? [{
       amount: Number(withdraw),
       method: 'Μετρητά',
       notes: 'ΑΝΑΛΗΨΗ ΓΙΑ ΤΣΕΠΗ (ΣΠΙΤΙ)',
       type: 'expense',
       date,
-      category: 'pocket'
+      category: 'pocket',
+      created_by_name: username
     }] : []
 
     const { error } = await supabase.from('transactions').insert([...incomeTransactions, ...pocketTransaction])
     
     if (!error) {
-      alert('Το ταμείο έκλεισε επιτυχώς! Τα δεδομένα ενημερώθηκαν στην Ανάλυση.')
+      alert(`Το ταμείο έκλεισε επιτυχώς από τον χρήστη: ${username}`)
       router.push('/')
     } else {
       alert('Σφάλμα κατά την αποθήκευση: ' + error.message)
@@ -55,9 +69,14 @@ export default function DailyZPage() {
       <div style={cardStyle}>
         
         {/* HEADER */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '15px', marginBottom: '25px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '15px', marginBottom: '15px' }}>
           <Link href="/" style={backBtnStyle}>←</Link>
           <h2 style={{ fontSize: '20px', fontWeight: '900', color: '#1e293b', margin: 0 }}>Κλείσιμο Ζ & Ανάληψη</h2>
+        </div>
+
+        {/* USER LABEL */}
+        <div style={{ marginBottom: '20px', padding: '10px', backgroundColor: '#f1f5f9', borderRadius: '12px', textAlign: 'center' }}>
+          <span style={{ fontSize: '11px', fontWeight: '900', color: '#64748b' }}>👤 ΣΥΝΔΕΔΕΜΕΝΟΣ: {username.toUpperCase()}</span>
         </div>
 
         {/* SECTION: ΕΣΟΔΑ */}
@@ -108,7 +127,7 @@ export default function DailyZPage() {
   )
 }
 
-// STYLES
+// Styles remain the same
 const cardStyle = { maxWidth: '500px', margin: '0 auto', backgroundColor: 'white', borderRadius: '28px', padding: '24px', boxShadow: '0 10px 15px rgba(0,0,0,0.05)' };
 const sectionBox = { marginBottom: '20px', padding: '18px', borderRadius: '22px', border: '1px solid #e2e8f0' };
 const sectionTitle = { fontSize: '10px', fontWeight: '900', color: '#64748b', marginBottom: '15px', letterSpacing: '0.5px' };

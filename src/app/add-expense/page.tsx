@@ -14,7 +14,8 @@ function AddExpenseForm() {
   const [invoiceNum, setInvoiceNum] = useState('')
   const [isCredit, setIsCredit] = useState(false) 
   const [isAgainstDebt, setIsAgainstDebt] = useState(false)
-  const [source, setSource] = useState('store') // 'store' = ΤΑΜΕΙΟ, 'pocket' = ΤΣΕΠΗ
+  const [source, setSource] = useState('store') 
+  const [currentUsername, setCurrentUsername] = useState('Admin')
 
   const [employees, setEmployees] = useState<any[]>([])
   const [suppliers, setSuppliers] = useState<any[]>([])
@@ -26,6 +27,7 @@ function AddExpenseForm() {
 
   useEffect(() => {
     async function loadData() {
+      // Φόρτωση λιστών
       const { data: e } = await supabase.from('employees').select('*').order('full_name')
       const { data: s } = await supabase.from('suppliers').select('*').order('name')
       const { data: f } = await supabase.from('fixed_assets').select('*').order('name')
@@ -34,9 +36,15 @@ function AddExpenseForm() {
       if (s) setSuppliers(s)
       if (f) setFixedAssets(f)
 
+      // Φόρτωση Username Χρήστη
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
+        const { data: profile } = await supabase.from('profiles').select('username').eq('id', user.id).single()
+        if (profile?.username) setCurrentUsername(profile.username)
+      }
+
       const supIdFromUrl = searchParams.get('supId')
       const againstDebtFromUrl = searchParams.get('againstDebt')
-      
       if (supIdFromUrl) setSelectedSup(supIdFromUrl)
       if (againstDebtFromUrl === 'true') setIsAgainstDebt(true)
     }
@@ -46,13 +54,11 @@ function AddExpenseForm() {
   async function handleSave() {
     if (!amount || Number(amount) <= 0) return alert('Συμπληρώστε το ποσό')
 
-    // ΚΑΤΗΓΟΡΙΟΠΟΙΗΣΗ
     let category = 'Λοιπά'
     if (selectedSup) category = 'Εμπορεύματα'
     else if (selectedEmp) category = 'Προσωπικό'
     else if (selectedFixed) category = 'Πάγια'
 
-    // Αν η πηγή είναι η ΤΣΕΠΗ, το ποσό γίνεται αρνητικό και η κατηγορία 'pocket'
     const finalAmount = source === 'pocket' ? -Math.abs(Number(amount)) : Number(amount)
     const finalCategory = source === 'pocket' ? 'pocket' : (isAgainstDebt ? 'Εξόφληση Χρέους' : category)
 
@@ -67,7 +73,8 @@ function AddExpenseForm() {
       employee_id: selectedEmp || null,
       supplier_id: selectedSup || null,
       fixed_asset_id: selectedFixed || null,
-      category: finalCategory
+      category: finalCategory,
+      created_by_name: currentUsername // Η υπογραφή
     }
 
     const { error } = await supabase.from('transactions').insert([payload])
@@ -83,12 +90,16 @@ function AddExpenseForm() {
     <main style={{ backgroundColor: '#f8fafc', minHeight: '100vh', padding: '16px', fontFamily: 'sans-serif' }}>
       <div style={formCardStyle}>
         
-        <div style={{ display: 'flex', alignItems: 'center', gap: '15px', marginBottom: '20px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '15px', marginBottom: '15px' }}>
           <Link href="/" style={{ textDecoration: 'none', fontSize: '24px', color: '#64748b' }}>←</Link>
           <h2 style={{ fontSize: '20px', fontWeight: '900', color: '#1e293b', margin: 0 }}>Νέο Έξοδο</h2>
         </div>
 
-        {/* ΕΠΙΛΟΓΗ ΠΗΓΗΣ ΧΡΗΜΑΤΩΝ */}
+        {/* USER INDICATOR */}
+        <div style={{ marginBottom: '20px', padding: '10px', backgroundColor: '#f1f5f9', borderRadius: '12px', textAlign: 'center' }}>
+          <span style={{ fontSize: '11px', fontWeight: '900', color: '#64748b' }}>👤 ΚΑΤΑΧΩΡΗΣΗ ΑΠΟ: {currentUsername.toUpperCase()}</span>
+        </div>
+
         <div style={{ marginBottom: '20px' }}>
           <label style={labelStyle}>ΠΗΓΗ ΧΡΗΜΑΤΩΝ (ΠΟΙΟΣ ΠΛΗΡΩΝΕΙ;)</label>
           <div style={{ display: 'flex', gap: '10px', marginTop: '8px' }}>
@@ -107,7 +118,6 @@ function AddExpenseForm() {
           </div>
         </div>
 
-        {/* ΠΟΣΟ - ΜΕΘΟΔΟΣ - ΠΑΡΑΣΤΑΤΙΚΟ */}
         <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
           <div style={{ flex: 1.5 }}>
             <label style={labelStyle}>ΠΟΣΟ (€)</label>
@@ -126,7 +136,6 @@ function AddExpenseForm() {
           </div>
         </div>
 
-        {/* ΕΠΙΛΟΓΕΣ ΧΡΕΟΥΣ (Μόνο αν η πηγή είναι το Ταμείο) */}
         {source === 'store' && (
           <div style={{ backgroundColor: '#f8fafc', padding: '15px', borderRadius: '15px', marginBottom: '20px', border: '1px solid #f1f5f9' }}>
             <div style={{ marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -140,7 +149,6 @@ function AddExpenseForm() {
           </div>
         )}
 
-        {/* ΕΠΙΛΟΓΗ ΣΤΟΙΧΕΙΟΥ */}
         <div style={selectGroup}>
           <label style={labelStyle}>ΠΡΟΜΗΘΕΥΤΗΣ</label>
           <select value={selectedSup} onChange={e => {setSelectedSup(e.target.value); setSelectedEmp(''); setSelectedFixed('')}} style={inputStyle}>
@@ -186,7 +194,7 @@ export default function AddExpensePage() {
   )
 }
 
-// STYLES
+// Styles remain exactly as you had them
 const formCardStyle = { maxWidth: '500px', margin: '0 auto', backgroundColor: 'white', borderRadius: '28px', padding: '24px', border: '1px solid #e2e8f0' };
 const labelStyle: any = { fontSize: '10px', fontWeight: '900', color: '#94a3b8', textTransform: 'uppercase' };
 const inputStyle: any = { width: '100%', padding: '14px', borderRadius: '14px', border: '1px solid #e2e8f0', fontSize: '15px', fontWeight: 'bold', backgroundColor: '#f8fafc', boxSizing: 'border-box' };

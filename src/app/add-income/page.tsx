@@ -1,7 +1,7 @@
 'use client'
 export const dynamic = 'force-dynamic'
 
-import { useState, Suspense } from 'react'
+import { useState, Suspense, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter, useSearchParams } from 'next/navigation'
 
@@ -14,28 +14,43 @@ function AddIncomeContent() {
   const [method, setMethod] = useState('Μετρητά')
   const [notes, setNotes] = useState('')
   const [loading, setLoading] = useState(false)
+  const [currentUsername, setCurrentUsername] = useState('Admin')
+
+  // Φόρτωση του Username από το προφίλ
+  useEffect(() => {
+    async function fetchUser() {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
+        const { data } = await supabase
+          .from('profiles')
+          .select('username')
+          .eq('id', user.id)
+          .single()
+        if (data?.username) setCurrentUsername(data.username)
+      }
+    }
+    fetchUser()
+  }, [])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
-    // ΠΡΟΣΤΑΣΙΑ: Αν ήδη αποθηκεύει ή δεν έχει ποσό, σταμάτα
     if (loading || !amount) return
     
     setLoading(true)
 
     try {
-      // 1. Εκτέλεση εγγραφής στη βάση
       const { error } = await supabase.from('transactions').insert([{
         amount: parseFloat(amount),
         type: 'income',
         method: method,
         notes: notes.trim(),
-        date: dateParam
+        date: dateParam,
+        created_by_name: currentUsername // Η υπογραφή του χρήστη
       }])
 
       if (error) throw error
 
-      // 2. Μικρή καθυστέρηση (500ms) για να ολοκληρωθεί η σύνδεση πριν το redirect
       setTimeout(() => {
         router.push(`/?date=${dateParam}`)
         router.refresh()
@@ -43,10 +58,8 @@ function AddIncomeContent() {
 
     } catch (err: any) {
       console.error('Submit error:', err)
-      
-      // Αν το σφάλμα είναι AbortError, δίνουμε πιο κατανοητό μήνυμα
       if (err.name === 'AbortError') {
-        alert('Η σύνδεση διακόπηκε προσωρινά. Το αίτημα μπορεί να έχει ολοκληρωθεί, παρακαλώ ελέγξτε την αρχική σελίδα.')
+        alert('Η σύνδεση διακόπηκε προσωρινά. Παρακαλώ ελέγξτε την αρχική σελίδα.')
       } else {
         alert('Σφάλμα: ' + (err.message || 'Αποτυχία σύνδεσης με τη βάση'))
       }
@@ -56,9 +69,16 @@ function AddIncomeContent() {
 
   return (
     <div style={{ maxWidth: '500px', margin: '0 auto', padding: '20px', fontFamily: 'sans-serif' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '15px', marginBottom: '30px' }}>
+      
+      {/* HEADER */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '15px', marginBottom: '20px' }}>
         <button onClick={() => router.back()} style={backBtn}>←</button>
         <h2 style={{ fontWeight: '900', margin: 0 }}>Νέο Έσοδο</h2>
+      </div>
+
+      {/* USER INDICATOR */}
+      <div style={{ marginBottom: '20px', padding: '10px', backgroundColor: '#f0fdf4', borderRadius: '12px', textAlign: 'center', border: '1px solid #bbf7d0' }}>
+        <span style={{ fontSize: '11px', fontWeight: '900', color: '#166534' }}>👤 ΚΑΤΑΧΩΡΗΣΗ ΑΠΟ: {currentUsername.toUpperCase()}</span>
       </div>
 
       <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -115,13 +135,13 @@ function AddIncomeContent() {
 
 export default function AddIncomePage() {
   return (
-    <Suspense fallback={<div>Φόρτωση...</div>}>
+    <Suspense fallback={<div style={{padding: '20px', textAlign: 'center'}}>Φόρτωση...</div>}>
       <AddIncomeContent />
     </Suspense>
   )
 }
 
-// STYLES
+// STYLES (Διατηρούνται ίδια)
 const backBtn = { border: 'none', background: '#f1f5f9', width: '45px', height: '45px', borderRadius: '15px', fontSize: '20px', cursor: 'pointer' };
 const labelStyle = { fontSize: '11px', fontWeight: '800', color: '#94a3b8', marginBottom: '8px', display: 'block', letterSpacing: '0.5px' };
 const fieldGroup = { display: 'flex', flexDirection: 'column' as const };
