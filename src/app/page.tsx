@@ -14,6 +14,7 @@ function DashboardContent() {
   const [transactions, setTransactions] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [isMenuOpen, setIsMenuOpen] = useState(false)
+  const [expandedTx, setExpandedTx] = useState<string | null>(null) // State για το ποια κίνηση είναι ανοιχτή
   
   const [storeName, setStoreName] = useState(() => {
     if (typeof window !== 'undefined') {
@@ -82,11 +83,11 @@ function DashboardContent() {
       const { error } = await supabase.from('transactions').delete().eq('id', id)
       if (!error) {
         setTransactions(prev => prev.filter(t => t.id !== id))
+        setExpandedTx(null)
       }
     }
   }
 
-  // Λειτουργία Επεξεργασίας: Στέλνει τον χρήστη στη σωστή φόρμα με το ID της κίνησης
   const handleEdit = (t: any) => {
     const targetPage = t.type === 'income' ? 'add-income' : 'add-expense'
     router.push(`/${targetPage}?editId=${t.id}&date=${selectedDate}`)
@@ -115,15 +116,6 @@ function DashboardContent() {
                 </>
               )}
               <Link href="/analysis" style={menuItem}>📈 Ανάλυση</Link>
-              
-              <div style={divider} />
-              <p style={menuSectionLabel}>ΕΦΑΡΜΟΓΗ</p>
-              {isAdmin && (
-                <Link href="/admin/permissions" style={menuItem}>🔐 Δικαιώματα</Link>
-              )}
-              <Link href="/subscription" style={menuItem}>💳 Συνδρομή</Link>
-              <Link href="/settings" style={menuItem}>⚙️ Ρυθμίσεις</Link>
-              
               <div style={divider} />
               <button onClick={() => supabase.auth.signOut().then(() => window.location.href='/login')} style={logoutBtnStyle}>ΑΠΟΣΥΝΔΕΣΗ 🚪</button>
             </div>
@@ -143,7 +135,7 @@ function DashboardContent() {
         </div>
       </div>
 
-      {/* ACTIONS */}
+      {/* QUICK ACTIONS */}
       <div style={{ display: 'flex', gap: '12px', marginBottom: '12px', position: 'relative', zIndex: 10 }}>
         <Link href={`/add-income?date=${selectedDate}`} style={{ ...btnStyle, backgroundColor: '#10b981', display: 'block' }}>+ ΕΣΟΔΑ</Link>
         <Link href={`/add-expense?date=${selectedDate}`} style={{ ...btnStyle, backgroundColor: '#ef4444', display: 'block' }}>- ΕΞΟΔΑ</Link>
@@ -165,33 +157,41 @@ function DashboardContent() {
           <div style={{ padding: '20px', textAlign: 'center', color: '#94a3b8' }}>Φόρτωση...</div>
         ) : (
           transactions.filter(t => t.category !== 'Εσοδα Ζ' && t.category !== 'pocket').map(t => (
-            <div key={t.id} style={itemStyle}>
-              <div style={{ flex: 1 }}>
-                <p style={{ fontWeight: '800', margin: 0, fontSize: '15px', color: '#1e293b' }}>
-                  {t.type === 'income' ? '💰 ' + (t.notes || 'ΕΙΣΠΡΑΞΗ') : (
-                      t.is_credit ? '🚩 ΠΙΣΤΩΣΗ: ' + t.suppliers?.name : 
-                      t.category === 'Πάγια' ? '🔌 ' + t.fixed_assets?.name :
-                      '💸 ' + (t.suppliers?.name || t.category)
-                  )}
-                </p>
-                <div style={{ display: 'flex', gap: '6px', marginTop: '4px' }}>
-                  <span style={subLabelStyle}>{t.method}</span>
-                  <span style={userBadge}>👤 {t.created_by_name}</span>
+            <div key={t.id} style={{ marginBottom: '5px' }}>
+              {/* ΤΟ ΚΥΡΙΩΣ ΣΤΟΙΧΕΙΟ ΤΗΣ ΚΙΝΗΣΗΣ */}
+              <div 
+                onClick={() => isAdmin && setExpandedTx(expandedTx === t.id ? null : t.id)}
+                style={{ 
+                  ...itemStyle, 
+                  cursor: isAdmin ? 'pointer' : 'default',
+                  borderRadius: expandedTx === t.id ? '20px 20px 0 0' : '20px'
+                }}
+              >
+                <div style={{ flex: 1 }}>
+                  <p style={{ fontWeight: '800', margin: 0, fontSize: '15px', color: '#1e293b' }}>
+                    {t.type === 'income' ? '💰 ' + (t.notes || 'ΕΙΣΠΡΑΞΗ') : (
+                        t.is_credit ? '🚩 ΠΙΣΤΩΣΗ: ' + t.suppliers?.name : 
+                        t.category === 'Πάγια' ? '🔌 ' + t.fixed_assets?.name :
+                        '💸 ' + (t.suppliers?.name || t.category)
+                    )}
+                  </p>
+                  <div style={{ display: 'flex', gap: '6px', marginTop: '4px' }}>
+                    <span style={subLabelStyle}>{t.method}</span>
+                    <span style={userBadge}>👤 {t.created_by_name}</span>
+                  </div>
                 </div>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                 <p style={{ fontWeight: '900', fontSize: '16px', color: t.is_credit ? '#94a3b8' : (t.type === 'income' ? '#16a34a' : '#dc2626'), margin: 0 }}>
                   {t.type === 'income' ? '+' : '-'}{Number(t.amount).toFixed(2)}€
                 </p>
-                
-                {/* ADMIN ACTIONS: ΜΟΝΟ ΓΙΑ ADMIN */}
-                {isAdmin && (
-                  <div style={{ display: 'flex', gap: '5px' }}>
-                    <button onClick={() => handleEdit(t)} style={actionBtnEdit}>✎</button>
-                    <button onClick={() => handleDelete(t.id)} style={actionBtnDelete}>🗑️</button>
-                  </div>
-                )}
               </div>
+
+              {/* ΤΟ PANEL ΕΝΕΡΓΕΙΩΝ (ΕΜΦΑΝΙΖΕΤΑΙ ΜΟΝΟ ΑΝ ΠΑΤΗΘΕΙ & ΕΙΝΑΙ ADMIN) */}
+              {isAdmin && expandedTx === t.id && (
+                <div style={actionPanelStyle}>
+                  <button onClick={() => handleEdit(t)} style={actionBtnEdit}>ΕΠΕΞΕΡΓΑΣΙΑ ✎</button>
+                  <button onClick={() => handleDelete(t.id)} style={actionBtnDelete}>ΔΙΑΓΡΑΦΗ 🗑️</button>
+                </div>
+              )}
             </div>
           ))
         )}
@@ -211,13 +211,42 @@ const cardStyle = { flex: 1, backgroundColor: 'white', padding: '18px', borderRa
 const labelStyle = { fontSize: '10px', fontWeight: '800', color: '#94a3b8', marginBottom: '4px' };
 const btnStyle = { flex: 1, padding: '18px', borderRadius: '18px', color: 'white', textDecoration: 'none', textAlign: 'center' as const, fontWeight: '800', fontSize: '15px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' };
 const zBtnStyle = { display: 'block', padding: '16px', borderRadius: '18px', backgroundColor: '#0f172a', color: 'white', textDecoration: 'none', textAlign: 'center' as const, fontWeight: '900', fontSize: '14px', marginTop: '10px' };
-const itemStyle = { backgroundColor: 'white', padding: '15px', borderRadius: '20px', border: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' };
+const itemStyle = { backgroundColor: 'white', padding: '15px', border: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' };
 const subLabelStyle = { fontSize: '11px', color: '#94a3b8', textTransform: 'uppercase' as const, fontWeight: 'bold' };
 const userBadge = { fontSize: '9px', backgroundColor: '#f1f5f9', color: '#64748b', padding: '2px 6px', borderRadius: '6px', fontWeight: 'bold' };
 
-// ADMIN BUTTON STYLES
-const actionBtnEdit = { background: '#fef3c7', border: 'none', padding: '6px 10px', borderRadius: '8px', cursor: 'pointer', fontSize: '14px' };
-const actionBtnDelete = { background: '#fee2e2', border: 'none', padding: '6px 10px', borderRadius: '8px', cursor: 'pointer', fontSize: '14px' };
+// ACTION PANEL STYLES (Φωτογραφία 2)
+const actionPanelStyle = { 
+  backgroundColor: 'white', 
+  padding: '10px 15px 15px', 
+  borderRadius: '0 0 20px 20px', 
+  border: '1px solid #f1f5f9', 
+  borderTop: 'none',
+  display: 'flex', 
+  gap: '10px' 
+};
+const actionBtnEdit = { 
+  flex: 1, 
+  background: '#fef3c7', 
+  color: '#92400e', 
+  border: 'none', 
+  padding: '12px', 
+  borderRadius: '12px', 
+  fontWeight: '800', 
+  fontSize: '12px', 
+  cursor: 'pointer' 
+};
+const actionBtnDelete = { 
+  flex: 1, 
+  background: '#fee2e2', 
+  color: '#991b1b', 
+  border: 'none', 
+  padding: '12px', 
+  borderRadius: '12px', 
+  fontWeight: '800', 
+  fontSize: '12px', 
+  cursor: 'pointer' 
+};
 
 export default function HomePage() {
   return (
