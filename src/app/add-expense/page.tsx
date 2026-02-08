@@ -8,45 +8,60 @@ function AddExpenseForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
   
+  // State φόρμας
   const [amount, setAmount] = useState('')
   const [method, setMethod] = useState('Μετρητά')
   const [notes, setNotes] = useState('')
   const [invoiceNum, setInvoiceNum] = useState('')
+  
+  // State λογικής
   const [isCredit, setIsCredit] = useState(false) 
   const [isAgainstDebt, setIsAgainstDebt] = useState(false)
   const [source, setSource] = useState('store') 
   const [currentUsername, setCurrentUsername] = useState('Admin')
+  const [loading, setLoading] = useState(true)
 
+  // Λίστες Δεδομένων
   const [employees, setEmployees] = useState<any[]>([])
   const [suppliers, setSuppliers] = useState<any[]>([])
   const [fixedAssets, setFixedAssets] = useState<any[]>([])
   
+  // Επιλογές (IDs)
   const [selectedEmp, setSelectedEmp] = useState('')
   const [selectedSup, setSelectedSup] = useState('')
   const [selectedFixed, setSelectedFixed] = useState('')
 
   useEffect(() => {
     async function loadData() {
-      // Φόρτωση λιστών
-      const { data: e } = await supabase.from('employees').select('*').order('full_name')
-      const { data: s } = await supabase.from('suppliers').select('*').order('name')
-      const { data: f } = await supabase.from('fixed_assets').select('*').order('name')
-      
-      if (e) setEmployees(e)
-      if (s) setSuppliers(s)
-      if (f) setFixedAssets(f)
+      try {
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) return
 
-      // Φόρτωση Username Χρήστη
-      const { data: { user } } = await supabase.auth.getUser()
-      if (user) {
-        const { data: profile } = await supabase.from('profiles').select('username').eq('id', user.id).single()
+        // 1. Φόρτωση Προφίλ Χρήστη (για να βρούμε το όνομα και το store_id αν χρειαστεί)
+        const { data: profile } = await supabase.from('profiles').select('username, store_id').eq('id', user.id).single()
         if (profile?.username) setCurrentUsername(profile.username)
-      }
 
-      const supIdFromUrl = searchParams.get('supId')
-      const againstDebtFromUrl = searchParams.get('againstDebt')
-      if (supIdFromUrl) setSelectedSup(supIdFromUrl)
-      if (againstDebtFromUrl === 'true') setIsAgainstDebt(true)
+        // 2. Φόρτωση Λιστών (Η βάση θα επιστρέψει ΜΟΝΟ του καταστήματος λόγω RLS)
+        // Προσοχή: Υπαλλήλους τραβάμε από τα 'profiles' γιατί εκεί είναι οι χρήστες
+        const { data: e } = await supabase.from('profiles').select('id, username').neq('role', 'service_role').order('username')
+        const { data: s } = await supabase.from('suppliers').select('id, name').order('name')
+        const { data: f } = await supabase.from('fixed_assets').select('id, name').order('name')
+        
+        if (e) setEmployees(e)
+        if (s) setSuppliers(s)
+        if (f) setFixedAssets(f)
+
+        // Έλεγχος παραμέτρων URL (αν ερχόμαστε από άλλη σελίδα)
+        const supIdFromUrl = searchParams.get('supId')
+        const againstDebtFromUrl = searchParams.get('againstDebt')
+        if (supIdFromUrl) setSelectedSup(supIdFromUrl)
+        if (againstDebtFromUrl === 'true') setIsAgainstDebt(true)
+      
+      } catch (error) {
+        console.error('Error loading data:', error)
+      } finally {
+        setLoading(false)
+      }
     }
     loadData()
   }, [searchParams])
@@ -54,35 +69,55 @@ function AddExpenseForm() {
   async function handleSave() {
     if (!amount || Number(amount) <= 0) return alert('Συμπληρώστε το ποσό')
 
+    // 1. Καθορισμός Κατηγορίας
     let category = 'Λοιπά'
     if (selectedSup) category = 'Εμπορεύματα'
     else if (selectedEmp) category = 'Προσωπικό'
     else if (selectedFixed) category = 'Πάγια'
 
+    // 2. Υπολογισμοί Ποσού και Τύπου
     const finalAmount = source === 'pocket' ? -Math.abs(Number(amount)) : Number(amount)
     const finalCategory = source === 'pocket' ? 'pocket' : (isAgainstDebt ? 'Εξόφληση Χρέους' : category)
 
-    const payload: any = {
-      amount: finalAmount,
-      method: isCredit ? 'Πίστωση' : method,
-      notes: source === 'pocket' ? `(ΑΠΟ ΤΣΕΠΗ) ${notes}` : notes,
-      invoice_number: invoiceNum,
-      is_credit: isCredit,
-      type: isAgainstDebt ? 'debt_payment' : 'expense',
-      date: new Date().toISOString().split('T')[0],
-      employee_id: selectedEmp || null,
-      supplier_id: selectedSup || null,
-      fixed_asset_id: selectedFixed || null,
-      category: finalCategory,
-      created_by_name: currentUsername // Η υπογραφή
-    }
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) throw new Error('Δεν βρέθηκε χρήστης')
 
-    const { error } = await supabase.from('transactions').insert([payload])
-    if (!error) {
+      // 3. Βρίσκουμε το store_id του χρήστη για να ξέρουμε πού χρεώνεται
+      const { data: profile } = await supabase.from('profiles').select('store_id').eq('id', user.id).single()
+      if (!profile?.store_id) throw new Error('Δεν βρέθηκε κατάστημα')
+
+      const payload: any = {
+        amount: finalAmount,
+        method: isCredit ? 'Πίστωση' : method,
+        notes: source === 'pocket' ? `(ΑΠΟ ΤΣΕΠΗ) ${notes}` : notes,
+        invoice_number: invoiceNum,
+        is_credit: isCredit,
+        type: isAgainstDebt ? 'debt_payment' : 'expense',
+        date: new Date().toISOString().split('T')[0],
+        
+        // IDs
+        user_id: user.id, // Ποιος έκανε την κίνηση
+        store_id: profile.store_id, // Σε ποιο μαγαζί
+        employee_id: selectedEmp || null,
+        supplier_id: selectedSup || null,
+        fixed_asset_id: selectedFixed || null,
+        
+        category: finalCategory,
+        created_by_name: currentUsername
+      }
+
+      const { error } = await supabase.from('transactions').insert([payload])
+      
+      if (!error) {
+        // Επιτυχία -> Επιστροφή στην Αρχική
         router.push('/')
         router.refresh()
-    } else {
-        alert(error.message)
+      } else {
+        throw error
+      }
+    } catch (error: any) {
+      alert('Σφάλμα αποθήκευσης: ' + error.message)
     }
   }
 
@@ -100,6 +135,7 @@ function AddExpenseForm() {
           <span style={{ fontSize: '11px', fontWeight: '900', color: '#64748b' }}>👤 ΚΑΤΑΧΩΡΗΣΗ ΑΠΟ: {currentUsername.toUpperCase()}</span>
         </div>
 
+        {/* ΠΗΓΗ ΧΡΗΜΑΤΩΝ */}
         <div style={{ marginBottom: '20px' }}>
           <label style={labelStyle}>ΠΗΓΗ ΧΡΗΜΑΤΩΝ (ΠΟΙΟΣ ΠΛΗΡΩΝΕΙ;)</label>
           <div style={{ display: 'flex', gap: '10px', marginTop: '8px' }}>
@@ -118,6 +154,7 @@ function AddExpenseForm() {
           </div>
         </div>
 
+        {/* ΠΟΣΟ - ΜΕΘΟΔΟΣ - ΠΑΡΑΣΤΑΤΙΚΟ */}
         <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
           <div style={{ flex: 1.5 }}>
             <label style={labelStyle}>ΠΟΣΟ (€)</label>
@@ -131,11 +168,12 @@ function AddExpenseForm() {
             </select>
           </div>
           <div style={{ flex: 1 }}>
-            <label style={labelStyle}>ΠΑΡΑΣΤΑΤΙΚΟ</label>
-            <input value={invoiceNum} onChange={e => setInvoiceNum(e.target.value)} style={inputStyle} placeholder="Αρ." />
+            <label style={labelStyle}>ΑΡ. ΠΑΡΑΣΤ.</label>
+            <input value={invoiceNum} onChange={e => setInvoiceNum(e.target.value)} style={inputStyle} placeholder="123" />
           </div>
         </div>
 
+        {/* ΕΠΙΛΟΓΕΣ ΧΡΕΟΥΣ */}
         {source === 'store' && (
           <div style={{ backgroundColor: '#f8fafc', padding: '15px', borderRadius: '15px', marginBottom: '20px', border: '1px solid #f1f5f9' }}>
             <div style={{ marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -149,26 +187,55 @@ function AddExpenseForm() {
           </div>
         )}
 
+        {/* ---------- ΟΙ ΛΙΣΤΕΣ (ΣΥΝΔΕΔΕΜΕΝΕΣ ΜΕ ΤΗ ΒΑΣΗ) ---------- */}
+        
+        {/* 1. ΠΡΟΜΗΘΕΥΤΗΣ */}
         <div style={selectGroup}>
-          <label style={labelStyle}>ΠΡΟΜΗΘΕΥΤΗΣ</label>
-          <select value={selectedSup} onChange={e => {setSelectedSup(e.target.value); setSelectedEmp(''); setSelectedFixed('')}} style={inputStyle}>
-            <option value="">— Επιλέξτε —</option>
+          <label style={labelStyle}>🏭 ΠΡΟΜΗΘΕΥΤΗΣ (Εμπορεύματα)</label>
+          <select 
+            value={selectedSup} 
+            onChange={e => {
+              setSelectedSup(e.target.value); 
+              if(e.target.value) { setSelectedEmp(''); setSelectedFixed(''); } // Καθαρίζει τα άλλα
+            }} 
+            style={{...inputStyle, borderColor: selectedSup ? '#0f172a' : '#e2e8f0'}}
+            disabled={loading}
+          >
+            <option value="">— Επιλέξτε Προμηθευτή —</option>
             {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
           </select>
         </div>
 
+        {/* 2. ΥΠΑΛΛΗΛΟΣ */}
         <div style={selectGroup}>
-          <label style={labelStyle}>ΥΠΑΛΛΗΛΟΣ</label>
-          <select value={selectedEmp} onChange={e => {setSelectedEmp(e.target.value); setSelectedSup(''); setSelectedFixed('')}} style={inputStyle}>
-            <option value="">— Επιλέξτε —</option>
-            {employees.map(e => <option key={e.id} value={e.id}>{e.full_name}</option>)}
+          <label style={labelStyle}>👤 ΥΠΑΛΛΗΛΟΣ (Μισθοδοσία/Προκαταβολές)</label>
+          <select 
+            value={selectedEmp} 
+            onChange={e => {
+              setSelectedEmp(e.target.value); 
+              if(e.target.value) { setSelectedSup(''); setSelectedFixed(''); }
+            }} 
+            style={{...inputStyle, borderColor: selectedEmp ? '#0f172a' : '#e2e8f0'}}
+            disabled={loading}
+          >
+            <option value="">— Επιλέξτε Υπάλληλο —</option>
+            {employees.map(e => <option key={e.id} value={e.id}>{e.username}</option>)}
           </select>
         </div>
 
+        {/* 3. ΠΑΓΙΟ */}
         <div style={selectGroup}>
-          <label style={labelStyle}>ΠΑΓΙΟ</label>
-          <select value={selectedFixed} onChange={e => {setSelectedFixed(e.target.value); setSelectedEmp(''); setSelectedSup('')}} style={inputStyle}>
-            <option value="">— Επιλέξτε —</option>
+          <label style={labelStyle}>🏢 ΠΑΓΙΟ (Ενοίκια, Λογαριασμοί)</label>
+          <select 
+            value={selectedFixed} 
+            onChange={e => {
+              setSelectedFixed(e.target.value); 
+              if(e.target.value) { setSelectedEmp(''); setSelectedSup(''); }
+            }} 
+            style={{...inputStyle, borderColor: selectedFixed ? '#0f172a' : '#e2e8f0'}}
+            disabled={loading}
+          >
+            <option value="">— Επιλέξτε Πάγιο —</option>
             {fixedAssets.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
           </select>
         </div>
@@ -188,16 +255,16 @@ function AddExpenseForm() {
 
 export default function AddExpensePage() {
   return (
-    <Suspense fallback={<div style={{padding: '20px', textAlign: 'center'}}>Φόρτωση φόρμας...</div>}>
+    <Suspense fallback={<div style={{padding: '20px', textAlign: 'center'}}>Φόρτωση...</div>}>
       <AddExpenseForm />
     </Suspense>
   )
 }
 
-// Styles remain exactly as you had them
+// STYLES (Τα ίδια ακριβώς)
 const formCardStyle = { maxWidth: '500px', margin: '0 auto', backgroundColor: 'white', borderRadius: '28px', padding: '24px', border: '1px solid #e2e8f0' };
-const labelStyle: any = { fontSize: '10px', fontWeight: '900', color: '#94a3b8', textTransform: 'uppercase' };
-const inputStyle: any = { width: '100%', padding: '14px', borderRadius: '14px', border: '1px solid #e2e8f0', fontSize: '15px', fontWeight: 'bold', backgroundColor: '#f8fafc', boxSizing: 'border-box' };
+const labelStyle: any = { fontSize: '10px', fontWeight: '900', color: '#94a3b8', textTransform: 'uppercase', marginBottom: '5px', display: 'block' };
+const inputStyle: any = { width: '100%', padding: '14px', borderRadius: '14px', border: '1px solid #e2e8f0', fontSize: '15px', fontWeight: 'bold', backgroundColor: '#f8fafc', boxSizing: 'border-box', outline: 'none' };
 const sourceBtn: any = { flex: 1, padding: '14px', borderRadius: '12px', border: 'none', fontWeight: '900', fontSize: '12px', cursor: 'pointer', transition: '0.2s' };
 const selectGroup = { marginBottom: '15px' };
 const saveBtn: any = { width: '100%', padding: '18px', backgroundColor: '#0f172a', color: 'white', border: 'none', borderRadius: '16px', fontWeight: '900', fontSize: '16px', cursor: 'pointer' };
