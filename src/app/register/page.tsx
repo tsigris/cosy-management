@@ -12,13 +12,16 @@ function RegisterForm() {
   const searchParams = useSearchParams()
 
   // 1. Πιάνουμε τις παραμέτρους από το Link Πρόσκλησης
-  const inviteCode = searchParams.get('invite') // Το ID του καταστήματος
+  const inviteCode = searchParams.get('invite') // Το ID του καταστήματος (του Admin)
   const requestedRole = searchParams.get('role') // Ο ρόλος (admin ή user)
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!email || password.length < 6) return alert('Ο κωδικός πρέπει να είναι τουλάχιστον 6 χαρακτήρες.')
     setLoading(true)
+
+    // DEBUG: Ελέγχουμε τι "βλέπει" ο κώδικας πριν την εγγραφή
+    console.log("Registering with:", { inviteCode, requestedRole })
     
     // 2. Εγγραφή στο Auth του Supabase
     const { data, error } = await supabase.auth.signUp({ 
@@ -27,35 +30,40 @@ function RegisterForm() {
     })
     
     if (error) {
-      alert('Σφάλμα: ' + error.message)
+      alert('Σφάλμα Auth: ' + error.message)
     } else if (data.user) {
-      // 3. Λογική Καθορισμού Ρόλου & Καταστήματος
-      // - Αν ΔΕΝ υπάρχει inviteCode: Είναι νέος Ιδιοκτήτης (Admin)
-      // - Αν ΥΠΑΡΧΕΙ inviteCode: Είναι προσκεκλημένος (Admin ή User ανάλογα το Link)
       
+      // 3. Λογική Καθορισμού Ρόλου & Καταστήματος
       const isNewOwner = !inviteCode
+      
+      // Αν υπάρχει inviteCode, παίρνει τον ζητούμενο ρόλο, αλλιώς Admin
       const finalRole = isNewOwner ? 'admin' : (requestedRole || 'user')
+      
+      // Αν υπάρχει inviteCode, το store_id είναι ΤΟΥ ADMIN. Αλλιώς του νέου χρήστη.
       const finalStoreId = isNewOwner ? data.user.id : inviteCode
       
-      // Δικαιώματα: Αν γίνει Admin (είτε νέος είτε προσκεκλημένος), παίρνει φουλ πρόσβαση
+      // Δικαιώματα
       const hasFullAccess = finalRole === 'admin'
 
-      const { error: profileError } = await supabase.from('profiles').insert([{
+      // 4. Αποθήκευση Προφίλ (Χρησιμοποιούμε UPSERT για ασφάλεια)
+      const { error: profileError } = await supabase.from('profiles').upsert([{
         id: data.user.id,
         email: email.trim(),
         username: email.split('@')[0],
         role: finalRole,
-        store_id: finalStoreId,
+        store_id: finalStoreId, // Εδώ γίνεται η σύνδεση με εσένα
         can_view_analysis: hasFullAccess,
         can_view_history: hasFullAccess,
         can_edit_transactions: hasFullAccess
       }])
 
       if (!profileError) {
-        alert(`Επιτυχής εγγραφή ως ${finalRole === 'admin' ? 'Διαχειριστής' : 'Υπάλληλος'}!`)
+        // Επιτυχία!
+        alert(`Επιτυχής εγγραφή! \nΡόλος: ${finalRole === 'admin' ? 'Διαχειριστής' : 'Υπάλληλος'}`)
         router.push('/login')
       } else {
-        alert('Σφάλμα προφίλ: ' + profileError.message)
+        console.error("Profile Error:", profileError)
+        alert('Σφάλμα κατά την αποθήκευση του προφίλ: ' + profileError.message)
       }
     }
     setLoading(false)
@@ -66,11 +74,13 @@ function RegisterForm() {
       <div style={headerStyle}>
         <h1 style={brandStyle}>COSY APP</h1>
         <div style={dividerStyle} />
-        <p style={instructionStyle}>
+        
+        {/* Οπτική Επιβεβαίωση για τον χρήστη */}
+        <div style={instructionStyle}>
           {inviteCode 
-            ? `Πρόσκληση για ${requestedRole === 'admin' ? 'Διαχειριστή' : 'Υπάλληλο'}` 
+            ? <span style={{color: '#059669', fontWeight: 'bold'}}>✨ Πρόσκληση αποδεκτή! <br/>Εγγραφή ως {requestedRole === 'admin' ? 'Διαχειριστής' : 'Υπάλληλος'}</span>
             : 'Δημιουργία Νέου Λογαριασμού'}
-        </p>
+        </div>
       </div>
       
       <form onSubmit={handleSignUp} style={formStyle}>
@@ -118,13 +128,13 @@ export default function RegisterPage() {
   )
 }
 
-// STYLES (Τα δικά σου στυλ παραμένουν ως έχουν)
+// STYLES
 const containerStyle = { minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#f1f5f9', fontFamily: 'sans-serif', padding: '20px' };
 const cardStyle = { backgroundColor: '#ffffff', width: '100%', maxWidth: '420px', padding: '48px', borderRadius: '4px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', borderTop: '5px solid #10b981' };
 const headerStyle = { textAlign: 'center' as const, marginBottom: '32px' };
 const brandStyle = { fontSize: '24px', fontWeight: '800', color: '#1e293b', margin: '0 0 12px 0', letterSpacing: '1px' };
 const dividerStyle = { height: '2px', width: '40px', backgroundColor: '#e2e8f0', margin: '0 auto 16px auto' };
-const instructionStyle = { fontSize: '14px', color: '#64748b', fontWeight: '500' };
+const instructionStyle = { fontSize: '14px', color: '#64748b', fontWeight: '500', lineHeight: '1.5' };
 const formStyle = { display: 'flex', flexDirection: 'column' as const, gap: '24px' };
 const fieldGroup = { display: 'flex', flexDirection: 'column' as const, gap: '8px' };
 const labelStyle = { fontSize: '12px', fontWeight: '700', color: '#475569', textTransform: 'uppercase' as const };
