@@ -14,30 +14,53 @@ function SubscriptionContent() {
   useEffect(() => {
     async function fetchProfile() {
       try {
-        const { data: { user } } = await supabase.auth.getUser()
+        setLoading(true)
+        // 1. Παίρνουμε το τρέχον session (σημαντικό για το Standalone mode του iPhone)
+        const { data: { session } } = await supabase.auth.getSession()
+        const user = session?.user
+
         if (user) {
-          const { data } = await supabase.from('profiles').select('*').eq('id', user.id).single()
-          setProfile(data)
+          const { data, error } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', user.id)
+            .single()
+          
+          if (data) setProfile(data)
         }
-      } catch (err) { console.error(err) } finally { setLoading(false) }
+      } catch (err) { 
+        console.error("Subscription Fetch Error:", err) 
+      } finally { 
+        // Μικρή καθυστέρηση για να αποφύγουμε το "αναβόσβημα" στο iPhone
+        setTimeout(() => setLoading(false), 300)
+      }
     }
     fetchProfile()
   }, [])
 
   const handleWhatsAppRenewal = () => {
-    const message = `Γεια σας! Επιθυμώ να ανανεώσω τη συνδρομή μου στο Cosy App.\nΚατάστημα: ${profile?.store_name}\nEmail: ${profile?.email}`;
+    const message = `Γεια σας! Επιθυμώ να ανανεώσω τη συνδρομή μου στο Cosy App.\nΚατάστημα: ${profile?.store_name || 'Μη ορισμένο'}\nEmail: ${profile?.email || 'Μη ορισμένο'}`;
     const encoded = encodeURIComponent(message);
     window.open(`https://wa.me/306942216191?text=${encoded}`, '_blank');
   }
 
-  if (loading) return <div style={{padding: '50px', textAlign: 'center', color: '#94a3b8', fontWeight: 'bold'}}>Φόρτωση πλάνου...</div>
+  // 2. Εμφάνιση loading μέχρι να είμαστε σίγουροι για τα δεδομένα
+  if (loading) return (
+    <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', height: '80vh', gap: '15px' }}>
+      <div style={spinnerStyle}></div>
+      <p style={{ color: '#94a3b8', fontWeight: '800', fontSize: '14px' }}>Επαλήθευση συνδρομής...</p>
+    </div>
+  )
 
-  const isExpired = profile?.subscription_expires_at ? new Date(profile.subscription_expires_at) < new Date() : true
+  // 3. Ασφαλής υπολογισμός λήξης (αν δεν υπάρχει ημερομηνία, θεωρούμε ότι είναι Pro μέχρι να αποδειχθεί το αντίθετο)
+  const isExpired = profile?.subscription_expires_at 
+    ? new Date(profile.subscription_expires_at) < new Date() 
+    : false; 
 
   return (
     <div style={{ maxWidth: '500px', margin: '0 auto', fontFamily: 'sans-serif' }}>
       
-      {/* PROFESSIONAL HEADER */}
+      {/* HEADER */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '25px', paddingTop: '15px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <div style={logoBoxStyle}>
@@ -133,6 +156,7 @@ function SubscriptionContent() {
 }
 
 // STYLES
+const spinnerStyle = { width: '30px', height: '30px', border: '3px solid #f3f3f3', borderTop: '3px solid #0f172a', borderRadius: '50%', animation: 'spin 1s linear infinite' };
 const logoBoxStyle: any = { width: '42px', height: '42px', backgroundColor: '#e0e7ff', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' };
 const backBtnStyle: any = { textDecoration: 'none', color: '#94a3b8', fontSize: '18px', fontWeight: 'bold', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#fff', borderRadius: '10px', border: '1px solid #e2e8f0' };
 const statusCardStyle: any = { padding: '30px 20px', borderRadius: '28px', border: '1px solid', textAlign: 'center', marginBottom: '20px', boxShadow: '0 4px 6px rgba(0,0,0,0.02)' };
@@ -147,6 +171,8 @@ const supportBtnStyle: any = { width: '100%', padding: '18px', backgroundColor: 
 export default function SubscriptionPage() {
   return (
     <main style={{ backgroundColor: '#f8fafc', minHeight: '100vh', padding: '15px' }}>
+       {/* CSS για το spinner */}
+      <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
       <Suspense fallback={<div>Φόρτωση...</div>}><SubscriptionContent /></Suspense>
     </main>
   )
