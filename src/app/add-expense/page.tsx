@@ -1,273 +1,243 @@
 'use client'
-import { useEffect, useState, Suspense } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
-import { supabase } from '@/lib/supabase'
-import Link from 'next/link'
+export const dynamic = 'force-dynamic'
 
-function AddExpenseForm() {
+import { useEffect, useState, Suspense } from 'react'
+import Link from 'next/link'
+import { supabase } from '@/lib/supabase'
+import { useRouter, useSearchParams } from 'next/navigation'
+
+function DashboardContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
+  const selectedDate = searchParams.get('date') || new Date().toISOString().split('T')[0]
   
-  // State φόρμας
-  const [amount, setAmount] = useState('')
-  const [method, setMethod] = useState('Μετρητά')
-  const [notes, setNotes] = useState('')
-  const [invoiceNum, setInvoiceNum] = useState('')
-  
-  // State λογικής
-  const [isCredit, setIsCredit] = useState(false) 
-  const [isAgainstDebt, setIsAgainstDebt] = useState(false)
-  const [source, setSource] = useState('store') 
-  const [currentUsername, setCurrentUsername] = useState('Admin')
+  const [transactions, setTransactions] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-
-  // Λίστες Δεδομένων
-  const [employees, setEmployees] = useState<any[]>([])
-  const [suppliers, setSuppliers] = useState<any[]>([])
-  const [fixedAssets, setFixedAssets] = useState<any[]>([])
+  const [isMenuOpen, setIsMenuOpen] = useState(false)
+  const [storeName, setStoreName] = useState('ΚΑΤΑΣΤΗΜΑ')
   
-  // Επιλογές (IDs)
-  const [selectedEmp, setSelectedEmp] = useState('')
-  const [selectedSup, setSelectedSup] = useState('')
-  const [selectedFixed, setSelectedFixed] = useState('')
+  const [permissions, setPermissions] = useState({
+    role: 'user',
+    can_view_history: false,
+    can_view_analysis: false,
+    enable_payroll: false
+  })
 
   useEffect(() => {
-    async function loadData() {
-      try {
-        const { data: { user } } = await supabase.auth.getUser()
-        if (!user) return
-
-        // 1. Φόρτωση Προφίλ Χρήστη (για να βρούμε το όνομα και το store_id αν χρειαστεί)
-        const { data: profile } = await supabase.from('profiles').select('username, store_id').eq('id', user.id).single()
-        if (profile?.username) setCurrentUsername(profile.username)
-
-        // 2. Φόρτωση Λιστών (Η βάση θα επιστρέψει ΜΟΝΟ του καταστήματος λόγω RLS)
-        // Προσοχή: Υπαλλήλους τραβάμε από τα 'profiles' γιατί εκεί είναι οι χρήστες
-        const { data: e } = await supabase.from('profiles').select('id, username').neq('role', 'service_role').order('username')
-        const { data: s } = await supabase.from('suppliers').select('id, name').order('name')
-        const { data: f } = await supabase.from('fixed_assets').select('id, name').order('name')
-        
-        if (e) setEmployees(e)
-        if (s) setSuppliers(s)
-        if (f) setFixedAssets(f)
-
-        // Έλεγχος παραμέτρων URL (αν ερχόμαστε από άλλη σελίδα)
-        const supIdFromUrl = searchParams.get('supId')
-        const againstDebtFromUrl = searchParams.get('againstDebt')
-        if (supIdFromUrl) setSelectedSup(supIdFromUrl)
-        if (againstDebtFromUrl === 'true') setIsAgainstDebt(true)
-      
-      } catch (error) {
-        console.error('Error loading data:', error)
-      } finally {
-        setLoading(false)
-      }
-    }
-    loadData()
-  }, [searchParams])
-
-  async function handleSave() {
-    if (!amount || Number(amount) <= 0) return alert('Συμπληρώστε το ποσό')
-
-    // 1. Καθορισμός Κατηγορίας
-    let category = 'Λοιπά'
-    if (selectedSup) category = 'Εμπορεύματα'
-    else if (selectedEmp) category = 'Προσωπικό'
-    else if (selectedFixed) category = 'Πάγια'
-
-    // 2. Υπολογισμοί Ποσού και Τύπου
-    const finalAmount = source === 'pocket' ? -Math.abs(Number(amount)) : Number(amount)
-    const finalCategory = source === 'pocket' ? 'pocket' : (isAgainstDebt ? 'Εξόφληση Χρέους' : category)
-
-    try {
+    async function fetchAppData() {
+      setLoading(true)
       const { data: { user } } = await supabase.auth.getUser()
-      if (!user) throw new Error('Δεν βρέθηκε χρήστης')
-
-      // 3. Βρίσκουμε το store_id του χρήστη για να ξέρουμε πού χρεώνεται
-      const { data: profile } = await supabase.from('profiles').select('store_id').eq('id', user.id).single()
-      if (!profile?.store_id) throw new Error('Δεν βρέθηκε κατάστημα')
-
-      const payload: any = {
-        amount: finalAmount,
-        method: isCredit ? 'Πίστωση' : method,
-        notes: source === 'pocket' ? `(ΑΠΟ ΤΣΕΠΗ) ${notes}` : notes,
-        invoice_number: invoiceNum,
-        is_credit: isCredit,
-        type: isAgainstDebt ? 'debt_payment' : 'expense',
-        date: new Date().toISOString().split('T')[0],
-        
-        // IDs
-        user_id: user.id, // Ποιος έκανε την κίνηση
-        store_id: profile.store_id, // Σε ποιο μαγαζί
-        employee_id: selectedEmp || null,
-        supplier_id: selectedSup || null,
-        fixed_asset_id: selectedFixed || null,
-        
-        category: finalCategory,
-        created_by_name: currentUsername
-      }
-
-      const { error } = await supabase.from('transactions').insert([payload])
       
-      if (!error) {
-        // Επιτυχία -> Επιστροφή στην Αρχική
-        router.push('/')
-        router.refresh()
-      } else {
-        throw error
+      if (user) {
+        // 1. Φόρτωση Προφίλ & Δικαιωμάτων
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('store_name, role, can_view_history, can_view_analysis, enable_payroll')
+          .eq('id', user.id)
+          .single()
+        
+        let userRole = 'user'
+        if (profile) {
+          userRole = profile.role || 'user'
+          setStoreName(profile.store_name || 'ΚΑΤΑΣΤΗΜΑ')
+          setPermissions({
+            role: userRole,
+            can_view_history: profile.can_view_history || false,
+            can_view_analysis: profile.can_view_analysis || false,
+            enable_payroll: profile.enable_payroll || false
+          })
+        }
+
+        // 2. Query Συναλλαγών με φιλτράρισμα ρόλου
+        let query = supabase
+          .from('transactions')
+          .select('*, suppliers(name), fixed_assets(name)')
+          .gte('date', `${selectedDate}T00:00:00`)
+          .lte('date', `${selectedDate}T23:59:59`)
+
+        // ΑΝ ΕΙΝΑΙ USER: Βλέπει μόνο τα δικά του
+        // ΑΝ ΕΙΝΑΙ ADMIN: Βλέπει τα πάντα του καταστήματος (λόγω RLS στη βάση)
+        if (userRole !== 'admin') {
+          query = query.eq('user_id', user.id)
+        }
+
+        const { data: transData } = await query.order('created_at', { ascending: false })
+        
+        if (transData) setTransactions(transData)
       }
-    } catch (error: any) {
-      alert('Σφάλμα αποθήκευσης: ' + error.message)
+      setLoading(false)
+    }
+
+    fetchAppData()
+  }, [selectedDate])
+
+  async function handleLogout() {
+    await supabase.auth.signOut()
+    router.push('/login')
+  }
+
+  async function handleDelete(id: string) {
+    if (confirm('Θέλετε να διαγράψετε αυτή την κίνηση;')) {
+      const { error } = await supabase.from('transactions').delete().eq('id', id)
+      if (!error) {
+        setTransactions(prev => prev.filter(t => t.id !== id))
+      }
     }
   }
 
+  // Υπολογισμός συνόλων βάσει αυτών που εμφανίζονται στην οθόνη
+  const totals = transactions.reduce((acc, t) => {
+    const amt = Number(t.amount) || 0
+    if (t.type === 'income') acc.inc += amt
+    else if (t.type === 'expense' && !t.is_credit && t.category !== 'pocket') acc.exp += amt
+    return acc
+  }, { inc: 0, exp: 0 })
+
+  const filteredForList = transactions.filter(t => 
+    t.category !== 'Εσοδα Ζ' && t.category !== 'pocket'
+  )
+
+  const isAdmin = permissions.role === 'admin'
+
   return (
-    <main style={{ backgroundColor: '#f8fafc', minHeight: '100vh', padding: '16px', fontFamily: 'sans-serif' }}>
-      <div style={formCardStyle}>
+    <div style={{ maxWidth: '500px', margin: '0 auto', fontFamily: 'sans-serif' }}>
+      
+      {/* HEADER & MENU */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', paddingTop: '10px' }}>
+        <h1 style={{ fontWeight: '900', fontSize: '26px', margin: 0, color: '#0f172a' }}>
+          {storeName.toUpperCase()}
+        </h1>
         
-        <div style={{ display: 'flex', alignItems: 'center', gap: '15px', marginBottom: '15px' }}>
-          <Link href="/" style={{ textDecoration: 'none', fontSize: '24px', color: '#64748b' }}>←</Link>
-          <h2 style={{ fontSize: '20px', fontWeight: '900', color: '#1e293b', margin: 0 }}>Νέο Έξοδο</h2>
-        </div>
+        <div style={{ position: 'relative' }}>
+          <button onClick={() => setIsMenuOpen(!isMenuOpen)} style={menuBtnStyle}>⋮</button>
 
-        {/* USER INDICATOR */}
-        <div style={{ marginBottom: '20px', padding: '10px', backgroundColor: '#f1f5f9', borderRadius: '12px', textAlign: 'center' }}>
-          <span style={{ fontSize: '11px', fontWeight: '900', color: '#64748b' }}>👤 ΚΑΤΑΧΩΡΗΣΗ ΑΠΟ: {currentUsername.toUpperCase()}</span>
-        </div>
+          {isMenuOpen && (
+            <div style={dropdownStyle}>
+              <p style={menuSectionLabel}>ΔΙΑΧΕΙΡΙΣΗ</p>
+              
+              {isAdmin && (
+                <>
+                  <Link href="/suppliers" style={menuItem} onClick={() => setIsMenuOpen(false)}>🛒 Προμηθευτές</Link>
+                  <Link href="/fixed-assets" style={menuItem} onClick={() => setIsMenuOpen(false)}>🔌 Πάγια</Link>
+                  <Link href="/employees" style={menuItem} onClick={() => setIsMenuOpen(false)}>👥 Υπάλληλοι</Link>
+                  <Link href="/suppliers-balance" style={menuItem} onClick={() => setIsMenuOpen(false)}>🚩 Καρτέλες (Χρέη)</Link>
+                </>
+              )}
+              
+              {(isAdmin || permissions.can_view_analysis) && (
+                <Link href="/analysis" style={menuItem} onClick={() => setIsMenuOpen(false)}>📈 Ανάλυση</Link>
+              )}
+              
+              <div style={divider} />
+              <p style={menuSectionLabel}>ΕΦΑΡΜΟΓΗ</p>
+              
+              {isAdmin && (
+                <Link href="/admin/permissions" style={menuItem} onClick={() => setIsMenuOpen(false)}>
+                  🔐 Δικαιώματα Χρηστών
+                </Link>
+              )}
 
-        {/* ΠΗΓΗ ΧΡΗΜΑΤΩΝ */}
-        <div style={{ marginBottom: '20px' }}>
-          <label style={labelStyle}>ΠΗΓΗ ΧΡΗΜΑΤΩΝ (ΠΟΙΟΣ ΠΛΗΡΩΝΕΙ;)</label>
-          <div style={{ display: 'flex', gap: '10px', marginTop: '8px' }}>
-            <button 
-              onClick={() => { setSource('store'); setIsCredit(false); }} 
-              style={{ ...sourceBtn, backgroundColor: source === 'store' ? '#0f172a' : '#f1f5f9', color: source === 'store' ? 'white' : '#64748b' }}
-            >
-              🏪 ΤΑΜΕΙΟ
-            </button>
-            <button 
-              onClick={() => { setSource('pocket'); setIsCredit(false); }} 
-              style={{ ...sourceBtn, backgroundColor: source === 'pocket' ? '#8b5cf6' : '#f1f5f9', color: source === 'pocket' ? 'white' : '#64748b' }}
-            >
-              💰 ΤΣΕΠΗ
-            </button>
-          </div>
-        </div>
-
-        {/* ΠΟΣΟ - ΜΕΘΟΔΟΣ - ΠΑΡΑΣΤΑΤΙΚΟ */}
-        <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
-          <div style={{ flex: 1.5 }}>
-            <label style={labelStyle}>ΠΟΣΟ (€)</label>
-            <input type="number" value={amount} onChange={e => setAmount(e.target.value)} style={inputStyle} placeholder="0.00" autoFocus />
-          </div>
-          <div style={{ flex: 1 }}>
-            <label style={labelStyle}>ΜΕΘΟΔΟΣ</label>
-            <select value={method} onChange={e => setMethod(e.target.value)} style={inputStyle} disabled={isCredit}>
-              <option value="Μετρητά">Μετρητά</option>
-              <option value="Τράπεζα">Τράπεζα</option>
-            </select>
-          </div>
-          <div style={{ flex: 1 }}>
-            <label style={labelStyle}>ΑΡ. ΠΑΡΑΣΤ.</label>
-            <input value={invoiceNum} onChange={e => setInvoiceNum(e.target.value)} style={inputStyle} placeholder="123" />
-          </div>
-        </div>
-
-        {/* ΕΠΙΛΟΓΕΣ ΧΡΕΟΥΣ */}
-        {source === 'store' && (
-          <div style={{ backgroundColor: '#f8fafc', padding: '15px', borderRadius: '15px', marginBottom: '20px', border: '1px solid #f1f5f9' }}>
-            <div style={{ marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <input type="checkbox" checked={isCredit} onChange={e => {setIsCredit(e.target.checked); if(e.target.checked) setIsAgainstDebt(false)}} id="credit" style={checkboxStyle} />
-              <label htmlFor="credit" style={checkLabel}>ΕΠΙ ΠΙΣΤΩΣΕΙ (ΝΕΟ ΧΡΕΟΣ)</label>
+              <Link href="/subscription" style={menuItem} onClick={() => setIsMenuOpen(false)}>💳 Συνδρομή</Link>
+              <Link href="/settings" style={menuItem} onClick={() => setIsMenuOpen(false)}>⚙️ Ρυθμίσεις</Link>
+              
+              <div style={divider} />
+              <button onClick={handleLogout} style={logoutBtnStyle}>ΑΠΟΣΥΝΔΕΣΗ 🚪</button>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <input type="checkbox" checked={isAgainstDebt} onChange={e => {setIsAgainstDebt(e.target.checked); if(e.target.checked) setIsCredit(false)}} id="against" style={checkboxStyle} />
-              <label htmlFor="against" style={checkLabel}>ΕΝΑΝΤΙ ΠΑΛΑΙΟΥ ΧΡΕΟΥ</label>
-            </div>
-          </div>
-        )}
-
-        {/* ---------- ΟΙ ΛΙΣΤΕΣ (ΣΥΝΔΕΔΕΜΕΝΕΣ ΜΕ ΤΗ ΒΑΣΗ) ---------- */}
-        
-        {/* 1. ΠΡΟΜΗΘΕΥΤΗΣ */}
-        <div style={selectGroup}>
-          <label style={labelStyle}>🏭 ΠΡΟΜΗΘΕΥΤΗΣ (Εμπορεύματα)</label>
-          <select 
-            value={selectedSup} 
-            onChange={e => {
-              setSelectedSup(e.target.value); 
-              if(e.target.value) { setSelectedEmp(''); setSelectedFixed(''); } // Καθαρίζει τα άλλα
-            }} 
-            style={{...inputStyle, borderColor: selectedSup ? '#0f172a' : '#e2e8f0'}}
-            disabled={loading}
-          >
-            <option value="">— Επιλέξτε Προμηθευτή —</option>
-            {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-          </select>
+          )}
         </div>
-
-        {/* 2. ΥΠΑΛΛΗΛΟΣ */}
-        <div style={selectGroup}>
-          <label style={labelStyle}>👤 ΥΠΑΛΛΗΛΟΣ (Μισθοδοσία/Προκαταβολές)</label>
-          <select 
-            value={selectedEmp} 
-            onChange={e => {
-              setSelectedEmp(e.target.value); 
-              if(e.target.value) { setSelectedSup(''); setSelectedFixed(''); }
-            }} 
-            style={{...inputStyle, borderColor: selectedEmp ? '#0f172a' : '#e2e8f0'}}
-            disabled={loading}
-          >
-            <option value="">— Επιλέξτε Υπάλληλο —</option>
-            {employees.map(e => <option key={e.id} value={e.id}>{e.username}</option>)}
-          </select>
-        </div>
-
-        {/* 3. ΠΑΓΙΟ */}
-        <div style={selectGroup}>
-          <label style={labelStyle}>🏢 ΠΑΓΙΟ (Ενοίκια, Λογαριασμοί)</label>
-          <select 
-            value={selectedFixed} 
-            onChange={e => {
-              setSelectedFixed(e.target.value); 
-              if(e.target.value) { setSelectedEmp(''); setSelectedSup(''); }
-            }} 
-            style={{...inputStyle, borderColor: selectedFixed ? '#0f172a' : '#e2e8f0'}}
-            disabled={loading}
-          >
-            <option value="">— Επιλέξτε Πάγιο —</option>
-            {fixedAssets.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
-          </select>
-        </div>
-
-        <div style={{ marginBottom: '25px' }}>
-          <label style={labelStyle}>ΣΗΜΕΙΩΣΕΙΣ</label>
-          <textarea value={notes} onChange={e => setNotes(e.target.value)} style={{ ...inputStyle, height: '60px', paddingTop: '10px' }} placeholder="Προαιρετικές σημειώσεις..." />
-        </div>
-
-        <button onClick={handleSave} style={saveBtn}>ΑΠΟΘΗΚΕΥΣΗ ΕΞΟΔΟΥ</button>
-        <button onClick={() => router.push('/')} style={cancelBtn}>ΑΚΥΡΩΣΗ</button>
-
       </div>
+
+      {/* SUMMARY CARDS */}
+      <div style={{ display: 'flex', gap: '15px', marginBottom: '20px' }}>
+        <div style={cardStyle}>
+            <p style={labelStyle}>{isAdmin ? 'ΕΣΟΔΑ ΗΜΕΡΑΣ' : 'ΔΙΚΑ ΜΟΥ ΕΣΟΔΑ'}</p>
+            <p style={{ color: '#16a34a', fontSize: '24px', fontWeight: '900', margin: 0 }}>{totals.inc.toFixed(2)}€</p>
+        </div>
+        <div style={cardStyle}>
+            <p style={labelStyle}>{isAdmin ? 'ΕΞΟΔΑ ΗΜΕΡΑΣ' : 'ΔΙΚΑ ΜΟΥ ΕΞΟΔΑ'}</p>
+            <p style={{ color: '#dc2626', fontSize: '24px', fontWeight: '900', margin: 0 }}>{totals.exp.toFixed(2)}€</p>
+        </div>
+      </div>
+
+      {/* QUICK ACTIONS */}
+      <div style={{ display: 'flex', gap: '12px', marginBottom: '12px' }}>
+        <Link href={`/add-income?date=${selectedDate}`} style={{ ...btnStyle, backgroundColor: '#10b981' }}>+ ΕΣΟΔΑ</Link>
+        <Link href={`/add-expense?date=${selectedDate}`} style={{ ...btnStyle, backgroundColor: '#ef4444' }}>- ΕΞΟΔΑ</Link>
+      </div>
+
+      {isAdmin && (
+        <Link href="/daily-z" style={zBtnStyle}>
+          📟 ΚΛΕΙΣΙΜΟ ΤΑΜΕΙΟΥ (Ζ) & ΑΝΑΛΗΨΗ
+        </Link>
+      )}
+
+      <div style={{ marginBottom: '20px' }} />
+
+      {/* TRANSACTION LIST */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+        <p style={{ fontSize: '11px', fontWeight: '800', color: '#94a3b8', textTransform: 'uppercase' }}>
+          {isAdmin ? 'Καθημερινές Κινήσεις Καταστήματος' : 'Οι Καταχωρήσεις μου'}
+        </p>
+        
+        {loading ? (
+          <p style={{ textAlign: 'center', padding: '20px' }}>Φόρτωση...</p>
+        ) : (
+          filteredForList.length > 0 ? (
+            filteredForList.map(t => (
+              <div key={t.id} style={itemStyle}>
+                <div style={{ flex: 1 }}>
+                  <p style={{ fontWeight: '800', margin: 0, fontSize: '15px' }}>
+                    {t.type === 'income' ? '💰 ' + (t.notes || 'ΕΙΣΠΡΑΞΗ') : (
+                        t.is_credit ? <span>🚩 ΠΙΣΤΩΣΗ: {t.suppliers?.name}</span> : 
+                        t.category === 'Πάγια' ? <span>🔌 {t.fixed_assets?.name}</span> :
+                        '💸 ' + (t.suppliers?.name || t.category)
+                    )}
+                  </p>
+                  <div style={{ display: 'flex', gap: '6px', marginTop: '4px' }}>
+                    <span style={subLabelStyle}>{t.method}</span>
+                    {t.created_by_name && <span style={userBadge}>👤 {t.created_by_name}</span>}
+                  </div>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <p style={{ fontWeight: '900', fontSize: '16px', color: t.is_credit ? '#94a3b8' : (t.type === 'income' ? '#16a34a' : '#dc2626'), margin: 0 }}>
+                    {t.type === 'income' ? '+' : '-'}{Number(t.amount).toFixed(2)}€
+                  </p>
+                  {isAdmin && <button onClick={() => handleDelete(t.id)} style={delBtnStyle}>🗑️</button>}
+                </div>
+              </div>
+            ))
+          ) : (
+            <div style={emptyState}>Δεν βρέθηκαν κινήσεις για αυτή την ημερομηνία.</div>
+          )
+        )}
+      </div>
+    </div>
+  )
+}
+
+// STYLES
+const userBadge = { fontSize: '9px', backgroundColor: '#f1f5f9', color: '#64748b', padding: '2px 5px', borderRadius: '4px', fontWeight: 'bold' };
+const emptyState = { textAlign: 'center' as const, padding: '30px', color: '#94a3b8', background: 'white', borderRadius: '20px', border: '1px solid #f1f5f9' };
+const menuBtnStyle = { backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', width: '40px', height: '40px', borderRadius: '12px', cursor: 'pointer', fontSize: '20px', color: '#64748b' };
+const dropdownStyle = { position: 'absolute' as const, top: '50px', right: '0', backgroundColor: 'white', minWidth: '220px', borderRadius: '20px', boxShadow: '0 10px 30px rgba(0,0,0,0.15)', padding: '12px', zIndex: 100, border: '1px solid #f1f5f9' };
+const menuItem = { display: 'block', padding: '12px', textDecoration: 'none', color: '#334155', fontWeight: '700' as const, fontSize: '14px', borderRadius: '10px' };
+const logoutBtnStyle = { ...menuItem, color: '#ef4444', border: 'none', background: '#fee2e2', width: '100%', cursor: 'pointer', textAlign: 'left' as const, marginTop: '5px' };
+const menuSectionLabel = { fontSize: '9px', fontWeight: '800' as const, color: '#94a3b8', marginBottom: '8px', paddingLeft: '12px', marginTop: '8px', letterSpacing: '0.5px' };
+const divider = { height: '1px', backgroundColor: '#f1f5f9', margin: '8px 0' };
+const cardStyle = { flex: 1, backgroundColor: 'white', padding: '18px', borderRadius: '20px', textAlign: 'center' as const, boxShadow: '0 2px 4px rgba(0,0,0,0.02)' };
+const labelStyle = { fontSize: '10px', fontWeight: '800', color: '#94a3b8', marginBottom: '4px' };
+const btnStyle = { flex: 1, padding: '18px', borderRadius: '16px', color: 'white', textDecoration: 'none', textAlign: 'center' as const, fontWeight: '800', fontSize: '15px' };
+const zBtnStyle = { display: 'block', padding: '16px', borderRadius: '16px', backgroundColor: '#0f172a', color: 'white', textDecoration: 'none', textAlign: 'center' as const, fontWeight: '900', fontSize: '14px', marginBottom: '10px' };
+const itemStyle = { backgroundColor: 'white', padding: '14px', borderRadius: '18px', border: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' };
+const subLabelStyle = { fontSize: '11px', color: '#94a3b8', textTransform: 'uppercase' as const, margin: '0', fontWeight: 'bold' };
+const delBtnStyle = { background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer', opacity: 0.3 };
+
+export default function HomePage() {
+  return (
+    <main style={{ backgroundColor: '#f8fafc', minHeight: '100vh', padding: '15px' }}>
+      <Suspense fallback={<div>Φόρτωση...</div>}>
+        <DashboardContent />
+      </Suspense>
     </main>
   )
 }
-
-export default function AddExpensePage() {
-  return (
-    <Suspense fallback={<div style={{padding: '20px', textAlign: 'center'}}>Φόρτωση...</div>}>
-      <AddExpenseForm />
-    </Suspense>
-  )
-}
-
-// STYLES (Τα ίδια ακριβώς)
-const formCardStyle = { maxWidth: '500px', margin: '0 auto', backgroundColor: 'white', borderRadius: '28px', padding: '24px', border: '1px solid #e2e8f0' };
-const labelStyle: any = { fontSize: '10px', fontWeight: '900', color: '#94a3b8', textTransform: 'uppercase', marginBottom: '5px', display: 'block' };
-const inputStyle: any = { width: '100%', padding: '14px', borderRadius: '14px', border: '1px solid #e2e8f0', fontSize: '15px', fontWeight: 'bold', backgroundColor: '#f8fafc', boxSizing: 'border-box', outline: 'none' };
-const sourceBtn: any = { flex: 1, padding: '14px', borderRadius: '12px', border: 'none', fontWeight: '900', fontSize: '12px', cursor: 'pointer', transition: '0.2s' };
-const selectGroup = { marginBottom: '15px' };
-const saveBtn: any = { width: '100%', padding: '18px', backgroundColor: '#0f172a', color: 'white', border: 'none', borderRadius: '16px', fontWeight: '900', fontSize: '16px', cursor: 'pointer' };
-const cancelBtn: any = { width: '100%', padding: '14px', backgroundColor: 'transparent', color: '#64748b', border: 'none', fontWeight: 'bold', fontSize: '14px', cursor: 'pointer' };
-const checkboxStyle = { width: '18px', height: '18px', cursor: 'pointer' };
-const checkLabel: any = { fontSize: '13px', fontWeight: '800', color: '#1e293b', cursor: 'pointer' };
