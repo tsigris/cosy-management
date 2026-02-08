@@ -92,7 +92,7 @@ function DashboardContent() {
   return (
     <div style={{ maxWidth: '500px', margin: '0 auto', fontFamily: 'sans-serif', position: 'relative' }}>
       
-      {/* HEADER & SIDEBAR MENU */}
+      {/* HEADER & MENU */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', paddingTop: '10px' }}>
         <h1 style={{ fontWeight: '900', fontSize: '24px', margin: 0, color: '#0f172a' }}>{storeName.toUpperCase()}</h1>
         <div style={{ position: 'relative', zIndex: 1001 }}>
@@ -135,12 +135,12 @@ function DashboardContent() {
         <button onClick={() => shiftDate(1)} style={dateArrowStyle}>→</button>
       </div>
 
-      {/* STATS CARDS WITH PERCENTAGES */}
+      {/* STATS CARDS */}
       <div style={{ display: 'flex', gap: '15px', marginBottom: '20px' }}>
         <div style={cardStyle}>
           <p style={labelStyle}>ΕΣΟΔΑ ΗΜΕΡΑΣ</p>
           <p style={{ color: '#16a34a', fontSize: '22px', fontWeight: '900', margin: 0 }}>{totalInc.toFixed(2)}€</p>
-          <p style={{ fontSize: '9px', fontWeight: '800', color: '#94a3b8', marginTop: '4px' }}>100% ΤΖΙΡΟΣ</p>
+          {/* Αφαιρέθηκε το 100% Τζίρος από εδώ */}
         </div>
         <div style={cardStyle}>
           <p style={labelStyle}>ΕΞΟΔΑ ΗΜΕΡΑΣ</p>
@@ -160,7 +160,7 @@ function DashboardContent() {
 
       <div style={{ marginBottom: '25px' }} />
 
-      {/* LIST SECTION */}
+      {/* TRANSACTION LIST */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
         <p style={{ fontSize: '11px', fontWeight: '800', color: '#94a3b8', textTransform: 'uppercase' }}>Κινήσεις Ημερομηνίας</p>
         {loading ? <div style={{ textAlign: 'center', padding: '20px' }}>Φόρτωση...</div> : (
@@ -208,7 +208,7 @@ function DashboardContent() {
   )
 }
 
-// STYLES (Fixed with :any to avoid build errors)
+// Σταθερά στυλ με δήλωση :any για αποφυγή σφαλμάτων TypeScript
 const dateBarStyle: any = { display: 'flex', alignItems: 'center', backgroundColor: 'white', padding: '10px 15px', borderRadius: '20px', marginBottom: '20px', border: '1px solid #f1f5f9' };
 const dateArrowStyle: any = { background: 'none', border: 'none', fontSize: '18px', color: '#0f172a', fontWeight: '900', cursor: 'pointer' };
 const dateInputStyle: any = { position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', opacity: 0, cursor: 'pointer' };
