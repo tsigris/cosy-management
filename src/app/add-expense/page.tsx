@@ -14,7 +14,14 @@ function DashboardContent() {
   const [transactions, setTransactions] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [isMenuOpen, setIsMenuOpen] = useState(false)
-  const [storeName, setStoreName] = useState('ΚΑΤΑΣΤΗΜΑ')
+  
+  // 1. ΜΗΔΕΝΙΚΟ ΤΡΕΜΟΠΑΙΓΜΑ: Ξεκινάμε αμέσως με το "Cosy App"
+  const [storeName, setStoreName] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('cachedStoreName') || 'Cosy App'
+    }
+    return 'Cosy App'
+  })
   
   const [permissions, setPermissions] = useState({
     role: 'user',
@@ -25,13 +32,10 @@ function DashboardContent() {
 
   useEffect(() => {
     async function fetchAppData() {
-      // Αν έχουμε ήδη δεδομένα, δεν δείχνουμε το "Φόρτωση" για να μην τρεμοπαίζει η οθόνη
-      if (transactions.length === 0) setLoading(true)
-      
       const { data: { user } } = await supabase.auth.getUser()
       
       if (user) {
-        // PARALLEL FETCH: Τραβάμε προφίλ και συναλλαγές ταυτόχρονα για μέγιστη ταχύτητα
+        // 2. ΤΑΥΤΟΧΡΟΝΗ ΦΟΡΤΩΣΗ: Προφίλ και Συναλλαγές μαζί για μέγιστη ταχύτητα
         const [profileRes, transRes] = await Promise.all([
           supabase.from('profiles').select('*').eq('id', user.id).single(),
           supabase.from('transactions')
@@ -43,7 +47,13 @@ function DashboardContent() {
 
         if (profileRes.data) {
           const profile = profileRes.data
-          setStoreName(profile.store_name || 'ΚΑΤΑΣΤΗΜΑ')
+          const name = profile.store_name || 'Cosy App'
+          
+          setStoreName(name)
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('cachedStoreName', name)
+          }
+
           setPermissions({
             role: profile.role || 'user',
             can_view_history: profile.can_view_history || false,
@@ -51,7 +61,7 @@ function DashboardContent() {
             enable_payroll: profile.enable_payroll || false
           })
 
-          // Φιλτράρισμα: Ο Admin βλέπει τα πάντα, ο User μόνο τα δικά του
+          // 3. ΦΙΛΤΡΑΡΙΣΜΑ: Ο Admin βλέπει τα πάντα, ο User μόνο τα δικά του
           let data = transRes.data || []
           if (profile.role !== 'admin') {
             data = data.filter(t => t.user_id === user.id)
@@ -95,8 +105,15 @@ function DashboardContent() {
   return (
     <div style={{ maxWidth: '500px', margin: '0 auto', fontFamily: 'sans-serif' }}>
       
+      {/* HEADER */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', paddingTop: '10px' }}>
-        <h1 style={{ fontWeight: '900', fontSize: '26px', margin: 0, color: '#0f172a' }}>
+        <h1 style={{ 
+          fontWeight: '900', 
+          fontSize: '24px', 
+          margin: 0, 
+          color: '#0f172a',
+          letterSpacing: '-0.5px'
+        }}>
           {storeName.toUpperCase()}
         </h1>
         
@@ -106,7 +123,6 @@ function DashboardContent() {
           {isMenuOpen && (
             <div style={dropdownStyle}>
               <p style={menuSectionLabel}>ΔΙΑΧΕΙΡΙΣΗ</p>
-              
               {isAdmin && (
                 <>
                   <Link href="/suppliers" style={menuItem} onClick={() => setIsMenuOpen(false)}>🛒 Προμηθευτές</Link>
@@ -115,23 +131,16 @@ function DashboardContent() {
                   <Link href="/suppliers-balance" style={menuItem} onClick={() => setIsMenuOpen(false)}>🚩 Καρτέλες (Χρέη)</Link>
                 </>
               )}
-              
               {(isAdmin || permissions.can_view_analysis) && (
                 <Link href="/analysis" style={menuItem} onClick={() => setIsMenuOpen(false)}>📈 Ανάλυση</Link>
               )}
-              
               <div style={divider} />
               <p style={menuSectionLabel}>ΕΦΑΡΜΟΓΗ</p>
-              
               {isAdmin && (
-                <Link href="/admin/permissions" style={menuItem} onClick={() => setIsMenuOpen(false)}>
-                  🔐 Δικαιώματα Χρηστών
-                </Link>
+                <Link href="/admin/permissions" style={menuItem} onClick={() => setIsMenuOpen(false)}>🔐 Δικαιώματα</Link>
               )}
-
               <Link href="/subscription" style={menuItem} onClick={() => setIsMenuOpen(false)}>💳 Συνδρομή</Link>
               <Link href="/settings" style={menuItem} onClick={() => setIsMenuOpen(false)}>⚙️ Ρυθμίσεις</Link>
-              
               <div style={divider} />
               <button onClick={handleLogout} style={logoutBtnStyle}>ΑΠΟΣΥΝΔΕΣΗ 🚪</button>
             </div>
@@ -139,6 +148,7 @@ function DashboardContent() {
         </div>
       </div>
 
+      {/* STAT CARDS */}
       <div style={{ display: 'flex', gap: '15px', marginBottom: '20px' }}>
         <div style={cardStyle}>
             <p style={labelStyle}>{isAdmin ? 'ΕΣΟΔΑ ΗΜΕΡΑΣ' : 'ΔΙΚΑ ΜΟΥ ΕΣΟΔΑ'}</p>
@@ -150,26 +160,29 @@ function DashboardContent() {
         </div>
       </div>
 
+      {/* QUICK ACTIONS */}
       <div style={{ display: 'flex', gap: '12px', marginBottom: '12px' }}>
         <Link href={`/add-income?date=${selectedDate}`} style={{ ...btnStyle, backgroundColor: '#10b981' }}>+ ΕΣΟΔΑ</Link>
         <Link href={`/add-expense?date=${selectedDate}`} style={{ ...btnStyle, backgroundColor: '#ef4444' }}>- ΕΞΟΔΑ</Link>
       </div>
 
       {isAdmin && (
-        <Link href="/daily-z" style={zBtnStyle}>
-          📟 ΚΛΕΙΣΙΜΟ ΤΑΜΕΙΟΥ (Ζ) & ΑΝΑΛΗΨΗ
-        </Link>
+        <Link href="/daily-z" style={zBtnStyle}>📟 ΚΛΕΙΣΙΜΟ ΤΑΜΕΙΟΥ (Ζ)</Link>
       )}
 
-      <div style={{ marginBottom: '20px' }} />
+      <div style={{ marginBottom: '25px' }} />
 
+      {/* TRANSACTIONS LIST */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
         <p style={{ fontSize: '11px', fontWeight: '800', color: '#94a3b8', textTransform: 'uppercase' }}>
-            {isAdmin ? 'Καθημερινές Κινήσεις' : 'Οι Καταχωρήσεις μου'}
+          {isAdmin ? 'Κινήσεις Καταστήματος' : 'Οι Καταχωρήσεις μου'}
         </p>
         
         {loading ? (
-          <p style={{ textAlign: 'center', padding: '20px', color: '#94a3b8' }}>Φόρτωση...</p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+             <div style={{ height: '65px', backgroundColor: '#f1f5f9', borderRadius: '18px' }}></div>
+             <div style={{ height: '65px', backgroundColor: '#f1f5f9', borderRadius: '18px' }}></div>
+          </div>
         ) : (
           filteredForList.length > 0 ? (
             filteredForList.map(t => (
@@ -205,26 +218,26 @@ function DashboardContent() {
 }
 
 // STYLES
-const userBadge = { fontSize: '9px', backgroundColor: '#f1f5f9', color: '#64748b', padding: '2px 5px', borderRadius: '4px', fontWeight: 'bold' };
-const emptyState = { textAlign: 'center' as const, padding: '30px', color: '#94a3b8', background: 'white', borderRadius: '20px', border: '1px solid #f1f5f9' };
-const menuBtnStyle = { backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', width: '40px', height: '40px', borderRadius: '12px', cursor: 'pointer', fontSize: '20px', color: '#64748b' };
+const menuBtnStyle = { backgroundColor: 'white', border: '1px solid #e2e8f0', width: '40px', height: '40px', borderRadius: '12px', cursor: 'pointer', fontSize: '20px', color: '#64748b', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' };
 const dropdownStyle = { position: 'absolute' as const, top: '50px', right: '0', backgroundColor: 'white', minWidth: '220px', borderRadius: '20px', boxShadow: '0 10px 30px rgba(0,0,0,0.15)', padding: '12px', zIndex: 100, border: '1px solid #f1f5f9' };
 const menuItem = { display: 'block', padding: '12px', textDecoration: 'none', color: '#334155', fontWeight: '700' as const, fontSize: '14px', borderRadius: '10px' };
 const logoutBtnStyle = { ...menuItem, color: '#ef4444', border: 'none', background: '#fee2e2', width: '100%', cursor: 'pointer', textAlign: 'left' as const, marginTop: '5px' };
 const menuSectionLabel = { fontSize: '9px', fontWeight: '800' as const, color: '#94a3b8', marginBottom: '8px', paddingLeft: '12px', marginTop: '8px', letterSpacing: '0.5px' };
 const divider = { height: '1px', backgroundColor: '#f1f5f9', margin: '8px 0' };
-const cardStyle = { flex: 1, backgroundColor: 'white', padding: '18px', borderRadius: '20px', textAlign: 'center' as const, boxShadow: '0 2px 4px rgba(0,0,0,0.02)' };
+const cardStyle = { flex: 1, backgroundColor: 'white', padding: '18px', borderRadius: '22px', textAlign: 'center' as const, boxShadow: '0 4px 6px -1px rgba(0,0,0,0.02)' };
 const labelStyle = { fontSize: '10px', fontWeight: '800', color: '#94a3b8', marginBottom: '4px' };
-const btnStyle = { flex: 1, padding: '18px', borderRadius: '16px', color: 'white', textDecoration: 'none', textAlign: 'center' as const, fontWeight: '800', fontSize: '15px' };
-const zBtnStyle = { display: 'block', padding: '16px', borderRadius: '16px', backgroundColor: '#0f172a', color: 'white', textDecoration: 'none', textAlign: 'center' as const, fontWeight: '900', fontSize: '14px', marginBottom: '10px' };
-const itemStyle = { backgroundColor: 'white', padding: '14px', borderRadius: '18px', border: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' };
+const btnStyle = { flex: 1, padding: '18px', borderRadius: '18px', color: 'white', textDecoration: 'none', textAlign: 'center' as const, fontWeight: '800', fontSize: '15px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' };
+const zBtnStyle = { display: 'block', padding: '16px', borderRadius: '18px', backgroundColor: '#0f172a', color: 'white', textDecoration: 'none', textAlign: 'center' as const, fontWeight: '900', fontSize: '14px', marginTop: '10px' };
+const itemStyle = { backgroundColor: 'white', padding: '15px', borderRadius: '20px', border: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center', boxShadow: '0 2px 4px rgba(0,0,0,0.01)' };
 const subLabelStyle = { fontSize: '11px', color: '#94a3b8', textTransform: 'uppercase' as const, margin: '0', fontWeight: 'bold' };
 const delBtnStyle = { background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer', opacity: 0.3 };
+const userBadge = { fontSize: '9px', backgroundColor: '#f1f5f9', color: '#64748b', padding: '2px 6px', borderRadius: '6px', fontWeight: 'bold' };
+const emptyState = { textAlign: 'center' as const, padding: '40px', color: '#94a3b8', background: 'white', borderRadius: '20px', border: '1px dashed #e2e8f0' };
 
 export default function HomePage() {
   return (
     <main style={{ backgroundColor: '#f8fafc', minHeight: '100vh', padding: '15px' }}>
-      <Suspense fallback={<div>Φόρτωση...</div>}>
+      <Suspense fallback={<div style={{textAlign:'center', padding:'50px'}}>Cosy App...</div>}>
         <DashboardContent />
       </Suspense>
     </main>
