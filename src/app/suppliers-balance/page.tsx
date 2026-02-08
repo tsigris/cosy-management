@@ -10,50 +10,57 @@ function BalancesContent() {
   const router = useRouter()
   const [data, setData] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [permissions, setPermissions] = useState({ role: 'user', can_view_analysis: false })
+  const [permissions, setPermissions] = useState({ role: 'user', store_id: null as string | null })
 
   useEffect(() => {
     checkAccessAndFetch()
   }, [])
 
   async function checkAccessAndFetch() {
-    setLoading(true)
-    const { data: { user } } = await supabase.auth.getUser()
-    
-    if (user) {
-      // 1. Έλεγχος Δικαιωμάτων
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('role, can_view_analysis')
-        .eq('id', user.id)
-        .single()
-
-      if (profile) {
-        // Αν δεν είναι admin και δεν έχει άδεια ανάλυσης, δεν πρέπει να βλέπει συνολικά χρέη
-        if (profile.role !== 'admin' && !profile.can_view_analysis) {
-          alert("Δεν έχετε πρόσβαση στις καρτέλες οφειλών.")
-          router.push('/')
-          return
-        }
-        setPermissions(profile)
-      }
+    try {
+      setLoading(true)
+      const { data: { user } } = await supabase.auth.getUser()
       
-      await fetchBalances()
+      if (user) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('role, can_view_analysis, store_id')
+          .eq('id', user.id)
+          .single()
+
+        if (profile) {
+          if (profile.role !== 'admin' && !profile.can_view_analysis) {
+            alert("Δεν έχετε πρόσβαση στις καρτέλες οφειλών.")
+            router.push('/')
+            return
+          }
+          setPermissions({ role: profile.role, store_id: profile.store_id })
+          await fetchBalances(profile.store_id)
+        }
+      }
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setLoading(false)
     }
-    setLoading(false)
   }
 
-  async function fetchBalances() {
-    const { data: sups } = await supabase.from('suppliers').select('*').order('name')
-    const { data: trans } = await supabase.from('transactions').select('*')
+  async function fetchBalances(storeId: string) {
+    // Φιλτράρουμε αυστηρά βάσει storeId
+    const [supsRes, transRes] = await Promise.all([
+      supabase.from('suppliers').select('*').eq('store_id', storeId).order('name'),
+      supabase.from('transactions').select('*').eq('store_id', storeId)
+    ])
 
-    if (sups && trans) {
-      const balanceList = sups.map(s => {
+    if (supsRes.data && transRes.data) {
+      const trans = transRes.data
+      const balanceList = supsRes.data.map(s => {
         const sTrans = trans.filter(t => t.supplier_id === s.id)
+        // Υπολογισμός χρέους (is_credit) μείον πληρωμές (debt_payment)
         const totalCredit = sTrans.filter(t => t.is_credit).reduce((acc, t) => acc + Number(t.amount), 0)
         const totalPaid = sTrans.filter(t => t.type === 'debt_payment').reduce((acc, t) => acc + Number(t.amount), 0)
         return { ...s, balance: totalCredit - totalPaid }
-      }).filter(s => s.balance > 0)
+      }).filter(s => s.balance > 0) // Δείχνουμε μόνο όσους χρωστάμε
 
       setData(balanceList)
     }
@@ -64,30 +71,43 @@ function BalancesContent() {
   return (
     <div style={{ maxWidth: '500px', margin: '0 auto', padding: '16px', fontFamily: 'sans-serif', backgroundColor: '#f8fafc', minHeight: '100vh' }}>
       
-      <div style={{ display: 'flex', alignItems: 'center', gap: '15px', marginBottom: '25px' }}>
-        <Link href="/" style={backBtnStyle}>←</Link>
-        <h2 style={{ fontWeight: '900', fontSize: '22px', color: '#1e293b', margin: 0 }}>Καρτέλες (Οφειλές)</h2>
+      {/* PROFESSIONAL GRAPHIC HEADER */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '25px', paddingTop: '10px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div style={logoBoxStyle}>
+            <span style={{ fontSize: '20px' }}>🚩</span>
+          </div>
+          <div>
+            <h1 style={{ fontWeight: '900', fontSize: '20px', margin: 0, color: '#0f172a', lineHeight: '1.1' }}>
+              Καρτέλες (Χρέη)
+            </h1>
+            <p style={{ margin: '2px 0 0', fontSize: '10px', color: '#94a3b8', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '1px' }}>
+              ΥΠΟΛΟΙΠΑ ΠΡΟΜΗΘΕΥΤΩΝ
+            </p>
+          </div>
+        </div>
+        <Link href="/" style={backBtnStyle}>✕</Link>
       </div>
 
-      {/* ΣΥΝΟΛΙΚΟ ΧΡΕΟΣ - ΜΟΝΟ ΓΙΑ ADMIN */}
+      {/* ΣΥΝΟΛΙΚΟ ΧΡΕΟΣ */}
       <div style={totalCardStyle}>
-        <p style={{ margin: 0, fontSize: '10px', fontWeight: '800', color: '#94a3b8', letterSpacing: '1px' }}>ΣΥΝΟΛΙΚΟ ΑΝΟΙΧΤΟ ΥΠΟΛΟΙΠΟ</p>
-        <p style={{ margin: '5px 0 0 0', fontSize: '32px', fontWeight: '900', color: '#fb923c' }}>
+        <p style={{ margin: 0, fontSize: '10px', fontWeight: '800', color: '#94a3b8', letterSpacing: '1px', textTransform: 'uppercase' }}>Συνολικό Ανοιχτό Υπόλοιπο</p>
+        <p style={{ margin: '8px 0 0 0', fontSize: '36px', fontWeight: '900', color: '#fb923c' }}>
           {totalDebt.toFixed(2)}€
         </p>
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-        <p style={{ fontSize: '11px', fontWeight: '800', color: '#94a3b8', textTransform: 'uppercase' }}>ΑΝΑΛΥΣΗ ΑΝΑ ΠΡΟΜΗΘΕΥΤΗ ({data.length})</p>
+        <p style={{ fontSize: '11px', fontWeight: '800', color: '#94a3b8', textTransform: 'uppercase' }}>Ανάλυση ανά προμηθευτή ({data.length})</p>
         
         {loading ? (
-          <div style={{ textAlign: 'center', padding: '20px' }}>Φόρτωση...</div>
+          <div style={{ textAlign: 'center', padding: '40px', color: '#94a3b8' }}>Υπολογισμός υπολοίπων...</div>
         ) : data.length > 0 ? (
           data.map(s => (
             <div key={s.id} style={supplierCardStyle}>
               <div style={{ flex: 1 }}>
-                <p style={{ fontWeight: '800', margin: 0, fontSize: '16px', color: '#1e293b' }}>{s.name}</p>
-                <span style={badgeStyle}>{s.category || 'Προμηθευτής'}</span>
+                <p style={{ fontWeight: '800', margin: 0, fontSize: '16px', color: '#1e293b' }}>{s.name.toUpperCase()}</p>
+                <span style={badgeStyle}>{s.category || 'Εμπορεύματα'}</span>
               </div>
               
               <div style={{ textAlign: 'right' }}>
@@ -102,9 +122,10 @@ function BalancesContent() {
             </div>
           ))
         ) : (
-          <div style={{ textAlign: 'center', padding: '50px', color: '#94a3b8' }}>
-            <p style={{ fontSize: '40px' }}>✅</p>
-            <p style={{ fontWeight: '800' }}>Δεν υπάρχουν εκκρεμείς οφειλές</p>
+          <div style={{ textAlign: 'center', padding: '60px', background: 'white', borderRadius: '28px', border: '1px dashed #e2e8f0' }}>
+            <p style={{ fontSize: '40px', margin: '0 0 10px 0' }}>✅</p>
+            <p style={{ fontWeight: '800', color: '#1e293b', margin: 0 }}>Κανένα ανοιχτό υπόλοιπο</p>
+            <p style={{ fontSize: '12px', color: '#94a3b8', marginTop: '5px' }}>Όλοι οι προμηθευτές είναι εξοφλημένοι.</p>
           </div>
         )}
       </div>
@@ -112,12 +133,13 @@ function BalancesContent() {
   )
 }
 
-// ... STYLES (Παραμένουν ίδια) ...
-const backBtnStyle = { display: 'flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none', background: 'white', width: '40px', height: '40px', borderRadius: '12px', fontSize: '20px', color: '#64748b', border: '1px solid #e2e8f0', fontWeight: 'bold' as const };
-const totalCardStyle = { backgroundColor: '#0f172a', padding: '25px', borderRadius: '24px', marginBottom: '25px', textAlign: 'center' as const, color: 'white', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)' };
-const supplierCardStyle = { backgroundColor: 'white', padding: '18px', borderRadius: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: '1px solid #f1f5f9', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' };
-const payBtnStyle = { backgroundColor: '#2563eb', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '10px', fontSize: '11px', fontWeight: '900' as const, marginTop: '8px', cursor: 'pointer' };
-const badgeStyle = { fontSize: '9px', fontWeight: '800' as const, backgroundColor: '#fff7ed', color: '#c2410c', padding: '3px 8px', borderRadius: '6px', textTransform: 'uppercase' as const, marginTop: '5px', display: 'inline-block' };
+// STYLES
+const logoBoxStyle: any = { width: '42px', height: '42px', backgroundColor: '#ffedd5', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' };
+const backBtnStyle: any = { textDecoration: 'none', color: '#94a3b8', fontSize: '18px', fontWeight: 'bold', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#fff', borderRadius: '10px', border: '1px solid #e2e8f0' };
+const totalCardStyle: any = { backgroundColor: '#0f172a', padding: '30px', borderRadius: '28px', marginBottom: '25px', textAlign: 'center', color: 'white', boxShadow: '0 10px 20px rgba(0,0,0,0.1)' };
+const supplierCardStyle: any = { backgroundColor: 'white', padding: '18px', borderRadius: '22px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: '1px solid #f1f5f9' };
+const payBtnStyle: any = { backgroundColor: '#2563eb', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '10px', fontSize: '11px', fontWeight: '900', marginTop: '8px', cursor: 'pointer' };
+const badgeStyle: any = { fontSize: '9px', fontWeight: '800', backgroundColor: '#f1f5f9', color: '#64748b', padding: '4px 8px', borderRadius: '6px', textTransform: 'uppercase', marginTop: '6px', display: 'inline-block' };
 
 export default function SuppliersBalancePage() {
   return (<Suspense fallback={<div>Φόρτωση...</div>}><BalancesContent /></Suspense>)
