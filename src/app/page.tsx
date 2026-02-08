@@ -16,7 +16,14 @@ function DashboardContent() {
   const [transactions, setTransactions] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [isMenuOpen, setIsMenuOpen] = useState(false)
-  const [storeName, setStoreName] = useState('ΦΟΡΤΩΣΗ...')
+  
+  // 1. ΜΗΔΕΝΙΚΟ ΤΡΕΜΟΠΑΙΓΜΑ: Χρήση localStorage για το όνομα καταστήματος
+  const [storeName, setStoreName] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('cachedStoreName') || 'Cosy App'
+    }
+    return 'Cosy App'
+  })
   
   const [permissions, setPermissions] = useState({
     role: 'user',
@@ -32,7 +39,7 @@ function DashboardContent() {
         const { data: { user } } = await supabase.auth.getUser()
         
         if (user) {
-          // Φέρνουμε προφίλ και συναλλαγές ταυτόχρονα
+          // 2. ΤΑΥΤΟΧΡΟΝΗ ΦΟΡΤΩΣΗ: Προφίλ και Συναλλαγές μαζί
           const [profileRes, transRes] = await Promise.all([
             supabase.from('profiles').select('*').eq('id', user.id).single(),
             supabase.from('transactions')
@@ -44,7 +51,13 @@ function DashboardContent() {
 
           if (profileRes.data) {
             const p = profileRes.data
-            setStoreName(p.store_name || 'ΚΑΤΑΣΤΗΜΑ')
+            const name = p.store_name || 'ΚΑΤΑΣΤΗΜΑ'
+            setStoreName(name)
+            
+            if (typeof window !== 'undefined') {
+              localStorage.setItem('cachedStoreName', name)
+            }
+
             setPermissions({
               role: p.role || 'user',
               can_view_history: p.can_view_history || false,
@@ -53,7 +66,7 @@ function DashboardContent() {
             })
 
             let data = transRes.data || []
-            // Φιλτράρισμα για τον απλό χρήστη
+            // Φιλτράρισμα: Ο User βλέπει μόνο τα δικά του, ο Admin τα πάντα
             if (p.role !== 'admin') {
               data = data.filter(t => t.user_id === user.id)
             }
@@ -94,13 +107,14 @@ function DashboardContent() {
               <p style={menuSectionLabel}>ΔΙΑΧΕΙΡΙΣΗ</p>
               {isAdmin && (
                 <>
-                  <Link href="/suppliers" style={menuItem}>🛒 Προμηθευτές</Link>
-                  <Link href="/fixed-assets" style={menuItem}>🔌 Πάγια</Link>
-                  <Link href="/employees" style={menuItem}>👥 Υπάλληλοι</Link>
+                  <Link href="/suppliers" style={menuItem} onClick={() => setIsMenuOpen(false)}>🛒 Προμηθευτές</Link>
+                  <Link href="/fixed-assets" style={menuItem} onClick={() => setIsMenuOpen(false)}>🔌 Πάγια</Link>
+                  <Link href="/employees" style={menuItem} onClick={() => setIsMenuOpen(false)}>👥 Υπάλληλοι</Link>
+                  <Link href="/suppliers-balance" style={menuItem} onClick={() => setIsMenuOpen(false)}>🚩 Καρτέλες (Χρέη)</Link>
                 </>
               )}
               {(isAdmin || permissions.can_view_analysis) && (
-                <Link href="/analysis" style={menuItem}>📈 Ανάλυση</Link>
+                <Link href="/analysis" style={menuItem} onClick={() => setIsMenuOpen(false)}>📈 Ανάλυση</Link>
               )}
               <div style={divider} />
               <button onClick={() => supabase.auth.signOut().then(() => router.push('/login'))} style={logoutBtnStyle}>ΕΞΟΔΟΣ 🚪</button>
@@ -121,7 +135,7 @@ function DashboardContent() {
         </div>
       </div>
 
-      {/* ACTION BUTTONS - ΤΟ ΚΡΙΣΙΜΟ ΣΗΜΕΙΟ */}
+      {/* ACTION BUTTONS */}
       <div style={{ display: 'flex', gap: '12px', marginBottom: '12px', position: 'relative', zIndex: 10 }}>
         <button 
           onClick={() => router.push(`/add-income?date=${selectedDate}`)}
@@ -183,7 +197,7 @@ function DashboardContent() {
 // STYLES
 const menuBtnStyle = { backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', width: '40px', height: '40px', borderRadius: '12px', fontSize: '20px', color: '#64748b' };
 const dropdownStyle = { position: 'absolute' as const, top: '50px', right: '0', backgroundColor: 'white', minWidth: '200px', borderRadius: '15px', boxShadow: '0 10px 25px rgba(0,0,0,0.1)', padding: '10px', border: '1px solid #f1f5f9' };
-const menuItem = { display: 'block', padding: '10px', textDecoration: 'none', color: '#334155', fontWeight: '700' as const, fontSize: '14px' };
+const menuItem = { display: 'block', padding: '10px', textDecoration: 'none', color: '#334155', fontWeight: '700' as const, fontSize: '14px', borderRadius: '8px' };
 const logoutBtnStyle = { ...menuItem, color: '#ef4444', border: 'none', background: '#fee2e2', width: '100%', cursor: 'pointer', textAlign: 'left' as const, borderRadius: '8px' };
 const menuSectionLabel = { fontSize: '9px', fontWeight: '800' as const, color: '#94a3b8', marginBottom: '5px', paddingLeft: '10px' };
 const divider = { height: '1px', backgroundColor: '#f1f5f9', margin: '8px 0' };
