@@ -18,10 +18,22 @@ export default function SuppliersPage() {
   useEffect(() => { fetchData() }, [])
 
   async function fetchData() {
-    const { data: sData } = await supabase.from('suppliers').select('*').order('name')
-    const { data: tData } = await supabase.from('transactions').select('*').order('date', { ascending: false })
+    // Φέρνουμε τους προμηθευτές
+    const { data: sData, error: sError } = await supabase
+      .from('suppliers')
+      .select('*')
+      .order('name')
+    
+    // Φέρνουμε τις συναλλαγές για τον υπολογισμό τζίρου
+    const { data: tData, error: tError } = await supabase
+      .from('transactions')
+      .select('*')
+      .order('date', { ascending: false })
+
     if (sData) setSuppliers(sData)
     if (tData) setTransactions(tData)
+    
+    if (sError) console.error('Error fetching suppliers:', sError)
   }
 
   const getSupplierTurnover = (supplierId: string) => {
@@ -30,21 +42,72 @@ export default function SuppliersPage() {
       .reduce((acc, t) => acc + (Number(t.amount) || 0), 0)
   }
 
+  // --- Η ΔΙΟΡΘΩΜΕΝΗ ΣΥΝΑΡΤΗΣΗ ---
   async function handleSave() {
     if (!name) return alert('Δώσε όνομα')
     setLoading(true)
-    const supplierData = { name, phone, afm, category }
 
-    if (editingId) {
-      await supabase.from('suppliers').update(supplierData).eq('id', editingId)
-      setEditingId(null)
-    } else {
-      await supabase.from('suppliers').insert([supplierData])
+    try {
+      // 1. Βρίσκουμε τον τρέχοντα χρήστη
+      const { data: { user } } = await supabase.auth.getUser()
+      
+      if (!user) {
+        alert('Δεν βρέθηκε συνδεδεμένος χρήστης!')
+        setLoading(false)
+        return
+      }
+
+      // 2. Βρίσκουμε το store_id από το προφίλ του
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('store_id')
+        .eq('id', user.id)
+        .single()
+
+      if (!profile?.store_id) {
+        alert('Δεν βρέθηκε κατάστημα στο προφίλ!')
+        setLoading(false)
+        return
+      }
+
+      // 3. Ετοιμάζουμε τα δεδομένα ΜΑΖΙ με το store_id
+      const supplierData = { 
+        name, 
+        phone, 
+        afm, 
+        category,
+        store_id: profile.store_id // <--- ΑΥΤΟ ΗΤΑΝ ΤΟ ΚΛΕΙΔΙ
+      }
+
+      if (editingId) {
+        // Ενημέρωση
+        const { error } = await supabase
+          .from('suppliers')
+          .update(supplierData)
+          .eq('id', editingId)
+        
+        if (error) throw error
+        setEditingId(null)
+
+      } else {
+        // Εισαγωγή
+        const { error } = await supabase
+          .from('suppliers')
+          .insert([supplierData])
+        
+        if (error) throw error
+      }
+
+      // 4. Καθαρισμός και ανανέωση
+      resetForm()
+      fetchData()
+
+    } catch (error: any) {
+      console.error('Error saving supplier:', error)
+      alert('Σφάλμα κατά την αποθήκευση: ' + error.message)
+    } finally {
+      setLoading(false)
     }
-
-    resetForm()
-    fetchData()
-    setLoading(false)
   }
 
   const resetForm = () => {
@@ -59,7 +122,6 @@ export default function SuppliersPage() {
     window.scrollTo(0, 0);
   }
 
-  // Συνάρτηση για την εμφάνιση του σωστού εικονιδίου πληρωμής
   const getPaymentIcon = (method: string) => {
     if (method === 'Μετρητά') return '💵'
     if (method === 'Κάρτα' || method === 'POS') return '💳'
@@ -100,7 +162,7 @@ export default function SuppliersPage() {
           </select>
 
           <button onClick={handleSave} disabled={loading} style={{ ...saveBtn, backgroundColor: editingId ? '#f59e0b' : '#10b981' }}>
-            {editingId ? 'ΑΠΟΘΗΚΕΥΣΗ ΑΛΛΑΓΩΝ' : 'ΠΡΟΣΘΗΚΗ ΠΡΟΜΗΘΕΥΤΗ'}
+            {loading ? 'ΑΠΟΘΗΚΕΥΣΗ...' : (editingId ? 'ΑΠΟΘΗΚΕΥΣΗ ΑΛΛΑΓΩΝ' : 'ΠΡΟΣΘΗΚΗ ΠΡΟΜΗΘΕΥΤΗ')}
           </button>
         </div>
       )}
