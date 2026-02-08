@@ -26,7 +26,14 @@ function DashboardContent() {
     can_view_history: false
   })
 
-  // 1. Βγάζουμε τη φόρτωση σε ξεχωριστή συνάρτηση για να την καλεί και το Realtime
+  // Βοηθητική συνάρτηση για τη μορφοποίηση της ώρας
+  const formatTime = (dateString: string) => {
+    return new Date(dateString).toLocaleTimeString('el-GR', {
+      hour: '2-digit',
+      minute: '2-digit',
+    })
+  }
+
   const fetchAppData = useCallback(async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser()
@@ -65,14 +72,12 @@ function DashboardContent() {
   useEffect(() => {
     fetchAppData()
 
-    // 2. Ρύθμιση Realtime: Ακούει για INSERT, UPDATE, DELETE στον πίνακα transactions
     const channel = supabase
       .channel('realtime-transactions')
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'transactions' },
         () => {
-          // Μόλις γίνει οποιαδήποτε αλλαγή, ξανατραβάμε τα δεδομένα
           fetchAppData()
         }
       )
@@ -117,8 +122,7 @@ function DashboardContent() {
   const handleDelete = async (id: string) => {
     if (!isAdmin) return;
     if (confirm('Οριστική διαγραφή αυτής της κίνησης;')) {
-      const { error } = await supabase.from('transactions').delete().eq('id', id)
-      // Σημείωση: Δεν χρειάζεται setTransactions εδώ, το Realtime θα το κάνει αυτόματα!
+      await supabase.from('transactions').delete().eq('id', id)
     }
   }
 
@@ -207,6 +211,7 @@ function DashboardContent() {
                              <p style={{ fontWeight: '800', margin: 0, fontSize: '13px', color: '#475569' }}>
                                {getPaymentIcon(z.method)} {z.method.toUpperCase()}
                              </p>
+                             <span style={timeBadge}>🕒 {formatTime(z.created_at)}</span>
                           </div>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                              <p style={{ fontWeight: '900', fontSize: '14px', margin: 0, color: '#1e293b' }}>{Number(z.amount).toFixed(2)}€</p>
@@ -242,6 +247,7 @@ function DashboardContent() {
                                <p style={{ fontWeight: '800', margin: 0, fontSize: '13px', color: '#475569' }}>
                                  {getPaymentIcon(t.method)} {t.method.toUpperCase()}
                                </p>
+                               <span style={timeBadge}>🕒 {formatTime(t.created_at)}</span>
                             </div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                               <p style={{ fontWeight: '900', fontSize: '14px', margin: 0, color: '#1e293b' }}>{Math.abs(Number(t.amount)).toFixed(2)}€</p>
@@ -268,11 +274,12 @@ function DashboardContent() {
                       <p style={{ fontWeight: '800', margin: 0, fontSize: '17px', color: '#1e293b' }}>
                           {t.suppliers?.name || t.category.toUpperCase()}
                       </p>
-                      <div style={{ display: 'flex', gap: '8px', marginTop: '4px', alignItems: 'center' }}>
+                      <div style={{ display: 'flex', gap: '8px', marginTop: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
                         <span style={{ fontSize: '12px', color: '#64748b', fontWeight: '800' }}>
                           {getPaymentIcon(t.method)} {t.method.toUpperCase()}
                         </span>
-                        <span style={userBadge}>👤 {t.created_by_name?.toUpperCase()}</span>
+                        <span style={userBadge}>👤 {t.created_by_name?.split(' ')[0].toUpperCase()}</span>
+                        <span style={timeBadge}>🕒 {formatTime(t.created_at)}</span>
                       </div>
                     </div>
                     <div style={{ textAlign: 'right' }}>
@@ -328,5 +335,18 @@ const editBtn: any = { flex: 1, background: '#fef3c7', color: '#92400e', border:
 const deleteBtn: any = { flex: 1, background: '#fee2e2', color: '#991b1b', border: 'none', padding: '12px', borderRadius: '12px', fontWeight: '800', fontSize: '12px', cursor: 'pointer' };
 const iconBtnSmall: any = { background: '#f1f5f9', border: 'none', padding: '5px 8px', borderRadius: '8px', cursor: 'pointer', fontSize: '12px' };
 const iconBtnSmallRed: any = { ...iconBtnSmall, background: '#fee2e2', color: '#dc2626' };
+
+// STYLE ΓΙΑ ΤΟ BADGE ΤΗΣ ΩΡΑΣ
+const timeBadge: any = { 
+  fontSize: '10px', 
+  backgroundColor: '#eff6ff', 
+  color: '#3b82f6', 
+  padding: '2px 8px', 
+  borderRadius: '8px', 
+  fontWeight: '800',
+  display: 'inline-flex',
+  alignItems: 'center',
+  marginTop: '2px'
+};
 
 export default function HomePage() { return <main><Suspense fallback={<div>Φόρτωση...</div>}><DashboardContent /></Suspense></main> }
