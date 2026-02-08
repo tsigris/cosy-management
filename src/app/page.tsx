@@ -46,7 +46,6 @@ function DashboardContent() {
               store_id: profile.store_id
             })
 
-            // Φέρνουμε όλες τις κινήσεις του συγκεκριμένου καταστήματος για τη συγκεκριμένη ημερομηνία
             let query = supabase.from('transactions')
               .select('*, suppliers(name), fixed_assets(name)')
               .eq('store_id', profile.store_id)
@@ -54,10 +53,9 @@ function DashboardContent() {
               .lte('date', `${selectedDate}T23:59:59`)
               .order('created_at', { ascending: false })
 
-            const { data: transData, error } = await query
+            const { data: transData } = await query
 
             if (transData) {
-              // ΦΙΛΤΡΑΡΙΣΜΑ: Ο Admin βλέπει τα πάντα του καταστήματος, ο User μόνο τα δικά του
               if (profile.role === 'admin') {
                 setTransactions(transData)
               } else {
@@ -164,7 +162,7 @@ function DashboardContent() {
 
       <div style={{ marginBottom: '25px' }} />
 
-      {/* TRANSACTION LIST WITH EXPANDABLE PANEL */}
+      {/* TRANSACTION LIST */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
         <p style={{ fontSize: '11px', fontWeight: '800', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
           {isAdmin ? 'Κινήσεις Καταστήματος' : 'Οι Καταχωρήσεις μου'}
@@ -174,44 +172,51 @@ function DashboardContent() {
           <div style={{ padding: '40px', textAlign: 'center', color: '#94a3b8' }}>Φόρτωση κινήσεων...</div>
         ) : (
           transactions.length > 0 ? (
-            transactions.filter(t => t.category !== 'Εσοδα Ζ' && t.category !== 'pocket').map(t => (
-              <div key={t.id} style={{ marginBottom: '5px' }}>
-                <div 
-                  onClick={() => isAdmin && setExpandedTx(expandedTx === t.id ? null : t.id)}
-                  style={{ 
-                    ...itemStyle, 
-                    cursor: isAdmin ? 'pointer' : 'default',
-                    borderRadius: (isAdmin && expandedTx === t.id) ? '20px 20px 0 0' : '20px',
-                    borderBottom: (isAdmin && expandedTx === t.id) ? 'none' : '1px solid #f1f5f9'
-                  }}
-                >
-                  <div style={{ flex: 1 }}>
-                    <p style={{ fontWeight: '800', margin: 0, fontSize: '15px', color: '#1e293b' }}>
-                      {t.type === 'income' ? '💰 ' + (t.notes || 'ΕΙΣΠΡΑΞΗ') : (
-                          t.is_credit ? '🚩 ΠΙΣΤΩΣΗ: ' + (t.suppliers?.name || 'Προμηθευτής') : 
-                          t.category === 'Πάγια' ? '🔌 ' + (t.fixed_assets?.name || 'Πάγιο') :
-                          '💸 ' + (t.suppliers?.name || t.category || 'Έξοδο')
-                      )}
-                    </p>
-                    <div style={{ display: 'flex', gap: '6px', marginTop: '4px' }}>
-                      <span style={subLabelStyle}>{t.method}</span>
-                      <span style={userBadge}>👤 {t.created_by_name}</span>
+            // ΑΦΑΙΡΕΣΗ ΦΙΛΤΡΟΥ 'Εσοδα Ζ'
+            transactions.filter(t => t.category !== 'pocket').map(t => {
+              const isZ = t.category === 'Εσοδα Ζ';
+              return (
+                <div key={t.id} style={{ marginBottom: '5px' }}>
+                  <div 
+                    onClick={() => isAdmin && setExpandedTx(expandedTx === t.id ? null : t.id)}
+                    style={{ 
+                      ...itemStyle, 
+                      cursor: isAdmin ? 'pointer' : 'default',
+                      backgroundColor: isZ ? '#f8fafc' : 'white',
+                      borderRadius: (isAdmin && expandedTx === t.id) ? '20px 20px 0 0' : '20px',
+                      borderBottom: (isAdmin && expandedTx === t.id) ? 'none' : '1px solid #f1f5f9',
+                      borderLeft: isZ ? '4px solid #0f172a' : '1px solid #f1f5f9'
+                    }}
+                  >
+                    <div style={{ flex: 1 }}>
+                      <p style={{ fontWeight: '800', margin: 0, fontSize: '15px', color: '#1e293b' }}>
+                        {isZ ? '📟 ΚΛΕΙΣΙΜΟ ΤΑΜΕΙΟΥ (Ζ)' : (
+                          t.type === 'income' ? '💰 ' + (t.notes || 'ΕΙΣΠΡΑΞΗ') : (
+                              t.is_credit ? '🚩 ΠΙΣΤΩΣΗ: ' + (t.suppliers?.name || 'Προμηθευτής') : 
+                              t.category === 'Πάγια' ? '🔌 ' + (t.fixed_assets?.name || 'Πάγιο') :
+                              '💸 ' + (t.suppliers?.name || t.category || 'Έξοδο')
+                          )
+                        )}
+                      </p>
+                      <div style={{ display: 'flex', gap: '6px', marginTop: '4px' }}>
+                        <span style={subLabelStyle}>{t.method}</span>
+                        <span style={userBadge}>👤 {t.created_by_name}</span>
+                      </div>
                     </div>
+                    <p style={{ fontWeight: '900', fontSize: '16px', color: isZ ? '#0f172a' : (t.is_credit ? '#94a3b8' : (t.type === 'income' ? '#16a34a' : '#dc2626')), margin: 0 }}>
+                      {t.type === 'income' ? '+' : '-'}{Number(t.amount).toFixed(2)}€
+                    </p>
                   </div>
-                  <p style={{ fontWeight: '900', fontSize: '16px', color: t.is_credit ? '#94a3b8' : (t.type === 'income' ? '#16a34a' : '#dc2626'), margin: 0 }}>
-                    {t.type === 'income' ? '+' : '-'}{Number(t.amount).toFixed(2)}€
-                  </p>
-                </div>
 
-                {/* ACTION PANEL (Photo 2) - Εμφανίζεται μόνο στον Admin όταν κάνει κλικ */}
-                {isAdmin && expandedTx === t.id && (
-                  <div style={actionPanelStyle}>
-                    <button onClick={(e) => { e.stopPropagation(); handleEdit(t); }} style={actionBtnEdit}>ΕΠΕΞΕΡΓΑΣΙΑ ✎</button>
-                    <button onClick={(e) => { e.stopPropagation(); handleDelete(t.id); }} style={actionBtnDelete}>ΔΙΑΓΡΑΦΗ 🗑️</button>
-                  </div>
-                )}
-              </div>
-            ))
+                  {isAdmin && expandedTx === t.id && (
+                    <div style={actionPanelStyle}>
+                      <button onClick={(e) => { e.stopPropagation(); handleEdit(t); }} style={actionBtnEdit}>ΕΠΕΞΕΡΓΑΣΙΑ ✎</button>
+                      <button onClick={(e) => { e.stopPropagation(); handleDelete(t.id); }} style={actionBtnDelete}>ΔΙΑΓΡΑΦΗ 🗑️</button>
+                    </div>
+                  )}
+                </div>
+              );
+            })
           ) : (
             <div style={{ textAlign: 'center', padding: '40px', color: '#94a3b8', backgroundColor: 'white', borderRadius: '20px', border: '1px dashed #e2e8f0' }}>
               Δεν βρέθηκαν κινήσεις για σήμερα.
@@ -237,8 +242,6 @@ const zBtnStyle = { display: 'block', padding: '16px', borderRadius: '18px', bac
 const itemStyle = { backgroundColor: 'white', padding: '15px', border: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' };
 const subLabelStyle = { fontSize: '11px', color: '#94a3b8', textTransform: 'uppercase' as const, fontWeight: 'bold' };
 const userBadge = { fontSize: '9px', backgroundColor: '#f1f5f9', color: '#64748b', padding: '2px 6px', borderRadius: '6px', fontWeight: 'bold' };
-
-// ACTION PANEL STYLES
 const actionPanelStyle = { backgroundColor: 'white', padding: '10px 15px 15px', borderRadius: '0 0 20px 20px', border: '1px solid #f1f5f9', borderTop: 'none', display: 'flex', gap: '10px' };
 const actionBtnEdit = { flex: 1, background: '#fef3c7', color: '#92400e', border: 'none', padding: '12px', borderRadius: '12px', fontWeight: '800', fontSize: '12px', cursor: 'pointer' };
 const actionBtnDelete = { flex: 1, background: '#fee2e2', color: '#991b1b', border: 'none', padding: '12px', borderRadius: '12px', fontWeight: '800', fontSize: '12px', cursor: 'pointer' };
