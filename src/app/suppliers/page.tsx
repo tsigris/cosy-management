@@ -32,10 +32,18 @@ function SuppliersContent() {
   const [isFormOpen, setIsFormOpen] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
 
+  // Βοηθητική συνάρτηση για την ώρα (π.μ. / μ.μ.)
+  const formatTime = (dateString: string) => {
+    try {
+      return new Date(dateString).toLocaleTimeString('el-GR', {
+        hour: '2-digit', minute: '2-digit', hour12: true
+      })
+    } catch (e) { return '--:--' }
+  }
+
   // 1. ΡΩΜΑΛΕΑ ΦΟΡΤΩΣΗ ΔΕΔΟΜΕΝΩΝ (Με Wake-up προστασία)
   const fetchSuppliersData = useCallback(async () => {
     try {
-      // Φρεσκάρισμα Session για να αποφύγουμε το "0 Προμηθευτές"
       const { data: { session } } = await supabase.auth.getSession()
       if (!session?.user) {
         setLoading(false)
@@ -63,7 +71,6 @@ function SuppliersContent() {
   useEffect(() => {
     fetchSuppliersData()
 
-    // Μηχανισμός "Αφύπνισης": Φρεσκάρισμα όταν το App έρχεται στο προσκήνιο
     const handleWakeUp = () => {
       if (document.visibilityState === 'visible') {
         fetchSuppliersData()
@@ -200,10 +207,15 @@ function SuppliersContent() {
                     {transactions.filter(t => t.supplier_id === s.id).length > 0 ? (
                       transactions.filter(t => t.supplier_id === s.id).map(t => (
                         <div key={t.id} style={transItem}>
-                          <span style={{ color: colors.secondaryText, fontWeight: '600' }}>{t.date}</span>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                             <span style={{ color: colors.primaryDark, fontWeight: '700', fontSize: '13px' }}>
+                               {new Date(t.date).toLocaleDateString('el-GR', { day: 'numeric', month: 'short' }).toUpperCase()}
+                             </span>
+                             <span style={timeBadge}>🕒 {formatTime(t.created_at)}</span>
+                          </div>
                           <div style={{display:'flex', gap:'8px', alignItems:'center'}}>
                              <span>{getPaymentIcon(t.method)}</span>
-                             <span style={{ fontWeight: '700', color: colors.primaryDark }}>{Number(t.amount).toFixed(2)}€</span>
+                             <span style={{ fontWeight: '800', color: colors.primaryDark, fontSize: '15px' }}>{Number(t.amount).toFixed(2)}€</span>
                           </div>
                         </div>
                       ))
@@ -238,8 +250,9 @@ const iconBtnStyle: any = { background: colors.bgLight, border: `1px solid ${col
 const deleteBtnStyle: any = { ...iconBtnStyle, background: '#fef2f2', borderColor: '#fecaca', color: colors.accentRed };
 const transList: any = { backgroundColor: colors.white, padding: '15px 20px', borderRadius: '0 0 20px 20px', marginTop: '-12px', border: `1px solid ${colors.border}`, borderTop: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.03)' };
 const transHeader: any = { fontSize: '10px', fontWeight: '800', color: colors.secondaryText, marginBottom: '10px', borderBottom: `1px solid ${colors.bgLight}`, paddingBottom: '5px' };
-const transItem: any = { display: 'flex', justifyContent: 'space-between', fontSize: '14px', padding: '8px 0', borderBottom: `1px dashed ${colors.border}` };
+const transItem: any = { display: 'flex', justifyContent: 'space-between', fontSize: '14px', padding: '10px 0', borderBottom: `1px dashed ${colors.border}` };
 const emptyState: any = { textAlign: 'center', padding: '50px 20px', background: colors.white, borderRadius: '24px', color: colors.secondaryText, fontWeight: '600', border: `1px dashed ${colors.border}` };
+const timeBadge: any = { fontSize: '10px', backgroundColor: '#f0f9ff', color: '#0369a1', padding: '2px 8px', borderRadius: '6px', fontWeight: '700', display: 'inline-flex', alignItems: 'center', border: '1px solid #bae6fd' };
 
 export default function SuppliersPage() {
   return (
