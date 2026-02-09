@@ -31,7 +31,7 @@ function EmployeesContent() {
   
   const [viewYear, setViewYear] = useState(new Date().getFullYear())
 
-  // Δυναμική παραγωγή ετών (Λύση για το error στη σειρά 36)
+  // Δυναμική παραγωγή ετών
   const availableYears: number[] = [];
   for (let y = 2024; y <= new Date().getFullYear(); y++) {
     availableYears.push(y);
@@ -63,7 +63,9 @@ function EmployeesContent() {
     } catch (err) { console.error(err) } finally { setLoading(false) }
   }, [])
 
-  useEffect(() => { fetchInitialData() }, [fetchInitialData])
+  useEffect(() => { 
+    fetchInitialData() 
+  }, [fetchInitialData])
 
   // --- ΣΥΝΑΡΤΗΣΕΙΣ ΥΠΟΛΟΓΙΣΜΟΥ ---
 
@@ -100,6 +102,17 @@ function EmployeesContent() {
     return stats;
   }
 
+  const getDaysUntilPayment = (startDateStr: string) => {
+    if (!startDateStr) return null
+    const today = new Date(); today.setHours(0, 0, 0, 0)
+    const start = new Date(startDateStr); const payDay = start.getDate()
+    let nextPayDate = new Date(today.getFullYear(), today.getMonth(), payDay)
+    nextPayDate.setHours(0, 0, 0, 0)
+    if (today > nextPayDate) nextPayDate = new Date(today.getFullYear(), today.getMonth() + 1, payDay)
+    const diffTime = nextPayDate.getTime() - today.getTime()
+    return Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+  }
+
   async function handleSave() {
     if (!formData.full_name.trim() || !formData.monthly_salary) return alert('Συμπληρώστε τα υποχρεωτικά πεδία!')
     setLoading(true)
@@ -114,27 +127,19 @@ function EmployeesContent() {
     else { alert(error.message); setLoading(false); }
   }
 
-  // ΔΙΑΓΡΑΦΗ ΥΠΑΛΛΗΛΟΥ (Με καθαρισμό συναλλαγών για αποφυγή Error)
   async function deleteEmployee(id: string, name: string) {
-    if(!confirm(`Οριστική διαγραφή του/της ${name}; Θα διαγραφεί και όλο το ιστορικό πληρωμών.`)) return;
-    
+    if(!confirm(`Οριστική διαγραφή του/της ${name}; Θα σβηστεί και το ιστορικό.`)) return;
     setLoading(true);
-    // 1. Διαγραφή συναλλαγών πρώτα
     await supabase.from('transactions').delete().eq('employee_id', id);
-    // 2. Διαγραφή υπαλλήλου
     const { error } = await supabase.from('employees').delete().eq('id', id);
-    
-    if(!error) fetchInitialData();
-    else alert(error.message);
+    if(!error) fetchInitialData(); else alert(error.message);
     setLoading(false);
   }
 
-  // ΔΙΑΓΡΑΦΗ ΜΕΜΟΝΩΜΕΝΗΣ ΠΛΗΡΩΜΗΣ
   async function deleteTransaction(id: string) {
-    if(!confirm('Διαγραφή αυτής της πληρωμής από το ιστορικό;')) return;
+    if(!confirm('Διαγραφή αυτής της πληρωμής;')) return;
     const { error } = await supabase.from('transactions').delete().eq('id', id);
-    if(!error) fetchInitialData();
-    else alert(error.message);
+    if(!error) fetchInitialData(); else alert(error.message);
   }
 
   const resetForm = () => {
@@ -183,13 +188,22 @@ function EmployeesContent() {
             const yearlyStats = getYearlyStats(emp.id);
             const monthlyRem = getCurrentMonthRemaining(emp);
             const isSelected = selectedEmpId === emp.id;
+            const daysLeft = getDaysUntilPayment(emp.start_date);
 
             return (
               <div key={emp.id} style={employeeCard}>
                 <div onClick={() => setSelectedEmpId(isSelected ? null : emp.id)} style={{ padding: '18px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div style={{ flex: 1 }}>
                     <p style={{ fontWeight: '700', color: colors.primaryDark, fontSize: '16px', margin: 0 }}>{emp.full_name.toUpperCase()}</p>
+                    
+                    {/* ΕΠΑΝΑΦΟΡΑ ΑΝΤΙΣΤΡΟΦΗΣ ΜΕΤΡΗΣΗΣ */}
+                    <div style={{ marginTop: '6px' }}>
+                       <span style={{...badgeStyle, backgroundColor: (daysLeft === 0 || daysLeft === null) ? '#fef2f2' : '#eff6ff', color: (daysLeft === 0 || daysLeft === null) ? colors.accentRed : colors.accentBlue}}>
+                         {daysLeft === 0 ? 'ΣΗΜΕΡΑ 💰' : `ΣΕ ${daysLeft} ΗΜΕΡΕΣ 📅`}
+                       </span>
+                    </div>
                   </div>
+                  
                   <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                     <Link href={`/pay-employee?id=${emp.id}&name=${emp.full_name}`} onClick={(e) => e.stopPropagation()} style={payBtnStyle}>ΠΛΗΡΩΜΗ</Link>
                     <div style={{ textAlign: 'right' }}>
@@ -215,7 +229,7 @@ function EmployeesContent() {
                         <div style={{...statBox, backgroundColor: colors.primaryDark}}><p style={{...statLabel, color: '#94a3b8'}}>ΣΥΝΟΛΟ ΕΤΟΥΣ</p><p style={{...statValue, color: colors.accentGreen}}>{yearlyStats.total.toFixed(2)}€</p></div>
                     </div>
 
-                    <p style={historyTitle}>ΚΙΝΗΣΕΙΣ ΕΤΟΥΣ {viewYear}</p>
+                    <p style={historyTitle}>ΙΣΤΟΡΙΚΟ ΠΛΗΡΩΜΩΝ {viewYear}</p>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '20px' }}>
                         {transactions.filter(t => t.employee_id === emp.id && new Date(t.date).getFullYear() === viewYear).map(t => (
                             <div key={t.id} style={historyItemExtended}>
@@ -224,6 +238,7 @@ function EmployeesContent() {
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                                         <span>{t.method === 'Τράπεζα' ? '🏦' : '💵'}</span>
                                         <span style={{ fontWeight: '800', color: colors.primaryDark }}>{Number(t.amount).toFixed(2)}€</span>
+                                        {/* ΔΙΑΓΡΑΦΗ ΣΥΝΑΛΛΑΓΗΣ */}
                                         <button onClick={() => deleteTransaction(t.id)} style={transDeleteBtn}>🗑️</button>
                                     </div>
                                 </div>
@@ -234,13 +249,10 @@ function EmployeesContent() {
 
                     <div style={{ display: 'flex', gap: '10px' }}>
                       <button onClick={() => { 
-                        setFormData({
-                          full_name: emp.full_name, position: emp.position || '', amka: emp.amka || '', 
-                          iban: emp.iban || '', monthly_salary: emp.monthly_salary.toString(), start_date: emp.start_date
-                        }); 
+                        setFormData({...emp, monthly_salary: emp.monthly_salary.toString()}); 
                         setEditingId(emp.id); setIsAdding(true); window.scrollTo(0,0); 
                       }} style={editBtn}>ΕΠΕΞΕΡΓΑΣΙΑ ✎</button>
-                      <button onClick={() => deleteEmployee(emp.id, emp.full_name)} style={deleteBtn}>🗑️</button>
+                      <button onClick={() => deleteEmployee(emp.id, emp.full_name)} style={deleteBtn}>ΔΙΑΓΡΑΦΗ 🗑️</button>
                     </div>
                   </div>
                 )}
@@ -275,8 +287,8 @@ const statValue: any = { margin: '4px 0 0', fontSize: '16px', fontWeight: '900',
 const historyTitle: any = { fontSize: '9px', fontWeight: '800', color: colors.secondaryText, marginBottom: '12px', textTransform: 'uppercase' };
 const historyItemExtended: any = { padding: '12px', borderRadius: '14px', border: `1px solid ${colors.border}`, backgroundColor: colors.bgLight, marginBottom: '8px' };
 const transDeleteBtn: any = { background: 'none', border: 'none', cursor: 'pointer', fontSize: '12px', opacity: 0.5 };
-const editBtn: any = { flex: 4, background: '#fffbeb', border: `1px solid #fef3c7`, padding: '12px', borderRadius: '10px', cursor: 'pointer', fontSize: '11px', fontWeight: '700', color: '#92400e' };
-const deleteBtn: any = { flex: 1, background: '#fef2f2', border: `1px solid #fee2e2`, padding: '12px', borderRadius: '10px', cursor: 'pointer', fontSize: '11px', fontWeight: '700', color: colors.accentRed, display: 'flex', alignItems: 'center', justifyContent: 'center' };
+const editBtn: any = { flex: 3, background: '#fffbeb', border: `1px solid #fef3c7`, padding: '12px', borderRadius: '10px', cursor: 'pointer', fontSize: '11px', fontWeight: '700', color: '#92400e' };
+const deleteBtn: any = { flex: 2, background: '#fef2f2', border: `1px solid #fee2e2`, padding: '12px', borderRadius: '10px', cursor: 'pointer', fontSize: '11px', fontWeight: '700', color: colors.accentRed };
 
 export default function EmployeesPage() {
   return <main><Suspense fallback={<div>Φόρτωση...</div>}><EmployeesContent /></Suspense></main>
