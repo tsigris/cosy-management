@@ -20,7 +20,7 @@ function AddExpenseForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
 
-  // ΥΠΟΛΟΓΙΣΜΟΣ ΗΜΕΡΟΜΗΝΙΑΣ (07:00 Logic)
+  // 1. ΥΠΟΛΟΓΙΣΜΟΣ ΗΜΕΡΟΜΗΝΙΑΣ (07:00 Logic - Τοπική Ώρα)
   const getBusinessDate = () => {
     const now = new Date()
     if (now.getHours() < 7) {
@@ -50,10 +50,10 @@ function AddExpenseForm() {
   const [selectedSup, setSelectedSup] = useState('')
   const [selectedFixed, setSelectedFixed] = useState('')
 
-  // ΚΕΝΤΡΙΚΗ ΣΥΝΑΡΤΗΣΗ ΦΟΡΤΩΣΗΣ (Με Wake-up προστασία)
+  // 2. ΚΕΝΤΡΙΚΗ ΣΥΝΑΡΤΗΣΗ ΦΟΡΤΩΣΗΣ (Με προστασία Wake-up)
   const loadFormData = useCallback(async () => {
     try {
-      // Φρεσκάρισμα Session για να μην έχουμε άδειες λίστες το πρωί
+      // Ανανέωση Session για να μην έχουμε άδειες λίστες μετά από ώρες αδράνειας
       const { data: { session } } = await supabase.auth.getSession()
       if (!session?.user) {
         setLoading(false)
@@ -73,7 +73,7 @@ function AddExpenseForm() {
         if (fRes.data) setFixedAssets(fRes.data)
       }
     } catch (error) {
-      console.error('Wake up load failed:', error)
+      console.error('Error loading form data:', error)
     } finally {
       setLoading(false)
     }
@@ -82,7 +82,7 @@ function AddExpenseForm() {
   useEffect(() => {
     loadFormData()
 
-    // Μηχανισμός Wake-up: Αν ανοίξεις το κινητό μετά από ώρες, ξαναφόρτωσε τα δεδομένα
+    // Μηχανισμός "Αφύπνισης": Αν το κινητό ανοίξει μετά από ώρες, ξαναφόρτωσε τα πάντα
     const handleWakeUp = () => {
       if (document.visibilityState === 'visible') {
         loadFormData()
@@ -158,7 +158,7 @@ function AddExpenseForm() {
         </div>
 
         <div style={userIndicator}>
-          <span style={{ fontSize: '11px', fontWeight: '800', color: colors.secondaryText }}>👤 {currentUsername.toUpperCase()}</span>
+          <span style={{ fontSize: '11px', fontWeight: '800', color: colors.secondaryText }}>👤 ΚΑΤΑΧΩΡΗΣΗ: {currentUsername.toUpperCase()}</span>
         </div>
 
         {/* ΠΗΓΗ ΧΡΗΜΑΤΩΝ */}
@@ -166,12 +166,14 @@ function AddExpenseForm() {
           <label style={labelStyle}>ΠΗΓΗ ΧΡΗΜΑΤΩΝ</label>
           <div style={{ display: 'flex', gap: '10px', marginTop: '8px' }}>
             <button 
+              type="button"
               onClick={() => { setSource('store'); setIsCredit(false); setIsAgainstDebt(false); }} 
               style={{ ...sourceBtn, backgroundColor: source === 'store' ? colors.primaryDark : colors.white, color: source === 'store' ? 'white' : colors.secondaryText, border: source === 'store' ? 'none' : `1px solid ${colors.border}` }}
             >
               🏪 ΤΑΜΕΙΟ
             </button>
             <button 
+              type="button"
               onClick={() => { setSource('pocket'); setIsCredit(false); setIsAgainstDebt(false); }} 
               style={{ ...sourceBtn, backgroundColor: source === 'pocket' ? '#8b5cf6' : colors.white, color: source === 'pocket' ? 'white' : colors.secondaryText, border: source === 'pocket' ? 'none' : `1px solid ${colors.border}` }}
             >
@@ -236,7 +238,7 @@ function AddExpenseForm() {
   )
 }
 
-// STYLES
+// --- STYLES ---
 const formCardStyle = { maxWidth: '500px', margin: '0 auto', backgroundColor: colors.white, borderRadius: '24px', padding: '24px', border: `1px solid ${colors.border}`, boxShadow: '0 4px 20px rgba(0,0,0,0.03)' };
 const logoBoxStyle: any = { width: '42px', height: '42px', backgroundColor: '#fef2f2', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px' };
 const backBtnStyle: any = { textDecoration: 'none', color: colors.secondaryText, fontSize: '18px', fontWeight: 'bold', width: '36px', height: '36px', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bgLight, borderRadius: '10px', border: `1px solid ${colors.border}` };
