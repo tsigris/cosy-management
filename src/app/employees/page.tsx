@@ -32,7 +32,7 @@ function EmployeesContent() {
   // Φίλτρο προβολής - Προεπιλογή το τρέχον έτος
   const [viewYear, setViewYear] = useState(new Date().getFullYear())
 
-  // ΔΙΟΡΘΩΣΗ ERROR ΣΕΙΡΑ 36: Ορισμός τύπου number[] για αποφυγή του "never[]"
+  // Δυναμική παραγωγή ετών (Από το 2024 έως το τρέχον)
   const availableYears: number[] = [];
   for (let y = 2024; y <= new Date().getFullYear(); y++) {
     availableYears.push(y);
@@ -79,20 +79,19 @@ function EmployeesContent() {
     return (Number(emp.monthly_salary) || 0) - paidThisMonth;
   }
 
-  // Ετήσια Στατιστικά βάσει του viewYear (Εξαγωγή από notes με αποφυγή διπλοεγγραφών)
+  // Ετήσια Στατιστικά βάσει του viewYear (Διόρθωση διπλοεγγραφών)
   const getYearlyStats = (id: string) => {
     const yearTrans = transactions.filter(t => {
         return t.employee_id === id && new Date(t.date).getFullYear() === viewYear;
     });
 
     let stats = { base: 0, overtime: 0, bonus: 0, gift: 0, allowance: 0, total: 0 };
-    const processedDates = new Set(); // Για να μην διπλομετράμε αναλύσεις την ίδια μέρα
+    const processedDates = new Set(); 
 
     yearTrans.forEach(t => {
-      // Το "total" είναι πάντα το άθροισμα των πραγματικών ποσών κίνησης (σωστό)
       stats.total += Number(t.amount) || 0;
       
-      // Διαβάζουμε την ανάλυση από τις σημειώσεις μόνο μία φορά ανά ημερομηνία πληρωμής
+      // Διαβάζουμε την ανάλυση μόνο μία φορά ανά ημερομηνία πληρωμής
       if (!processedDates.has(t.date)) {
           const note = t.notes || "";
           const extract = (label: string) => {
@@ -106,7 +105,6 @@ function EmployeesContent() {
           stats.bonus += extract('Bonus');
           stats.gift += extract('Δώρο');
           stats.allowance += extract('Επίδ.');
-          
           processedDates.add(t.date);
       }
     });
@@ -172,7 +170,7 @@ function EmployeesContent() {
           </div>
         )}
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '10px' }}>
           {employees.map((emp) => {
             const yearlyStats = getYearlyStats(emp.id);
             const monthlyRem = getCurrentMonthRemaining(emp);
@@ -184,13 +182,20 @@ function EmployeesContent() {
                 <div onClick={() => setSelectedEmpId(isSelected ? null : emp.id)} style={{ padding: '18px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div style={{ flex: 1 }}>
                     <p style={{ fontWeight: '700', color: colors.primaryDark, fontSize: '16px', margin: 0 }}>{emp.full_name.toUpperCase()}</p>
-                    <span style={{...badgeStyle, backgroundColor: daysLeft === 0 ? '#fef2f2' : '#eff6ff', color: daysLeft === 0 ? colors.accentRed : colors.accentBlue, marginTop: '6px', display: 'inline-block'}}>
-                      {daysLeft === 0 ? 'ΣΗΜΕΡΑ 💰' : `ΣΕ ${daysLeft} ΗΜΕΡΕΣ`}
-                    </span>
+                    <div style={{ display: 'flex', gap: '8px', marginTop: '6px' }}>
+                       <span style={{...badgeStyle, backgroundColor: daysLeft === 0 ? '#fef2f2' : '#eff6ff', color: daysLeft === 0 ? colors.accentRed : colors.accentBlue}}>
+                         {daysLeft === 0 ? 'ΣΗΜΕΡΑ 💰' : `ΣΕ ${daysLeft} ΗΜΕΡΕΣ`}
+                       </span>
+                    </div>
                   </div>
-                  <div style={{ textAlign: 'right' }}>
-                    <p style={{ margin: 0, fontSize: '17px', fontWeight: '800', color: monthlyRem > 0 ? colors.accentRed : colors.accentGreen }}>{monthlyRem.toFixed(2)}€</p>
-                    <p style={{ margin: 0, fontSize: '8px', fontWeight: '800', color: colors.secondaryText }}>ΥΠΟΛΟΙΠΟ ΜΗΝΑ</p>
+
+                  {/* ΕΠΑΝΑΦΟΡΑ ΚΟΥΜΠΙΟΥ ΠΛΗΡΩΜΗ ΣΤΗ ΣΩΣΤΗ ΘΕΣΗ */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', textAlign: 'right' }}>
+                    <Link href={`/pay-employee?id=${emp.id}&name=${emp.full_name}`} onClick={(e) => e.stopPropagation()} style={payBtnStyle}>ΠΛΗΡΩΜΗ</Link>
+                    <div>
+                        <p style={{ margin: 0, fontSize: '17px', fontWeight: '800', color: monthlyRem > 0 ? colors.accentRed : colors.accentGreen }}>{monthlyRem.toFixed(2)}€</p>
+                        <p style={{ margin: 0, fontSize: '8px', fontWeight: '800', color: colors.secondaryText }}>ΥΠΟΛΟΙΠΟ ΜΗΝΑ</p>
+                    </div>
                   </div>
                 </div>
 
@@ -252,11 +257,11 @@ function EmployeesContent() {
 }
 
 // --- STYLES ---
-const iphoneWrapper: any = { backgroundColor: colors.bgLight, minHeight: '100dvh', padding: '20px', overflowY: 'auto', position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 };
+const iphoneWrapper: any = { backgroundColor: colors.bgLight, minHeight: '100dvh', padding: '20px', overflowY: 'auto', WebkitOverflowScrolling: 'touch', position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 };
 const logoBoxStyle: any = { width: '42px', height: '42px', backgroundColor: '#dbeafe', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px' };
 const backBtnStyle: any = { textDecoration: 'none', color: colors.secondaryText, fontSize: '18px', fontWeight: 'bold', width: '38px', height: '38px', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: colors.white, borderRadius: '12px', border: `1px solid ${colors.border}` };
-const payBtnStyle: any = { backgroundColor: colors.accentBlue, color: 'white', padding: '8px 14px', borderRadius: '10px', fontSize: '10px', fontWeight: '800', textDecoration: 'none' };
-const addBtn: any = { width: '100%', padding: '16px', backgroundColor: colors.primaryDark, color: 'white', border: 'none', borderRadius: '16px', fontWeight: '700', fontSize: '14px', cursor: 'pointer', marginBottom: '20px' };
+const payBtnStyle: any = { backgroundColor: colors.accentBlue, color: 'white', padding: '8px 14px', borderRadius: '10px', fontSize: '10px', fontWeight: '800', textDecoration: 'none', boxShadow: '0 4px 8px rgba(37, 99, 235, 0.2)' };
+const addBtn: any = { width: '100%', padding: '16px', backgroundColor: colors.primaryDark, color: 'white', border: 'none', borderRadius: '16px', fontWeight: '700', fontSize: '14px', marginBottom: '20px' };
 const cancelBtn: any = { ...addBtn, backgroundColor: colors.white, color: colors.secondaryText, border: `1px solid ${colors.border}` };
 const formCard: any = { backgroundColor: colors.white, padding: '24px', borderRadius: '24px', border: '2px solid', marginBottom: '25px' };
 const labelStyle: any = { fontSize: '10px', fontWeight: '800', color: colors.secondaryText, display: 'block', marginBottom: '6px', textTransform: 'uppercase' };
