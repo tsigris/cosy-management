@@ -31,7 +31,6 @@ function EmployeesContent() {
   
   const [viewYear, setViewYear] = useState(new Date().getFullYear())
 
-  // Δυναμική παραγωγή ετών
   const availableYears: number[] = [];
   for (let y = 2024; y <= new Date().getFullYear(); y++) {
     availableYears.push(y);
@@ -47,29 +46,22 @@ function EmployeesContent() {
     try {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session?.user) return
-
       const { data: profile } = await supabase.from('profiles').select('store_id').eq('id', session.user.id).single()
-      
       if (profile?.store_id) {
         setStoreId(profile.store_id)
         const [empsRes, transRes] = await Promise.all([
           supabase.from('employees').select('*').eq('store_id', profile.store_id).order('full_name'),
           supabase.from('transactions').select('*').eq('store_id', profile.store_id).not('employee_id', 'is', null).order('date', { ascending: false })
         ])
-        
         if (empsRes.data) setEmployees(empsRes.data)
         if (transRes.data) setTransactions(transRes.data)
       }
     } catch (err) { console.error(err) } finally { setLoading(false) }
   }, [])
 
-  useEffect(() => { 
-    fetchInitialData() 
-  }, [fetchInitialData])
+  useEffect(() => { fetchInitialData() }, [fetchInitialData])
 
-  // --- ΣΥΝΑΡΤΗΣΕΙΣ ΥΠΟΛΟΓΙΣΜΟΥ ---
-
-  // ΔΙΟΡΘΩΜΕΝΟΣ ΥΠΟΛΟΓΙΣΜΟΣ ΥΠΟΛΟΙΠΟΥ (Προσθέτει τα έξτρα από τα notes)
+  // --- ΕΞΥΠΝΟΣ ΥΠΟΛΟΓΙΣΜΟΣ ΥΠΟΛΟΙΠΟΥ ---
   const getCurrentMonthRemaining = (emp: any) => {
     const now = new Date();
     const currentMonthTrans = transactions.filter(t => 
@@ -84,8 +76,6 @@ function EmployeesContent() {
 
     currentMonthTrans.forEach(t => {
       totalPaid += Number(t.amount) || 0;
-      
-      // Υπολογίζουμε τα έξτρα (Υπερωρίες, Bonus κτλ) από τις σημειώσεις μόνο μια φορά ανά ημερομηνία
       if (!processedDates.has(t.date)) {
         const note = t.notes || "";
         const extract = (label: string) => {
@@ -93,15 +83,32 @@ function EmployeesContent() {
           const match = note.match(regex);
           return match ? parseFloat(match[1]) : 0;
         };
-        // Προσθέτουμε μόνο τα έξτρα, ο βασικός είναι ήδη στο emp.monthly_salary
         extraEarnings += extract('Υπερ.') + extract('Bonus') + extract('Δώρο') + extract('Επίδ.');
         processedDates.add(t.date);
       }
     });
 
     const baseSalary = Number(emp.monthly_salary) || 0;
-    const totalOwedThisMonth = baseSalary + extraEarnings;
-    return totalOwedThisMonth - totalPaid;
+    return (baseSalary + extraEarnings) - totalPaid;
+  }
+
+  // --- ΑΝΤΙΣΤΡΟΦΗ ΜΕΤΡΗΣΗ: ΚΑΘΕ ΜΗΝΑ ΤΗΝ ΙΔΙΑ ΗΜΕΡΑ ΠΡΟΣΛΗΨΗΣ ---
+  const getDaysUntilPayment = (hireDateStr: string) => {
+    if (!hireDateStr) return null
+    const today = new Date(); today.setHours(0, 0, 0, 0)
+    const hireDate = new Date(hireDateStr); hireDate.setHours(0, 0, 0, 0)
+
+    // Η πρώτη πληρωμή είναι 1 μήνα μετά την πρόσληψη
+    let nextPayDate = new Date(hireDate)
+    nextPayDate.setMonth(nextPayDate.getMonth() + 1)
+
+    // Αν η ημερομηνία έχει ήδη περάσει, πήγαινε στην επόμενη μηνιαία επέτειο
+    while (nextPayDate <= today) {
+      nextPayDate.setMonth(nextPayDate.getMonth() + 1)
+    }
+    
+    const diffTime = nextPayDate.getTime() - today.getTime()
+    return Math.ceil(diffTime / (1000 * 60 * 60 * 24))
   }
 
   const getYearlyStats = (id: string) => {
@@ -125,17 +132,6 @@ function EmployeesContent() {
       }
     });
     return stats;
-  }
-
-  const getDaysUntilPayment = (startDateStr: string) => {
-    if (!startDateStr) return null
-    const today = new Date(); today.setHours(0, 0, 0, 0)
-    const start = new Date(startDateStr); const payDay = start.getDate()
-    let nextPayDate = new Date(today.getFullYear(), today.getMonth(), payDay)
-    nextPayDate.setHours(0, 0, 0, 0)
-    if (today > nextPayDate) nextPayDate = new Date(today.getFullYear(), today.getMonth() + 1, payDay)
-    const diffTime = nextPayDate.getTime() - today.getTime()
-    return Math.ceil(diffTime / (1000 * 60 * 60 * 24))
   }
 
   async function handleSave() {
@@ -199,7 +195,7 @@ function EmployeesContent() {
                 <input type="number" value={formData.monthly_salary} onChange={e => setFormData({...formData, monthly_salary: e.target.value})} style={inputStyle} />
               </div>
               <div style={{ flex: 1 }}>
-                <label style={labelStyle}>Ημ. Πληρωμής</label>
+                <label style={labelStyle}>Ημ. Πρόσληψης</label>
                 <input type="date" value={formData.start_date} onChange={e => setFormData({...formData, start_date: e.target.value})} style={inputStyle} />
               </div>
             </div>
