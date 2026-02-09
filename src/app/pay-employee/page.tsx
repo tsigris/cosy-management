@@ -27,26 +27,29 @@ function PayEmployeeContent() {
   const getBusinessDate = () => {
     const now = new Date()
     if (now.getHours() < 7) now.setDate(now.getDate() - 1)
-    const year = now.getFullYear(); const month = String(now.getMonth() + 1).padStart(2, '0'); const day = String(now.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`
+    return now.toISOString().split('T')[0]
   }
 
-  // STATES ΦΟΡΜΑΣ
-  const [baseAmount, setBaseAmount] = useState('')
+  // STATES ΓΙΑ ΑΝΑΛΥΣΗ ΑΜΟΙΒΩΝ
+  const [baseSalary, setBaseSalary] = useState('')
   const [overtime, setOvertime] = useState('')
   const [bonus, setBonus] = useState('')
   const [gift, setGift] = useState('')
   const [allowance, setAllowance] = useState('')
   
-  const [method, setMethod] = useState('Μετρητά')
+  // STATES ΓΙΑ ΤΡΟΠΟ ΠΛΗΡΩΜΗΣ
+  const [paidBank, setPaidBank] = useState('')
+  const [paidCash, setPaidCash] = useState('')
+
   const [date, setDate] = useState(getBusinessDate())
   const [loading, setLoading] = useState(true)
   const [userData, setUserData] = useState({ store_id: '', username: '' })
 
-  // Υπολογισμός Συνόλου
-  const totalAmount = (Number(baseAmount) || 0) + (Number(overtime) || 0) + (Number(bonus) || 0) + (Number(gift) || 0) + (Number(allowance) || 0);
+  // Υπολογισμοί
+  const totalEarnings = (Number(baseSalary) || 0) + (Number(overtime) || 0) + (Number(bonus) || 0) + (Number(gift) || 0) + (Number(allowance) || 0);
+  const totalPaid = (Number(paidBank) || 0) + (Number(paidCash) || 0);
+  const difference = totalEarnings - totalPaid;
 
-  // 2. WAKE UP & ΦΟΡΤΩΣΗ ΠΡΟΦΙΛ
   const loadProfile = useCallback(async () => {
     try {
       const { data: { session } } = await supabase.auth.getSession()
@@ -65,32 +68,53 @@ function PayEmployeeContent() {
   }, [loadProfile])
 
   async function handlePayment() {
-    if (totalAmount <= 0) return alert('Παρακαλώ εισάγετε ποσά πληρωμής.')
+    if (totalEarnings <= 0) return alert('Εισάγετε ποσά στις αμοιβές.')
+    if (Math.abs(difference) > 0.01) return alert(`Το σύνολο πληρωμής (${totalPaid}€) πρέπει να ισούται με το σύνολο αμοιβών (${totalEarnings}€). Διάφορα: ${difference.toFixed(2)}€`);
     
     setLoading(true)
 
-    // Δημιουργία αυτόματης περιγραφής για τις σημειώσεις
+    // Δημιουργία περιγραφής
     const parts = [];
-    if (baseAmount) parts.push(`Βασικός: ${baseAmount}€`);
+    if (baseSalary) parts.push(`Βασικός: ${baseSalary}€`);
     if (overtime) parts.push(`Υπερ.: ${overtime}€`);
     if (bonus) parts.push(`Bonus: ${bonus}€`);
     if (gift) parts.push(`Δώρο: ${gift}€`);
     if (allowance) parts.push(`Επίδ.: ${allowance}€`);
-    const autoNotes = `Πληρωμή ${empName}: ${parts.join(', ')}`;
+    const breakdownNotes = parts.join(', ');
 
-    const payload = {
-      amount: totalAmount,
-      type: 'expense',
-      category: 'Προσωπικό',
-      method: method,
-      date,
-      employee_id: empId,
-      store_id: userData.store_id,
-      created_by_name: userData.username,
-      notes: autoNotes
+    const transactions = [];
+
+    // Εγγραφή για Τράπεζα
+    if (Number(paidBank) > 0) {
+      transactions.push({
+        amount: Number(paidBank),
+        type: 'expense',
+        category: 'Προσωπικό',
+        method: 'Τράπεζα',
+        date,
+        employee_id: empId,
+        store_id: userData.store_id,
+        created_by_name: userData.username,
+        notes: `Πληρωμή ${empName} (Τράπεζα) - Ανάλυση: ${breakdownNotes}`
+      });
     }
 
-    const { error } = await supabase.from('transactions').insert([payload])
+    // Εγγραφή για Μετρητά
+    if (Number(paidCash) > 0) {
+      transactions.push({
+        amount: Number(paidCash),
+        type: 'expense',
+        category: 'Προσωπικό',
+        method: 'Μετρητά',
+        date,
+        employee_id: empId,
+        store_id: userData.store_id,
+        created_by_name: userData.username,
+        notes: `Πληρωμή ${empName} (Μετρητά) - Ανάλυση: ${breakdownNotes}`
+      });
+    }
+
+    const { error } = await supabase.from('transactions').insert(transactions)
 
     if (!error) {
       router.push('/employees')
@@ -111,69 +135,60 @@ function PayEmployeeContent() {
             <div style={logoBoxStyle}>💸</div>
             <div>
               <h1 style={{ fontWeight: '800', fontSize: '20px', margin: 0, color: colors.primaryDark }}>Πληρωμή</h1>
-              <p style={{ margin: 0, fontSize: '10px', color: colors.secondaryText, fontWeight: '700', letterSpacing: '0.5px' }}>ΕΚΚΑΘΑΡΙΣΗ ΜΙΣΘΟΔΟΣΙΑΣ</p>
+              <p style={{ margin: 0, fontSize: '10px', color: colors.secondaryText, fontWeight: '700' }}>ΑΝΑΛΥΣΗ ΜΙΣΘΟΔΟΣΙΑΣ</p>
             </div>
           </div>
           <Link href="/employees" style={backBtnStyle}>✕</Link>
         </div>
 
         <div style={formCardStyle}>
-          {/* EMPLOYEE INFO */}
           <div style={infoBoxStyle}>
             <p style={labelStyle}>ΥΠΑΛΛΗΛΟΣ</p>
             <p style={{ margin: 0, fontSize: '18px', fontWeight: '800', color: colors.primaryDark }}>{empName?.toUpperCase()}</p>
           </div>
 
-          {/* ΑΝΑΛΥΣΗ ΠΛΗΡΩΜΗΣ */}
-          <p style={{ ...labelStyle, marginBottom: '15px', color: colors.primaryDark }}>ΑΝΑΛΥΣΗ ΑΜΟΙΒΩΝ (€)</p>
-          
+          {/* SECTION A: ΤΙ ΠΛΗΡΩΝΟΥΜΕ */}
+          <p style={{ ...sectionTitle, color: colors.primaryDark }}>1. ΑΝΑΛΥΣΗ ΑΜΟΙΒΩΝ (€)</p>
           <div style={gridInputs}>
-            <div style={inputGroup}>
-              <label style={subLabel}>ΒΑΣΙΚΟΣ ΜΙΣΘΟΣ</label>
-              <input type="number" inputMode="decimal" value={baseAmount} onChange={e => setBaseAmount(e.target.value)} style={smallInput} placeholder="0.00" />
-            </div>
-            <div style={inputGroup}>
-              <label style={subLabel}>ΥΠΕΡΩΡΙΕΣ</label>
-              <input type="number" inputMode="decimal" value={overtime} onChange={e => setOvertime(e.target.value)} style={smallInput} placeholder="0.00" />
-            </div>
-            <div style={inputGroup}>
-              <label style={subLabel}>BONUS / TIPS</label>
-              <input type="number" inputMode="decimal" value={bonus} onChange={e => setBonus(e.target.value)} style={smallInput} placeholder="0.00" />
-            </div>
-            <div style={inputGroup}>
-              <label style={subLabel}>ΔΩΡΑ (ΧΡΙΣΤ./ΠΑΣΧΑ)</label>
-              <input type="number" inputMode="decimal" value={gift} onChange={e => setGift(e.target.value)} style={smallInput} placeholder="0.00" />
-            </div>
-            <div style={inputGroup}>
-              <label style={subLabel}>ΕΠΙΔΟΜΑΤΑ</label>
-              <input type="number" inputMode="decimal" value={allowance} onChange={e => setAllowance(e.target.value)} style={smallInput} placeholder="0.00" />
+            <div style={inputGroup}><label style={subLabel}>ΒΑΣΙΚΟΣ</label><input type="number" inputMode="decimal" value={baseSalary} onChange={e => setBaseSalary(e.target.value)} style={smallInput} placeholder="0.00" /></div>
+            <div style={inputGroup}><label style={subLabel}>ΥΠΕΡΩΡΙΕΣ</label><input type="number" inputMode="decimal" value={overtime} onChange={e => setOvertime(e.target.value)} style={smallInput} placeholder="0.00" /></div>
+            <div style={inputGroup}><label style={subLabel}>BONUS</label><input type="number" inputMode="decimal" value={bonus} onChange={e => setBonus(e.target.value)} style={smallInput} placeholder="0.00" /></div>
+            <div style={inputGroup}><label style={subLabel}>ΔΩΡΑ</label><input type="number" inputMode="decimal" value={gift} onChange={e => setGift(e.target.value)} style={smallInput} placeholder="0.00" /></div>
+            <div style={inputGroup}><label style={subLabel}>ΕΠΙΔΟΜΑΤΑ</label><input type="number" inputMode="decimal" value={allowance} onChange={e => setAllowance(e.target.value)} style={smallInput} placeholder="0.00" /></div>
+            <div style={totalEarningsBox}>
+              <label style={subLabel}>ΣΥΝΟΛΟ ΑΜΟΙΒΩΝ</label>
+              <p style={{margin:0, fontWeight:'900', color:colors.primaryDark}}>{totalEarnings.toFixed(2)}€</p>
             </div>
           </div>
 
-          {/* ΣΥΝΟΛΟ & ΤΡΟΠΟΣ */}
-          <div style={totalDisplayCard}>
-              <p style={{ margin: 0, fontSize: '11px', fontWeight: '800', color: colors.secondaryText, letterSpacing: '1px' }}>ΣΥΝΟΛΙΚΗ ΠΛΗΡΩΜΗ</p>
-              <h2 style={{ margin: '5px 0 0', fontSize: '36px', fontWeight: '900', color: colors.accentBlue }}>
-                  {totalAmount.toFixed(2)}€
-              </h2>
-          </div>
-
+          {/* SECTION B: ΠΩΣ ΠΛΗΡΩΝΟΥΜΕ */}
+          <p style={{ ...sectionTitle, color: colors.accentBlue, marginTop: '20px' }}>2. ΤΡΟΠΟΣ ΠΛΗΡΩΜΗΣ (€)</p>
           <div style={{ display: 'flex', gap: '12px', marginBottom: '20px' }}>
             <div style={{ flex: 1 }}>
-              <label style={labelStyle}>ΤΡΟΠΟΣ ΠΛΗΡΩΜΗΣ</label>
-              <select value={method} onChange={e => setMethod(e.target.value)} style={selectStyle}>
-                <option value="Μετρητά">💵 Μετρητά</option>
-                <option value="Τράπεζα">🏦 Τράπεζα</option>
-              </select>
+              <label style={subLabel}>🏦 ΤΡΑΠΕΖΑ</label>
+              <input type="number" inputMode="decimal" value={paidBank} onChange={e => setPaidBank(e.target.value)} style={{ ...smallInput, borderColor: colors.accentBlue }} placeholder="0.00" />
             </div>
             <div style={{ flex: 1 }}>
-              <label style={labelStyle}>ΗΜΕΡΟΜΗΝΙΑ</label>
-              <input type="date" value={date} onChange={e => setDate(e.target.value)} style={selectStyle} />
+              <label style={subLabel}>💵 ΜΕΤΡΗΤΑ</label>
+              <input type="number" inputMode="decimal" value={paidCash} onChange={e => setPaidCash(e.target.value)} style={{ ...smallInput, borderColor: colors.accentGreen }} placeholder="0.00" />
             </div>
           </div>
 
-          <button onClick={handlePayment} disabled={loading || totalAmount === 0} style={saveBtnStyle}>
-            {loading ? 'ΓΙΝΕΤΑΙ ΚΑΤΑΧΩΡΗΣΗ...' : 'ΕΠΙΒΕΒΑΙΩΣΗ & ΑΠΟΘΗΚΕΥΣΗ'}
+          {/* VALIDATION INDICATOR */}
+          <div style={{ ...statusCard, backgroundColor: difference === 0 && totalEarnings > 0 ? '#f0fdf4' : '#fff1f2' }}>
+            <p style={{ margin: 0, fontSize: '11px', fontWeight: '800', color: colors.secondaryText }}>ΚΑΤΑΣΤΑΣΗ ΠΛΗΡΩΜΗΣ</p>
+            <p style={{ margin: '4px 0 0', fontWeight: '900', color: difference === 0 && totalEarnings > 0 ? colors.accentGreen : colors.accentRed }}>
+              {difference === 0 && totalEarnings > 0 ? '✓ ΤΑ ΠΟΣΑ ΣΥΜΦΩΝΟΥΝ' : `ΥΠΟΛΟΙΠΟ ΓΙΑ ΚΑΤΑΝΟΜΗ: ${difference.toFixed(2)}€`}
+            </p>
+          </div>
+
+          <div style={{ marginBottom: '20px' }}>
+            <label style={labelStyle}>ΗΜΕΡΟΜΗΝΙΑ</label>
+            <input type="date" value={date} onChange={e => setDate(e.target.value)} style={selectStyle} />
+          </div>
+
+          <button onClick={handlePayment} disabled={loading || totalEarnings === 0 || Math.abs(difference) > 0.01} style={{ ...saveBtnStyle, opacity: (totalEarnings === 0 || Math.abs(difference) > 0.01) ? 0.5 : 1 }}>
+            {loading ? 'ΚΑΤΑΧΩΡΗΣΗ...' : 'ΟΛΟΚΛΗΡΩΣΗ ΠΛΗΡΩΜΗΣ'}
           </button>
         </div>
       </div>
@@ -188,12 +203,14 @@ const backBtnStyle: any = { textDecoration: 'none', color: colors.secondaryText,
 const formCardStyle: any = { backgroundColor: colors.white, padding: '24px', borderRadius: '24px', border: `1px solid ${colors.border}`, boxShadow: '0 4px 20px rgba(0,0,0,0.03)' };
 const infoBoxStyle: any = { padding: '16px', backgroundColor: colors.bgLight, borderRadius: '16px', marginBottom: '25px', border: `1px solid ${colors.border}`, textAlign: 'center' as any };
 const labelStyle: any = { fontSize: '10px', fontWeight: '800', color: colors.secondaryText, marginBottom: '8px', display: 'block', letterSpacing: '0.5px' };
+const sectionTitle: any = { fontSize: '11px', fontWeight: '900', marginBottom: '15px', letterSpacing: '0.5px' };
 const subLabel: any = { fontSize: '9px', fontWeight: '700', color: colors.secondaryText, marginBottom: '4px', display: 'block' };
-const gridInputs: any = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '25px' };
+const gridInputs: any = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '10px' };
 const inputGroup: any = { display: 'flex', flexDirection: 'column' };
 const smallInput: any = { width: '100%', padding: '12px', borderRadius: '10px', border: `1px solid ${colors.border}`, fontSize: '14px', fontWeight: '700', backgroundColor: colors.bgLight, outline: 'none', color: colors.primaryDark };
+const totalEarningsBox: any = { ...inputGroup, backgroundColor: '#f1f5f9', padding: '10px', borderRadius: '10px', justifyContent: 'center', alignItems: 'center', border: '1px dashed #cbd5e1' };
+const statusCard: any = { padding: '15px', borderRadius: '16px', textAlign: 'center' as any, marginBottom: '25px', border: '1px solid #e2e8f0' };
 const selectStyle: any = { width: '100%', padding: '14px', borderRadius: '12px', border: `1px solid ${colors.border}`, fontSize: '14px', fontWeight: '700', backgroundColor: colors.bgLight, outline: 'none', color: colors.primaryDark };
-const totalDisplayCard: any = { padding: '25px 20px', backgroundColor: '#eff6ff', borderRadius: '20px', textAlign: 'center', marginBottom: '25px', border: '1px solid #bfdbfe' };
 const saveBtnStyle: any = { width: '100%', padding: '18px', backgroundColor: colors.primaryDark, color: 'white', border: 'none', borderRadius: '16px', fontWeight: '800', fontSize: '15px', cursor: 'pointer', boxShadow: '0 10px 20px rgba(30, 41, 59, 0.2)' };
 
 export default function PayEmployeePage() {
