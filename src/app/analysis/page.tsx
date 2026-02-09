@@ -17,6 +17,7 @@ function AnalysisContent() {
   const [transactions, setTransactions] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [view, setView] = useState('income') 
+  // 1. ΠΡΟΕΠΙΛΟΓΗ: ΜΗΝΑΣ
   const [period, setPeriod] = useState('month') 
   const [selectedDate, setSelectedDate] = useState(format(new Date(), 'yyyy-MM-dd'))
 
@@ -39,9 +40,10 @@ function AnalysisContent() {
   useEffect(() => { loadData() }, [])
 
   async function handleDelete(id: string) {
-    if (!confirm('Οριστική διαγραφή;')) return;
+    if (!confirm('Οριστική διαγραφή αυτής της συναλλαγής;')) return;
     const { error } = await supabase.from('transactions').delete().eq('id', id);
     if (!error) loadData();
+    else alert(error.message);
   }
 
   // --- ΥΠΟΛΟΓΙΣΜΟΣ ΣΤΑΤΙΣΤΙΚΩΝ ---
@@ -66,24 +68,29 @@ function AnalysisContent() {
     const currentData = transactions.filter(t => isWithinInterval(parseISO(t.date), currentRange))
     const prevData = transactions.filter(t => isWithinInterval(parseISO(t.date), lastYearRange))
 
-    // --- ΛΟΓΙΚΗ ΕΣΟΔΩΝ (ΑΓΝΟΟΥΜΕ ΠΙΣΤΩΣΕΙΣ) ---
+    // --- ΛΟΓΙΚΗ ΕΣΟΔΩΝ (ΠΟΣΟΣΤΑ) ---
     const incomeTransactions = currentData.filter(t => t.type === 'income');
     const incomeTotal = incomeTransactions.reduce((acc, t) => acc + Number(t.amount), 0);
     
-    const incomeCash = incomeTransactions.filter(t => t.method === 'Μετρητά').reduce((acc, t) => acc + Number(t.amount), 0);
-    const incomeCard = incomeTransactions.filter(t => t.method === 'Κάρτα' || t.method === 'Τράπεζα').reduce((acc, t) => acc + Number(t.amount), 0);
-    const noReceipt = incomeTransactions.filter(t => t.category === 'Χωρίς Απόδειξη').reduce((acc, t) => acc + Number(t.amount), 0);
+    // Fuzzy matching για μεθόδους και κατηγορίες εσόδων
+    const incomeCash = incomeTransactions.filter(t => t.method?.includes('Μετρητά')).reduce((acc, t) => acc + Number(t.amount), 0);
+    const incomeCard = incomeTransactions.filter(t => t.method?.includes('Κάρτα') || t.method?.includes('Τράπεζα') || t.method?.includes('POS')).reduce((acc, t) => acc + Number(t.amount), 0);
+    
+    const noReceipt = incomeTransactions.filter(t => 
+        t.category?.includes('Σήμανση') || 
+        t.category?.includes('Απόδειξη') || 
+        t.notes?.toUpperCase().includes('ΧΩΡΙΣ')
+    ).reduce((acc, t) => acc + Number(t.amount), 0);
 
-    // --- ΛΟΓΙΚΗ ΕΞΟΔΩΝ (ΠΕΡΙΛΑΜΒΑΝΟΥΜΕ ΠΙΣΤΩΣΕΙΣ) ---
+    // --- ΛΟΓΙΚΗ ΕΞΟΔΩΝ (ΠΛΗΡΩΜΕΝΑ VS ΠΙΣΤΩΣΕΙΣ) ---
     const expenseTransactions = currentData.filter(t => t.type === 'expense' || t.category === 'pocket');
+    // Το σύνολο εξόδων περιλαμβάνει τα πάντα (εκτός από pocket)
     const expenseTotal = expenseTransactions.filter(t => t.category !== 'pocket').reduce((acc, t) => acc + Number(t.amount), 0);
     const currentPaidTotal = expenseTransactions.filter(t => t.category !== 'pocket' && !t.is_credit).reduce((acc, t) => acc + Number(t.amount), 0);
     const currentCreditTotal = expenseTransactions.filter(t => t.is_credit).reduce((acc, t) => acc + Number(t.amount), 0);
 
-    // Επιλογή συνόλου βάσει View
     const currentTotalValue = view === 'income' ? incomeTotal : expenseTotal;
 
-    // Περσινή Σύγκριση
     const prevTotal = prevData
         .filter(t => (view === 'income' ? t.type === 'income' : (t.type === 'expense' || t.category === 'pocket')))
         .filter(t => t.category !== 'pocket')
@@ -99,18 +106,6 @@ function AnalysisContent() {
         currentPaidTotal, currentCreditTotal 
     }
   }, [transactions, period, selectedDate, view])
-
-  const chartData = useMemo(() => {
-    if (period !== 'month') return []
-    const days = eachDayOfInterval({ start: startOfMonth(parseISO(selectedDate)), end: endOfMonth(parseISO(selectedDate)) })
-    return days.map(day => {
-      const dayStr = format(day, 'yyyy-MM-dd')
-      const dayTotal = transactions
-        .filter(t => t.date.split('T')[0] === dayStr && (view === 'income' ? t.type === 'income' : t.type === 'expense'))
-        .reduce((sum, t) => sum + Math.abs(Number(t.amount)), 0)
-      return { name: format(day, 'dd'), amount: dayTotal }
-    })
-  }, [transactions, view, period, selectedDate])
 
   return (
     <div style={{ maxWidth: '500px', margin: '0 auto', fontFamily: 'sans-serif', paddingBottom: '100px' }}>
@@ -150,7 +145,7 @@ function AnalysisContent() {
         <p style={labelMicro}>{view === 'income' ? 'ΚΑΘΑΡΟΣ ΤΖΙΡΟΣ' : 'ΣΥΝΟΛΙΚΕΣ ΑΓΟΡΕΣ & ΠΙΣΤΩΣΕΙΣ'}</p>
         <h2 style={{ fontSize: '38px', fontWeight: '900', margin: '5px 0' }}>{stats.currentTotal.toLocaleString('el-GR')}€</h2>
         
-        {/* ΑΝΑΛΥΣΗ ΕΣΟΔΩΝ (ΠΟΣΟΣΤΑ) */}
+        {/* ΑΝΑΛΥΣΗ ΕΣΟΔΩΝ (ΠΟΣΟΣΤΑ %) */}
         {view === 'income' && stats.incomeTotal > 0 && (
             <div style={percGrid}>
                 <div style={percBox}>
@@ -162,13 +157,13 @@ function AnalysisContent() {
                     <span style={percValue}>{((stats.incomeCard / stats.incomeTotal) * 100).toFixed(0)}%</span>
                 </div>
                 <div style={percBox}>
-                    <span style={percLabel}>ΧΩΡΙΣ ΑΠΟΔ.</span>
+                    <span style={percLabel}>ΧΩΡΙΣ ΣΗΜ.</span>
                     <span style={percValue}>{((stats.noReceipt / stats.incomeTotal) * 100).toFixed(0)}%</span>
                 </div>
             </div>
         )}
 
-        {/* ΑΝΑΛΥΣΗ ΕΞΟΔΩΝ */}
+        {/* ΑΝΑΛΥΣΗ ΕΞΟΔΩΝ (ΠΛΗΡΩΜΕΝΑ VS ΠΙΣΤΩΣΕΙΣ) */}
         {view === 'expenses' && (
             <div style={{ display: 'flex', justifyContent: 'center', gap: '15px', marginTop: '10px' }}>
                 <div style={{ fontSize: '10px', fontWeight: '800', opacity: 0.8 }}>ΠΛΗΡΩΜΕΝΑ: {stats.currentPaidTotal.toFixed(0)}€</div>
@@ -181,31 +176,14 @@ function AnalysisContent() {
         </div>
       </div>
 
-      {/* GRAPH */}
-      {period === 'month' && chartData.length > 0 && (
-        <div style={chartCard}>
-          <p style={chartTitle}>ΔΙΑΚΥΜΑΝΣΗ ΜΗΝΑ (€)</p>
-          <div style={{ width: '100%', height: 160 }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                <XAxis dataKey="name" fontSize={10} axisLine={false} tickLine={false} tick={{fill:'#94a3b8'}} />
-                <Tooltip contentStyle={{borderRadius:'16px', border:'none'}} />
-                <Area type="monotone" dataKey="amount" stroke={view === 'income' ? '#10b981' : '#ef4444'} strokeWidth={3} fill={view === 'income' ? '#dcfce7' : '#fee2e2'} />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-      )}
-
-      {/* LIST WITH DELETE */}
+      {/* ANALYTICAL LIST */}
       <div style={listWrapper}>
-        <p style={{ fontSize: '10px', fontWeight: '900', color: '#94a3b8', marginBottom: '15px', textTransform: 'uppercase' }}>Αναλυτικές Κινήσεις</p>
+        <p style={{ fontSize: '10px', fontWeight: '900', color: '#94a3b8', marginBottom: '15px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Αναλυτικές Κινήσεις</p>
         {stats.currentViewData.map(t => (
           <div key={t.id} style={rowStyle}>
             <div style={{ flex: 1 }}>
               <p style={{ fontWeight: '800', fontSize: '14px', margin: 0, color: '#1e293b' }}>
-                {t.suppliers?.name || t.notes || t.category.toUpperCase()}
+                {t.suppliers?.name || t.notes || t.category?.toUpperCase() || "ΕΣΟΔΟ"}
                 {t.is_credit && view === 'expenses' && <span style={creditBadge}>ΠΙΣΤΩΣΗ</span>}
               </p>
               <span style={{ fontSize: '11px', color: '#94a3b8', fontWeight: '700' }}>
@@ -231,17 +209,15 @@ const backBtnStyle: any = { textDecoration: 'none', color: '#94a3b8', fontSize: 
 const tabContainer: any = { display: 'flex', backgroundColor: '#f1f5f9', borderRadius: '18px', padding: '5px', marginBottom: '20px' };
 const tabBtn: any = { flex: 1, border: 'none', padding: '12px', borderRadius: '14px', fontWeight: '900', fontSize: '12px', cursor: 'pointer' };
 const filterBar: any = { display: 'flex', gap: '10px', marginBottom: '15px' };
-const selectStyle: any = { flex: 1, padding: '12px', borderRadius: '15px', border: '1px solid #f1f5f9', fontWeight: '800', outline: 'none' };
+const selectStyle: any = { flex: 1, padding: '12px', borderRadius: '15px', border: '1px solid #f1f5f9', fontWeight: '800', outline: 'none', backgroundColor: 'white' };
 const calendarCard: any = { position: 'relative', width: '50px', backgroundColor: 'white', borderRadius: '15px', border: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center' };
 const dateInput: any = { position: 'absolute', opacity: 0, width: '100%', height: '100%', cursor: 'pointer' };
-const heroCard: any = { padding: '30px 20px', borderRadius: '32px', color: 'white', textAlign: 'center', marginBottom: '20px' };
+const heroCard: any = { padding: '30px 20px', borderRadius: '32px', color: 'white', textAlign: 'center', marginBottom: '20px', boxShadow: '0 8px 20px rgba(0,0,0,0.1)' };
 const labelMicro: any = { fontSize: '10px', fontWeight: '900', opacity: 0.5, letterSpacing: '1px' };
 const percGrid: any = { display: 'flex', justifyContent: 'center', gap: '20px', marginTop: '20px', borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '15px' };
 const percBox: any = { display: 'flex', flexDirection: 'column', gap: '2px' };
 const percLabel: any = { fontSize: '8px', fontWeight: '900', opacity: 0.6 };
 const percValue: any = { fontSize: '14px', fontWeight: '900' };
-const chartCard: any = { backgroundColor: 'white', padding: '20px', borderRadius: '28px', border: '1px solid #f1f5f9', marginBottom: '20px' };
-const chartTitle: any = { fontSize: '9px', fontWeight: '900', color: '#94a3b8', textAlign: 'center', marginBottom: '15px' };
 const listWrapper: any = { backgroundColor: 'white', padding: '22px', borderRadius: '28px', border: '1px solid #f1f5f9' };
 const rowStyle: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px 0', borderBottom: '1px solid #f8fafc' };
 const creditBadge: any = { fontSize: '8px', backgroundColor: '#fee2e2', color: '#ef4444', padding: '2px 6px', borderRadius: '6px', marginLeft: '8px', fontWeight: '900' };
