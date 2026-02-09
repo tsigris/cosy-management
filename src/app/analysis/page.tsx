@@ -19,7 +19,6 @@ function AnalysisContent() {
   const [view, setView] = useState('income') 
   const [period, setPeriod] = useState('month') 
   const [selectedDate, setSelectedDate] = useState(format(new Date(), 'yyyy-MM-dd'))
-  const [isZExpanded, setIsZExpanded] = useState(false)
 
   async function loadData() {
     try {
@@ -49,6 +48,7 @@ function AnalysisContent() {
   const stats = useMemo(() => {
     const now = parseISO(selectedDate)
     const lastYear = subYears(now, 1)
+    
     let currentRange = { start: startOfMonth(now), end: endOfMonth(now) }
     let lastYearRange = { start: startOfMonth(lastYear), end: endOfMonth(lastYear) }
 
@@ -63,40 +63,39 @@ function AnalysisContent() {
         lastYearRange = { start: startOfYear(lastYear), end: endOfYear(lastYear) };
     }
 
-    const currentData = transactions.filter(t => {
-        const d = parseISO(t.date)
-        if (period === 'custom_day') return t.date.split('T')[0] === selectedDate
-        return isWithinInterval(d, currentRange)
-    })
+    const currentData = transactions.filter(t => isWithinInterval(parseISO(t.date), currentRange))
+    const prevData = transactions.filter(t => isWithinInterval(parseISO(t.date), lastYearRange))
 
-    const prevData = transactions.filter(t => {
-        const d = parseISO(t.date)
-        if (period === 'custom_day') return t.date.split('T')[0] === format(lastYear, 'yyyy-MM-dd')
-        return isWithinInterval(d, lastYearRange)
-    })
+    // --- ΛΟΓΙΚΗ ΕΣΟΔΩΝ (ΑΓΝΟΟΥΜΕ ΠΙΣΤΩΣΕΙΣ) ---
+    const incomeTransactions = currentData.filter(t => t.type === 'income');
+    const incomeTotal = incomeTransactions.reduce((acc, t) => acc + Number(t.amount), 0);
+    
+    const incomeCash = incomeTransactions.filter(t => t.method === 'Μετρητά').reduce((acc, t) => acc + Number(t.amount), 0);
+    const incomeCard = incomeTransactions.filter(t => t.method === 'Κάρτα' || t.method === 'Τράπεζα').reduce((acc, t) => acc + Number(t.amount), 0);
+    const noReceipt = incomeTransactions.filter(t => t.category === 'Χωρίς Απόδειξη').reduce((acc, t) => acc + Number(t.amount), 0);
 
-    const currentViewData = currentData.filter(t => (view === 'income' ? t.type === 'income' : (t.type === 'expense' || t.category === 'pocket')))
-    const prevViewData = prevData.filter(t => (view === 'income' ? t.type === 'income' : (t.type === 'expense' || t.category === 'pocket')))
+    // --- ΛΟΓΙΚΗ ΕΞΟΔΩΝ (ΠΕΡΙΛΑΜΒΑΝΟΥΜΕ ΠΙΣΤΩΣΕΙΣ) ---
+    const expenseTransactions = currentData.filter(t => t.type === 'expense' || t.category === 'pocket');
+    const expenseTotal = expenseTransactions.filter(t => t.category !== 'pocket').reduce((acc, t) => acc + Number(t.amount), 0);
+    const currentPaidTotal = expenseTransactions.filter(t => t.category !== 'pocket' && !t.is_credit).reduce((acc, t) => acc + Number(t.amount), 0);
+    const currentCreditTotal = expenseTransactions.filter(t => t.is_credit).reduce((acc, t) => acc + Number(t.amount), 0);
 
-    const currentTotal = currentViewData.filter(t => t.category !== 'pocket').reduce((acc, t) => acc + Number(t.amount), 0)
-    const prevTotal = prevViewData.filter(t => t.category !== 'pocket').reduce((acc, t) => acc + Number(t.amount), 0)
+    // Επιλογή συνόλου βάσει View
+    const currentTotalValue = view === 'income' ? incomeTotal : expenseTotal;
 
-    // ΑΝΑΛΥΣΗ ΕΣΟΔΩΝ (Μετρητά, Κάρτα, Χωρίς Απόδειξη)
-    const incData = currentViewData.filter(t => t.type === 'income');
-    const incomeCash = incData.filter(t => t.method === 'Μετρητά').reduce((acc, t) => acc + Number(t.amount), 0);
-    const incomeCard = incData.filter(t => t.method !== 'Μετρητά').reduce((acc, t) => acc + Number(t.amount), 0);
-    const noReceipt = incData.filter(t => t.category === 'Χωρίς Απόδειξη').reduce((acc, t) => acc + Number(t.amount), 0);
+    // Περσινή Σύγκριση
+    const prevTotal = prevData
+        .filter(t => (view === 'income' ? t.type === 'income' : (t.type === 'expense' || t.category === 'pocket')))
+        .filter(t => t.category !== 'pocket')
+        .reduce((acc, t) => acc + Number(t.amount), 0);
 
-    // ΑΝΑΛΥΣΗ ΕΞΟΔΩΝ
-    const currentPaidTotal = currentViewData.filter(t => t.category !== 'pocket' && !t.is_credit).reduce((acc, t) => acc + Number(t.amount), 0)
-    const currentCreditTotal = currentViewData.filter(t => t.is_credit).reduce((acc, t) => acc + Number(t.amount), 0)
-
-    const diff = currentTotal - prevTotal
-    const percent = prevTotal !== 0 ? (diff / prevTotal) * 100 : 0
+    const diff = currentTotalValue - prevTotal;
+    const percent = prevTotal !== 0 ? (diff / prevTotal) * 100 : 0;
 
     return { 
-        currentTotal, prevTotal, percent, currentViewData, 
-        incomeCash, incomeCard, noReceipt,
+        currentTotal: currentTotalValue, prevTotal, percent, 
+        currentViewData: currentData.filter(t => (view === 'income' ? t.type === 'income' : (t.type === 'expense' || t.category === 'pocket'))),
+        incomeTotal, incomeCash, incomeCard, noReceipt,
         currentPaidTotal, currentCreditTotal 
     }
   }, [transactions, period, selectedDate, view])
@@ -128,13 +127,11 @@ function AnalysisContent() {
         <Link href="/" style={backBtnStyle}>✕</Link>
       </div>
 
-      {/* TABS */}
       <div style={tabContainer}>
         <button onClick={() => setView('income')} style={{...tabBtn, backgroundColor: view === 'income' ? '#10b981' : 'transparent', color: view === 'income' ? 'white' : '#64748b'}}>ΕΣΟΔΑ</button>
         <button onClick={() => setView('expenses')} style={{...tabBtn, backgroundColor: view === 'expenses' ? '#ef4444' : 'transparent', color: view === 'expenses' ? 'white' : '#64748b'}}>ΕΞΟΔΑ</button>
       </div>
 
-      {/* FILTER BAR */}
       <div style={filterBar}>
         <select value={period} onChange={e => setPeriod(e.target.value)} style={selectStyle}>
           <option value="month">Προβολή: Μήνας</option>
@@ -148,25 +145,25 @@ function AnalysisContent() {
         </div>
       </div>
 
-      {/* HERO CARD - ΑΝΑΛΥΣΗ ΜΕ ΠΟΣΟΣΤΑ */}
+      {/* HERO CARD */}
       <div style={{...heroCard, backgroundColor: view === 'income' ? '#0f172a' : '#450a0a'}}>
-        <p style={labelMicro}>{view === 'income' ? 'ΣΥΝΟΛΙΚΟΣ ΤΖΙΡΟΣ' : 'ΣΥΝΟΛΙΚΑ ΕΞΟΔΑ'}</p>
+        <p style={labelMicro}>{view === 'income' ? 'ΚΑΘΑΡΟΣ ΤΖΙΡΟΣ' : 'ΣΥΝΟΛΙΚΕΣ ΑΓΟΡΕΣ & ΠΙΣΤΩΣΕΙΣ'}</p>
         <h2 style={{ fontSize: '38px', fontWeight: '900', margin: '5px 0' }}>{stats.currentTotal.toLocaleString('el-GR')}€</h2>
         
-        {/* ΕΔΩ ΜΠΑΙΝΕΙ Η ΑΝΑΛΥΣΗ ΕΣΟΔΩΝ ΜΕ ΠΟΣΟΣΤΑ */}
-        {view === 'income' && stats.currentTotal > 0 && (
+        {/* ΑΝΑΛΥΣΗ ΕΣΟΔΩΝ (ΠΟΣΟΣΤΑ) */}
+        {view === 'income' && stats.incomeTotal > 0 && (
             <div style={percGrid}>
                 <div style={percBox}>
                     <span style={percLabel}>ΜΕΤΡΗΤΑ</span>
-                    <span style={percValue}>{((stats.incomeCash / stats.currentTotal) * 100).toFixed(0)}%</span>
+                    <span style={percValue}>{((stats.incomeCash / stats.incomeTotal) * 100).toFixed(0)}%</span>
                 </div>
                 <div style={percBox}>
                     <span style={percLabel}>ΚΑΡΤΑ</span>
-                    <span style={percValue}>{((stats.incomeCard / stats.currentTotal) * 100).toFixed(0)}%</span>
+                    <span style={percValue}>{((stats.incomeCard / stats.incomeTotal) * 100).toFixed(0)}%</span>
                 </div>
                 <div style={percBox}>
                     <span style={percLabel}>ΧΩΡΙΣ ΑΠΟΔ.</span>
-                    <span style={percValue}>{((stats.noReceipt / stats.currentTotal) * 100).toFixed(0)}%</span>
+                    <span style={percValue}>{((stats.noReceipt / stats.incomeTotal) * 100).toFixed(0)}%</span>
                 </div>
             </div>
         )}
@@ -209,7 +206,7 @@ function AnalysisContent() {
             <div style={{ flex: 1 }}>
               <p style={{ fontWeight: '800', fontSize: '14px', margin: 0, color: '#1e293b' }}>
                 {t.suppliers?.name || t.notes || t.category.toUpperCase()}
-                {t.is_credit && <span style={creditBadge}>ΠΙΣΤΩΣΗ</span>}
+                {t.is_credit && view === 'expenses' && <span style={creditBadge}>ΠΙΣΤΩΣΗ</span>}
               </p>
               <span style={{ fontSize: '11px', color: '#94a3b8', fontWeight: '700' }}>
                 {format(parseISO(t.date), 'dd MMM', { locale: el })} • {t.method}
