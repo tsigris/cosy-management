@@ -8,13 +8,13 @@ import Link from 'next/link'
 
 // --- ΕΠΑΓΓΕΛΜΑΤΙΚΗ ΠΑΛΕΤΑ ΧΡΩΜΑΤΩΝ ---
 const colors = {
-  primaryDark: '#1e293b', // Slate 800
-  secondaryText: '#64748b', // Slate 500
-  accentBlue: '#2563eb',  // Blue 600
-  accentGreen: '#059669', // Emerald 600
-  accentRed: '#dc2626',   // Red 600
-  bgLight: '#f8fafc',     // Slate 50
-  border: '#e2e8f0',      // Slate 200
+  primaryDark: '#1e293b',
+  secondaryText: '#64748b',
+  accentBlue: '#2563eb',
+  accentGreen: '#059669',
+  accentRed: '#dc2626',
+  bgLight: '#f8fafc',
+  border: '#e2e8f0',
   white: '#ffffff'
 };
 
@@ -62,19 +62,6 @@ function EmployeesContent() {
     return () => document.removeEventListener('visibilitychange', handleWakeUp)
   }, [fetchInitialData])
 
-  const getDaysUntilPayment = (startDateStr: string) => {
-    if (!startDateStr) return null
-    const today = new Date()
-    const start = new Date(startDateStr)
-    const payDay = start.getDate()
-    let nextPayDate = new Date(today.getFullYear(), today.getMonth(), payDay)
-    today.setHours(0, 0, 0, 0)
-    nextPayDate.setHours(0, 0, 0, 0)
-    if (today >= nextPayDate) nextPayDate = new Date(today.getFullYear(), today.getMonth() + 1, payDay)
-    const diffTime = nextPayDate.getTime() - today.getTime()
-    return Math.ceil(diffTime / (1000 * 60 * 60 * 24))
-  }
-
   const getMonthlyPaid = (id: string) => {
     const now = new Date()
     return transactions
@@ -82,11 +69,23 @@ function EmployeesContent() {
       .reduce((acc, t) => acc + (Number(t.amount) || 0), 0)
   }
 
+  const getDaysUntilPayment = (startDateStr: string) => {
+    if (!startDateStr) return null
+    const today = new Date()
+    const start = new Date(startDateStr)
+    const payDay = start.getDate()
+    let nextPayDate = new Date(today.getFullYear(), today.getMonth(), payDay)
+    today.setHours(0, 0, 0, 0); nextPayDate.setHours(0, 0, 0, 0);
+    if (today >= nextPayDate) nextPayDate = new Date(today.getFullYear(), today.getMonth() + 1, payDay)
+    const diffTime = nextPayDate.getTime() - today.getTime()
+    return Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+  }
+
   async function handleSave() {
     // ΕΛΕΓΧΟΣ ΥΠΟΧΡΕΩΤΙΚΩΝ ΠΕΔΙΩΝ
     if (!formData.full_name.trim()) return alert('Το όνομα είναι υποχρεωτικό!')
     if (!formData.monthly_salary || Number(formData.monthly_salary) <= 0) {
-      return alert('Ο μισθός είναι υποχρεωτικός και πρέπει να είναι μεγαλύτερος από 0!')
+      return alert('Ο μισθός είναι υποχρεωτικός για να λειτουργεί σωστά η αυτόματη πληρωμή!')
     }
 
     setLoading(true)
@@ -96,8 +95,8 @@ function EmployeesContent() {
       position: formData.position.trim() || null,
       amka: formData.amka.trim() || null,
       iban: formData.iban.trim() || null,
-      salary: Number(formData.monthly_salary), // Αποθήκευση ως salary (συμβατό με pay-employee)
-      monthly_salary: Number(formData.monthly_salary), // Διατήρηση monthly_salary για συμβατότητα
+      salary: Number(formData.monthly_salary), // Αποθήκευση και στα δύο πεδία για ασφάλεια
+      monthly_salary: Number(formData.monthly_salary),
       start_date: formData.start_date,
       store_id: storeId
     }
@@ -144,12 +143,12 @@ function EmployeesContent() {
         {isAdding && (
           <div style={{ ...formCard, borderColor: editingId ? '#f59e0b' : colors.primaryDark }}>
             <label style={labelStyle}>Ονοματεπώνυμο *</label>
-            <input value={formData.full_name} onChange={e => setFormData({...formData, full_name: e.target.value})} style={inputStyle} placeholder="π.χ. Ιωάννης Παπαδόπουλος" />
+            <input value={formData.full_name} onChange={e => setFormData({...formData, full_name: e.target.value})} style={inputStyle} placeholder="π.χ. Αλέξια Παππά" />
             
             <div style={{ display: 'flex', gap: '12px', marginTop: '16px' }}>
               <div style={{ flex: 1 }}>
                 <label style={labelStyle}>Μισθός (€) *</label>
-                <input type="number" inputMode="decimal" value={formData.monthly_salary} onChange={e => setFormData({...formData, monthly_salary: e.target.value})} style={{...inputStyle, border: '2px solid #cbd5e1'}} placeholder="0.00" />
+                <input type="number" inputMode="decimal" value={formData.monthly_salary} onChange={e => setFormData({...formData, monthly_salary: e.target.value})} style={{...inputStyle, border: '2px solid #cbd5e1'}} placeholder="π.χ. 1500" />
               </div>
               <div style={{ flex: 1 }}>
                 <label style={labelStyle}>Ημ. Πληρωμής</label>
@@ -158,15 +157,15 @@ function EmployeesContent() {
             </div>
 
             <div style={{ display: 'flex', gap: '12px', marginTop: '16px' }}>
-              <div style={{ flex: 1 }}><label style={labelStyle}>ΑΜΚΑ</label><input value={formData.amka} onChange={e => setFormData({...formData, amka: e.target.value})} style={inputStyle} placeholder="1122..." /></div>
-              <div style={{ flex: 1 }}><label style={labelStyle}>Θέση</label><input value={formData.position} onChange={e => setFormData({...formData, position: e.target.value})} style={inputStyle} placeholder="π.χ. Barista" /></div>
+              <div style={{ flex: 1 }}><label style={labelStyle}>ΑΜΚΑ</label><input value={formData.amka} onChange={e => setFormData({...formData, amka: e.target.value})} style={inputStyle} /></div>
+              <div style={{ flex: 1 }}><label style={labelStyle}>Θέση</label><input value={formData.position} onChange={e => setFormData({...formData, position: e.target.value})} style={inputStyle} placeholder="π.χ. Service" /></div>
             </div>
 
             <label style={{...labelStyle, marginTop: '16px'}}>IBAN Λογαριασμού</label>
             <input value={formData.iban} onChange={e => setFormData({...formData, iban: e.target.value})} style={inputStyle} placeholder="GR..." />
 
             <button onClick={handleSave} disabled={loading} style={{...saveBtnStyle, backgroundColor: editingId ? '#f59e0b' : colors.primaryDark}}>
-              {loading ? 'ΓΙΝΕΤΑΙ ΑΠΟΘΗΚΕΥΣΗ...' : (editingId ? 'ΕΝΗΜΕΡΩΣΗ ΣΤΟΙΧΕΙΩΝ' : 'ΠΡΟΣΘΗΚΗ ΥΠΑΛΛΗΛΟΥ')}
+              {loading ? 'ΓΙΝΕΤΑΙ ΑΠΟΘΗΚΕΥΣΗ...' : (editingId ? 'ΕΝΗΜΕΡΩΣΗ ΣΤΟΙΧΕΙΩΝ' : 'ΔΗΜΙΟΥΡΓΙΑ ΥΠΑΛΛΗΛΟΥ')}
             </button>
           </div>
         )}
