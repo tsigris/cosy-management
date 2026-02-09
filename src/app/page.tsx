@@ -10,10 +10,9 @@ function DashboardContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
 
-  // 1. ΣΩΣΤΟΣ ΥΠΟΛΟΓΙΣΜΟΣ ΤΟΠΙΚΗΣ ΗΜΕΡΟΜΗΝΙΑΣ (Business Day - Αλλαγή στις 07:00)
+  // 1. ΥΠΟΛΟΓΙΣΜΟΣ ΕΠΙΧΕΙΡΗΜΑΤΙΚΗΣ ΗΜΕΡΟΜΗΝΙΑΣ (Αλλαγή στις 07:00 τοπική ώρα)
   const getBusinessDate = () => {
     const now = new Date()
-    // Αν είναι πριν τις 07:00 το πρωί τοπική ώρα, είμαστε στην προηγούμενη μέρα
     if (now.getHours() < 7) {
       now.setDate(now.getDate() - 1)
     }
@@ -41,36 +40,30 @@ function DashboardContent() {
     can_view_history: false
   })
 
-  // Μορφοποίηση ώρας (π.μ. / μ.μ.)
   const formatTime = (dateString: string) => {
     try {
       return new Date(dateString).toLocaleTimeString('el-GR', {
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12: true
+        hour: '2-digit', minute: '2-digit', hour12: true
       })
     } catch (e) { return '--:--' }
   }
 
-  // 2. ΛΕΙΤΟΥΡΓΙΑ WAKE UP & ΑΥΤΟΜΑΤΗ ΑΛΛΑΓΗ ΗΜΕΡΑΣ (Για Samsung & iPhone)
+  // 2. ΛΕΙΤΟΥΡΓΙΑ WAKE UP & AUTO-REFRESH
   useEffect(() => {
     const handleCheckDayChange = () => {
       const currentBD = getBusinessDate()
       if (currentBD !== businessToday) {
         setBusinessToday(currentBD)
-        // Αν δεν υπάρχει manual ημερομηνία στο URL, κάνουμε πλήρες reload
         if (!searchParams.get('date')) {
           window.location.reload()
         }
       }
     }
 
-    // Έλεγχος όταν ανοίγεις το κινητό (Wake up)
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'visible') handleCheckDayChange()
     })
 
-    // Έλεγχος κάθε 30 δευτερόλεπτα
     const timer = setInterval(handleCheckDayChange, 30000)
 
     return () => {
@@ -111,7 +104,7 @@ function DashboardContent() {
     } catch (err) { 
       console.error(err) 
     } finally { 
-      setLoading(false) // Εξασφαλισμένο τέλος του loading
+      setLoading(false) 
     }
   }, [selectedDate]);
 
@@ -154,7 +147,7 @@ function DashboardContent() {
 
   const handleDelete = async (id: string) => {
     if (!isAdmin) return;
-    if (confirm('Οριστική διαγραφή;')) {
+    if (confirm('Οριστική διαγραφή αυτής της κίνησης;')) {
       await supabase.from('transactions').delete().eq('id', id)
     }
   }
@@ -200,11 +193,11 @@ function DashboardContent() {
           </div>
         </div>
 
-        {/* DATE SELECTOR */}
+        {/* DATE SELECTOR - ΠΑΝΤΑ Η ΗΜΕΡΟΜΗΝΙΑ */}
         <div style={dateBarStyle}>
           <button onClick={() => shiftDate(-1)} style={arrowStyle}>←</button>
           <div style={{ flex: 1, textAlign: 'center', fontWeight: '900', color: '#0f172a', fontSize: '15px' }}>
-            {selectedDate === businessToday ? 'ΒΑΡΔΙΑ ΣΗΜΕΡΑ' : new Date(selectedDate).toLocaleDateString('el-GR', { day: 'numeric', month: 'short' }).toUpperCase()}
+            {new Date(selectedDate).toLocaleDateString('el-GR', { day: 'numeric', month: 'short' }).toUpperCase()}
           </div>
           <button onClick={() => shiftDate(1)} style={arrowStyle}>→</button>
         </div>
@@ -255,27 +248,51 @@ function DashboardContent() {
                 </div>
               )}
 
+              {/* ΥΠΑΛΛΗΛΟΙ */}
+              {Object.keys(groupedSalaries).map(empId => {
+                const group = groupedSalaries[empId];
+                const isExpanded = expandedEmpId === empId;
+                return (
+                  <div key={empId} style={{ marginBottom: '10px' }}>
+                    <div onClick={() => isAdmin && setExpandedEmpId(isExpanded ? null : empId)} style={salaryItemHeader}>
+                      <div style={{ flex: 1 }}><p style={{ fontWeight: '900', margin: 0, fontSize: '15px', color: '#1e40af' }}>👤 {group.name.toUpperCase()}</p></div>
+                      <p style={{ fontWeight: '900', fontSize: '18px', color: '#dc2626', margin: 0 }}>-{group.total.toFixed(2)}€</p>
+                    </div>
+                    {isExpanded && (
+                      <div style={salaryBreakdownPanel}>
+                        {group.items.map((t: any) => (
+                          <div key={t.id} style={zSubItem}>
+                            <div style={{ flex: 1 }}>
+                               <p style={{ fontWeight: '800', margin: 0, fontSize: '13px', color: '#475569' }}>{getPaymentIcon(t.method)} {t.method.toUpperCase()}</p>
+                               <span style={timeBadge}>🕒 {formatTime(t.created_at)}</span>
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                              <p style={{ fontWeight: '900', fontSize: '14px', margin: 0, color: '#1e293b' }}>{Math.abs(Number(t.amount)).toFixed(2)}€</p>
+                              {isAdmin && <button onClick={() => handleDelete(t.id)} style={iconBtnSmallRed}>🗑️</button>}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+
               {/* ΛΟΙΠΕΣ ΚΙΝΗΣΕΙΣ */}
               {regularEntries.map(t => (
                 <div key={t.id} style={{ marginBottom: '10px' }}>
                   <div onClick={() => isAdmin && setExpandedTx(expandedTx === t.id ? null : t.id)} style={itemCard}>
                     <div style={{ flex: 1 }}>
-                      <p style={{ fontWeight: '800', margin: 0, fontSize: '17px', color: '#1e293b' }}>
-                          {t.suppliers?.name || t.category.toUpperCase()}
-                      </p>
+                      <p style={{ fontWeight: '800', margin: 0, fontSize: '17px', color: '#1e293b' }}>{t.suppliers?.name || t.category.toUpperCase()}</p>
                       <div style={{ display: 'flex', gap: '8px', marginTop: '4px', alignItems: 'center', flexWrap: 'wrap' }}>
-                        <span style={{ fontSize: '12px', color: '#64748b', fontWeight: '800' }}>
-                          {getPaymentIcon(t.method)} {t.method.toUpperCase()}
-                        </span>
+                        <span style={{ fontSize: '12px', color: '#64748b', fontWeight: '800' }}>{getPaymentIcon(t.method)} {t.method.toUpperCase()}</span>
                         <span style={userBadge}>👤 {t.created_by_name?.split(' ')[0].toUpperCase()}</span>
                         <span style={timeBadge}>🕒 {formatTime(t.created_at)}</span>
                       </div>
                     </div>
-                    <div style={{ textAlign: 'right' }}>
-                      <p style={{ fontWeight: '950', fontSize: '19px', color: t.type === 'income' ? '#10b981' : '#ef4444', margin: 0 }}>
-                        {t.type === 'income' ? '+' : '-'}{Math.abs(Number(t.amount)).toFixed(2)}€
-                      </p>
-                    </div>
+                    <p style={{ fontWeight: '950', fontSize: '19px', color: t.type === 'income' ? '#10b981' : '#ef4444', margin: 0 }}>
+                      {t.type === 'income' ? '+' : '-'}{Math.abs(Number(t.amount)).toFixed(2)}€
+                    </p>
                   </div>
                   {isAdmin && expandedTx === t.id && (
                     <div style={actionPanel}>
@@ -285,9 +302,7 @@ function DashboardContent() {
                   )}
                 </div>
               ))}
-              {transactions.length === 0 && !loading && (
-                <p style={{ textAlign: 'center', padding: '40px', color: '#94a3b8', fontWeight: '700' }}>Καμία κίνηση για αυτή τη βάρδια.</p>
-              )}
+              {transactions.length === 0 && !loading && <p style={{textAlign:'center', padding:'40px', color:'#94a3b8', fontWeight:'700'}}>Καμία κίνηση για αυτή τη βάρδια.</p>}
             </>
           )}
         </div>
@@ -313,7 +328,9 @@ const actionBtn: any = { flex: 1, padding: '18px', borderRadius: '20px', color: 
 const zBtnStyle: any = { display: 'block', padding: '18px', borderRadius: '20px', backgroundColor: '#0f172a', color: 'white', textDecoration: 'none', textAlign: 'center', fontWeight: '900', fontSize: '15px', marginTop: '12px' };
 const itemCard: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'white', padding: '20px', borderRadius: '24px', border: '1px solid #f1f5f9', boxShadow: '0 4px 10px rgba(0,0,0,0.02)' };
 const zItemHeader: any = { ...itemCard, background: '#0f172a', color: 'white', border: 'none' };
+const salaryItemHeader: any = { ...itemCard, background: '#eff6ff', border: '1px solid #dbeafe' };
 const zBreakdownPanel: any = { backgroundColor: 'white', padding: '15px 20px', borderRadius: '0 0 24px 24px', border: '1px solid #f1f5f9', borderTop: 'none', marginTop: '-15px', marginBottom: '15px', boxShadow: '0 4px 12px rgba(0,0,0,0.02)' };
+const salaryBreakdownPanel: any = { backgroundColor: 'white', padding: '15px 20px', borderRadius: '0 0 24px 24px', border: '1px solid #dbeafe', borderTop: 'none', marginTop: '-15px', marginBottom: '15px', boxShadow: '0 4px 12px rgba(0,0,0,0.02)' };
 const zSubItem: any = { display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderBottom: '1px solid #f1f5f9' };
 const userBadge: any = { fontSize: '10px', backgroundColor: '#f1f5f9', color: '#64748b', padding: '2px 8px', borderRadius: '8px', fontWeight: '800' };
 const actionPanel: any = { backgroundColor: 'white', padding: '10px 20px 20px', borderRadius: '0 0 24px 24px', border: '1px solid #f1f5f9', borderTop: 'none', display: 'flex', gap: '10px', marginTop: '-15px', marginBottom: '15px', boxShadow: '0 4px 12px rgba(0,0,0,0.02)' };
