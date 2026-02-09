@@ -11,6 +11,7 @@ const colors = {
   primaryDark: '#1e293b', // Slate 800
   secondaryText: '#64748b', // Slate 500
   accentRed: '#dc2626',   // Red 600
+  accentBlue: '#2563eb',  // Blue 600 (Για εξοφλήσεις)
   bgLight: '#f8fafc',     // Slate 50
   border: '#e2e8f0',      // Slate 200
   white: '#ffffff'
@@ -20,7 +21,11 @@ function AddExpenseForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
 
-  // 1. ΥΠΟΛΟΓΙΣΜΟΣ ΗΜΕΡΟΜΗΝΙΑΣ (07:00 Logic - Τοπική Ώρα)
+  // ΔΙΑΒΑΣΜΑ ΠΑΡΑΜΕΤΡΩΝ ΑΠΟ ΤΟ URL (Για αυτόματη εξόφληση)
+  const urlSupId = searchParams.get('supId')
+  const isDebtMode = searchParams.get('mode') === 'debt'
+
+  // ΥΠΟΛΟΓΙΣΜΟΣ ΗΜΕΡΟΜΗΝΙΑΣ (07:00 Logic)
   const getBusinessDate = () => {
     const now = new Date()
     if (now.getHours() < 7) {
@@ -39,7 +44,7 @@ function AddExpenseForm() {
   const [method, setMethod] = useState('Μετρητά')
   const [notes, setNotes] = useState('')
   const [isCredit, setIsCredit] = useState(false) 
-  const [isAgainstDebt, setIsAgainstDebt] = useState(false)
+  const [isAgainstDebt, setIsAgainstDebt] = useState(isDebtMode) // Αυτόματο τσεκάρισμα
   const [source, setSource] = useState('store') 
   const [currentUsername, setCurrentUsername] = useState('Χρήστης')
   const [loading, setLoading] = useState(true)
@@ -47,13 +52,11 @@ function AddExpenseForm() {
   // Lists
   const [suppliers, setSuppliers] = useState<any[]>([])
   const [fixedAssets, setFixedAssets] = useState<any[]>([])
-  const [selectedSup, setSelectedSup] = useState('')
+  const [selectedSup, setSelectedSup] = useState(urlSupId || '') // Αυτόματη επιλογή προμηθευτή
   const [selectedFixed, setSelectedFixed] = useState('')
 
-  // 2. ΚΕΝΤΡΙΚΗ ΣΥΝΑΡΤΗΣΗ ΦΟΡΤΩΣΗΣ (Με προστασία Wake-up)
   const loadFormData = useCallback(async () => {
     try {
-      // Ανανέωση Session για να μην έχουμε άδειες λίστες μετά από ώρες αδράνειας
       const { data: { session } } = await supabase.auth.getSession()
       if (!session?.user) {
         setLoading(false)
@@ -81,14 +84,9 @@ function AddExpenseForm() {
 
   useEffect(() => {
     loadFormData()
-
-    // Μηχανισμός "Αφύπνισης": Αν το κινητό ανοίξει μετά από ώρες, ξαναφόρτωσε τα πάντα
     const handleWakeUp = () => {
-      if (document.visibilityState === 'visible') {
-        loadFormData()
-      }
+      if (document.visibilityState === 'visible') loadFormData()
     }
-
     document.addEventListener('visibilitychange', handleWakeUp)
     window.addEventListener('focus', handleWakeUp)
 
@@ -139,6 +137,9 @@ function AddExpenseForm() {
     }
   }
 
+  // Δυναμικό χρώμα ανάλογα με το αν είναι έξοδο ή εξόφληση
+  const themeColor = isAgainstDebt ? colors.accentBlue : colors.accentRed;
+
   return (
     <main style={{ backgroundColor: colors.bgLight, minHeight: '100vh', padding: '16px' }}>
       <div style={formCardStyle}>
@@ -146,15 +147,19 @@ function AddExpenseForm() {
         {/* HEADER */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div style={logoBoxStyle}>💸</div>
+            <div style={{ ...logoBoxStyle, backgroundColor: isAgainstDebt ? '#dbeafe' : '#fef2f2' }}>
+              {isAgainstDebt ? '💳' : '💸'}
+            </div>
             <div>
-              <h1 style={{ fontWeight: '800', fontSize: '20px', margin: 0, color: colors.primaryDark }}>Νέο Έξοδο</h1>
-              <p style={{ margin: 0, fontSize: '10px', color: colors.secondaryText, fontWeight: '700', letterSpacing: '0.5px' }}>
+              <h1 style={{ fontWeight: '800', fontSize: '20px', margin: 0, color: colors.primaryDark }}>
+                {isAgainstDebt ? 'Εξόφληση Χρέους' : 'Νέο Έξοδο'}
+              </h1>
+              <p style={{ margin: 0, fontSize: '10px', color: colors.secondaryText, fontWeight: '700' }}>
                 {new Date(selectedDate).toLocaleDateString('el-GR', { day: 'numeric', month: 'long' }).toUpperCase()}
               </p>
             </div>
           </div>
-          <Link href="/" style={backBtnStyle}>✕</Link>
+          <Link href={isDebtMode ? "/suppliers-balance" : "/"} style={backBtnStyle}>✕</Link>
         </div>
 
         <div style={userIndicator}>
@@ -167,7 +172,7 @@ function AddExpenseForm() {
           <div style={{ display: 'flex', gap: '10px', marginTop: '8px' }}>
             <button 
               type="button"
-              onClick={() => { setSource('store'); setIsCredit(false); setIsAgainstDebt(false); }} 
+              onClick={() => { setSource('store'); setIsCredit(false); }} 
               style={{ ...sourceBtn, backgroundColor: source === 'store' ? colors.primaryDark : colors.white, color: source === 'store' ? 'white' : colors.secondaryText, border: source === 'store' ? 'none' : `1px solid ${colors.border}` }}
             >
               🏪 ΤΑΜΕΙΟ
@@ -197,21 +202,21 @@ function AddExpenseForm() {
         </div>
 
         {source === 'store' && (
-          <div style={creditPanel}>
+          <div style={{ ...creditPanel, border: isAgainstDebt ? `2px solid ${colors.accentBlue}` : `1px solid ${colors.border}` }}>
             <div style={{ marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '10px' }}>
               <input type="checkbox" checked={isCredit} onChange={e => {setIsCredit(e.target.checked); if(e.target.checked) setIsAgainstDebt(false)}} id="credit" style={checkboxStyle} />
               <label htmlFor="credit" style={checkLabel}>ΕΠΙ ΠΙΣΤΩΣΕΙ (ΝΕΟ ΧΡΕΟΣ)</label>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
               <input type="checkbox" checked={isAgainstDebt} onChange={e => {setIsAgainstDebt(e.target.checked); if(e.target.checked) setIsCredit(false)}} id="against" style={checkboxStyle} />
-              <label htmlFor="against" style={checkLabel}>ΕΝΑΝΤΙ ΠΑΛΑΙΟΥ ΧΡΕΟΥ</label>
+              <label htmlFor="against" style={{...checkLabel, color: isAgainstDebt ? colors.accentBlue : colors.primaryDark }}>ΕΝΑΝΤΙ ΠΑΛΑΙΟΥ ΧΡΕΟΥ</label>
             </div>
           </div>
         )}
 
         <div style={selectGroup}>
           <label style={labelStyle}>🏭 ΠΡΟΜΗΘΕΥΤΗΣ</label>
-          <select value={selectedSup} onChange={e => {setSelectedSup(e.target.value); setSelectedFixed('');}} style={inputStyle}>
+          <select value={selectedSup} onChange={e => {setSelectedSup(e.target.value); setSelectedFixed('');}} style={{...inputStyle, border: urlSupId ? `2px solid ${colors.accentBlue}` : `1px solid ${colors.border}`}}>
             <option value="">— Επιλογή —</option>
             {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
           </select>
@@ -227,11 +232,11 @@ function AddExpenseForm() {
 
         <div style={{ marginBottom: '25px' }}>
           <label style={labelStyle}>ΣΗΜΕΙΩΣΕΙΣ</label>
-          <textarea value={notes} onChange={e => setNotes(e.target.value)} style={{ ...inputStyle, height: '70px', paddingTop: '12px', fontWeight: '500' }} placeholder="Περιγραφή εξόδου..." />
+          <textarea value={notes} onChange={e => setNotes(e.target.value)} style={{ ...inputStyle, height: '70px', paddingTop: '12px', fontWeight: '500' }} placeholder="Περιγραφή..." />
         </div>
 
-        <button onClick={handleSave} disabled={loading} style={{ ...saveBtn, backgroundColor: colors.accentRed }}>
-          {loading ? 'ΓΙΝΕΤΑΙ ΑΠΟΘΗΚΕΥΣΗ...' : 'ΟΛΟΚΛΗΡΩΣΗ ΕΞΟΔΟΥ'}
+        <button onClick={handleSave} disabled={loading} style={{ ...saveBtn, backgroundColor: themeColor }}>
+          {loading ? 'ΓΙΝΕΤΑΙ ΑΠΟΘΗΚΕΥΣΗ...' : (isAgainstDebt ? 'ΟΛΟΚΛΗΡΩΣΗ ΕΞΟΦΛΗΣΗΣ' : 'ΟΛΟΚΛΗΡΩΣΗ ΕΞΟΔΟΥ')}
         </button>
       </div>
     </main>
@@ -240,15 +245,15 @@ function AddExpenseForm() {
 
 // --- STYLES ---
 const formCardStyle = { maxWidth: '500px', margin: '0 auto', backgroundColor: colors.white, borderRadius: '24px', padding: '24px', border: `1px solid ${colors.border}`, boxShadow: '0 4px 20px rgba(0,0,0,0.03)' };
-const logoBoxStyle: any = { width: '42px', height: '42px', backgroundColor: '#fef2f2', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px' };
+const logoBoxStyle: any = { width: '42px', height: '42px', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px' };
 const backBtnStyle: any = { textDecoration: 'none', color: colors.secondaryText, fontSize: '18px', fontWeight: 'bold', width: '36px', height: '36px', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bgLight, borderRadius: '10px', border: `1px solid ${colors.border}` };
 const labelStyle: any = { fontSize: '10px', fontWeight: '800', color: colors.secondaryText, marginBottom: '6px', display: 'block', letterSpacing: '0.5px' };
-const inputStyle: any = { width: '100%', padding: '15px', borderRadius: '12px', border: `1px solid ${colors.border}`, fontSize: '15px', fontWeight: '700', backgroundColor: colors.bgLight, boxSizing: 'border-box', outline: 'none', color: colors.primaryDark };
+const inputStyle: any = { width: '100%', padding: '15px', borderRadius: '12px', border: `1px solid ${colors.border}`, fontSize: '15px', fontWeight: '700', backgroundColor: colors.bgLight, boxSizing: 'border-box' as const, outline: 'none', color: colors.primaryDark };
 const sourceBtn: any = { flex: 1, padding: '14px', borderRadius: '12px', fontWeight: '800', fontSize: '12px', cursor: 'pointer', transition: 'all 0.2s' };
 const userIndicator = { marginBottom: '20px', padding: '8px', backgroundColor: colors.bgLight, borderRadius: '10px', textAlign: 'center' as any, border: `1px solid ${colors.border}` };
 const creditPanel = { backgroundColor: colors.bgLight, padding: '16px', borderRadius: '16px', marginBottom: '24px', border: `1px solid ${colors.border}` };
 const selectGroup = { marginBottom: '18px' };
-const saveBtn: any = { width: '100%', padding: '18px', color: 'white', border: 'none', borderRadius: '16px', fontWeight: '800', fontSize: '16px', cursor: 'pointer', boxShadow: '0 4px 12px rgba(220, 38, 38, 0.2)' };
+const saveBtn: any = { width: '100%', padding: '18px', color: 'white', border: 'none', borderRadius: '16px', fontWeight: '800', fontSize: '16px', cursor: 'pointer' };
 const checkLabel: any = { fontSize: '12px', fontWeight: '700', color: colors.primaryDark, cursor: 'pointer' };
 const checkboxStyle = { width: '18px', height: '18px', cursor: 'pointer' };
 
