@@ -17,7 +17,7 @@ function AnalysisContent() {
   const [transactions, setTransactions] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [view, setView] = useState('income') 
-  // 1. ΠΡΟΕΠΙΛΟΓΗ: ΜΗΝΑΣ
+  // ΠΡΟΕΠΙΛΟΓΗ: ΜΗΝΑΣ
   const [period, setPeriod] = useState('month') 
   const [selectedDate, setSelectedDate] = useState(format(new Date(), 'yyyy-MM-dd'))
 
@@ -40,13 +40,12 @@ function AnalysisContent() {
   useEffect(() => { loadData() }, [])
 
   async function handleDelete(id: string) {
-    if (!confirm('Οριστική διαγραφή αυτής της συναλλαγής;')) return;
+    if (!confirm('Οριστική διαγραφή συναλλαγής;')) return;
     const { error } = await supabase.from('transactions').delete().eq('id', id);
     if (!error) loadData();
     else alert(error.message);
   }
 
-  // --- ΥΠΟΛΟΓΙΣΜΟΣ ΣΤΑΤΙΣΤΙΚΩΝ ---
   const stats = useMemo(() => {
     const now = parseISO(selectedDate)
     const lastYear = subYears(now, 1)
@@ -68,23 +67,24 @@ function AnalysisContent() {
     const currentData = transactions.filter(t => isWithinInterval(parseISO(t.date), currentRange))
     const prevData = transactions.filter(t => isWithinInterval(parseISO(t.date), lastYearRange))
 
-    // --- ΛΟΓΙΚΗ ΕΣΟΔΩΝ (ΠΟΣΟΣΤΑ) ---
+    // --- ΛΟΓΙΚΗ ΕΣΟΔΩΝ (ΑΠΟΦΥΓΗ ΔΙΠΛΟΕΓΓΡΑΦΩΝ ΠΟΣΟΣΤΩΝ) ---
     const incomeTransactions = currentData.filter(t => t.type === 'income');
     const incomeTotal = incomeTransactions.reduce((acc, t) => acc + Number(t.amount), 0);
     
-    // Fuzzy matching για μεθόδους και κατηγορίες εσόδων
-    const incomeCash = incomeTransactions.filter(t => t.method?.includes('Μετρητά')).reduce((acc, t) => acc + Number(t.amount), 0);
-    const incomeCard = incomeTransactions.filter(t => t.method?.includes('Κάρτα') || t.method?.includes('Τράπεζα') || t.method?.includes('POS')).reduce((acc, t) => acc + Number(t.amount), 0);
-    
-    const noReceipt = incomeTransactions.filter(t => 
-        t.category?.includes('Σήμανση') || 
-        t.category?.includes('Απόδειξη') || 
-        t.notes?.toUpperCase().includes('ΧΩΡΙΣ')
-    ).reduce((acc, t) => acc + Number(t.amount), 0);
+    // 1. Βρίσκουμε πρώτα τα "Χωρίς Σήμανση"
+    const noReceiptData = incomeTransactions.filter(t => 
+        t.category?.includes('Σήμανση') || t.category?.includes('Απόδειξη') || t.notes?.toUpperCase().includes('ΧΩΡΙΣ')
+    );
+    const noReceiptAmount = noReceiptData.reduce((acc, t) => acc + Number(t.amount), 0);
 
-    // --- ΛΟΓΙΚΗ ΕΞΟΔΩΝ (ΠΛΗΡΩΜΕΝΑ VS ΠΙΣΤΩΣΕΙΣ) ---
+    // 2. Οι υπόλοιπες συναλλαγές θεωρούνται "Επίσημα Έσοδα (Ζ)"
+    const officialIncome = incomeTransactions.filter(t => !noReceiptData.includes(t));
+    
+    const incomeCash = officialIncome.filter(t => t.method?.includes('Μετρητά')).reduce((acc, t) => acc + Number(t.amount), 0);
+    const incomeCard = officialIncome.filter(t => t.method?.includes('Κάρτα') || t.method?.includes('POS') || t.method?.includes('Τράπεζα')).reduce((acc, t) => acc + Number(t.amount), 0);
+
+    // --- ΛΟΓΙΚΗ ΕΞΟΔΩΝ ---
     const expenseTransactions = currentData.filter(t => t.type === 'expense' || t.category === 'pocket');
-    // Το σύνολο εξόδων περιλαμβάνει τα πάντα (εκτός από pocket)
     const expenseTotal = expenseTransactions.filter(t => t.category !== 'pocket').reduce((acc, t) => acc + Number(t.amount), 0);
     const currentPaidTotal = expenseTransactions.filter(t => t.category !== 'pocket' && !t.is_credit).reduce((acc, t) => acc + Number(t.amount), 0);
     const currentCreditTotal = expenseTransactions.filter(t => t.is_credit).reduce((acc, t) => acc + Number(t.amount), 0);
@@ -102,7 +102,7 @@ function AnalysisContent() {
     return { 
         currentTotal: currentTotalValue, prevTotal, percent, 
         currentViewData: currentData.filter(t => (view === 'income' ? t.type === 'income' : (t.type === 'expense' || t.category === 'pocket'))),
-        incomeTotal, incomeCash, incomeCard, noReceipt,
+        incomeTotal, incomeCash, incomeCard, noReceiptAmount,
         currentPaidTotal, currentCreditTotal 
     }
   }, [transactions, period, selectedDate, view])
@@ -142,28 +142,28 @@ function AnalysisContent() {
 
       {/* HERO CARD */}
       <div style={{...heroCard, backgroundColor: view === 'income' ? '#0f172a' : '#450a0a'}}>
-        <p style={labelMicro}>{view === 'income' ? 'ΚΑΘΑΡΟΣ ΤΖΙΡΟΣ' : 'ΣΥΝΟΛΙΚΕΣ ΑΓΟΡΕΣ & ΠΙΣΤΩΣΕΙΣ'}</p>
+        <p style={labelMicro}>{view === 'income' ? 'ΚΑΘΑΡΟΣ ΤΖΙΡΟΣ ΠΕΡΙΟΔΟΥ' : 'ΣΥΝΟΛΙΚΕΣ ΑΓΟΡΕΣ & ΠΙΣΤΩΣΕΙΣ'}</p>
         <h2 style={{ fontSize: '38px', fontWeight: '900', margin: '5px 0' }}>{stats.currentTotal.toLocaleString('el-GR')}€</h2>
         
-        {/* ΑΝΑΛΥΣΗ ΕΣΟΔΩΝ (ΠΟΣΟΣΤΑ %) */}
+        {/* ΑΝΑΛΥΣΗ ΕΣΟΔΩΝ (ΑΚΡΙΒΗ ΠΟΣΟΣΤΑ) */}
         {view === 'income' && stats.incomeTotal > 0 && (
             <div style={percGrid}>
                 <div style={percBox}>
                     <span style={percLabel}>ΜΕΤΡΗΤΑ</span>
-                    <span style={percValue}>{((stats.incomeCash / stats.incomeTotal) * 100).toFixed(0)}%</span>
+                    <span style={percValue}>{((stats.incomeCash / stats.incomeTotal) * 100).toFixed(1)}%</span>
                 </div>
                 <div style={percBox}>
                     <span style={percLabel}>ΚΑΡΤΑ</span>
-                    <span style={percValue}>{((stats.incomeCard / stats.incomeTotal) * 100).toFixed(0)}%</span>
+                    <span style={percValue}>{((stats.incomeCard / stats.incomeTotal) * 100).toFixed(1)}%</span>
                 </div>
                 <div style={percBox}>
                     <span style={percLabel}>ΧΩΡΙΣ ΣΗΜ.</span>
-                    <span style={percValue}>{((stats.noReceipt / stats.incomeTotal) * 100).toFixed(0)}%</span>
+                    <span style={percValue}>{((stats.noReceiptAmount / stats.incomeTotal) * 100).toFixed(1)}%</span>
                 </div>
             </div>
         )}
 
-        {/* ΑΝΑΛΥΣΗ ΕΞΟΔΩΝ (ΠΛΗΡΩΜΕΝΑ VS ΠΙΣΤΩΣΕΙΣ) */}
+        {/* ΑΝΑΛΥΣΗ ΕΞΟΔΩΝ */}
         {view === 'expenses' && (
             <div style={{ display: 'flex', justifyContent: 'center', gap: '15px', marginTop: '10px' }}>
                 <div style={{ fontSize: '10px', fontWeight: '800', opacity: 0.8 }}>ΠΛΗΡΩΜΕΝΑ: {stats.currentPaidTotal.toFixed(0)}€</div>
@@ -176,9 +176,8 @@ function AnalysisContent() {
         </div>
       </div>
 
-      {/* ANALYTICAL LIST */}
       <div style={listWrapper}>
-        <p style={{ fontSize: '10px', fontWeight: '900', color: '#94a3b8', marginBottom: '15px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Αναλυτικές Κινήσεις</p>
+        <p style={{ fontSize: '10px', fontWeight: '900', color: '#94a3b8', marginBottom: '15px', textTransform: 'uppercase' }}>Αναλυτικές Κινήσεις</p>
         {stats.currentViewData.map(t => (
           <div key={t.id} style={rowStyle}>
             <div style={{ flex: 1 }}>
