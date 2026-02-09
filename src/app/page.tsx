@@ -13,6 +13,7 @@ function DashboardContent() {
   // 1. ΥΠΟΛΟΓΙΣΜΟΣ ΕΠΙΧΕΙΡΗΜΑΤΙΚΗΣ ΗΜΕΡΟΜΗΝΙΑΣ (Αλλαγή στις 07:00 τοπική ώρα)
   const getBusinessDate = () => {
     const now = new Date()
+    // Αν είναι πριν τις 07:00 το πρωί (τοπική ώρα συσκευής), πάμε στην προηγούμενη μέρα
     if (now.getHours() < 7) {
       now.setDate(now.getDate() - 1)
     }
@@ -34,12 +35,11 @@ function DashboardContent() {
   
   const [storeName, setStoreName] = useState('Cosy App')
   const [permissions, setPermissions] = useState({ 
-    role: 'user', 
-    store_id: null as string | null,
-    can_view_analysis: false,
-    can_view_history: false
+    role: 'user', store_id: null as string | null,
+    can_view_analysis: false, can_view_history: false
   })
 
+  // Μορφοποίηση ώρας (π.μ. / μ.μ.)
   const formatTime = (dateString: string) => {
     try {
       return new Date(dateString).toLocaleTimeString('el-GR', {
@@ -48,22 +48,25 @@ function DashboardContent() {
     } catch (e) { return '--:--' }
   }
 
-  // 2. ΛΕΙΤΟΥΡΓΙΑ WAKE UP & AUTO-REFRESH
+  // 2. ΛΕΙΤΟΥΡΓΙΑ WAKE UP & ΑΥΤΟΜΑΤΗ ΑΛΛΑΓΗ ΗΜΕΡΑΣ
   useEffect(() => {
     const handleCheckDayChange = () => {
       const currentBD = getBusinessDate()
       if (currentBD !== businessToday) {
         setBusinessToday(currentBD)
+        // Αν ο χρήστης δεν έχει επιλέξει manual ημερομηνία, κάνουμε πλήρες reload
         if (!searchParams.get('date')) {
           window.location.reload()
         }
       }
     }
 
+    // Έλεγχος όταν η εφαρμογή έρχεται στο προσκήνιο (Wake up)
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'visible') handleCheckDayChange()
     })
 
+    // Έλεγχος κάθε 30 δευτερόλεπτα
     const timer = setInterval(handleCheckDayChange, 30000)
 
     return () => {
@@ -104,14 +107,14 @@ function DashboardContent() {
     } catch (err) { 
       console.error(err) 
     } finally { 
-      setLoading(false) 
+      setLoading(false) // Εξασφαλίζουμε ότι το loading θα κλείσει πάντα
     }
   }, [selectedDate]);
 
   useEffect(() => {
     fetchAppData()
     const channel = supabase
-      .channel('realtime-transactions')
+      .channel('realtime-dashboard')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'transactions' }, () => {
         fetchAppData()
       })
@@ -140,6 +143,16 @@ function DashboardContent() {
 
   const zEntries = transactions.filter(t => t.category === 'Εσοδα Ζ')
   const zTotal = zEntries.reduce((acc, t) => acc + Number(t.amount), 0)
+
+  const salaryEntries = transactions.filter(t => t.category === 'Προσωπικό')
+  const groupedSalaries = salaryEntries.reduce((acc: any, t) => {
+    const empId = t.employee_id || 'unknown';
+    if (!acc[empId]) { acc[empId] = { name: t.employees?.full_name || 'Προσωπικό', total: 0, items: [] } }
+    acc[empId].total += Math.abs(Number(t.amount))
+    acc[empId].items.push(t)
+    return acc;
+  }, {})
+
   const regularEntries = transactions.filter(t => t.category !== 'Εσοδα Ζ' && t.category !== 'Προσωπικό' && t.category !== 'pocket')
   const totalInc = transactions.filter(t => t.type === 'income').reduce((acc, t) => acc + Number(t.amount), 0)
   const totalExp = transactions.filter(t => t.type === 'expense' && !t.is_credit && t.category !== 'pocket').reduce((acc, t) => acc + Number(t.amount), 0)
@@ -147,7 +160,7 @@ function DashboardContent() {
 
   const handleDelete = async (id: string) => {
     if (!isAdmin) return;
-    if (confirm('Οριστική διαγραφή αυτής της κίνησης;')) {
+    if (confirm('Οριστική διαγραφή;')) {
       await supabase.from('transactions').delete().eq('id', id)
     }
   }
@@ -220,7 +233,7 @@ function DashboardContent() {
           
           {loading ? <p style={{ textAlign: 'center', fontWeight: '800', color: '#94a3b8', padding: '20px' }}>Φόρτωση...</p> : (
             <>
-              {/* Ζ ΟΜΑΔΟΠΟΙΗΣΗ */}
+              {/* 1. Ζ ΟΜΑΔΟΠΟΙΗΣΗ */}
               {zTotal > 0 && (
                 <div style={{ marginBottom: '12px' }}>
                   <div onClick={() => isAdmin && setIsZExpanded(!isZExpanded)} style={zItemHeader}>
@@ -248,7 +261,7 @@ function DashboardContent() {
                 </div>
               )}
 
-              {/* ΥΠΑΛΛΗΛΟΙ */}
+              {/* 2. ΥΠΑΛΛΗΛΟΙ */}
               {Object.keys(groupedSalaries).map(empId => {
                 const group = groupedSalaries[empId];
                 const isExpanded = expandedEmpId === empId;
@@ -278,7 +291,7 @@ function DashboardContent() {
                 );
               })}
 
-              {/* ΛΟΙΠΕΣ ΚΙΝΗΣΕΙΣ */}
+              {/* 3. ΛΟΙΠΕΣ ΚΙΝΗΣΕΙΣ */}
               {regularEntries.map(t => (
                 <div key={t.id} style={{ marginBottom: '10px' }}>
                   <div onClick={() => isAdmin && setExpandedTx(expandedTx === t.id ? null : t.id)} style={itemCard}>
@@ -290,9 +303,11 @@ function DashboardContent() {
                         <span style={timeBadge}>🕒 {formatTime(t.created_at)}</span>
                       </div>
                     </div>
-                    <p style={{ fontWeight: '950', fontSize: '19px', color: t.type === 'income' ? '#10b981' : '#ef4444', margin: 0 }}>
-                      {t.type === 'income' ? '+' : '-'}{Math.abs(Number(t.amount)).toFixed(2)}€
-                    </p>
+                    <div style={{ textAlign: 'right' }}>
+                      <p style={{ fontWeight: '950', fontSize: '19px', color: t.type === 'income' ? '#10b981' : '#ef4444', margin: 0 }}>
+                        {t.type === 'income' ? '+' : '-'}{Math.abs(Number(t.amount)).toFixed(2)}€
+                      </p>
+                    </div>
                   </div>
                   {isAdmin && expandedTx === t.id && (
                     <div style={actionPanel}>
