@@ -17,31 +17,40 @@ function AnalysisContent() {
   const [transactions, setTransactions] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [view, setView] = useState('income') 
-  // ΠΡΟΕΠΙΛΟΓΗ: ΗΜΕΡΑ
-  const [period, setPeriod] = useState('custom_day') 
+  // 1. ΠΡΟΕΠΙΛΟΓΗ: ΜΗΝΑΣ
+  const [period, setPeriod] = useState('month') 
   const [selectedDate, setSelectedDate] = useState(format(new Date(), 'yyyy-MM-dd'))
   const [isZExpanded, setIsZExpanded] = useState(false)
 
+  async function loadData() {
+    try {
+      setLoading(true)
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.user) return
+      const { data: profile } = await supabase.from('profiles').select('store_id').eq('id', session.user.id).single()
+      if (profile?.store_id) {
+        const { data } = await supabase.from('transactions')
+          .select('*, suppliers(name)')
+          .eq('store_id', profile.store_id)
+          .order('date', { ascending: true })
+        if (data) setTransactions(data)
+      }
+    } catch (err) { console.error(err) } finally { setLoading(false) }
+  }
+
   useEffect(() => {
-    async function loadData() {
-      try {
-        setLoading(true)
-        const { data: { user } } = await supabase.auth.getUser()
-        if (!user) return
-        const { data: profile } = await supabase.from('profiles').select('store_id').eq('id', user.id).single()
-        if (profile?.store_id) {
-          const { data } = await supabase.from('transactions')
-            .select('*, suppliers(name)')
-            .eq('store_id', profile.store_id)
-            .order('date', { ascending: true })
-          if (data) setTransactions(data)
-        }
-      } catch (err) { console.error(err) } finally { setLoading(false) }
-    }
     loadData()
   }, [])
 
-  // --- ΥΠΟΛΟΓΙΣΜΟΣ ΣΤΑΤΙΣΤΙΚΩΝ & ΣΥΓΚΡΙΣΗΣ ---
+  // ΔΙΑΓΡΑΦΗ ΣΥΝΑΛΛΑΓΗΣ
+  async function handleDelete(id: string) {
+    if (!confirm('Οριστική διαγραφή αυτής της συναλλαγής;')) return;
+    const { error } = await supabase.from('transactions').delete().eq('id', id);
+    if (!error) loadData();
+    else alert(error.message);
+  }
+
+  // --- ΥΠΟΛΟΓΙΣΜΟΣ ΣΤΑΤΙΣΤΙΚΩΝ ---
   const stats = useMemo(() => {
     const now = parseISO(selectedDate)
     const lastYear = subYears(now, 1)
@@ -75,13 +84,18 @@ function AnalysisContent() {
     const currentViewData = currentData.filter(t => (view === 'income' ? t.type === 'income' : t.type === 'expense' || t.category === 'pocket'))
     const prevViewData = prevData.filter(t => (view === 'income' ? t.type === 'income' : t.type === 'expense' || t.category === 'pocket'))
 
-    const currentTotal = currentViewData.filter(t => t.category !== 'pocket' && !t.is_credit).reduce((acc, t) => acc + Number(t.amount), 0)
-    const prevTotal = prevViewData.filter(t => t.category !== 'pocket' && !t.is_credit).reduce((acc, t) => acc + Number(t.amount), 0)
+    // 2. ΔΙΟΡΘΩΣΗ: ΠΕΡΙΛΑΜΒΑΝΟΥΜΕ ΤΙΣ ΠΙΣΤΩΣΕΙΣ ΣΤΟ ΣΥΝΟΛΟ
+    const currentTotal = currentViewData.filter(t => t.category !== 'pocket').reduce((acc, t) => acc + Number(t.amount), 0)
+    const prevTotal = prevViewData.filter(t => t.category !== 'pocket').reduce((acc, t) => acc + Number(t.amount), 0)
+    
+    // Ξεχωριστά σύνολα για την ανάλυση στο Hero Card
+    const currentPaidTotal = currentViewData.filter(t => t.category !== 'pocket' && !t.is_credit).reduce((acc, t) => acc + Number(t.amount), 0)
+    const currentCreditTotal = currentViewData.filter(t => t.is_credit).reduce((acc, t) => acc + Number(t.amount), 0)
 
     const diff = currentTotal - prevTotal
     const percent = prevTotal !== 0 ? (diff / prevTotal) * 100 : 0
 
-    return { currentTotal, prevTotal, percent, currentViewData }
+    return { currentTotal, prevTotal, percent, currentViewData, currentPaidTotal, currentCreditTotal }
   }, [transactions, period, selectedDate, view])
 
   const zEntries = stats.currentViewData.filter(t => t.category === 'Εσοδα Ζ')
@@ -107,7 +121,7 @@ function AnalysisContent() {
   }, [transactions, view, period, selectedDate])
 
   return (
-    <div style={{ maxWidth: '500px', margin: '0 auto', fontFamily: 'sans-serif' }}>
+    <div style={{ maxWidth: '500px', margin: '0 auto', fontFamily: 'sans-serif', paddingBottom: '100px' }}>
       
       {/* HEADER */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px', paddingTop: '15px' }}>
@@ -127,12 +141,12 @@ function AnalysisContent() {
         <button onClick={() => setView('expenses')} style={{...tabBtn, backgroundColor: view === 'expenses' ? '#ef4444' : 'transparent', color: view === 'expenses' ? 'white' : '#64748b'}}>ΕΞΟΔΑ</button>
       </div>
 
-      {/* FILTER BAR WITH CALENDAR ICON */}
+      {/* FILTER BAR */}
       <div style={filterBar}>
         <select value={period} onChange={e => setPeriod(e.target.value)} style={selectStyle}>
+          <option value="month">Προβολή: Μήνας</option>
           <option value="custom_day">Προβολή: Ημέρα</option>
           <option value="week">Προβολή: Εβδομάδα</option>
-          <option value="month">Προβολή: Μήνας</option>
           <option value="year">Προβολή: Έτος</option>
         </select>
         
@@ -145,17 +159,24 @@ function AnalysisContent() {
         </div>
       </div>
 
-      {/* HERO CARD WITH YEARLY COMPARISON */}
+      {/* HERO CARD - 3. ΠΡΟΣΘΗΚΗ ΑΝΑΛΥΣΗΣ ΠΙΣΤΩΣΕΩΝ */}
       <div style={{...heroCard, backgroundColor: view === 'income' ? '#0f172a' : '#450a0a'}}>
-        <p style={labelMicro}>{view === 'income' ? 'ΚΑΘΑΡΟΣ ΤΖΙΡΟΣ ΠΕΡΙΟΔΟΥ' : 'ΣΥΝΟΛΙΚΑ ΕΞΟΔΑ ΠΕΡΙΟΔΟΥ'}</p>
+        <p style={labelMicro}>{view === 'income' ? 'ΚΑΘΑΡΟΣ ΤΖΙΡΟΣ ΠΕΡΙΟΔΟΥ' : 'ΣΥΝΟΛΙΚΕΣ ΑΓΟΡΕΣ ΠΕΡΙΟΔΟΥ'}</p>
         <h2 style={{ fontSize: '38px', fontWeight: '900', margin: '5px 0' }}>{stats.currentTotal.toLocaleString('el-GR')}€</h2>
         
-        <div style={{ marginTop: '10px', fontSize: '12px', fontWeight: '700', color: stats.percent >= 0 ? '#4ade80' : '#f87171' }}>
+        {view === 'expenses' && (
+            <div style={{ display: 'flex', justifyContent: 'center', gap: '15px', marginTop: '10px', opacity: 0.8 }}>
+                <div style={{ fontSize: '10px', fontWeight: '800' }}>ΠΛΗΡΩΜΕΝΑ: {stats.currentPaidTotal.toFixed(0)}€</div>
+                <div style={{ fontSize: '10px', fontWeight: '800', color: '#fca5a5' }}>ΠΙΣΤΩΣΕΙΣ: {stats.currentCreditTotal.toFixed(0)}€</div>
+            </div>
+        )}
+
+        <div style={{ marginTop: '15px', fontSize: '12px', fontWeight: '700', color: stats.percent >= 0 ? '#4ade80' : '#f87171' }}>
             {stats.percent >= 0 ? '↑' : '↓'} {Math.abs(stats.percent).toFixed(1)}% <span style={{opacity:0.7, color:'white', marginLeft: '5px'}}>vs Πέρυσι ({stats.prevTotal.toFixed(0)}€)</span>
         </div>
       </div>
 
-      {/* GRAPH (SHOW ONLY ON MONTH VIEW) */}
+      {/* GRAPH */}
       {period === 'month' && chartData.length > 0 && (
         <div style={chartCard}>
           <p style={chartTitle}>ΔΙΑΚΥΜΑΝΣΗ ΜΗΝΑ (€)</p>
@@ -178,40 +199,26 @@ function AnalysisContent() {
         </div>
       )}
 
-      {/* GROUPED Z ACCORDION */}
-      {view === 'income' && zStats.total > 0 && (
-        <div style={{ marginBottom: '15px' }}>
-          <div onClick={() => setIsZExpanded(!isZExpanded)} style={zHeader}>
-            <div style={{ flex: 1 }}>
-              <p style={{ fontWeight: '900', margin: 0, fontSize: '15px' }}>📟 ΣΥΝΟΛΟ Ζ ΠΕΡΙΟΔΟΥ</p>
-              <span style={{ fontSize: '11px', opacity: 0.7 }}>{zStats.count} Καταχωρήσεις</span>
-            </div>
-            <p style={{ fontWeight: '900', fontSize: '18px', margin: 0 }}>+{zStats.total.toFixed(2)}€</p>
-          </div>
-          {isZExpanded && (
-            <div style={zDetail}>
-              {Object.entries(zStats.methods).map(([method, amount]: any) => (
-                <div key={method} style={zRow}>
-                   <span style={{fontWeight:'700'}}>{method === 'Μετρητά' ? '💵 Μετρητά' : '💳 Κάρτα/POS'}</span>
-                   <b style={{fontSize:'15px'}}>{amount.toFixed(2)}€</b>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ANALYTICAL LIST */}
+      {/* ANALYTICAL LIST - 4. ΠΡΟΣΘΗΚΗ ΚΟΥΜΠΙΟΥ ΔΙΑΓΡΑΦΗΣ */}
       <div style={listWrapper}>
+        <p style={{ fontSize: '10px', fontWeight: '900', color: '#94a3b8', marginBottom: '15px', textTransform: 'uppercase' }}>Αναλυτικές Κινήσεις</p>
         {stats.currentViewData.filter(t => t.category !== 'Εσοδα Ζ').map(t => (
           <div key={t.id} style={rowStyle}>
             <div style={{ flex: 1 }}>
-              <p style={{ fontWeight: '800', fontSize: '14px', margin: 0, color: '#1e293b' }}>{t.suppliers?.name || t.notes || t.category.toUpperCase()}</p>
-              <span style={{ fontSize: '11px', color: '#94a3b8', fontWeight: '700' }}>{format(parseISO(t.date), 'dd MMM', { locale: el })} • {t.method}</span>
+              <p style={{ fontWeight: '800', fontSize: '14px', margin: 0, color: '#1e293b' }}>
+                {t.suppliers?.name || t.notes || t.category.toUpperCase()}
+                {t.is_credit && <span style={creditBadge}>ΠΙΣΤΩΣΗ</span>}
+              </p>
+              <span style={{ fontSize: '11px', color: '#94a3b8', fontWeight: '700' }}>
+                {format(parseISO(t.date), 'dd MMM', { locale: el })} • {t.method}
+              </span>
             </div>
-            <p style={{ fontWeight: '900', fontSize: '16px', color: view === 'income' ? '#10b981' : '#ef4444' }}>
-              {view === 'income' ? '+' : '-'}{Math.abs(Number(t.amount)).toFixed(2)}€
-            </p>
+            <div style={{ textAlign: 'right', display: 'flex', alignItems: 'center', gap: '15px' }}>
+                <p style={{ fontWeight: '900', fontSize: '16px', color: view === 'income' ? '#10b981' : '#ef4444', margin: 0 }}>
+                  {view === 'income' ? '+' : '-'}{Math.abs(Number(t.amount)).toFixed(2)}€
+                </p>
+                <button onClick={() => handleDelete(t.id)} style={deleteBtnSmall}>🗑️</button>
+            </div>
           </div>
         ))}
       </div>
@@ -232,11 +239,10 @@ const heroCard: any = { padding: '35px 20px', borderRadius: '32px', color: 'whit
 const labelMicro: any = { fontSize: '10px', fontWeight: '900', opacity: 0.5, letterSpacing: '1px' };
 const chartCard: any = { backgroundColor: 'white', padding: '25px', borderRadius: '28px', border: '1px solid #f1f5f9', marginBottom: '20px' };
 const chartTitle: any = { fontSize: '9px', fontWeight: '900', color: '#94a3b8', textAlign: 'center', marginBottom: '20px', letterSpacing: '1px' };
-const zHeader: any = { backgroundColor: '#0f172a', color: 'white', padding: '22px', borderRadius: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' };
-const zDetail: any = { backgroundColor: 'white', padding: '10px 22px 22px', borderRadius: '0 0 24px 24px', border: '2px solid #0f172a', borderTop: 'none', marginTop: '-15px' };
-const zRow: any = { display: 'flex', justifyContent: 'space-between', padding: '12px 0', borderBottom: '1px solid #f8fafc', fontSize: '14px', color: '#475569' };
-const listWrapper: any = { backgroundColor: 'white', padding: '10px 22px', borderRadius: '28px', border: '1px solid #f1f5f9' };
+const listWrapper: any = { backgroundColor: 'white', padding: '22px', borderRadius: '28px', border: '1px solid #f1f5f9' };
 const rowStyle: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '18px 0', borderBottom: '1px solid #f8fafc' };
+const creditBadge: any = { fontSize: '8px', backgroundColor: '#fee2e2', color: '#ef4444', padding: '2px 6px', borderRadius: '6px', marginLeft: '8px', verticalAlign: 'middle', fontWeight: '900' };
+const deleteBtnSmall: any = { background: 'none', border: 'none', cursor: 'pointer', fontSize: '14px', opacity: 0.3, padding: '5px' };
 
 export default function AnalysisPage() {
   return <main style={{ backgroundColor: '#f8fafc', minHeight: '100vh', padding: '15px' }}><Suspense fallback={<div>Φόρτωση...</div>}><AnalysisContent /></Suspense></main>
