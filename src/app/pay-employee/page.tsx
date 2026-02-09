@@ -31,6 +31,7 @@ function PayEmployeeContent() {
     return `${year}-${month}-${day}`
   }
 
+  // STATES
   const [baseSalary, setBaseSalary] = useState('')
   const [overtime, setOvertime] = useState('')
   const [bonus, setBonus] = useState('')
@@ -42,11 +43,12 @@ function PayEmployeeContent() {
   const [loading, setLoading] = useState(true)
   const [userData, setUserData] = useState({ store_id: '', username: '' })
 
+  // ΥΠΟΛΟΓΙΣΜΟΙ
   const totalEarnings = (Number(baseSalary) || 0) + (Number(overtime) || 0) + (Number(bonus) || 0) + (Number(gift) || 0) + (Number(allowance) || 0);
   const totalPaid = (Number(paidBank) || 0) + (Number(paidCash) || 0);
   const difference = totalEarnings - totalPaid;
 
-  // ΦΟΡΤΩΣΗ ΠΡΟΦΙΛ & ΑΥΤΟΜΑΤΟΥ ΜΙΣΘΟΥ
+  // ΦΟΡΤΩΣΗ ΠΡΟΦΙΛ & ΑΥΤΟΜΑΤΟΥ ΜΙΣΘΟΥ (monthly_salary)
   const loadData = useCallback(async () => {
     try {
       setLoading(true)
@@ -56,11 +58,11 @@ function PayEmployeeContent() {
       const { data: profile } = await supabase.from('profiles').select('store_id, username').eq('id', session.user.id).maybeSingle()
       if (profile) setUserData({ store_id: profile.store_id, username: profile.username || 'Admin' })
 
-      // Εδώ τραβάμε τον μισθό του υπαλλήλου
       if (empId) {
-        const { data: employee } = await supabase.from('employees').select('salary').eq('id', empId).maybeSingle()
-        if (employee?.salary) {
-          setBaseSalary(employee.salary.toString())
+        // ΔΙΟΡΘΩΣΗ: Χρησιμοποιούμε τη στήλη monthly_salary
+        const { data: employee } = await supabase.from('employees').select('monthly_salary').eq('id', empId).maybeSingle()
+        if (employee?.monthly_salary) {
+          setBaseSalary(employee.monthly_salary.toString())
         }
       }
     } catch (err) { console.error(err) } finally { setLoading(false) }
@@ -75,7 +77,7 @@ function PayEmployeeContent() {
 
   async function handlePayment() {
     if (totalEarnings <= 0) return alert('Εισάγετε ποσά στις αμοιβές.')
-    if (Math.abs(difference) > 0.01) return alert(`Πρέπει να μοιράσετε όλο το ποσό (${totalEarnings.toFixed(2)}€).`);
+    if (Math.abs(difference) > 0.01) return alert(`Πρέπει να κατανείμετε όλο το ποσό (${totalEarnings.toFixed(2)}€) σε Τράπεζα ή Μετρητά για να είναι σωστή η λογιστική εγγραφή.`);
     
     setLoading(true)
     const parts = [];
@@ -88,10 +90,30 @@ function PayEmployeeContent() {
 
     const transactionBatch = [];
     if (Number(paidBank) > 0) {
-      transactionBatch.push({ amount: Number(paidBank), type: 'expense', category: 'Προσωπικό', method: 'Τράπεζα', date, employee_id: empId, store_id: userData.store_id, created_by_name: userData.username, notes: `Πληρωμή ${empName} (Τράπεζα) [${breakdownText}]` });
+      transactionBatch.push({
+        amount: Number(paidBank),
+        type: 'expense',
+        category: 'Προσωπικό',
+        method: 'Τράπεζα',
+        date,
+        employee_id: empId,
+        store_id: userData.store_id,
+        created_by_name: userData.username,
+        notes: `Πληρωμή ${empName} (Τράπεζα) [${breakdownText}]`
+      });
     }
     if (Number(paidCash) > 0) {
-      transactionBatch.push({ amount: Number(paidCash), type: 'expense', category: 'Προσωπικό', method: 'Μετρητά', date, employee_id: empId, store_id: userData.store_id, created_by_name: userData.username, notes: `Πληρωμή ${empName} (Μετρητά) [${breakdownText}]` });
+      transactionBatch.push({
+        amount: Number(paidCash),
+        type: 'expense',
+        category: 'Προσωπικό',
+        method: 'Μετρητά',
+        date,
+        employee_id: empId,
+        store_id: userData.store_id,
+        created_by_name: userData.username,
+        notes: `Πληρωμή ${empName} (Μετρητά) [${breakdownText}]`
+      });
     }
 
     const { error } = await supabase.from('transactions').insert(transactionBatch)
@@ -107,7 +129,7 @@ function PayEmployeeContent() {
             <div style={logoBoxStyle}>💸</div>
             <div>
               <h1 style={{ fontWeight: '800', fontSize: '20px', margin: 0, color: colors.primaryDark }}>Πληρωμή</h1>
-              <p style={{ margin: 0, fontSize: '10px', color: colors.secondaryText, fontWeight: '700' }}>ΑΝΑΛΥΣΗ ΜΙΣΘΟΔΟΣΙΑΣ</p>
+              <p style={{ margin: 0, fontSize: '10px', color: colors.secondaryText, fontWeight: '700' }}>ΕΚΚΑΘΑΡΙΣΗ ΜΙΣΘΟΔΟΣΙΑΣ</p>
             </div>
           </div>
           <Link href="/employees" style={backBtnStyle}>✕</Link>
@@ -123,12 +145,12 @@ function PayEmployeeContent() {
           <div style={gridInputs}>
             <div style={inputGroup}>
               <label style={subLabel}>ΒΑΣΙΚΟΣ (AUTO)</label>
-              <input type="number" inputMode="decimal" value={baseSalary} onChange={e => setBaseSalary(e.target.value)} style={{...smallInput, border: '2px solid #cbd5e1'}} placeholder="0.00" />
+              <input type="number" inputMode="decimal" value={baseSalary} onChange={e => setBaseSalary(e.target.value)} style={{...smallInput, border: '2px solid #cbd5e1'}} />
             </div>
-            <div style={inputGroup}><label style={subLabel}>ΥΠΕΡΩΡΙΕΣ</label><input type="number" inputMode="decimal" value={overtime} onChange={e => setOvertime(e.target.value)} style={smallInput} placeholder="0.00" /></div>
-            <div style={inputGroup}><label style={subLabel}>BONUS</label><input type="number" inputMode="decimal" value={bonus} onChange={e => setBonus(e.target.value)} style={smallInput} placeholder="0.00" /></div>
-            <div style={inputGroup}><label style={subLabel}>ΔΩΡΑ</label><input type="number" inputMode="decimal" value={gift} onChange={e => setGift(e.target.value)} style={smallInput} placeholder="0.00" /></div>
-            <div style={inputGroup}><label style={subLabel}>ΕΠΙΔΟΜΑΤΑ</label><input type="number" inputMode="decimal" value={allowance} onChange={e => setAllowance(e.target.value)} style={smallInput} placeholder="0.00" /></div>
+            <div style={inputGroup}><label style={subLabel}>ΥΠΕΡΩΡΙΕΣ</label><input type="number" inputMode="decimal" value={overtime} onChange={e => setOvertime(e.target.value)} style={smallInput} /></div>
+            <div style={inputGroup}><label style={subLabel}>BONUS</label><input type="number" inputMode="decimal" value={bonus} onChange={e => setBonus(e.target.value)} style={smallInput} /></div>
+            <div style={inputGroup}><label style={subLabel}>ΔΩΡΑ</label><input type="number" inputMode="decimal" value={gift} onChange={e => setGift(e.target.value)} style={smallInput} /></div>
+            <div style={inputGroup}><label style={subLabel}>ΕΠΙΔΟΜΑΤΑ</label><input type="number" inputMode="decimal" value={allowance} onChange={e => setAllowance(e.target.value)} style={smallInput} /></div>
             <div style={totalEarningsBox}>
               <label style={subLabel}>ΣΥΝΟΛΟ ΑΜΟΙΒΩΝ</label>
               <p style={{margin:0, fontWeight:'900', color:colors.primaryDark, fontSize:'16px'}}>{totalEarnings.toFixed(2)}€</p>
@@ -147,6 +169,7 @@ function PayEmployeeContent() {
             </div>
           </div>
 
+          {/* STATUS CARD */}
           <div style={{ ...statusCard, backgroundColor: (Math.abs(difference) < 0.01 && totalEarnings > 0) ? '#f0fdf4' : '#fff1f2' }}>
             <p style={{ margin: 0, fontSize: '11px', fontWeight: '800', color: colors.secondaryText }}>ΕΛΕΓΧΟΣ ΥΠΟΛΟΙΠΟΥ</p>
             <p style={{ margin: '4px 0 0', fontWeight: '900', color: (Math.abs(difference) < 0.01 && totalEarnings > 0) ? colors.accentGreen : colors.accentRed }}>
