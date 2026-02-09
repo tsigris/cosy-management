@@ -69,14 +69,39 @@ function EmployeesContent() {
 
   // --- ΣΥΝΑΡΤΗΣΕΙΣ ΥΠΟΛΟΓΙΣΜΟΥ ---
 
+  // ΔΙΟΡΘΩΜΕΝΟΣ ΥΠΟΛΟΓΙΣΜΟΣ ΥΠΟΛΟΙΠΟΥ (Προσθέτει τα έξτρα από τα notes)
   const getCurrentMonthRemaining = (emp: any) => {
     const now = new Date();
-    const paidThisMonth = transactions
-      .filter(t => t.employee_id === emp.id && 
-                   new Date(t.date).getMonth() === now.getMonth() && 
-                   new Date(t.date).getFullYear() === now.getFullYear())
-      .reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
-    return (Number(emp.monthly_salary) || 0) - paidThisMonth;
+    const currentMonthTrans = transactions.filter(t => 
+      t.employee_id === emp.id && 
+      new Date(t.date).getMonth() === now.getMonth() && 
+      new Date(t.date).getFullYear() === now.getFullYear()
+    );
+
+    let totalPaid = 0;
+    let extraEarnings = 0;
+    const processedDates = new Set();
+
+    currentMonthTrans.forEach(t => {
+      totalPaid += Number(t.amount) || 0;
+      
+      // Υπολογίζουμε τα έξτρα (Υπερωρίες, Bonus κτλ) από τις σημειώσεις μόνο μια φορά ανά ημερομηνία
+      if (!processedDates.has(t.date)) {
+        const note = t.notes || "";
+        const extract = (label: string) => {
+          const regex = new RegExp(`${label}:\\s*(\\d+(\\.\\d+)?)`, 'i');
+          const match = note.match(regex);
+          return match ? parseFloat(match[1]) : 0;
+        };
+        // Προσθέτουμε μόνο τα έξτρα, ο βασικός είναι ήδη στο emp.monthly_salary
+        extraEarnings += extract('Υπερ.') + extract('Bonus') + extract('Δώρο') + extract('Επίδ.');
+        processedDates.add(t.date);
+      }
+    });
+
+    const baseSalary = Number(emp.monthly_salary) || 0;
+    const totalOwedThisMonth = baseSalary + extraEarnings;
+    return totalOwedThisMonth - totalPaid;
   }
 
   const getYearlyStats = (id: string) => {
@@ -151,6 +176,7 @@ function EmployeesContent() {
     <div style={iphoneWrapper}>
       <div style={{ maxWidth: '500px', margin: '0 auto', paddingBottom: '100px' }}>
         
+        {/* HEADER */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
             <div style={logoBoxStyle}>👥</div>
@@ -195,8 +221,6 @@ function EmployeesContent() {
                 <div onClick={() => setSelectedEmpId(isSelected ? null : emp.id)} style={{ padding: '18px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div style={{ flex: 1 }}>
                     <p style={{ fontWeight: '700', color: colors.primaryDark, fontSize: '16px', margin: 0 }}>{emp.full_name.toUpperCase()}</p>
-                    
-                    {/* ΕΠΑΝΑΦΟΡΑ ΑΝΤΙΣΤΡΟΦΗΣ ΜΕΤΡΗΣΗΣ */}
                     <div style={{ marginTop: '6px' }}>
                        <span style={{...badgeStyle, backgroundColor: (daysLeft === 0 || daysLeft === null) ? '#fef2f2' : '#eff6ff', color: (daysLeft === 0 || daysLeft === null) ? colors.accentRed : colors.accentBlue}}>
                          {daysLeft === 0 ? 'ΣΗΜΕΡΑ 💰' : `ΣΕ ${daysLeft} ΗΜΕΡΕΣ 📅`}
@@ -207,7 +231,9 @@ function EmployeesContent() {
                   <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                     <Link href={`/pay-employee?id=${emp.id}&name=${emp.full_name}`} onClick={(e) => e.stopPropagation()} style={payBtnStyle}>ΠΛΗΡΩΜΗ</Link>
                     <div style={{ textAlign: 'right' }}>
-                        <p style={{ margin: 0, fontSize: '17px', fontWeight: '800', color: monthlyRem > 0 ? colors.accentRed : colors.accentGreen }}>{monthlyRem.toFixed(2)}€</p>
+                        <p style={{ margin: 0, fontSize: '17px', fontWeight: '800', color: monthlyRem > 0 ? colors.accentRed : colors.accentGreen }}>
+                           {monthlyRem.toFixed(2)}€
+                        </p>
                         <p style={{ margin: 0, fontSize: '8px', fontWeight: '800', color: colors.secondaryText }}>ΥΠΟΛΟΙΠΟ</p>
                     </div>
                   </div>
@@ -238,7 +264,6 @@ function EmployeesContent() {
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                                         <span>{t.method === 'Τράπεζα' ? '🏦' : '💵'}</span>
                                         <span style={{ fontWeight: '800', color: colors.primaryDark }}>{Number(t.amount).toFixed(2)}€</span>
-                                        {/* ΔΙΑΓΡΑΦΗ ΣΥΝΑΛΛΑΓΗΣ */}
                                         <button onClick={() => deleteTransaction(t.id)} style={transDeleteBtn}>🗑️</button>
                                     </div>
                                 </div>
@@ -249,7 +274,10 @@ function EmployeesContent() {
 
                     <div style={{ display: 'flex', gap: '10px' }}>
                       <button onClick={() => { 
-                        setFormData({...emp, monthly_salary: emp.monthly_salary.toString()}); 
+                        setFormData({
+                          full_name: emp.full_name, position: emp.position || '', amka: emp.amka || '', 
+                          iban: emp.iban || '', monthly_salary: emp.monthly_salary.toString(), start_date: emp.start_date
+                        }); 
                         setEditingId(emp.id); setIsAdding(true); window.scrollTo(0,0); 
                       }} style={editBtn}>ΕΠΕΞΕΡΓΑΣΙΑ ✎</button>
                       <button onClick={() => deleteEmployee(emp.id, emp.full_name)} style={deleteBtn}>ΔΙΑΓΡΑΦΗ 🗑️</button>
