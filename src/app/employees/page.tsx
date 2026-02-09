@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
 
-// --- ΕΠΑΓΓΕΛΜΑΤΙΚΗ ΠΑΛΕΤΑ ΧΡΩΜΑΤΩΝ ---
+// --- ΠΑΛΕΤΑ ΧΡΩΜΑΤΩΝ ---
 const colors = {
   primaryDark: '#1e293b',
   secondaryText: '#64748b',
@@ -31,7 +31,7 @@ function EmployeesContent() {
   
   const [viewYear, setViewYear] = useState(new Date().getFullYear())
 
-  // Δυναμική παραγωγή ετών
+  // Δυναμική παραγωγή ετών (Λύση για το error στη σειρά 36)
   const availableYears: number[] = [];
   for (let y = 2024; y <= new Date().getFullYear(); y++) {
     availableYears.push(y);
@@ -100,16 +100,6 @@ function EmployeesContent() {
     return stats;
   }
 
-  const getDaysUntilPayment = (startDateStr: string) => {
-    if (!startDateStr) return null
-    const today = new Date(); today.setHours(0, 0, 0, 0)
-    const start = new Date(startDateStr); const payDay = start.getDate()
-    let nextPayDate = new Date(today.getFullYear(), today.getMonth(), payDay)
-    nextPayDate.setHours(0, 0, 0, 0)
-    if (today > nextPayDate) nextPayDate = new Date(today.getFullYear(), today.getMonth() + 1, payDay)
-    return Math.ceil((nextPayDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
-  }
-
   async function handleSave() {
     if (!formData.full_name.trim() || !formData.monthly_salary) return alert('Συμπληρώστε τα υποχρεωτικά πεδία!')
     setLoading(true)
@@ -124,7 +114,33 @@ function EmployeesContent() {
     else { alert(error.message); setLoading(false); }
   }
 
-  const resetForm = () => setFormData({ full_name: '', position: '', amka: '', iban: '', monthly_salary: '', start_date: new Date().toISOString().split('T')[0] })
+  // ΔΙΑΓΡΑΦΗ ΥΠΑΛΛΗΛΟΥ (Με καθαρισμό συναλλαγών για αποφυγή Error)
+  async function deleteEmployee(id: string, name: string) {
+    if(!confirm(`Οριστική διαγραφή του/της ${name}; Θα διαγραφεί και όλο το ιστορικό πληρωμών.`)) return;
+    
+    setLoading(true);
+    // 1. Διαγραφή συναλλαγών πρώτα
+    await supabase.from('transactions').delete().eq('employee_id', id);
+    // 2. Διαγραφή υπαλλήλου
+    const { error } = await supabase.from('employees').delete().eq('id', id);
+    
+    if(!error) fetchInitialData();
+    else alert(error.message);
+    setLoading(false);
+  }
+
+  // ΔΙΑΓΡΑΦΗ ΜΕΜΟΝΩΜΕΝΗΣ ΠΛΗΡΩΜΗΣ
+  async function deleteTransaction(id: string) {
+    if(!confirm('Διαγραφή αυτής της πληρωμής από το ιστορικό;')) return;
+    const { error } = await supabase.from('transactions').delete().eq('id', id);
+    if(!error) fetchInitialData();
+    else alert(error.message);
+  }
+
+  const resetForm = () => {
+    setFormData({ full_name: '', position: '', amka: '', iban: '', monthly_salary: '', start_date: new Date().toISOString().split('T')[0] });
+    setEditingId(null);
+  }
 
   return (
     <div style={iphoneWrapper}>
@@ -138,7 +154,7 @@ function EmployeesContent() {
           <Link href="/" style={backBtnStyle}>✕</Link>
         </div>
 
-        <button onClick={() => { setIsAdding(!isAdding); if(isAdding) resetForm(); setEditingId(null); }} style={isAdding ? cancelBtn : addBtn}>
+        <button onClick={() => { if(isAdding) resetForm(); setIsAdding(!isAdding); }} style={isAdding ? cancelBtn : addBtn}>
           {isAdding ? 'ΑΚΥΡΩΣΗ' : '+ ΝΕΟΣ ΥΠΑΛΛΗΛΟΣ'}
         </button>
 
@@ -157,7 +173,7 @@ function EmployeesContent() {
               </div>
             </div>
             <button onClick={handleSave} disabled={loading} style={{...saveBtnStyle, backgroundColor: editingId ? '#f59e0b' : colors.primaryDark}}>
-              {loading ? 'ΓΙΝΕΤΑΙ ΑΠΟΘΗΚΕΥΣΗ...' : 'ΑΠΟΘΗΚΕΥΣΗ'}
+              {loading ? 'ΓΙΝΕΤΑΙ ΑΠΟΘΗΚΕΥΣΗ...' : (editingId ? 'ΕΝΗΜΕΡΩΣΗ ΣΤΟΙΧΕΙΩΝ' : 'ΑΠΟΘΗΚΕΥΣΗ')}
             </button>
           </div>
         )}
@@ -167,18 +183,12 @@ function EmployeesContent() {
             const yearlyStats = getYearlyStats(emp.id);
             const monthlyRem = getCurrentMonthRemaining(emp);
             const isSelected = selectedEmpId === emp.id;
-            const daysLeft = getDaysUntilPayment(emp.start_date);
 
             return (
               <div key={emp.id} style={employeeCard}>
                 <div onClick={() => setSelectedEmpId(isSelected ? null : emp.id)} style={{ padding: '18px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div style={{ flex: 1 }}>
                     <p style={{ fontWeight: '700', color: colors.primaryDark, fontSize: '16px', margin: 0 }}>{emp.full_name.toUpperCase()}</p>
-                    <div style={{ display: 'flex', gap: '8px', marginTop: '6px' }}>
-                       <span style={{...badgeStyle, backgroundColor: daysLeft === 0 ? '#fef2f2' : '#eff6ff', color: daysLeft === 0 ? colors.accentRed : colors.accentBlue}}>
-                         {daysLeft === 0 ? 'ΣΗΜΕΡΑ 💰' : `ΣΕ ${daysLeft} ΗΜΕΡΕΣ`}
-                       </span>
-                    </div>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                     <Link href={`/pay-employee?id=${emp.id}&name=${emp.full_name}`} onClick={(e) => e.stopPropagation()} style={payBtnStyle}>ΠΛΗΡΩΜΗ</Link>
@@ -209,19 +219,19 @@ function EmployeesContent() {
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '20px' }}>
                         {transactions.filter(t => t.employee_id === emp.id && new Date(t.date).getFullYear() === viewYear).map(t => (
                             <div key={t.id} style={historyItemExtended}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                     <span style={{ color: colors.secondaryText, fontWeight: '700', fontSize: '11px' }}>{new Date(t.date).toLocaleDateString('el-GR')}</span>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                                         <span>{t.method === 'Τράπεζα' ? '🏦' : '💵'}</span>
                                         <span style={{ fontWeight: '800', color: colors.primaryDark }}>{Number(t.amount).toFixed(2)}€</span>
+                                        <button onClick={() => deleteTransaction(t.id)} style={transDeleteBtn}>🗑️</button>
                                     </div>
                                 </div>
-                                <p style={{ margin: 0, fontSize: '10px', color: colors.secondaryText, fontStyle: 'italic' }}>{t.notes?.split('[')[1]?.replace(']', '') || 'Πληρωμή'}</p>
+                                <p style={{ margin: '4px 0 0', fontSize: '10px', color: colors.secondaryText, fontStyle: 'italic' }}>{t.notes?.split('[')[1]?.replace(']', '') || 'Πληρωμή'}</p>
                             </div>
                         ))}
                     </div>
 
-                    {/* ΚΟΥΜΠΙΑ ΕΠΕΞΕΡΓΑΣΙΑΣ ΚΑΙ ΔΙΑΓΡΑΦΗΣ */}
                     <div style={{ display: 'flex', gap: '10px' }}>
                       <button onClick={() => { 
                         setFormData({
@@ -230,12 +240,7 @@ function EmployeesContent() {
                         }); 
                         setEditingId(emp.id); setIsAdding(true); window.scrollTo(0,0); 
                       }} style={editBtn}>ΕΠΕΞΕΡΓΑΣΙΑ ✎</button>
-                      <button onClick={async () => { 
-                        if(confirm(`Οριστική διαγραφή του/της ${emp.full_name};`)) { 
-                           const { error } = await supabase.from('employees').delete().eq('id', emp.id);
-                           if (!error) fetchInitialData(); else alert(error.message);
-                        } 
-                      }} style={deleteBtn}>🗑️</button>
+                      <button onClick={() => deleteEmployee(emp.id, emp.full_name)} style={deleteBtn}>🗑️</button>
                     </div>
                   </div>
                 )}
@@ -269,6 +274,7 @@ const statLabel: any = { margin: 0, fontSize: '8px', fontWeight: '800', color: c
 const statValue: any = { margin: '4px 0 0', fontSize: '16px', fontWeight: '900', color: colors.primaryDark };
 const historyTitle: any = { fontSize: '9px', fontWeight: '800', color: colors.secondaryText, marginBottom: '12px', textTransform: 'uppercase' };
 const historyItemExtended: any = { padding: '12px', borderRadius: '14px', border: `1px solid ${colors.border}`, backgroundColor: colors.bgLight, marginBottom: '8px' };
+const transDeleteBtn: any = { background: 'none', border: 'none', cursor: 'pointer', fontSize: '12px', opacity: 0.5 };
 const editBtn: any = { flex: 4, background: '#fffbeb', border: `1px solid #fef3c7`, padding: '12px', borderRadius: '10px', cursor: 'pointer', fontSize: '11px', fontWeight: '700', color: '#92400e' };
 const deleteBtn: any = { flex: 1, background: '#fef2f2', border: `1px solid #fee2e2`, padding: '12px', borderRadius: '10px', cursor: 'pointer', fontSize: '11px', fontWeight: '700', color: colors.accentRed, display: 'flex', alignItems: 'center', justifyContent: 'center' };
 
