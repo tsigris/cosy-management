@@ -32,7 +32,7 @@ function EmployeesContent() {
   // Φίλτρο προβολής - Προεπιλογή το τρέχον έτος
   const [viewYear, setViewYear] = useState(new Date().getFullYear())
 
-  // ΔΙΟΡΘΩΣΗ ERROR ΣΕΙΡΑ 36: Ορισμός τύπου number[]
+  // ΔΙΟΡΘΩΣΗ ERROR ΣΕΙΡΑ 36: Ορισμός τύπου number[] για αποφυγή του "never[]"
   const availableYears: number[] = [];
   for (let y = 2024; y <= new Date().getFullYear(); y++) {
     availableYears.push(y);
@@ -79,29 +79,36 @@ function EmployeesContent() {
     return (Number(emp.monthly_salary) || 0) - paidThisMonth;
   }
 
-  // Ετήσια Στατιστικά βάσει του viewYear (Εξαγωγή από notes)
+  // Ετήσια Στατιστικά βάσει του viewYear (Εξαγωγή από notes με αποφυγή διπλοεγγραφών)
   const getYearlyStats = (id: string) => {
     const yearTrans = transactions.filter(t => {
         return t.employee_id === id && new Date(t.date).getFullYear() === viewYear;
     });
 
     let stats = { base: 0, overtime: 0, bonus: 0, gift: 0, allowance: 0, total: 0 };
+    const processedDates = new Set(); // Για να μην διπλομετράμε αναλύσεις την ίδια μέρα
 
     yearTrans.forEach(t => {
-      const note = t.notes || "";
+      // Το "total" είναι πάντα το άθροισμα των πραγματικών ποσών κίνησης (σωστό)
       stats.total += Number(t.amount) || 0;
       
-      const extract = (label: string) => {
-        const regex = new RegExp(`${label}:\\s*(\\d+(\\.\\d+)?)`, 'i');
-        const match = note.match(regex);
-        return match ? parseFloat(match[1]) : 0;
-      };
+      // Διαβάζουμε την ανάλυση από τις σημειώσεις μόνο μία φορά ανά ημερομηνία πληρωμής
+      if (!processedDates.has(t.date)) {
+          const note = t.notes || "";
+          const extract = (label: string) => {
+            const regex = new RegExp(`${label}:\\s*(\\d+(\\.\\d+)?)`, 'i');
+            const match = note.match(regex);
+            return match ? parseFloat(match[1]) : 0;
+          };
 
-      stats.base += extract('Βασικός');
-      stats.overtime += extract('Υπερ.');
-      stats.bonus += extract('Bonus');
-      stats.gift += extract('Δώρο');
-      stats.allowance += extract('Επίδ.');
+          stats.base += extract('Βασικός');
+          stats.overtime += extract('Υπερ.');
+          stats.bonus += extract('Bonus');
+          stats.gift += extract('Δώρο');
+          stats.allowance += extract('Επίδ.');
+          
+          processedDates.add(t.date);
+      }
     });
 
     return stats;
@@ -190,7 +197,6 @@ function EmployeesContent() {
                 {isSelected && (
                   <div style={{ backgroundColor: '#ffffff', padding: '18px', borderTop: `1px solid ${colors.border}` }}>
                     
-                    {/* ΦΙΛΤΡΟ ΕΤΟΥΣ */}
                     <div style={filterContainer}>
                         <label style={{...labelStyle, margin: 0, flex: 1, alignSelf: 'center'}}>ΕΤΗΣΙΑ ΑΝΑΛΥΣΗ</label>
                         <select value={viewYear} onChange={e => setViewYear(parseInt(e.target.value))} style={filterSelect}>
