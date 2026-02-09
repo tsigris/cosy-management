@@ -29,10 +29,9 @@ function EmployeesContent() {
   const [selectedEmpId, setSelectedEmpId] = useState<string | null>(null)
   const [storeId, setStoreId] = useState<string | null>(null)
   
-  // Φίλτρο προβολής - Προεπιλογή το τρέχον έτος
   const [viewYear, setViewYear] = useState(new Date().getFullYear())
 
-  // Δυναμική παραγωγή ετών (Από το 2024 έως το τρέχον)
+  // Δυναμική παραγωγή ετών
   const availableYears: number[] = [];
   for (let y = 2024; y <= new Date().getFullYear(); y++) {
     availableYears.push(y);
@@ -68,7 +67,6 @@ function EmployeesContent() {
 
   // --- ΣΥΝΑΡΤΗΣΕΙΣ ΥΠΟΛΟΓΙΣΜΟΥ ---
 
-  // Υπόλοιπο τρέχοντος μήνα (για την κλειστή κάρτα)
   const getCurrentMonthRemaining = (emp: any) => {
     const now = new Date();
     const paidThisMonth = transactions
@@ -79,19 +77,13 @@ function EmployeesContent() {
     return (Number(emp.monthly_salary) || 0) - paidThisMonth;
   }
 
-  // Ετήσια Στατιστικά βάσει του viewYear (Διόρθωση διπλοεγγραφών)
   const getYearlyStats = (id: string) => {
-    const yearTrans = transactions.filter(t => {
-        return t.employee_id === id && new Date(t.date).getFullYear() === viewYear;
-    });
-
-    let stats = { base: 0, overtime: 0, bonus: 0, gift: 0, allowance: 0, total: 0 };
+    const yearTrans = transactions.filter(t => t.employee_id === id && new Date(t.date).getFullYear() === viewYear);
+    let stats = { base: 0, overtime: 0, bonus: 0, total: 0 };
     const processedDates = new Set(); 
 
     yearTrans.forEach(t => {
       stats.total += Number(t.amount) || 0;
-      
-      // Διαβάζουμε την ανάλυση μόνο μία φορά ανά ημερομηνία πληρωμής
       if (!processedDates.has(t.date)) {
           const note = t.notes || "";
           const extract = (label: string) => {
@@ -99,16 +91,12 @@ function EmployeesContent() {
             const match = note.match(regex);
             return match ? parseFloat(match[1]) : 0;
           };
-
           stats.base += extract('Βασικός');
           stats.overtime += extract('Υπερ.');
           stats.bonus += extract('Bonus');
-          stats.gift += extract('Δώρο');
-          stats.allowance += extract('Επίδ.');
           processedDates.add(t.date);
       }
     });
-
     return stats;
   }
 
@@ -163,6 +151,10 @@ function EmployeesContent() {
                 <label style={labelStyle}>Μισθός (€) *</label>
                 <input type="number" value={formData.monthly_salary} onChange={e => setFormData({...formData, monthly_salary: e.target.value})} style={inputStyle} />
               </div>
+              <div style={{ flex: 1 }}>
+                <label style={labelStyle}>Ημ. Πληρωμής</label>
+                <input type="date" value={formData.start_date} onChange={e => setFormData({...formData, start_date: e.target.value})} style={inputStyle} />
+              </div>
             </div>
             <button onClick={handleSave} disabled={loading} style={{...saveBtnStyle, backgroundColor: editingId ? '#f59e0b' : colors.primaryDark}}>
               {loading ? 'ΓΙΝΕΤΑΙ ΑΠΟΘΗΚΕΥΣΗ...' : 'ΑΠΟΘΗΚΕΥΣΗ'}
@@ -188,20 +180,17 @@ function EmployeesContent() {
                        </span>
                     </div>
                   </div>
-
-                  {/* ΕΠΑΝΑΦΟΡΑ ΚΟΥΜΠΙΟΥ ΠΛΗΡΩΜΗ ΣΤΗ ΣΩΣΤΗ ΘΕΣΗ */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', textAlign: 'right' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                     <Link href={`/pay-employee?id=${emp.id}&name=${emp.full_name}`} onClick={(e) => e.stopPropagation()} style={payBtnStyle}>ΠΛΗΡΩΜΗ</Link>
-                    <div>
+                    <div style={{ textAlign: 'right' }}>
                         <p style={{ margin: 0, fontSize: '17px', fontWeight: '800', color: monthlyRem > 0 ? colors.accentRed : colors.accentGreen }}>{monthlyRem.toFixed(2)}€</p>
-                        <p style={{ margin: 0, fontSize: '8px', fontWeight: '800', color: colors.secondaryText }}>ΥΠΟΛΟΙΠΟ ΜΗΝΑ</p>
+                        <p style={{ margin: 0, fontSize: '8px', fontWeight: '800', color: colors.secondaryText }}>ΥΠΟΛΟΙΠΟ</p>
                     </div>
                   </div>
                 </div>
 
                 {isSelected && (
                   <div style={{ backgroundColor: '#ffffff', padding: '18px', borderTop: `1px solid ${colors.border}` }}>
-                    
                     <div style={filterContainer}>
                         <label style={{...labelStyle, margin: 0, flex: 1, alignSelf: 'center'}}>ΕΤΗΣΙΑ ΑΝΑΛΥΣΗ</label>
                         <select value={viewYear} onChange={e => setViewYear(parseInt(e.target.value))} style={filterSelect}>
@@ -216,34 +205,37 @@ function EmployeesContent() {
                         <div style={{...statBox, backgroundColor: colors.primaryDark}}><p style={{...statLabel, color: '#94a3b8'}}>ΣΥΝΟΛΟ ΕΤΟΥΣ</p><p style={{...statValue, color: colors.accentGreen}}>{yearlyStats.total.toFixed(2)}€</p></div>
                     </div>
 
-                    <div style={{ marginBottom: '20px' }}>
-                       <p style={historyTitle}>ΚΙΝΗΣΕΙΣ ΕΤΟΥΣ {viewYear}</p>
-                       <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                          {transactions.filter(t => t.employee_id === emp.id && new Date(t.date).getFullYear() === viewYear).length > 0 ? (
-                            transactions.filter(t => t.employee_id === emp.id && new Date(t.date).getFullYear() === viewYear).map(t => (
-                                <div key={t.id} style={historyItemExtended}>
-                                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                                      <span style={{ color: colors.secondaryText, fontWeight: '700', fontSize: '11px' }}>{new Date(t.date).toLocaleDateString('el-GR')}</span>
-                                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                         <span>{t.method === 'Τράπεζα' ? '🏦' : '💵'}</span>
-                                         <span style={{ fontWeight: '800', color: colors.primaryDark }}>{Number(t.amount).toFixed(2)}€</span>
-                                      </div>
-                                   </div>
-                                   <p style={{ margin: 0, fontSize: '10px', color: colors.secondaryText, fontStyle: 'italic' }}>{t.notes?.split('[')[1]?.replace(']', '') || 'Πληρωμή'}</p>
+                    <p style={historyTitle}>ΚΙΝΗΣΕΙΣ ΕΤΟΥΣ {viewYear}</p>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '20px' }}>
+                        {transactions.filter(t => t.employee_id === emp.id && new Date(t.date).getFullYear() === viewYear).map(t => (
+                            <div key={t.id} style={historyItemExtended}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                                    <span style={{ color: colors.secondaryText, fontWeight: '700', fontSize: '11px' }}>{new Date(t.date).toLocaleDateString('el-GR')}</span>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                        <span>{t.method === 'Τράπεζα' ? '🏦' : '💵'}</span>
+                                        <span style={{ fontWeight: '800', color: colors.primaryDark }}>{Number(t.amount).toFixed(2)}€</span>
+                                    </div>
                                 </div>
-                            ))
-                          ) : (
-                            <p style={{textAlign:'center', fontSize:'11px', color: colors.secondaryText, padding:'10px'}}>Καμία κίνηση για το {viewYear}.</p>
-                          )}
-                       </div>
+                                <p style={{ margin: 0, fontSize: '10px', color: colors.secondaryText, fontStyle: 'italic' }}>{t.notes?.split('[')[1]?.replace(']', '') || 'Πληρωμή'}</p>
+                            </div>
+                        ))}
                     </div>
 
+                    {/* ΚΟΥΜΠΙΑ ΕΠΕΞΕΡΓΑΣΙΑΣ ΚΑΙ ΔΙΑΓΡΑΦΗΣ */}
                     <div style={{ display: 'flex', gap: '10px' }}>
                       <button onClick={() => { 
-                        setFormData({...emp, monthly_salary: emp.monthly_salary.toString()}); 
+                        setFormData({
+                          full_name: emp.full_name, position: emp.position || '', amka: emp.amka || '', 
+                          iban: emp.iban || '', monthly_salary: emp.monthly_salary.toString(), start_date: emp.start_date
+                        }); 
                         setEditingId(emp.id); setIsAdding(true); window.scrollTo(0,0); 
                       }} style={editBtn}>ΕΠΕΞΕΡΓΑΣΙΑ ✎</button>
-                      <button onClick={async () => { if(confirm('Διαγραφή;')) { await supabase.from('employees').delete().eq('id', emp.id); fetchInitialData(); } }} style={deleteBtn}>🗑️</button>
+                      <button onClick={async () => { 
+                        if(confirm(`Οριστική διαγραφή του/της ${emp.full_name};`)) { 
+                           const { error } = await supabase.from('employees').delete().eq('id', emp.id);
+                           if (!error) fetchInitialData(); else alert(error.message);
+                        } 
+                      }} style={deleteBtn}>🗑️</button>
                     </div>
                   </div>
                 )}
@@ -257,31 +249,28 @@ function EmployeesContent() {
 }
 
 // --- STYLES ---
-const iphoneWrapper: any = { backgroundColor: colors.bgLight, minHeight: '100dvh', padding: '20px', overflowY: 'auto', WebkitOverflowScrolling: 'touch', position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 };
+const iphoneWrapper: any = { backgroundColor: colors.bgLight, minHeight: '100dvh', padding: '20px', overflowY: 'auto', position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 };
 const logoBoxStyle: any = { width: '42px', height: '42px', backgroundColor: '#dbeafe', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px' };
 const backBtnStyle: any = { textDecoration: 'none', color: colors.secondaryText, fontSize: '18px', fontWeight: 'bold', width: '38px', height: '38px', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: colors.white, borderRadius: '12px', border: `1px solid ${colors.border}` };
 const payBtnStyle: any = { backgroundColor: colors.accentBlue, color: 'white', padding: '8px 14px', borderRadius: '10px', fontSize: '10px', fontWeight: '800', textDecoration: 'none', boxShadow: '0 4px 8px rgba(37, 99, 235, 0.2)' };
 const addBtn: any = { width: '100%', padding: '16px', backgroundColor: colors.primaryDark, color: 'white', border: 'none', borderRadius: '16px', fontWeight: '700', fontSize: '14px', marginBottom: '20px' };
 const cancelBtn: any = { ...addBtn, backgroundColor: colors.white, color: colors.secondaryText, border: `1px solid ${colors.border}` };
-const formCard: any = { backgroundColor: colors.white, padding: '24px', borderRadius: '24px', border: '2px solid', marginBottom: '25px' };
+const formCard: any = { backgroundColor: colors.white, padding: '24px', borderRadius: '24px', border: '2px solid', marginBottom: '25px', boxShadow: '0 4px 12px rgba(0,0,0,0.05)' };
 const labelStyle: any = { fontSize: '10px', fontWeight: '800', color: colors.secondaryText, display: 'block', marginBottom: '6px', textTransform: 'uppercase' };
 const inputStyle: any = { width: '100%', padding: '14px', borderRadius: '12px', border: `1px solid ${colors.border}`, fontSize: '15px', fontWeight: '700', backgroundColor: colors.bgLight, boxSizing: 'border-box', outline: 'none' };
 const saveBtnStyle: any = { width: '100%', color: 'white', padding: '16px', borderRadius: '14px', border: 'none', fontWeight: '800', fontSize: '15px', marginTop: '20px' };
-const employeeCard: any = { backgroundColor: colors.white, borderRadius: '22px', border: `1px solid ${colors.border}`, overflow: 'hidden', marginBottom: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.02)' };
+const employeeCard: any = { backgroundColor: colors.white, borderRadius: '22px', border: `1px solid ${colors.border}`, overflow: 'hidden', marginBottom: '12px' };
 const badgeStyle: any = { fontSize: '9px', fontWeight: '700', padding: '4px 10px', borderRadius: '6px' };
-
-const filterContainer: any = { display: 'flex', gap: '8px', marginBottom: '15px', padding: '5px', backgroundColor: colors.slate100, borderRadius: '12px' };
-const filterSelect: any = { padding: '8px', borderRadius: '10px', border: `1px solid ${colors.border}`, backgroundColor: colors.white, fontSize: '12px', fontWeight: '800', color: colors.primaryDark, outline: 'none' };
-
+const filterContainer: any = { display: 'flex', gap: '8px', marginBottom: '15px', padding: '8px', backgroundColor: colors.slate100, borderRadius: '12px' };
+const filterSelect: any = { padding: '6px', borderRadius: '8px', border: `1px solid ${colors.border}`, backgroundColor: colors.white, fontSize: '12px', fontWeight: '800' };
 const statsGrid: any = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '25px' };
 const statBox: any = { padding: '15px', backgroundColor: colors.slate100, borderRadius: '16px', textAlign: 'center' };
-const statLabel: any = { margin: 0, fontSize: '8px', fontWeight: '800', color: colors.secondaryText, letterSpacing: '0.5px' };
+const statLabel: any = { margin: 0, fontSize: '8px', fontWeight: '800', color: colors.secondaryText };
 const statValue: any = { margin: '4px 0 0', fontSize: '16px', fontWeight: '900', color: colors.primaryDark };
-
-const historyTitle: any = { fontSize: '9px', fontWeight: '800', color: colors.secondaryText, marginBottom: '12px', letterSpacing: '1px', textTransform: 'uppercase' };
-const historyItemExtended: any = { padding: '12px', borderRadius: '14px', border: `1px solid ${colors.border}`, backgroundColor: colors.bgLight };
-const editBtn: any = { flex: 2, background: '#fffbeb', border: `1px solid #fef3c7`, padding: '12px', borderRadius: '10px', cursor: 'pointer', fontSize: '11px', fontWeight: '700', color: '#92400e' };
-const deleteBtn: any = { background: '#fef2f2', border: `1px solid #fee2e2`, padding: '12px', borderRadius: '10px', cursor: 'pointer', fontSize: '11px', fontWeight: '700', color: colors.accentRed };
+const historyTitle: any = { fontSize: '9px', fontWeight: '800', color: colors.secondaryText, marginBottom: '12px', textTransform: 'uppercase' };
+const historyItemExtended: any = { padding: '12px', borderRadius: '14px', border: `1px solid ${colors.border}`, backgroundColor: colors.bgLight, marginBottom: '8px' };
+const editBtn: any = { flex: 4, background: '#fffbeb', border: `1px solid #fef3c7`, padding: '12px', borderRadius: '10px', cursor: 'pointer', fontSize: '11px', fontWeight: '700', color: '#92400e' };
+const deleteBtn: any = { flex: 1, background: '#fef2f2', border: `1px solid #fee2e2`, padding: '12px', borderRadius: '10px', cursor: 'pointer', fontSize: '11px', fontWeight: '700', color: colors.accentRed, display: 'flex', alignItems: 'center', justifyContent: 'center' };
 
 export default function EmployeesPage() {
   return <main><Suspense fallback={<div>Φόρτωση...</div>}><EmployeesContent /></Suspense></main>
