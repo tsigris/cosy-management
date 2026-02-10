@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import AuthGuardian from "@/components/AuthGuardian"; // Θα το φτιάξουμε αμέσως μετά ή θα το βάλουμε εσωτερικά
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -12,17 +13,17 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-// 1. ΡΥΘΜΙΣΕΙΣ ΓΙΑ ΚΙΝΗΤΑ (Viewport) - Λύνει το πρόβλημα του Zoom και του Notch
+// 1. ΡΥΘΜΙΣΕΙΣ ΓΙΑ ΚΙΝΗΤΑ (Viewport) - Διατήρηση Notch & Zoom Fix
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,
   userScalable: false,
-  viewportFit: "cover", // Γεμίζει όλη την οθόνη του iPhone (πάνω από το notch)
+  viewportFit: "cover",
   themeColor: "#f8fafc",
 };
 
-// 2. METADATA ΓΙΑ IPHONE STANDALONE MODE
+// 2. METADATA ΓΙΑ IPHONE STANDALONE MODE - Διατήρηση
 export const metadata: Metadata = {
   title: "Cosy App",
   description: "Διαχείριση Επιχείρησης",
@@ -32,9 +33,13 @@ export const metadata: Metadata = {
     title: "Cosy App",
   },
   formatDetection: {
-    telephone: false, // Αποτρέπει το αυτόματο μπλε χρώμα στους αριθμούς τηλεφώνου
+    telephone: false,
   },
 };
+
+// --- CLIENT COMPONENT ΓΙΑ ΤΟΝ ΑΥΤΟΜΑΤΙΣΜΟ (Ενσωματωμένο) ---
+// Αυτό το κομμάτι τρέχει στο παρασκήνιο και "φυλάει" την εφαρμογή σε κάθε σελίδα
+import { AuthLogic } from "@/components/AuthLogic"; 
 
 export default function RootLayout({
   children,
@@ -44,16 +49,21 @@ export default function RootLayout({
   return (
     <html lang="el">
       <head>
-        {/* Επιπλέον tags για την αρχική οθόνη του iPhone */}
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
       </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-        style={{ overscrollBehavior: 'none' }} // Αποτρέπει το "τράβηγμα" προς τα κάτω που κολλάει το app
+        style={{ overscrollBehavior: 'none' }} // Αποτρέπει το κόλλημα από το τράβηγμα
       >
+        {/* Ο "ΦΥΛΑΚΑΣ" ΤΗΣ ΕΦΑΡΜΟΓΗΣ */}
+        <AuthLogic /> 
+        
         {children}
       </body>
     </html>
   );
 }
+
+// --- ΔΗΜΙΟΥΡΓΙΑ ΤΟΥ AUTH LOGIC ΣΤΟ ΙΔΙΟ ΑΡΧΕΙΟ Η ΣΕ ΞΕΧΩΡΙΣΤΟ ---
+// Για ευκολία, μπορείς να δημιουργήσεις ένα αρχείο: app/components/AuthLogic.tsx
