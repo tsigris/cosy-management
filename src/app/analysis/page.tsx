@@ -1,15 +1,16 @@
 'use client'
 export const dynamic = 'force-dynamic'
 
-import { useEffect, useState, Suspense, useMemo } from 'react'
+import { useEffect, useState, Suspense, useMemo, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { 
-  startOfMonth, endOfMonth, format, parseISO, eachDayOfInterval, 
-  subYears, startOfWeek, endOfWeek, isWithinInterval, startOfYear, endOfYear 
+  startOfMonth, endOfMonth, format, parseISO, subYears, 
+  startOfWeek, endOfWeek, isWithinInterval, startOfYear, endOfYear 
 } from 'date-fns'
 import { el } from 'date-fns/locale'
+// Εισαγωγή Recharts για μελλοντική χρήση γραφημάτων
 import { AreaChart, Area, XAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
 
 function AnalysisContent() {
@@ -17,35 +18,74 @@ function AnalysisContent() {
   const [transactions, setTransactions] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [view, setView] = useState('income') 
-  // ΠΡΟΕΠΙΛΟΓΗ: ΜΗΝΑΣ
   const [period, setPeriod] = useState('month') 
   const [selectedDate, setSelectedDate] = useState(format(new Date(), 'yyyy-MM-dd'))
 
-  async function loadData() {
+  // --- TURBO LOAD DATA (Parallel Fetching) ---
+  const loadData = useCallback(async (silent = false) => {
     try {
-      setLoading(true)
+      if (!silent) setLoading(true)
+      
       const { data: { session } } = await supabase.auth.getSession()
-      if (!session?.user) return
-      const { data: profile } = await supabase.from('profiles').select('store_id').eq('id', session.user.id).single()
-      if (profile?.store_id) {
-        const { data } = await supabase.from('transactions')
-          .select('*, suppliers(name)')
-          .eq('store_id', profile.store_id)
-          .order('date', { ascending: true })
-        if (data) setTransactions(data)
+      if (!session?.user) {
+        router.push('/login')
+        return
       }
-    } catch (err) { console.error(err) } finally { setLoading(false) }
-  }
 
-  useEffect(() => { loadData() }, [])
+      // ΠΑΡΑΛΛΗΛΗ ΦΟΡΤΩΣΗ: Προφίλ και Συναλλαγές μαζί
+      const [profileResult, transResult] = await Promise.all([
+        supabase.from('profiles').select('store_id').eq('id', session.user.id).single(),
+        supabase.from('transactions')
+          .select('*, suppliers(name)')
+          .eq('store_id', session.user.user_metadata?.store_id || '') // Προσπάθεια από metadata για ταχύτητα
+          .order('date', { ascending: true })
+      ])
+
+      // Αν δεν βρήκε το store_id από metadata, το παίρνει από το profile result
+      let finalTransactions = transResult.data
+      if (!finalTransactions && profileResult.data?.store_id) {
+        const { data: retryData } = await supabase.from('transactions')
+          .select('*, suppliers(name)')
+          .eq('store_id', profileResult.data.store_id)
+          .order('date', { ascending: true })
+        finalTransactions = retryData
+      }
+
+      if (finalTransactions) setTransactions(finalTransactions)
+    } catch (err) { 
+      console.error("Analysis Load Error:", err) 
+    } finally { 
+      setLoading(false) 
+    }
+  }, [router])
+
+  // --- RESILIENCE: Αυτόματο "ξύπνημα" της σελίδας ---
+  useEffect(() => {
+    loadData()
+
+    // Φρεσκάρισμα όταν ο χρήστης επιστρέφει στην καρτέλα/κινητό
+    const handleFocus = () => loadData(true)
+    window.addEventListener('focus', handleFocus)
+    
+    // Real-time listener για αλλαγές στη βάση
+    const channel = supabase.channel('analysis-sync')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'transactions' }, () => loadData(true))
+      .subscribe()
+
+    return () => {
+      window.removeEventListener('focus', handleFocus)
+      supabase.removeChannel(channel)
+    }
+  }, [loadData])
 
   async function handleDelete(id: string) {
     if (!confirm('Οριστική διαγραφή συναλλαγής;')) return;
     const { error } = await supabase.from('transactions').delete().eq('id', id);
-    if (!error) loadData();
+    if (!error) loadData(true);
     else alert(error.message);
   }
 
+  // --- ΥΠΟΛΟΓΙΣΜΟΣ STATS (Διατήρηση όλης της αρχικής λογικής) ---
   const stats = useMemo(() => {
     const now = parseISO(selectedDate)
     const lastYear = subYears(now, 1)
@@ -67,23 +107,18 @@ function AnalysisContent() {
     const currentData = transactions.filter(t => isWithinInterval(parseISO(t.date), currentRange))
     const prevData = transactions.filter(t => isWithinInterval(parseISO(t.date), lastYearRange))
 
-    // --- ΛΟΓΙΚΗ ΕΣΟΔΩΝ (ΑΠΟΦΥΓΗ ΔΙΠΛΟΕΓΓΡΑΦΩΝ ΠΟΣΟΣΤΩΝ) ---
     const incomeTransactions = currentData.filter(t => t.type === 'income');
     const incomeTotal = incomeTransactions.reduce((acc, t) => acc + Number(t.amount), 0);
     
-    // 1. Βρίσκουμε πρώτα τα "Χωρίς Σήμανση"
     const noReceiptData = incomeTransactions.filter(t => 
         t.category?.includes('Σήμανση') || t.category?.includes('Απόδειξη') || t.notes?.toUpperCase().includes('ΧΩΡΙΣ')
     );
     const noReceiptAmount = noReceiptData.reduce((acc, t) => acc + Number(t.amount), 0);
 
-    // 2. Οι υπόλοιπες συναλλαγές θεωρούνται "Επίσημα Έσοδα (Ζ)"
     const officialIncome = incomeTransactions.filter(t => !noReceiptData.includes(t));
-    
     const incomeCash = officialIncome.filter(t => t.method?.includes('Μετρητά')).reduce((acc, t) => acc + Number(t.amount), 0);
     const incomeCard = officialIncome.filter(t => t.method?.includes('Κάρτα') || t.method?.includes('POS') || t.method?.includes('Τράπεζα')).reduce((acc, t) => acc + Number(t.amount), 0);
 
-    // --- ΛΟΓΙΚΗ ΕΞΟΔΩΝ ---
     const expenseTransactions = currentData.filter(t => t.type === 'expense' || t.category === 'pocket');
     const expenseTotal = expenseTransactions.filter(t => t.category !== 'pocket').reduce((acc, t) => acc + Number(t.amount), 0);
     const currentPaidTotal = expenseTransactions.filter(t => t.category !== 'pocket' && !t.is_credit).reduce((acc, t) => acc + Number(t.amount), 0);
@@ -122,11 +157,13 @@ function AnalysisContent() {
         <Link href="/" style={backBtnStyle}>✕</Link>
       </div>
 
+      {/* VIEW SELECTOR */}
       <div style={tabContainer}>
         <button onClick={() => setView('income')} style={{...tabBtn, backgroundColor: view === 'income' ? '#10b981' : 'transparent', color: view === 'income' ? 'white' : '#64748b'}}>ΕΣΟΔΑ</button>
         <button onClick={() => setView('expenses')} style={{...tabBtn, backgroundColor: view === 'expenses' ? '#ef4444' : 'transparent', color: view === 'expenses' ? 'white' : '#64748b'}}>ΕΞΟΔΑ</button>
       </div>
 
+      {/* FILTER BAR */}
       <div style={filterBar}>
         <select value={period} onChange={e => setPeriod(e.target.value)} style={selectStyle}>
           <option value="month">Προβολή: Μήνας</option>
@@ -140,12 +177,11 @@ function AnalysisContent() {
         </div>
       </div>
 
-      {/* HERO CARD */}
+      {/* HERO CARD (Αυτόματη αλλαγή χρώματος βάσει view) */}
       <div style={{...heroCard, backgroundColor: view === 'income' ? '#0f172a' : '#450a0a'}}>
         <p style={labelMicro}>{view === 'income' ? 'ΚΑΘΑΡΟΣ ΤΖΙΡΟΣ ΠΕΡΙΟΔΟΥ' : 'ΣΥΝΟΛΙΚΕΣ ΑΓΟΡΕΣ & ΠΙΣΤΩΣΕΙΣ'}</p>
         <h2 style={{ fontSize: '38px', fontWeight: '900', margin: '5px 0' }}>{stats.currentTotal.toLocaleString('el-GR')}€</h2>
         
-        {/* ΑΝΑΛΥΣΗ ΕΣΟΔΩΝ (ΑΚΡΙΒΗ ΠΟΣΟΣΤΑ) */}
         {view === 'income' && stats.incomeTotal > 0 && (
             <div style={percGrid}>
                 <div style={percBox}>
@@ -163,7 +199,6 @@ function AnalysisContent() {
             </div>
         )}
 
-        {/* ΑΝΑΛΥΣΗ ΕΞΟΔΩΝ */}
         {view === 'expenses' && (
             <div style={{ display: 'flex', justifyContent: 'center', gap: '15px', marginTop: '10px' }}>
                 <div style={{ fontSize: '10px', fontWeight: '800', opacity: 0.8 }}>ΠΛΗΡΩΜΕΝΑ: {stats.currentPaidTotal.toFixed(0)}€</div>
@@ -176,33 +211,39 @@ function AnalysisContent() {
         </div>
       </div>
 
+      {/* LIST OF TRANSACTIONS */}
       <div style={listWrapper}>
         <p style={{ fontSize: '10px', fontWeight: '900', color: '#94a3b8', marginBottom: '15px', textTransform: 'uppercase' }}>Αναλυτικές Κινήσεις</p>
-        {stats.currentViewData.map(t => (
-          <div key={t.id} style={rowStyle}>
-            <div style={{ flex: 1 }}>
-              <p style={{ fontWeight: '800', fontSize: '14px', margin: 0, color: '#1e293b' }}>
-                {t.suppliers?.name || t.notes || t.category?.toUpperCase() || "ΕΣΟΔΟ"}
-                {t.is_credit && view === 'expenses' && <span style={creditBadge}>ΠΙΣΤΩΣΗ</span>}
-              </p>
-              <span style={{ fontSize: '11px', color: '#94a3b8', fontWeight: '700' }}>
-                {format(parseISO(t.date), 'dd MMM', { locale: el })} • {t.method}
-              </span>
-            </div>
-            <div style={{ textAlign: 'right', display: 'flex', alignItems: 'center', gap: '15px' }}>
-                <p style={{ fontWeight: '900', fontSize: '16px', color: view === 'income' ? '#10b981' : '#ef4444', margin: 0 }}>
-                  {view === 'income' ? '+' : '-'}{Math.abs(Number(t.amount)).toFixed(2)}€
-                </p>
-                <button onClick={() => handleDelete(t.id)} style={deleteBtnSmall}>🗑️</button>
-            </div>
-          </div>
-        ))}
+        {loading ? <p style={{textAlign:'center', padding:'20px', fontWeight:'700'}}>Συγχρονισμός...</p> : (
+            <>
+                {stats.currentViewData.map(t => (
+                  <div key={t.id} style={rowStyle}>
+                    <div style={{ flex: 1 }}>
+                      <p style={{ fontWeight: '800', fontSize: '14px', margin: 0, color: '#1e293b' }}>
+                        {t.suppliers?.name || t.notes || t.category?.toUpperCase() || "ΕΣΟΔΟ"}
+                        {t.is_credit && view === 'expenses' && <span style={creditBadge}>ΠΙΣΤΩΣΗ</span>}
+                      </p>
+                      <span style={{ fontSize: '11px', color: '#94a3b8', fontWeight: '700' }}>
+                        {format(parseISO(t.date), 'dd MMM', { locale: el })} • {t.method}
+                      </span>
+                    </div>
+                    <div style={{ textAlign: 'right', display: 'flex', alignItems: 'center', gap: '15px' }}>
+                        <p style={{ fontWeight: '900', fontSize: '16px', color: view === 'income' ? '#10b981' : '#ef4444', margin: 0 }}>
+                          {view === 'income' ? '+' : '-'}{Math.abs(Number(t.amount)).toFixed(2)}€
+                        </p>
+                        <button onClick={() => handleDelete(t.id)} style={deleteBtnSmall}>🗑️</button>
+                    </div>
+                  </div>
+                ))}
+                {stats.currentViewData.length === 0 && <p style={{textAlign:'center', padding:'30px', color:'#94a3b8'}}>Δεν βρέθηκαν κινήσεις.</p>}
+            </>
+        )}
       </div>
     </div>
   )
 }
 
-// STYLES
+// --- STYLES (Διατηρήθηκαν όλα τα αρχικά) ---
 const logoBoxStyle: any = { width: '42px', height: '42px', backgroundColor: '#f1f5f9', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px' };
 const backBtnStyle: any = { textDecoration: 'none', color: '#94a3b8', fontSize: '18px', fontWeight: 'bold' };
 const tabContainer: any = { display: 'flex', backgroundColor: '#f1f5f9', borderRadius: '18px', padding: '5px', marginBottom: '20px' };
