@@ -1,7 +1,9 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import AuthGuardian from "@/components/AuthGuardian"; // Θα το φτιάξουμε αμέσως μετά ή θα το βάλουμε εσωτερικά
+
+// ΕΙΣΑΓΩΓΗ ΤΟΥ ΣΩΣΤΟΥ ΑΡΧΕΙΟΥ (Χρησιμοποιούμε ../ για σιγουριά)
+import { AuthLogic } from "../components/AuthLogic"; 
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -23,7 +25,7 @@ export const viewport: Viewport = {
   themeColor: "#f8fafc",
 };
 
-// 2. METADATA ΓΙΑ IPHONE STANDALONE MODE - Διατήρηση
+// 2. METADATA ΓΙΑ IPHONE STANDALONE MODE
 export const metadata: Metadata = {
   title: "Cosy App",
   description: "Διαχείριση Επιχείρησης",
@@ -36,10 +38,6 @@ export const metadata: Metadata = {
     telephone: false,
   },
 };
-
-// --- CLIENT COMPONENT ΓΙΑ ΤΟΝ ΑΥΤΟΜΑΤΙΣΜΟ (Ενσωματωμένο) ---
-// Αυτό το κομμάτι τρέχει στο παρασκήνιο και "φυλάει" την εφαρμογή σε κάθε σελίδα
-import { AuthLogic } from "@/components/AuthLogic"; 
 
 export default function RootLayout({
   children,
@@ -54,9 +52,9 @@ export default function RootLayout({
       </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-        style={{ overscrollBehavior: 'none' }} // Αποτρέπει το κόλλημα από το τράβηγμα
+        style={{ overscrollBehavior: 'none' }} // Αποτρέπει το "pull-to-refresh" που κολλάει το app
       >
-        {/* Ο "ΦΥΛΑΚΑΣ" ΤΗΣ ΕΦΑΡΜΟΓΗΣ */}
+        {/* Ο "ΦΥΛΑΚΑΣ" ΠΟΥ ΚΡΑΤΑΕΙ ΤΟ APP ONLINE ΧΩΡΙΣ ΚΟΛΛΗΜΑΤΑ */}
         <AuthLogic /> 
         
         {children}
@@ -64,6 +62,3 @@ export default function RootLayout({
     </html>
   );
 }
-
-// --- ΔΗΜΙΟΥΡΓΙΑ ΤΟΥ AUTH LOGIC ΣΤΟ ΙΔΙΟ ΑΡΧΕΙΟ Η ΣΕ ΞΕΧΩΡΙΣΤΟ ---
-// Για ευκολία, μπορείς να δημιουργήσεις ένα αρχείο: app/components/AuthLogic.tsx
