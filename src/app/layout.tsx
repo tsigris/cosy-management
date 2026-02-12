@@ -2,22 +2,13 @@ import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
-// ΕΙΣΑΓΩΓΗ ΤΩΝ COMPONENTS
 import { AuthLogic } from "../components/AuthLogic"; 
 import BottomNav from "../components/BottomNav";
-import { Toaster } from 'sonner'
+import { Toaster } from 'sonner';
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
+const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
+const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
-
-// 1. ΡΥΘΜΙΣΕΙΣ ΓΙΑ ΚΙΝΗΤΑ (Viewport)
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
@@ -27,15 +18,10 @@ export const viewport: Viewport = {
   themeColor: "#f8fafc",
 };
 
-// 2. METADATA ΓΙΑ IPHONE STANDALONE MODE
 export const metadata: Metadata = {
   title: "Cosy App",
   description: "Διαχείριση Επιχείρησης",
-  appleWebApp: {
-    capable: true,
-    statusBarStyle: "default",
-    title: "Cosy App",
-  },
+  appleWebApp: { capable: true, statusBarStyle: "default", title: "Cosy App" },
 };
 
 export default function RootLayout({
@@ -53,20 +39,16 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
         style={{ overscrollBehavior: 'none', backgroundColor: '#f8fafc' }}
       >
-        {/* ΑΠΕΝΕΡΓΟΠΟΙΗΣΗ ΓΙΑ ΕΛΕΓΧΟ:
-            <AuthLogic /> 
-        */}
-
+        <AuthLogic /> 
         <Toaster richColors position="top-center" />
         
-        {/* Προσωρινή αφαίρεση του padding για να δούμε το app κανονικά */}
-        <div>
+        {/* Ενεργοποιούμε ξανά τα components. 
+            Η λογική "πότε κρύβονται" βρίσκεται πλέον μέσα σε αυτά. */}
+        <main>
           {children}
-        </div>
+        </main>
 
-        {/* ΑΠΕΝΕΡΓΟΠΟΙΗΣΗ ΓΙΑ ΕΛΕΓΧΟ:
-            <BottomNav /> 
-        */}
+        <BottomNav />
       </body>
     </html>
   );
