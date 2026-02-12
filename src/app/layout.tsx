@@ -17,7 +17,7 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-// 1. ΡΥΘΜΙΣΕΙΣ ΓΙΑ ΚΙΝΗΤΑ (Viewport) - Διατήρηση Notch & Zoom Fix
+// 1. ΡΥΘΜΙΣΕΙΣ ΓΙΑ ΚΙΝΗΤΑ (Viewport)
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
@@ -36,9 +36,6 @@ export const metadata: Metadata = {
     statusBarStyle: "default",
     title: "Cosy App",
   },
-  formatDetection: {
-    telephone: false,
-  },
 };
 
 export default function RootLayout({
@@ -54,30 +51,22 @@ export default function RootLayout({
       </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-        style={{ 
-          overscrollBehavior: 'none',
-          backgroundColor: '#f8fafc' 
-        }}
+        style={{ overscrollBehavior: 'none', backgroundColor: '#f8fafc' }}
       >
-        {/* Ο "ΦΥΛΑΚΑΣ" ΤΟΥ AUTH */}
-        <AuthLogic /> 
+        {/* ΑΠΕΝΕΡΓΟΠΟΙΗΣΗ ΓΙΑ ΕΛΕΓΧΟ:
+            <AuthLogic /> 
+        */}
 
-        {/* ΕΙΔΟΠΟΙΗΣΕΙΣ (TOASTER) */}
-        <Toaster 
-          richColors 
-          position="top-center" 
-          toastOptions={{
-            style: { borderRadius: '15px', fontWeight: 'bold' },
-          }}
-        />
+        <Toaster richColors position="top-center" />
         
-        {/* ΤΟ ΠΕΡΙΕΧΟΜΕΝΟ ΜΕ ΠΕΡΙΘΩΡΙΟ ΓΙΑ ΝΑ ΜΗΝ ΚΡΥΒΕΤΑΙ ΑΠΟ ΤΗΝ ΜΠΑΡΑ */}
-        <div style={{ paddingBottom: '90px' }}>
+        {/* Προσωρινή αφαίρεση του padding για να δούμε το app κανονικά */}
+        <div>
           {children}
         </div>
 
-        {/* Η ΚΑΤΩ ΜΠΑΡΑ ΠΛΟΗΓΗΣΗΣ */}
-        <BottomNav />
+        {/* ΑΠΕΝΕΡΓΟΠΟΙΗΣΗ ΓΙΑ ΕΛΕΓΧΟ:
+            <BottomNav /> 
+        */}
       </body>
     </html>
   );
