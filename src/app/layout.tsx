@@ -2,8 +2,10 @@ import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
-// ΕΙΣΑΓΩΓΗ ΤΟΥ ΣΩΣΤΟΥ ΑΡΧΕΙΟΥ (Χρησιμοποιούμε ../ για σιγουριά)
+// ΕΙΣΑΓΩΓΗ ΤΩΝ COMPONENTS
 import { AuthLogic } from "../components/AuthLogic"; 
+import BottomNav from "../components/BottomNav";
+import { Toaster } from 'sonner'
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -52,12 +54,30 @@ export default function RootLayout({
       </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-        style={{ overscrollBehavior: 'none' }} // Αποτρέπει το "pull-to-refresh" που κολλάει το app
+        style={{ 
+          overscrollBehavior: 'none',
+          backgroundColor: '#f8fafc' 
+        }}
       >
-        {/* Ο "ΦΥΛΑΚΑΣ" ΠΟΥ ΚΡΑΤΑΕΙ ΤΟ APP ONLINE ΧΩΡΙΣ ΚΟΛΛΗΜΑΤΑ */}
+        {/* Ο "ΦΥΛΑΚΑΣ" ΤΟΥ AUTH */}
         <AuthLogic /> 
+
+        {/* ΕΙΔΟΠΟΙΗΣΕΙΣ (TOASTER) */}
+        <Toaster 
+          richColors 
+          position="top-center" 
+          toastOptions={{
+            style: { borderRadius: '15px', fontWeight: 'bold' },
+          }}
+        />
         
-        {children}
+        {/* ΤΟ ΠΕΡΙΕΧΟΜΕΝΟ ΜΕ ΠΕΡΙΘΩΡΙΟ ΓΙΑ ΝΑ ΜΗΝ ΚΡΥΒΕΤΑΙ ΑΠΟ ΤΗΝ ΜΠΑΡΑ */}
+        <div style={{ paddingBottom: '90px' }}>
+          {children}
+        </div>
+
+        {/* Η ΚΑΤΩ ΜΠΑΡΑ ΠΛΟΗΓΗΣΗΣ */}
+        <BottomNav />
       </body>
     </html>
   );
