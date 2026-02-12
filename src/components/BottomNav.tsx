@@ -1,5 +1,4 @@
 'use client'
-
 import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -14,6 +13,10 @@ const navItems = [
 
 export default function BottomNav() {
   const pathname = usePathname();
+
+  // Λίστα σελίδων όπου η μπάρα θα είναι ΚΡΥΦΗ
+  const hideOnPaths = ['/login', '/register', '/signup'];
+  if (hideOnPaths.includes(pathname)) return null;
 
   return (
     <nav style={navWrapper}>
@@ -35,9 +38,7 @@ export default function BottomNav() {
               fontSize: '10px', 
               fontWeight: '800', 
               color: isActive ? '#1e293b' : '#94a3b8',
-              transition: 'color 0.2s ease',
-              textTransform: 'uppercase',
-              letterSpacing: '0.3px'
+              textTransform: 'uppercase'
             }}>
               {item.label}
             </span>
@@ -49,41 +50,16 @@ export default function BottomNav() {
   );
 }
 
-// --- STYLES ---
+// ... (τα styles παραμένουν τα ίδια)
 const navWrapper: React.CSSProperties = {
   position: 'fixed',
-  bottom: 0,
-  left: 0,
-  right: 0,
-  height: '80px',
+  bottom: 0, left: 0, right: 0, height: '80px',
   backgroundColor: 'rgba(255, 255, 255, 0.85)',
-  backdropFilter: 'blur(15px)',
-  WebkitBackdropFilter: 'blur(15px)', // Για υποστήριξη iOS Safari
-  borderTop: '1px solid #e2e8f0',
-  display: 'flex',
-  justifyContent: 'space-around',
-  alignItems: 'center',
-  paddingBottom: '20px', // Χώρος για το Home Indicator του iPhone (Safe Area)
-  zIndex: 1000,
+  backdropFilter: 'blur(15px)', WebkitBackdropFilter: 'blur(15px)',
+  borderTop: '1px solid #e2e8f0', display: 'flex',
+  justifyContent: 'space-around', alignItems: 'center',
+  paddingBottom: '20px', zIndex: 1000,
   boxShadow: '0 -5px 25px rgba(0,0,0,0.04)',
 };
-
-const navLink: React.CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
-  alignItems: 'center',
-  textDecoration: 'none',
-  position: 'relative',
-  flex: 1,
-  height: '100%',
-  justifyContent: 'center',
-};
-
-const activeIndicator: React.CSSProperties = {
-  position: 'absolute',
-  bottom: '12px',
-  width: '5px',
-  height: '5px',
-  backgroundColor: '#1e293b',
-  borderRadius: '50%',
-};
+const navLink: React.CSSProperties = { display: 'flex', flexDirection: 'column', alignItems: 'center', textDecoration: 'none', position: 'relative', flex: 1, height: '100%', justifyContent: 'center' };
+const activeIndicator: React.CSSProperties = { position: 'absolute', bottom: '12px', width: '5px', height: '5px', backgroundColor: '#1e293b', borderRadius: '50%' };
