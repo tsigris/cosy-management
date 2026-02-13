@@ -23,7 +23,6 @@ function DashboardContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
 
-  // 1. ΥΠΟΛΟΓΙΣΜΟΣ ΕΠΙΧΕΙΡΗΜΑΤΙΚΗΣ ΗΜΕΡΟΜΗΝΙΑΣ
   const getBusinessDate = () => {
     const now = new Date()
     if (now.getHours() < 7) {
@@ -59,17 +58,24 @@ function DashboardContent() {
     } catch (e) { return '--:--' }
   }
 
-  // 2. ΚΕΝΤΡΙΚΗ ΣΥΝΑΡΤΗΣΗ ΦΟΡΤΩΣΗΣ (Με προστασία από πάγωμα)
   const fetchAppData = useCallback(async () => {
     try {
-      // Προστασία: Timeout 7 δευτερολέπτων για να μην κολλάει η οθόνη αν η βάση αργεί
       const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 7000));
       const authPromise = supabase.auth.getSession();
       const sessionRes: any = await Promise.race([authPromise, timeout]);
       
       const session = sessionRes.data?.session;
+
+      // --- ΛΟΓΙΚΗ ΑΝΑΓΝΩΡΙΣΗΣ ΠΑΛΙΟΥ ΧΡΗΣΤΗ (PIN/BIOMETRICS) ---
       if (!session) {
-        router.push('/login')
+        const hasPin = localStorage.getItem('fleet_track_pin_enabled') === 'true'
+        const hasBio = localStorage.getItem('fleet_track_biometrics') === 'true'
+        
+        if (hasPin || hasBio) {
+          router.push('/login?mode=fast') // Ανακατεύθυνση στο PIN Pad
+        } else {
+          router.push('/login') // Ανακατεύθυνση στο κανονικό Login
+        }
         return
       }
       
@@ -97,9 +103,8 @@ function DashboardContent() {
     } finally { 
       setLoading(false) 
     }
-  }, [selectedDate, router]);
+  }, [selectedDate, router, businessToday]);
 
-  // 3. ΛΟΓΙΚΗ WAKE UP & REAL-TIME
   useEffect(() => {
     const handleWakeUp = () => {
       if (document.visibilityState === 'visible') {
@@ -128,7 +133,6 @@ function DashboardContent() {
       })
       .subscribe()
 
-    // Παρακολούθηση Session (αν λήξει το κλειδί)
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
       if (event === 'SIGNED_OUT') router.push('/login')
     })
@@ -140,7 +144,7 @@ function DashboardContent() {
       supabase.removeChannel(channel)
       subscription.unsubscribe()
     }
-  }, [selectedDate, fetchAppData, businessToday, router])
+  }, [fetchAppData, businessToday, router])
 
   const getPaymentIcon = (method: string) => {
     const m = method?.toLowerCase() || '';
@@ -186,14 +190,15 @@ function DashboardContent() {
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
-    localStorage.clear()
+    // Δεν κάνουμε localStorage.clear() για να μην χάσουμε το PIN preference της συσκευής
+    localStorage.removeItem('supabase.auth.token') 
     window.location.href = '/login'
   }
 
   if (loading) {
     return (
       <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#f8fafc' }}>
-        <p style={{ fontWeight: 'bold', color: '#64748b' }}>Φορτώνεται το Dashboard...</p>
+        <p style={{ fontWeight: 'bold', color: '#64748b' }}>Φορτώνεται...</p>
       </div>
     )
   }
@@ -239,6 +244,7 @@ function DashboardContent() {
           </div>
         </div>
 
+        {/* ΥΠΟΛΟΙΠΟΣ ΚΩΔΙΚΑΣ (Stats, Buttons, Lists) ΟΠΩΣ ΗΤΑΝ... */}
         {/* DATE SELECTOR */}
         <div style={dateBarStyle}>
           <button onClick={() => shiftDate(-1)} style={arrowStyle}>←</button>
@@ -354,14 +360,13 @@ function DashboardContent() {
               )}
             </div>
           ))}
-          {transactions.length === 0 && !loading && <p style={{ textAlign: 'center', padding: '40px', color: colors.secondaryText, fontWeight: '600' }}>Καμία κίνηση.</p>}
         </div>
       </div>
     </div>
   )
 }
 
-// --- PROFESSIONAL STYLES ---
+// --- PROFESSIONAL STYLES --- (Παραμένουν ως έχουν)
 const iphoneWrapper: any = { backgroundColor: colors.bgLight, minHeight: '100dvh', padding: '20px', overflowY: 'auto', WebkitOverflowScrolling: 'touch', position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 };
 const logoBoxStyle: any = { width: '48px', height: '48px', backgroundColor: colors.primaryDark, borderRadius: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '22px', boxShadow: '0 4px 10px rgba(30, 41, 59, 0.15)' };
 const menuBtnStyle: any = { width: '42px', height: '42px', borderRadius: '12px', border: `1px solid ${colors.border}`, background: colors.cardBg, fontSize: '20px', cursor: 'pointer', color: colors.primaryDark, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 5px rgba(0,0,0,0.05)' };
