@@ -31,14 +31,14 @@ function SettingsContent() {
   useEffect(() => {
     fetchProfile()
     
-    // Έλεγχος αν οι ρυθμίσεις υπάρχουν στη συσκευή
+    // Φόρτωση ρυθμίσεων ασφαλείας από το localStorage
     const savedPin = localStorage.getItem('fleet_track_pin_enabled') === 'true'
     const savedBio = localStorage.getItem('fleet_track_biometrics') === 'true'
     
     setPinEnabled(savedPin)
     setBioEnabled(savedBio)
     
-    console.log("Security Status - PIN:", savedPin, "Bio:", savedBio)
+    console.log("Security Loaded - PIN:", savedPin, "Bio:", savedBio)
   }, [])
 
   async function fetchProfile() {
@@ -61,7 +61,11 @@ function SettingsContent() {
           setFormData(prev => ({ ...prev, email: user.email || '' }))
         }
       }
-    } catch (err) { console.error(err) } finally { setLoading(false) }
+    } catch (err) { 
+      console.error(err) 
+    } finally { 
+      setLoading(false) 
+    }
   }
 
   const handleTogglePin = () => {
@@ -83,7 +87,7 @@ function SettingsContent() {
     setPinEnabled(true)
     setShowPinModal(false)
     setTempPin('')
-    alert('Το PIN ενεργοποιήθηκε στη συσκευή σας!')
+    alert('Το PIN ενεργοποιήθηκε επιτυχώς σε αυτή τη συσκευή!')
   }
 
   const handleToggleBio = () => {
@@ -137,7 +141,7 @@ function SettingsContent() {
       <div style={mainCardStyle}>
         
         {/* ΑΣΦΑΛΕΙΑ ΣΥΣΚΕΥΗΣ */}
-        <p style={sectionLabel}>ΑΣΦΑΛΕΙΑ ΣΥΣΚΕΥΗΣ (Local)</p>
+        <p style={sectionLabel}>ΑΣΦΑΛΕΙΑ ΣΥΣΚΕΥΗΣ (LOCAL)</p>
         <div style={securityBoxStyle}>
           <div style={settingRow}>
             <div>
@@ -149,7 +153,7 @@ function SettingsContent() {
           <div style={{...settingRow, marginTop: '15px', borderTop: '1px solid #e2e8f0', paddingTop: '15px'}}>
             <div>
               <p style={settingText}>📸 FaceID / Αποτύπωμα</p>
-              <p style={settingSubText}>Χρήση αισθητήρα συσκευής</p>
+              <p style={settingSubText}>Χρήση βιομετρικών αισθητήρων</p>
             </div>
             <input type="checkbox" checked={bioEnabled} onChange={handleToggleBio} style={checkboxStyle} />
           </div>
@@ -200,9 +204,14 @@ function SettingsContent() {
           </div>
         </div>
 
+        <div style={{ marginBottom: '15px' }}>
+          <label style={labelStyle}>ΤΗΛΕΦΩΝΟ ΕΠΙΚΟΙΝΩΝΙΑΣ</label>
+          <input style={inputStyle} value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} />
+        </div>
+
         <div style={{ marginBottom: '30px' }}>
           <label style={labelStyle}>ΔΙΕΥΘΥΝΣΗ</label>
-          <textarea style={{ ...inputStyle, height: '60px', resize: 'none' }} value={formData.address} onChange={e => setFormData({...formData, address: e.target.value})} />
+          <textarea style={{ ...inputStyle, height: '70px', resize: 'none', paddingTop: '10px' }} value={formData.address} onChange={e => setFormData({...formData, address: e.target.value})} />
         </div>
 
         <button onClick={handleSave} disabled={loading} style={saveBtnStyle}>
@@ -215,7 +224,7 @@ function SettingsContent() {
         <div style={modalOverlay}>
           <div style={modalContent}>
             <h3 style={{ margin: '0 0 10px 0' }}>Ορισμός PIN</h3>
-            <p style={{ fontSize: '12px', color: '#64748b', marginBottom: '20px' }}>Επιλέξτε έναν 4ψήφιο κωδικό:</p>
+            <p style={{ fontSize: '12px', color: '#64748b', marginBottom: '20px' }}>Εισάγετε έναν 4ψήφιο κωδικό για γρήγορη είσοδο.</p>
             <input 
               type="password" 
               inputMode="numeric" 
@@ -235,38 +244,39 @@ function SettingsContent() {
 
       {/* SUPPORT */}
       {!showContact ? (
-        <button onClick={() => setShowContact(true)} style={deleteLinkStyle}>Υποστήριξη & Διαγραφή</button>
+        <button onClick={() => setShowContact(true)} style={deleteLinkStyle}>Υποστήριξη & Διαγραφή Επιχείρησης</button>
       ) : (
         <div style={supportCardStyle}>
-          <button onClick={handleWhatsAppRedirect} style={waBtnStyle}>WHATSAPP 💬</button>
-          <button onClick={() => setShowContact(false)} style={cancelLinkStyle}>Επιστροφή</button>
+          <h2 style={{ fontSize: '18px', fontWeight: '900', textAlign: 'center', marginBottom: '15px', color: '#991b1b' }}>Υποστήριξη</h2>
+          <button onClick={handleWhatsAppRedirect} style={waBtnStyle}>ΕΠΙΚΟΙΝΩΝΙΑ ΜΕΣΩ WHATSAPP 💬</button>
+          <button onClick={() => setShowContact(false)} style={cancelLinkStyle}>Επιστροφή στις ρυθμίσεις</button>
         </div>
       )}
     </div>
   )
 }
 
-// --- STYLES ---
+// --- STYLES (Ακριβώς όπως τα είχες) ---
 const logoBoxStyle: any = { width: '42px', height: '42px', backgroundColor: '#f1f5f9', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' };
 const backBtnStyle: any = { textDecoration: 'none', color: '#94a3b8', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#fff', borderRadius: '10px', border: '1px solid #e2e8f0' };
-const mainCardStyle: any = { backgroundColor: 'white', padding: '24px', borderRadius: '28px', border: '1px solid #f1f5f9' };
+const mainCardStyle: any = { backgroundColor: 'white', padding: '24px', borderRadius: '28px', border: '1px solid #f1f5f9', boxShadow: '0 4px 12px rgba(0,0,0,0.02)', marginBottom: '20px' };
 const sectionLabel: any = { fontSize: '11px', fontWeight: '900', color: '#0f172a', marginBottom: '15px' };
-const infoBoxStyle: any = { marginBottom: '20px', padding: '15px', backgroundColor: '#f0f9ff', borderRadius: '16px' };
+const infoBoxStyle: any = { marginBottom: '20px', padding: '15px', backgroundColor: '#f0f9ff', borderRadius: '16px', border: '1px solid #e0f2fe' };
 const labelStyle: any = { fontSize: '10px', color: '#94a3b8', fontWeight: '800', marginBottom: '6px', display: 'block' };
-const inputStyle: any = { width: '100%', padding: '14px', borderRadius: '12px', border: '1px solid #e2e8f0', fontSize: '15px', fontWeight: '700', boxSizing: 'border-box' };
+const inputStyle: any = { width: '100%', padding: '14px', borderRadius: '12px', border: '1px solid #e2e8f0', fontSize: '15px', fontWeight: '700', boxSizing: 'border-box', backgroundColor: '#f8fafc' };
 const divider: any = { height: '1px', backgroundColor: '#f1f5f9', margin: '25px 0' };
 const saveBtnStyle: any = { width: '100%', backgroundColor: '#0f172a', color: 'white', padding: '18px', borderRadius: '16px', border: 'none', fontWeight: '900', cursor: 'pointer' };
 const securityBoxStyle: any = { backgroundColor: '#f8fafc', padding: '18px', borderRadius: '18px', border: '1px solid #e2e8f0' };
 const settingRow: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center' };
 const settingText: any = { fontSize: '14px', fontWeight: '700', color: '#1e293b', margin: 0 };
 const settingSubText: any = { fontSize: '11px', color: '#64748b', margin: 0 };
-const checkboxStyle: any = { width: '20px', height: '20px', cursor: 'pointer' };
+const checkboxStyle: any = { width: '22px', height: '22px', cursor: 'pointer' };
 const modalOverlay: any = { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 };
-const modalContent: any = { backgroundColor: 'white', padding: '25px', borderRadius: '24px', width: '90%', maxWidth: '320px' };
-const deleteLinkStyle: any = { width: '100%', background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '12px', marginTop: '15px' };
-const supportCardStyle: any = { backgroundColor: 'white', padding: '20px', borderRadius: '28px' };
-const waBtnStyle: any = { width: '100%', backgroundColor: '#25d366', color: 'white', padding: '15px', borderRadius: '14px', border: 'none', fontWeight: '900' };
-const cancelLinkStyle: any = { width: '100%', background: 'none', border: 'none', color: '#94a3b8', marginTop: '10px' };
+const modalContent: any = { backgroundColor: 'white', padding: '25px', borderRadius: '24px', width: '90%', maxWidth: '320px', textAlign: 'center' };
+const deleteLinkStyle: any = { width: '100%', background: 'none', border: 'none', color: '#ef4444', textDecoration: 'underline', cursor: 'pointer', fontSize: '12px', fontWeight: '700', marginTop: '10px' };
+const supportCardStyle: any = { backgroundColor: 'white', padding: '25px', borderRadius: '28px', border: '1px solid #fee2e2' };
+const waBtnStyle: any = { width: '100%', backgroundColor: '#25d366', color: 'white', padding: '16px', borderRadius: '14px', border: 'none', fontWeight: '900', fontSize: '13px', cursor: 'pointer' };
+const cancelLinkStyle: any = { width: '100%', background: 'none', border: 'none', color: '#94a3b8', marginTop: '20px', fontSize: '13px', fontWeight: '800', cursor: 'pointer' };
 
 export default function SettingsPage() {
   return (
