@@ -4,6 +4,8 @@ export const dynamic = 'force-dynamic'
 import { useEffect, useState, Suspense, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
+import { Copy, Check } from 'lucide-react'
+import { toast } from 'sonner'
 
 // --- ΕΠΑΓΓΕΛΜΑΤΙΚΗ ΠΑΛΕΤΑ ΧΡΩΜΑΤΩΝ ---
 const colors = {
@@ -26,13 +28,14 @@ function SuppliersContent() {
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
   const [afm, setAfm] = useState('') 
+  const [iban, setIban] = useState('') // Νέο state για IBAN
   const [category, setCategory] = useState('Εμπορεύματα')
   const [editingId, setEditingId] = useState<string | null>(null)
   const [showTransactions, setShowTransactions] = useState<string | null>(null)
   const [isFormOpen, setIsFormOpen] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
+  const [copiedId, setCopiedId] = useState<string | null>(null)
 
-  // Βοηθητική συνάρτηση για την ώρα (π.μ. / μ.μ.)
   const formatTime = (dateString: string) => {
     try {
       return new Date(dateString).toLocaleTimeString('el-GR', {
@@ -41,7 +44,6 @@ function SuppliersContent() {
     } catch (e) { return '--:--' }
   }
 
-  // 1. ΡΩΜΑΛΕΑ ΦΟΡΤΩΣΗ ΔΕΔΟΜΕΝΩΝ (Με Wake-up προστασία)
   const fetchSuppliersData = useCallback(async () => {
     try {
       const { data: { session } } = await supabase.auth.getSession()
@@ -70,20 +72,6 @@ function SuppliersContent() {
 
   useEffect(() => {
     fetchSuppliersData()
-
-    const handleWakeUp = () => {
-      if (document.visibilityState === 'visible') {
-        fetchSuppliersData()
-      }
-    }
-
-    document.addEventListener('visibilitychange', handleWakeUp)
-    window.addEventListener('focus', handleWakeUp)
-
-    return () => {
-      document.removeEventListener('visibilitychange', handleWakeUp)
-      window.removeEventListener('focus', handleWakeUp)
-    }
   }, [fetchSuppliersData])
 
   const getSupplierTurnover = (supplierId: string) => {
@@ -92,27 +80,30 @@ function SuppliersContent() {
       .reduce((acc, t) => acc + (Number(t.amount) || 0), 0)
   }
 
-  const getPaymentIcon = (method: string) => {
-    const m = method?.toLowerCase() || '';
-    if (m.includes('μετρητά')) return '💵';
-    if (m.includes('κάρτα') || m.includes('pos') || m.includes('τράπεζα')) return '💳';
-    if (m.includes('πίστωση')) return '🚩';
-    return '📝';
+  const handleCopyIban = (ibanText: string, id: string) => {
+    navigator.clipboard.writeText(ibanText);
+    setCopiedId(id);
+    toast.success("IBAN Αντιγράφηκε!");
+    setTimeout(() => setCopiedId(null), 2000);
   }
 
   async function handleSave() {
     if (!name) return alert('Συμπληρώστε το όνομα')
-    if (afm && afm.length !== 9) return alert('Το ΑΦΜ πρέπει να έχει 9 ψηφία.')
-
     setIsSaving(true)
     try {
-      const supplierData = { name, phone, vat_number: afm, category, store_id: storeId }
+      const supplierData = { 
+        name, 
+        phone, 
+        vat_number: afm, 
+        iban, // Προσθήκη IBAN στο payload
+        category, 
+        store_id: storeId 
+      }
       if (editingId) {
         await supabase.from('suppliers').update(supplierData).eq('id', editingId)
       } else {
         await supabase.from('suppliers').insert([supplierData])
       }
-      
       resetForm()
       fetchSuppliersData()
     } catch (error: any) {
@@ -124,20 +115,20 @@ function SuppliersContent() {
 
   const handleEdit = (s: any) => {
     setEditingId(s.id); setName(s.name); setPhone(s.phone || '');
-    setAfm(s.vat_number || ''); setCategory(s.category || 'Εμπορεύματα');
+    setAfm(s.vat_number || ''); setIban(s.iban || ''); // Φόρτωση IBAN
+    setCategory(s.category || 'Εμπορεύματα');
     setIsFormOpen(true);
   }
 
   const resetForm = () => {
-    setName(''); setPhone(''); setAfm(''); setCategory('Εμπορεύματα');
+    setName(''); setPhone(''); setAfm(''); setIban(''); setCategory('Εμπορεύματα');
     setEditingId(null); setIsFormOpen(false);
   }
 
   return (
     <div style={iphoneWrapper}>
-      <div style={{ maxWidth: '500px', margin: '0 auto', paddingBottom: '100px' }}>
+      <div style={{ maxWidth: '500px', margin: '0 auto', paddingBottom: '120px' }}>
         
-        {/* HEADER */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
             <div style={logoBoxStyle}>🛒</div>
@@ -169,6 +160,17 @@ function SuppliersContent() {
               </div>
             </div>
 
+            {/* ΝΕΟ ΠΕΔΙΟ IBAN */}
+            <div style={{ marginTop: '16px' }}>
+              <label style={labelStyle}>IBAN ΠΡΟΜΗΘΕΥΤΗ</label>
+              <input 
+                value={iban} 
+                onChange={(e) => setIban(e.target.value.toUpperCase())} 
+                placeholder="GR00 0000 0000..." 
+                style={inputStyle} 
+              />
+            </div>
+
             <label style={{ ...labelStyle, marginTop: '16px' }}>ΚΑΤΗΓΟΡΙΑ</label>
             <select value={category} onChange={(e) => setCategory(e.target.value)} style={inputStyle}>
               <option value="Εμπορεύματα">🛒 Εμπορεύματα</option>
@@ -182,53 +184,39 @@ function SuppliersContent() {
           </div>
         )}
 
-        {/* LIST */}
-        {loading ? <p style={{textAlign:'center', padding:'40px', color: colors.secondaryText, fontWeight: '600'}}>Φόρτωση συνεργατών...</p> : (
-          <div style={{ marginTop: '15px' }}>
-            {suppliers.map(s => (
-              <div key={s.id} style={{ marginBottom: '12px' }}>
-                <div style={supplierItem}>
-                  <div style={{ flex: 1 }} onClick={() => setShowTransactions(showTransactions === s.id ? null : s.id)}>
-                    <p style={{ fontWeight: '700', margin: 0, fontSize: '16px', color: colors.primaryDark }}>{s.name.toUpperCase()}</p>
-                    <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginTop: '6px' }}>
-                       <span style={badgeStyle}>{s.category}</span>
-                       <span style={{ fontSize: '13px', color: colors.accentGreen, fontWeight: '700' }}>Τζίρος: {getSupplierTurnover(s.id).toFixed(2)}€</span>
+        <div style={{ marginTop: '15px' }}>
+          {suppliers.map(s => (
+            <div key={s.id} style={{ marginBottom: '12px' }}>
+              <div style={supplierItem}>
+                <div style={{ flex: 1 }} onClick={() => setShowTransactions(showTransactions === s.id ? null : s.id)}>
+                  <p style={{ fontWeight: '700', margin: 0, fontSize: '16px', color: colors.primaryDark }}>{s.name.toUpperCase()}</p>
+                  
+                  {/* Εμφάνιση IBAN στην καρτέλα αν υπάρχει */}
+                  {s.iban && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
+                      <span style={{ fontSize: '10px', color: colors.secondaryText, fontWeight: '700', letterSpacing: '0.5px' }}>IBAN: {s.iban.substring(0,10)}...</span>
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); handleCopyIban(s.iban, s.id); }} 
+                        style={copyIconBtn}
+                      >
+                        {copiedId === s.id ? <Check size={12} color="#059669" /> : <Copy size={12} />}
+                      </button>
                     </div>
-                  </div>
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                    <button onClick={() => handleEdit(s)} style={iconBtnStyle}>✎</button>
-                    <button onClick={async () => { if(confirm('Διαγραφή;')){ await supabase.from('suppliers').delete().eq('id', s.id); fetchSuppliersData(); } }} style={deleteBtnStyle}>🗑️</button>
+                  )}
+
+                  <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginTop: '6px' }}>
+                     <span style={badgeStyle}>{s.category}</span>
+                     <span style={{ fontSize: '13px', color: colors.accentGreen, fontWeight: '700' }}>Τζίρος: {getSupplierTurnover(s.id).toFixed(2)}€</span>
                   </div>
                 </div>
-
-                {showTransactions === s.id && (
-                  <div style={transList}>
-                    <p style={transHeader}>ΙΣΤΟΡΙΚΟ ΣΥΝΑΛΛΑΓΩΝ</p>
-                    {transactions.filter(t => t.supplier_id === s.id).length > 0 ? (
-                      transactions.filter(t => t.supplier_id === s.id).map(t => (
-                        <div key={t.id} style={transItem}>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                             <span style={{ color: colors.primaryDark, fontWeight: '700', fontSize: '13px' }}>
-                               {new Date(t.date).toLocaleDateString('el-GR', { day: 'numeric', month: 'short' }).toUpperCase()}
-                             </span>
-                             <span style={timeBadge}>🕒 {formatTime(t.created_at)}</span>
-                          </div>
-                          <div style={{display:'flex', gap:'8px', alignItems:'center'}}>
-                             <span>{getPaymentIcon(t.method)}</span>
-                             <span style={{ fontWeight: '800', color: colors.primaryDark, fontSize: '15px' }}>{Number(t.amount).toFixed(2)}€</span>
-                          </div>
-                        </div>
-                      ))
-                    ) : <p style={{fontSize:'12px', color: colors.secondaryText, textAlign:'center'}}>Καμία κίνηση ακόμα.</p>}
-                  </div>
-                )}
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button onClick={() => handleEdit(s)} style={iconBtnStyle}>✎</button>
+                  <button onClick={async () => { if(confirm('Διαγραφή;')){ await supabase.from('suppliers').delete().eq('id', s.id); fetchSuppliersData(); } }} style={deleteBtnStyle}>🗑️</button>
+                </div>
               </div>
-            ))}
-            {suppliers.length === 0 && !loading && (
-              <div style={emptyState}>Δεν βρέθηκαν προμηθευτές.</div>
-            )}
-          </div>
-        )}
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   )
@@ -248,11 +236,7 @@ const supplierItem: any = { backgroundColor: colors.white, padding: '18px 20px',
 const badgeStyle: any = { fontSize: '10px', fontWeight: '700', backgroundColor: colors.bgLight, padding: '3px 8px', borderRadius: '6px', color: colors.secondaryText, border: `1px solid ${colors.border}` };
 const iconBtnStyle: any = { background: colors.bgLight, border: `1px solid ${colors.border}`, width: '36px', height: '36px', borderRadius: '10px', cursor: 'pointer', fontSize: '16px', color: colors.primaryDark };
 const deleteBtnStyle: any = { ...iconBtnStyle, background: '#fef2f2', borderColor: '#fecaca', color: colors.accentRed };
-const transList: any = { backgroundColor: colors.white, padding: '15px 20px', borderRadius: '0 0 20px 20px', marginTop: '-12px', border: `1px solid ${colors.border}`, borderTop: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.03)' };
-const transHeader: any = { fontSize: '10px', fontWeight: '800', color: colors.secondaryText, marginBottom: '10px', borderBottom: `1px solid ${colors.bgLight}`, paddingBottom: '5px' };
-const transItem: any = { display: 'flex', justifyContent: 'space-between', fontSize: '14px', padding: '10px 0', borderBottom: `1px dashed ${colors.border}` };
-const emptyState: any = { textAlign: 'center', padding: '50px 20px', background: colors.white, borderRadius: '24px', color: colors.secondaryText, fontWeight: '600', border: `1px dashed ${colors.border}` };
-const timeBadge: any = { fontSize: '10px', backgroundColor: '#f0f9ff', color: '#0369a1', padding: '2px 8px', borderRadius: '6px', fontWeight: '700', display: 'inline-flex', alignItems: 'center', border: '1px solid #bae6fd' };
+const copyIconBtn: any = { background: colors.bgLight, border: 'none', padding: '4px', borderRadius: '4px', cursor: 'pointer', display: 'flex', alignItems: 'center' };
 
 export default function SuppliersPage() {
   return (

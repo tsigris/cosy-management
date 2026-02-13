@@ -11,7 +11,7 @@ const colors = {
   primaryDark: '#1e293b', // Slate 800
   secondaryText: '#64748b', // Slate 500
   accentRed: '#dc2626',   // Red 600
-  accentBlue: '#2563eb',  // Blue 600 (Για εξοφλήσεις)
+  accentBlue: '#2563eb',  // Blue 600
   bgLight: '#f8fafc',     // Slate 50
   border: '#e2e8f0',      // Slate 200
   white: '#ffffff'
@@ -21,11 +21,9 @@ function AddExpenseForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
 
-  // ΔΙΑΒΑΣΜΑ ΠΑΡΑΜΕΤΡΩΝ ΑΠΟ ΤΟ URL (Για αυτόματη εξόφληση)
   const urlSupId = searchParams.get('supId')
   const isDebtMode = searchParams.get('mode') === 'debt'
 
-  // ΥΠΟΛΟΓΙΣΜΟΣ ΗΜΕΡΟΜΗΝΙΑΣ (07:00 Logic)
   const getBusinessDate = () => {
     const now = new Date()
     if (now.getHours() < 7) {
@@ -39,20 +37,18 @@ function AddExpenseForm() {
 
   const selectedDate = searchParams.get('date') || getBusinessDate()
   
-  // Form State
   const [amount, setAmount] = useState('')
   const [method, setMethod] = useState('Μετρητά')
   const [notes, setNotes] = useState('')
   const [isCredit, setIsCredit] = useState(false) 
-  const [isAgainstDebt, setIsAgainstDebt] = useState(isDebtMode) // Αυτόματο τσεκάρισμα
+  const [isAgainstDebt, setIsAgainstDebt] = useState(isDebtMode)
   const [source, setSource] = useState('store') 
   const [currentUsername, setCurrentUsername] = useState('Χρήστης')
   const [loading, setLoading] = useState(true)
 
-  // Lists
   const [suppliers, setSuppliers] = useState<any[]>([])
   const [fixedAssets, setFixedAssets] = useState<any[]>([])
-  const [selectedSup, setSelectedSup] = useState(urlSupId || '') // Αυτόματη επιλογή προμηθευτή
+  const [selectedSup, setSelectedSup] = useState(urlSupId || '')
   const [selectedFixed, setSelectedFixed] = useState('')
 
   const loadFormData = useCallback(async () => {
@@ -84,16 +80,6 @@ function AddExpenseForm() {
 
   useEffect(() => {
     loadFormData()
-    const handleWakeUp = () => {
-      if (document.visibilityState === 'visible') loadFormData()
-    }
-    document.addEventListener('visibilitychange', handleWakeUp)
-    window.addEventListener('focus', handleWakeUp)
-
-    return () => {
-      document.removeEventListener('visibilitychange', handleWakeUp)
-      window.removeEventListener('focus', handleWakeUp)
-    }
   }, [loadFormData])
 
   async function handleSave() {
@@ -137,12 +123,12 @@ function AddExpenseForm() {
     }
   }
 
-  // Δυναμικό χρώμα ανάλογα με το αν είναι έξοδο ή εξόφληση
   const themeColor = isAgainstDebt ? colors.accentBlue : colors.accentRed;
 
   return (
-    <main style={{ backgroundColor: colors.bgLight, minHeight: '100vh', padding: '16px' }}>
-      <div style={formCardStyle}>
+    /* ΔΙΟΡΘΩΣΗ: Προσθήκη overflow-y-auto και h-screen για να σκρολάρει το κινητό */
+    <main style={{ backgroundColor: colors.bgLight, height: '100vh', overflowY: 'auto', WebkitOverflowScrolling: 'touch' }}>
+      <div style={{ ...formCardStyle, marginBottom: '100px' }}>
         
         {/* HEADER */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px' }}>
@@ -190,7 +176,7 @@ function AddExpenseForm() {
         <div style={{ display: 'flex', gap: '12px', marginBottom: '20px' }}>
           <div style={{ flex: 1.5 }}>
             <label style={labelStyle}>ΠΟΣΟ (€)</label>
-            <input type="number" inputMode="decimal" value={amount} onChange={e => setAmount(e.target.value)} style={inputStyle} placeholder="0.00" autoFocus />
+            <input type="number" inputMode="decimal" value={amount} onChange={e => setAmount(e.target.value)} style={inputStyle} placeholder="0.00" />
           </div>
           <div style={{ flex: 1 }}>
             <label style={labelStyle}>ΜΕΘΟΔΟΣ</label>
@@ -232,10 +218,11 @@ function AddExpenseForm() {
 
         <div style={{ marginBottom: '25px' }}>
           <label style={labelStyle}>ΣΗΜΕΙΩΣΕΙΣ</label>
-          <textarea value={notes} onChange={e => setNotes(e.target.value)} style={{ ...inputStyle, height: '70px', paddingTop: '12px', fontWeight: '500' }} placeholder="Περιγραφή..." />
+          <textarea value={notes} onChange={e => setNotes(e.target.value)} style={{ ...inputStyle, height: '80px', paddingTop: '12px' }} placeholder="Περιγραφή..." />
         </div>
 
-        <button onClick={handleSave} disabled={loading} style={{ ...saveBtn, backgroundColor: themeColor }}>
+        {/* ΔΙΟΡΘΩΣΗ: Μεγάλο margin στο κουμπί για να μην το κρύβει το κινητό */}
+        <button onClick={handleSave} disabled={loading} style={{ ...saveBtn, backgroundColor: themeColor, marginBottom: '60px' }}>
           {loading ? 'ΓΙΝΕΤΑΙ ΑΠΟΘΗΚΕΥΣΗ...' : (isAgainstDebt ? 'ΟΛΟΚΛΗΡΩΣΗ ΕΞΟΦΛΗΣΗΣ' : 'ΟΛΟΚΛΗΡΩΣΗ ΕΞΟΔΟΥ')}
         </button>
       </div>
@@ -244,12 +231,12 @@ function AddExpenseForm() {
 }
 
 // --- STYLES ---
-const formCardStyle = { maxWidth: '500px', margin: '0 auto', backgroundColor: colors.white, borderRadius: '24px', padding: '24px', border: `1px solid ${colors.border}`, boxShadow: '0 4px 20px rgba(0,0,0,0.03)' };
+const formCardStyle = { maxWidth: '500px', margin: '16px auto', backgroundColor: colors.white, borderRadius: '24px', padding: '24px', border: `1px solid ${colors.border}`, boxShadow: '0 4px 20px rgba(0,0,0,0.03)' };
 const logoBoxStyle: any = { width: '42px', height: '42px', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px' };
 const backBtnStyle: any = { textDecoration: 'none', color: colors.secondaryText, fontSize: '18px', fontWeight: 'bold', width: '36px', height: '36px', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bgLight, borderRadius: '10px', border: `1px solid ${colors.border}` };
 const labelStyle: any = { fontSize: '10px', fontWeight: '800', color: colors.secondaryText, marginBottom: '6px', display: 'block', letterSpacing: '0.5px' };
 const inputStyle: any = { width: '100%', padding: '15px', borderRadius: '12px', border: `1px solid ${colors.border}`, fontSize: '15px', fontWeight: '700', backgroundColor: colors.bgLight, boxSizing: 'border-box' as const, outline: 'none', color: colors.primaryDark };
-const sourceBtn: any = { flex: 1, padding: '14px', borderRadius: '12px', fontWeight: '800', fontSize: '12px', cursor: 'pointer', transition: 'all 0.2s' };
+const sourceBtn: any = { flex: 1, padding: '14px', borderRadius: '12px', fontWeight: '800', fontSize: '12px', cursor: 'pointer' };
 const userIndicator = { marginBottom: '20px', padding: '8px', backgroundColor: colors.bgLight, borderRadius: '10px', textAlign: 'center' as any, border: `1px solid ${colors.border}` };
 const creditPanel = { backgroundColor: colors.bgLight, padding: '16px', borderRadius: '16px', marginBottom: '24px', border: `1px solid ${colors.border}` };
 const selectGroup = { marginBottom: '18px' };
@@ -258,5 +245,5 @@ const checkLabel: any = { fontSize: '12px', fontWeight: '700', color: colors.pri
 const checkboxStyle = { width: '18px', height: '18px', cursor: 'pointer' };
 
 export default function AddExpensePage() {
-  return <Suspense fallback={<div style={{padding:'40px', textAlign:'center', color: colors.secondaryText, fontWeight: '600'}}>Φόρτωση φόρμας...</div>}><AddExpenseForm /></Suspense>
+  return <Suspense fallback={<div style={{padding:'40px', textAlign:'center', color: colors.secondaryText}}>Φόρτωση...</div>}><AddExpenseForm /></Suspense>
 }
