@@ -29,6 +29,8 @@ function EmployeesContent() {
   const [selectedEmpId, setSelectedEmpId] = useState<string | null>(null)
   const [storeId, setStoreId] = useState<string | null>(null)
   
+  // --- ΝΕΟ STATE ΓΙΑ ΤΥΠΟ ΠΛΗΡΩΜΗΣ ---
+  const [payBasis, setPayBasis] = useState<'monthly' | 'daily'>('monthly')
   const [viewYear, setViewYear] = useState(new Date().getFullYear())
 
   const availableYears: number[] = [];
@@ -38,6 +40,7 @@ function EmployeesContent() {
 
   const [formData, setFormData] = useState({ 
     full_name: '', position: '', amka: '', iban: '', monthly_salary: '', 
+    daily_rate: '', // Προσθήκη για ημερομίσθιο
     start_date: new Date().toISOString().split('T')[0] 
   })
 
@@ -88,25 +91,20 @@ function EmployeesContent() {
       }
     });
 
-    const baseSalary = Number(emp.monthly_salary) || 0;
+    // Χρήση σωστής βάσης μισθού ανάλογα με τον τύπο
+    const baseSalary = emp.pay_basis === 'daily' ? (Number(emp.daily_rate) || 0) : (Number(emp.monthly_salary) || 0);
     return (baseSalary + extraEarnings) - totalPaid;
   }
 
-  // --- ΑΝΤΙΣΤΡΟΦΗ ΜΕΤΡΗΣΗ: ΚΑΘΕ ΜΗΝΑ ΤΗΝ ΙΔΙΑ ΗΜΕΡΑ ΠΡΟΣΛΗΨΗΣ ---
   const getDaysUntilPayment = (hireDateStr: string) => {
     if (!hireDateStr) return null
     const today = new Date(); today.setHours(0, 0, 0, 0)
     const hireDate = new Date(hireDateStr); hireDate.setHours(0, 0, 0, 0)
-
-    // Η πρώτη πληρωμή είναι 1 μήνα μετά την πρόσληψη
     let nextPayDate = new Date(hireDate)
     nextPayDate.setMonth(nextPayDate.getMonth() + 1)
-
-    // Αν η ημερομηνία έχει ήδη περάσει, πήγαινε στην επόμενη μηνιαία επέτειο
     while (nextPayDate <= today) {
       nextPayDate.setMonth(nextPayDate.getMonth() + 1)
     }
-    
     const diffTime = nextPayDate.getTime() - today.getTime()
     return Math.ceil(diffTime / (1000 * 60 * 60 * 24))
   }
@@ -135,13 +133,20 @@ function EmployeesContent() {
   }
 
   async function handleSave() {
-    if (!formData.full_name.trim() || !formData.monthly_salary) return alert('Συμπληρώστε τα υποχρεωτικά πεδία!')
+    const isSalaryMissing = payBasis === 'monthly' ? !formData.monthly_salary : !formData.daily_rate;
+    if (!formData.full_name.trim() || isSalaryMissing) return alert('Συμπληρώστε τα υποχρεωτικά πεδία!')
+    
     setLoading(true)
     const payload = {
       full_name: formData.full_name.trim(),
-      position: formData.position.trim() || null, amka: formData.amka.trim() || null,
-      iban: formData.iban.trim() || null, monthly_salary: Number(formData.monthly_salary),
-      start_date: formData.start_date, store_id: storeId
+      position: formData.position.trim() || null, 
+      amka: formData.amka.trim() || null,
+      iban: formData.iban.trim() || null, 
+      pay_basis: payBasis,
+      monthly_salary: payBasis === 'monthly' ? Number(formData.monthly_salary) : null,
+      daily_rate: payBasis === 'daily' ? Number(formData.daily_rate) : null,
+      start_date: formData.start_date, 
+      store_id: storeId
     }
     const { error } = editingId ? await supabase.from('employees').update(payload).eq('id', editingId) : await supabase.from('employees').insert([payload])
     if (!error) { setEditingId(null); resetForm(); setIsAdding(false); fetchInitialData(); }
@@ -164,7 +169,8 @@ function EmployeesContent() {
   }
 
   const resetForm = () => {
-    setFormData({ full_name: '', position: '', amka: '', iban: '', monthly_salary: '', start_date: new Date().toISOString().split('T')[0] });
+    setFormData({ full_name: '', position: '', amka: '', iban: '', monthly_salary: '', daily_rate: '', start_date: new Date().toISOString().split('T')[0] });
+    setPayBasis('monthly');
     setEditingId(null);
   }
 
@@ -172,7 +178,6 @@ function EmployeesContent() {
     <div style={iphoneWrapper}>
       <div style={{ maxWidth: '500px', margin: '0 auto', paddingBottom: '100px' }}>
         
-        {/* HEADER */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
             <div style={logoBoxStyle}>👥</div>
@@ -189,10 +194,26 @@ function EmployeesContent() {
           <div style={{ ...formCard, borderColor: editingId ? '#f59e0b' : colors.primaryDark }}>
             <label style={labelStyle}>Ονοματεπώνυμο *</label>
             <input value={formData.full_name} onChange={e => setFormData({...formData, full_name: e.target.value})} style={inputStyle} />
+            
+            {/* ΝΕΑ ΕΠΙΛΟΓΗ ΤΥΠΟΥ ΣΥΜΦΩΝΙΑΣ */}
+            <label style={{...labelStyle, marginTop: '16px'}}>Τύπος Συμφωνίας</label>
+            <div style={{ display: 'flex', gap: '10px', marginBottom: '16px' }}>
+              <button onClick={() => setPayBasis('monthly')} style={payBasis === 'monthly' ? activeToggle : inactiveToggle}>ΜΗΝΙΑΙΟΣ</button>
+              <button onClick={() => setPayBasis('daily')} style={payBasis === 'daily' ? activeToggle : inactiveToggle}>ΗΜΕΡΟΜΙΣΘΙΟ</button>
+            </div>
+
             <div style={{ display: 'flex', gap: '12px', marginTop: '16px' }}>
               <div style={{ flex: 1 }}>
-                <label style={labelStyle}>Μισθός (€) *</label>
-                <input type="number" value={formData.monthly_salary} onChange={e => setFormData({...formData, monthly_salary: e.target.value})} style={inputStyle} />
+                <label style={labelStyle}>{payBasis === 'monthly' ? 'Μισθός (€) *' : 'Ημερομίσθιο (€) *'}</label>
+                <input 
+                  type="number" 
+                  value={payBasis === 'monthly' ? formData.monthly_salary : formData.daily_rate} 
+                  onChange={e => setFormData({
+                    ...formData, 
+                    [payBasis === 'monthly' ? 'monthly_salary' : 'daily_rate']: e.target.value
+                  })} 
+                  style={inputStyle} 
+                />
               </div>
               <div style={{ flex: 1 }}>
                 <label style={labelStyle}>Ημ. Πρόσληψης</label>
@@ -217,9 +238,12 @@ function EmployeesContent() {
                 <div onClick={() => setSelectedEmpId(isSelected ? null : emp.id)} style={{ padding: '18px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div style={{ flex: 1 }}>
                     <p style={{ fontWeight: '700', color: colors.primaryDark, fontSize: '16px', margin: 0 }}>{emp.full_name.toUpperCase()}</p>
-                    <div style={{ marginTop: '6px' }}>
+                    <div style={{ marginTop: '6px', display: 'flex', gap: '8px', alignItems: 'center' }}>
                        <span style={{...badgeStyle, backgroundColor: (daysLeft === 0 || daysLeft === null) ? '#fef2f2' : '#eff6ff', color: (daysLeft === 0 || daysLeft === null) ? colors.accentRed : colors.accentBlue}}>
                          {daysLeft === 0 ? 'ΣΗΜΕΡΑ 💰' : `ΣΕ ${daysLeft} ΗΜΕΡΕΣ 📅`}
+                       </span>
+                       <span style={{ fontSize: '10px', color: colors.secondaryText, fontWeight: '700' }}>
+                         {emp.pay_basis === 'daily' ? 'Ημερομίσθιος' : 'Μηνιαίος'}
                        </span>
                     </div>
                   </div>
@@ -270,9 +294,11 @@ function EmployeesContent() {
 
                     <div style={{ display: 'flex', gap: '10px' }}>
                       <button onClick={() => { 
+                        setPayBasis(emp.pay_basis || 'monthly');
                         setFormData({
                           full_name: emp.full_name, position: emp.position || '', amka: emp.amka || '', 
-                          iban: emp.iban || '', monthly_salary: emp.monthly_salary.toString(), start_date: emp.start_date
+                          iban: emp.iban || '', monthly_salary: emp.monthly_salary?.toString() || '',
+                          daily_rate: emp.daily_rate?.toString() || '', start_date: emp.start_date
                         }); 
                         setEditingId(emp.id); setIsAdding(true); window.scrollTo(0,0); 
                       }} style={editBtn}>ΕΠΕΞΕΡΓΑΣΙΑ ✎</button>
@@ -313,6 +339,10 @@ const historyItemExtended: any = { padding: '12px', borderRadius: '14px', border
 const transDeleteBtn: any = { background: 'none', border: 'none', cursor: 'pointer', fontSize: '12px', opacity: 0.5 };
 const editBtn: any = { flex: 3, background: '#fffbeb', border: `1px solid #fef3c7`, padding: '12px', borderRadius: '10px', cursor: 'pointer', fontSize: '11px', fontWeight: '700', color: '#92400e' };
 const deleteBtn: any = { flex: 2, background: '#fef2f2', border: `1px solid #fee2e2`, padding: '12px', borderRadius: '10px', cursor: 'pointer', fontSize: '11px', fontWeight: '700', color: colors.accentRed };
+
+// ΝΕΑ ΣΤΥΛ ΓΙΑ ΤΟΝ ΔΙΑΚΟΠΤΗ (TOGGLE)
+const activeToggle: any = { flex: 1, padding: '12px', backgroundColor: colors.primaryDark, color: 'white', border: 'none', borderRadius: '10px', fontWeight: 'bold', fontSize: '11px', cursor: 'pointer' };
+const inactiveToggle: any = { flex: 1, padding: '12px', backgroundColor: '#f1f5f9', color: colors.secondaryText, border: 'none', borderRadius: '10px', fontWeight: 'bold', fontSize: '11px', cursor: 'pointer' };
 
 export default function EmployeesPage() {
   return <main><Suspense fallback={<div>Φόρτωση...</div>}><EmployeesContent /></Suspense></main>
