@@ -29,7 +29,6 @@ function EmployeesContent() {
   const [selectedEmpId, setSelectedEmpId] = useState<string | null>(null)
   const [storeId, setStoreId] = useState<string | null>(null)
   
-  // --- ΝΕΟ STATE ΓΙΑ ΤΥΠΟ ΠΛΗΡΩΜΗΣ ---
   const [payBasis, setPayBasis] = useState<'monthly' | 'daily'>('monthly')
   const [viewYear, setViewYear] = useState(new Date().getFullYear())
 
@@ -39,8 +38,10 @@ function EmployeesContent() {
   }
 
   const [formData, setFormData] = useState({ 
-    full_name: '', position: '', amka: '', iban: '', monthly_salary: '', 
-    daily_rate: '', // Προσθήκη για ημερομίσθιο
+    full_name: '', position: '', amka: '', iban: '', 
+    bank_name: 'Εθνική Τράπεζα',
+    monthly_salary: '', 
+    daily_rate: '',
     start_date: new Date().toISOString().split('T')[0] 
   })
 
@@ -64,7 +65,6 @@ function EmployeesContent() {
 
   useEffect(() => { fetchInitialData() }, [fetchInitialData])
 
-  // --- ΕΞΥΠΝΟΣ ΥΠΟΛΟΓΙΣΜΟΣ ΥΠΟΛΟΙΠΟΥ ---
   const getCurrentMonthRemaining = (emp: any) => {
     const now = new Date();
     const currentMonthTrans = transactions.filter(t => 
@@ -91,7 +91,6 @@ function EmployeesContent() {
       }
     });
 
-    // Χρήση σωστής βάσης μισθού ανάλογα με τον τύπο
     const baseSalary = emp.pay_basis === 'daily' ? (Number(emp.daily_rate) || 0) : (Number(emp.monthly_salary) || 0);
     return (baseSalary + extraEarnings) - totalPaid;
   }
@@ -142,6 +141,7 @@ function EmployeesContent() {
       position: formData.position.trim() || null, 
       amka: formData.amka.trim() || null,
       iban: formData.iban.trim() || null, 
+      bank_name: formData.bank_name,
       pay_basis: payBasis,
       monthly_salary: payBasis === 'monthly' ? Number(formData.monthly_salary) : null,
       daily_rate: payBasis === 'daily' ? Number(formData.daily_rate) : null,
@@ -169,7 +169,7 @@ function EmployeesContent() {
   }
 
   const resetForm = () => {
-    setFormData({ full_name: '', position: '', amka: '', iban: '', monthly_salary: '', daily_rate: '', start_date: new Date().toISOString().split('T')[0] });
+    setFormData({ full_name: '', position: '', amka: '', iban: '', bank_name: 'Εθνική Τράπεζα', monthly_salary: '', daily_rate: '', start_date: new Date().toISOString().split('T')[0] });
     setPayBasis('monthly');
     setEditingId(null);
   }
@@ -195,7 +195,6 @@ function EmployeesContent() {
             <label style={labelStyle}>Ονοματεπώνυμο *</label>
             <input value={formData.full_name} onChange={e => setFormData({...formData, full_name: e.target.value})} style={inputStyle} />
             
-            {/* ΝΕΑ ΕΠΙΛΟΓΗ ΤΥΠΟΥ ΣΥΜΦΩΝΙΑΣ */}
             <label style={{...labelStyle, marginTop: '16px'}}>Τύπος Συμφωνίας</label>
             <div style={{ display: 'flex', gap: '10px', marginBottom: '16px' }}>
               <button onClick={() => setPayBasis('monthly')} style={payBasis === 'monthly' ? activeToggle : inactiveToggle}>ΜΗΝΙΑΙΟΣ</button>
@@ -220,6 +219,32 @@ function EmployeesContent() {
                 <input type="date" value={formData.start_date} onChange={e => setFormData({...formData, start_date: e.target.value})} style={inputStyle} />
               </div>
             </div>
+
+            <div style={{ marginTop: '16px' }}>
+                <label style={labelStyle}>Τράπεζα Υπαλλήλου</label>
+                <select 
+                    value={formData.bank_name} 
+                    onChange={e => setFormData({...formData, bank_name: e.target.value})} 
+                    style={inputStyle}
+                >
+                    <option value="Εθνική Τράπεζα">Εθνική Τράπεζα</option>
+                    <option value="Eurobank">Eurobank</option>
+                    <option value="Alpha Bank">Alpha Bank</option>
+                    <option value="Τράπεζα Πειραιώς">Τράπεζα Πειραιώς</option>
+                    <option value="Viva Wallet">Viva Wallet</option>
+                </select>
+            </div>
+
+            <div style={{ marginTop: '16px' }}>
+                <label style={labelStyle}>IBAN Υπαλλήλου</label>
+                <input 
+                    value={formData.iban} 
+                    onChange={e => setFormData({...formData, iban: e.target.value.toUpperCase()})} 
+                    placeholder="GR00 0000 0000..." 
+                    style={inputStyle} 
+                />
+            </div>
+
             <button onClick={handleSave} disabled={loading} style={{...saveBtnStyle, backgroundColor: editingId ? '#f59e0b' : colors.primaryDark}}>
               {loading ? 'ΓΙΝΕΤΑΙ ΑΠΟΘΗΚΕΥΣΗ...' : (editingId ? 'ΕΝΗΜΕΡΩΣΗ ΣΤΟΙΧΕΙΩΝ' : 'ΑΠΟΘΗΚΕΥΣΗ')}
             </button>
@@ -261,6 +286,13 @@ function EmployeesContent() {
 
                 {isSelected && (
                   <div style={{ backgroundColor: '#ffffff', padding: '18px', borderTop: `1px solid ${colors.border}` }}>
+                    
+                    <div style={{ marginBottom: '20px', padding: '12px', backgroundColor: colors.slate100, borderRadius: '12px', fontSize: '12px' }}>
+                        <p style={{ margin: '0 0 5px 0', fontWeight: '800', color: colors.secondaryText }}>ΣΤΟΙΧΕΙΑ ΠΛΗΡΩΜΗΣ</p>
+                        <p style={{ margin: 0, fontWeight: '700' }}>🏦 {emp.bank_name || 'Δεν ορίστηκε'}</p>
+                        <p style={{ margin: '3px 0 0 0', fontWeight: '600', color: colors.accentBlue, fontSize: '11px' }}>{emp.iban || 'Δεν ορίστηκε IBAN'}</p>
+                    </div>
+
                     <div style={filterContainer}>
                         <label style={{...labelStyle, margin: 0, flex: 1, alignSelf: 'center'}}>ΕΤΗΣΙΑ ΑΝΑΛΥΣΗ</label>
                         <select value={viewYear} onChange={e => setViewYear(parseInt(e.target.value))} style={filterSelect}>
@@ -297,7 +329,8 @@ function EmployeesContent() {
                         setPayBasis(emp.pay_basis || 'monthly');
                         setFormData({
                           full_name: emp.full_name, position: emp.position || '', amka: emp.amka || '', 
-                          iban: emp.iban || '', monthly_salary: emp.monthly_salary?.toString() || '',
+                          iban: emp.iban || '', bank_name: emp.bank_name || 'Εθνική Τράπεζα',
+                          monthly_salary: emp.monthly_salary?.toString() || '',
                           daily_rate: emp.daily_rate?.toString() || '', start_date: emp.start_date
                         }); 
                         setEditingId(emp.id); setIsAdding(true); window.scrollTo(0,0); 
@@ -339,8 +372,6 @@ const historyItemExtended: any = { padding: '12px', borderRadius: '14px', border
 const transDeleteBtn: any = { background: 'none', border: 'none', cursor: 'pointer', fontSize: '12px', opacity: 0.5 };
 const editBtn: any = { flex: 3, background: '#fffbeb', border: `1px solid #fef3c7`, padding: '12px', borderRadius: '10px', cursor: 'pointer', fontSize: '11px', fontWeight: '700', color: '#92400e' };
 const deleteBtn: any = { flex: 2, background: '#fef2f2', border: `1px solid #fee2e2`, padding: '12px', borderRadius: '10px', cursor: 'pointer', fontSize: '11px', fontWeight: '700', color: colors.accentRed };
-
-// ΝΕΑ ΣΤΥΛ ΓΙΑ ΤΟΝ ΔΙΑΚΟΠΤΗ (TOGGLE)
 const activeToggle: any = { flex: 1, padding: '12px', backgroundColor: colors.primaryDark, color: 'white', border: 'none', borderRadius: '10px', fontWeight: 'bold', fontSize: '11px', cursor: 'pointer' };
 const inactiveToggle: any = { flex: 1, padding: '12px', backgroundColor: '#f1f5f9', color: colors.secondaryText, border: 'none', borderRadius: '10px', fontWeight: 'bold', fontSize: '11px', cursor: 'pointer' };
 
