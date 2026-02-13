@@ -1,14 +1,30 @@
 'use client'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 
 export default function LoginPage() {
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const mode = searchParams.get('mode') // 'fast' για PIN/Biometrics
+
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [enteredPin, setEnteredPin] = useState('')
   const [loading, setLoading] = useState(false)
-  const router = useRouter()
+  const [isFastMode, setIsFastMode] = useState(mode === 'fast')
+
+  // Έλεγχος για Βιομετρικά κατά την είσοδο στο Fast Mode
+  useEffect(() => {
+    if (isFastMode) {
+      const bioEnabled = localStorage.getItem('fleet_track_biometrics') === 'true'
+      if (bioEnabled && window.PublicKeyCredential) {
+        // Εδώ θα μπορούσε να μπει η κλήση WebAuthn, 
+        // προς το παρόν το PIN λειτουργεί ως κύριο backup.
+      }
+    }
+  }, [isFastMode])
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -20,14 +36,83 @@ export default function LoginPage() {
       password: password.trim() 
     })
     
-    if (error) alert('Σφάλμα: ' + error.message)
-    else {
+    if (error) {
+      alert('Σφάλμα: ' + error.message)
+      setLoading(false)
+    } else {
       router.push('/')
       router.refresh()
     }
-    setLoading(false)
   }
 
+  const handlePinPress = (num: string) => {
+    if (enteredPin.length < 4) {
+      const newPin = enteredPin + num
+      setEnteredPin(newPin)
+      if (newPin.length === 4) {
+        verifyPin(newPin)
+      }
+    }
+  }
+
+  const verifyPin = (pin: string) => {
+    const savedPin = localStorage.getItem('fleet_track_pin')
+    if (pin === savedPin) {
+      router.push('/')
+      router.refresh()
+    } else {
+      alert('Λάθος PIN')
+      setEnteredPin('')
+    }
+  }
+
+  // --- UI ΓΙΑ PIN PAD (FAST MODE) ---
+  if (isFastMode) {
+    return (
+      <main style={containerStyle}>
+        <div style={loginCardStyle}>
+          <div style={headerStyle}>
+            <h1 style={brandStyle}>COSY APP</h1>
+            <p style={instructionStyle}>Εισάγετε το PIN σας</p>
+          </div>
+
+          <div style={dotsContainer}>
+            {[1, 2, 3, 4].map((i) => (
+              <div key={i} style={{ 
+                ...dotStyle, 
+                backgroundColor: enteredPin.length >= i ? '#1e40af' : '#e2e8f0' 
+              }} />
+            ))}
+          </div>
+
+          <div style={numpadGrid}>
+            {['1', '2', '3', '4', '5', '6', '7', '8', '9', 'C', '0', '⌫'].map((btn) => (
+              <button 
+                key={btn} 
+                onClick={() => {
+                  if (btn === 'C') setEnteredPin('')
+                  else if (btn === '⌫') setEnteredPin(enteredPin.slice(0, -1))
+                  else handlePinPress(btn)
+                }}
+                style={numBtnStyle}
+              >
+                {btn}
+              </button>
+            ))}
+          </div>
+
+          <button 
+            onClick={() => setIsFastMode(false)}
+            style={{ ...footerLinkStyle, marginTop: '30px', background: 'none', border: 'none', cursor: 'pointer' }}
+          >
+            Είσοδος με κωδικό πρόσβασης →
+          </button>
+        </div>
+      </main>
+    )
+  }
+
+  // --- UI ΓΙΑ STANDARD LOGIN ---
   return (
     <main style={containerStyle}>
       <div style={loginCardStyle}>
@@ -53,23 +138,30 @@ export default function LoginPage() {
 
         <div style={footerStyle}>
           <p style={{fontSize:'13px', color:'#64748b', marginBottom:'10px'}}>Δεν έχετε λογαριασμό;</p>
-          <Link href="/register" style={{color:'#1e40af', fontWeight:'700', textDecoration:'none', fontSize:'14px'}}>ΔΗΜΙΟΥΡΓΙΑ ΛΟΓΑΡΙΑΣΜΟΥ →</Link>
+          <Link href="/register" style={footerLinkStyle}>ΔΗΜΙΟΥΡΓΙΑ ΛΟΓΑΡΙΑΣΜΟΥ →</Link>
         </div>
       </div>
     </main>
   )
 }
 
-// STYLES (Όπως τα συμφωνήσαμε πριν)
+// --- STYLES ---
 const containerStyle = { minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#f1f5f9', fontFamily: 'sans-serif', padding: '20px' };
-const loginCardStyle = { backgroundColor: '#ffffff', width: '100%', maxWidth: '420px', padding: '40px', borderRadius: '8px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', borderTop: '5px solid #1e40af' };
-const headerStyle = { textAlign: 'center' as const, marginBottom: '30px' };
+const loginCardStyle = { backgroundColor: '#ffffff', width: '100%', maxWidth: '420px', padding: '40px', borderRadius: '16px', boxShadow: '0 10px 25px rgba(0,0,0,0.05)', borderTop: '5px solid #1e40af', textAlign: 'center' as const };
+const headerStyle = { marginBottom: '30px' };
 const brandStyle = { fontSize: '24px', fontWeight: '800', color: '#1e293b', margin: '0 0 10px 0' };
 const dividerStyle = { height: '2px', width: '30px', backgroundColor: '#e2e8f0', margin: '0 auto 15px auto' };
-const instructionStyle = { fontSize: '14px', color: '#64748b' };
-const formStyle = { display: 'flex', flexDirection: 'column' as const, gap: '20px' };
+const instructionStyle = { fontSize: '14px', color: '#64748b', fontWeight: '600' };
+const formStyle = { display: 'flex', flexDirection: 'column' as const, gap: '20px', textAlign: 'left' as const };
 const fieldGroup = { display: 'flex', flexDirection: 'column' as const, gap: '6px' };
-const labelStyle = { fontSize: '11px', fontWeight: '700', color: '#475569' };
-const inputStyle = { padding: '12px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '15px' };
-const submitBtnStyle = { backgroundColor: '#1e40af', color: '#ffffff', padding: '14px', borderRadius: '4px', border: 'none', fontWeight: '700', cursor: 'pointer' };
+const labelStyle = { fontSize: '11px', fontWeight: '700', color: '#475569', letterSpacing: '0.5px' };
+const inputStyle = { padding: '14px', borderRadius: '12px', border: '1px solid #cbd5e1', fontSize: '15px', outline: 'none' };
+const submitBtnStyle = { backgroundColor: '#1e40af', color: '#ffffff', padding: '16px', borderRadius: '12px', border: 'none', fontWeight: '800', cursor: 'pointer', marginTop: '10px' };
 const footerStyle = { marginTop: '30px', textAlign: 'center' as const, borderTop: '1px solid #f1f5f9', paddingTop: '20px' };
+const footerLinkStyle = { color: '#1e40af', fontWeight: '700', textDecoration: 'none', fontSize: '14px' };
+
+// --- PIN PAD SPECIFIC STYLES ---
+const dotsContainer = { display: 'flex', justifyContent: 'center', gap: '15px', marginBottom: '40px' };
+const dotStyle = { width: '14px', height: '14px', borderRadius: '50%', border: '2px solid #e2e8f0', transition: 'all 0.2s' };
+const numpadGrid = { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '15px', width: '100%', maxWidth: '280px', margin: '0 auto' };
+const numBtnStyle = { padding: '20px', fontSize: '22px', fontWeight: '800', backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', cursor: 'pointer', color: '#1e293b' };
