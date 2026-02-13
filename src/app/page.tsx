@@ -1,4 +1,6 @@
 'use client'
+
+// 1. ΕΠΙΒΟΛΗ DYNAMIC ΓΙΑ ΤΟ VERCEL BUILD
 export const dynamic = 'force-dynamic'
 
 import { useEffect, useState, Suspense, useCallback } from 'react'
@@ -19,6 +21,7 @@ const colors = {
   hoverBg: '#f1f5f9',
 };
 
+// 2. ΤΟ COMPONENT ΜΕ ΟΛΗ ΤΗ ΛΟΓΙΚΗ
 function DashboardContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -185,6 +188,7 @@ function DashboardContent() {
     if (!isAdmin) return;
     if (confirm('Οριστική διαγραφή;')) {
       await supabase.from('transactions').delete().eq('id', id)
+      fetchAppData()
     }
   }
 
@@ -365,7 +369,16 @@ function DashboardContent() {
   )
 }
 
-// --- PROFESSIONAL STYLES --- (Παραμένουν ως έχουν)
+// 3. ΤΟ ΚΕΝΤΡΙΚΟ EXPORT ΜΕ SUSPENSE ΓΙΑ ΤΟ VERCEL
+export default function HomePage() {
+  return (
+    <Suspense fallback={<div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#f8fafc' }}>Φόρτωση...</div>}>
+      <DashboardContent />
+    </Suspense>
+  )
+}
+
+// --- PROFESSIONAL STYLES ---
 const iphoneWrapper: any = { backgroundColor: colors.bgLight, minHeight: '100dvh', padding: '20px', overflowY: 'auto', WebkitOverflowScrolling: 'touch', position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 };
 const logoBoxStyle: any = { width: '48px', height: '48px', backgroundColor: colors.primaryDark, borderRadius: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '22px', boxShadow: '0 4px 10px rgba(30, 41, 59, 0.15)' };
 const menuBtnStyle: any = { width: '42px', height: '42px', borderRadius: '12px', border: `1px solid ${colors.border}`, background: colors.cardBg, fontSize: '20px', cursor: 'pointer', color: colors.primaryDark, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 5px rgba(0,0,0,0.05)' };
@@ -392,5 +405,3 @@ const editBtn: any = { flex: 1, background: '#fffbeb', color: '#b45309', border:
 const deleteBtn: any = { flex: 1, background: '#fef2f2', color: colors.accentRed, border: '1px solid #fecaca', padding: '10px', borderRadius: '10px', fontWeight: '700', fontSize: '12px' };
 const iconBtnSmallRed: any = { background: '#fef2f2', border: '1px solid #fecaca', padding: '6px 10px', borderRadius: '8px', cursor: 'pointer', fontSize: '12px', color: colors.accentRed };
 const timeBadge: any = { fontSize: '10px', backgroundColor: '#f0f9ff', color: '#0369a1', padding: '3px 8px', borderRadius: '6px', fontWeight: '700', display: 'inline-flex', alignItems: 'center', border: '1px solid #bae6fd' };
-
-export default function HomePage() { return <main><Suspense fallback={<div>Φόρτωση...</div>}><DashboardContent /></Suspense></main> }
