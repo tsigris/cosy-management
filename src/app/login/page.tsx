@@ -1,10 +1,15 @@
 'use client'
-import { useState, useEffect } from 'react'
+
+// 1. ΕΞΑΣΦΑΛΙΣΗ ΔΥΝΑΜΙΚΗΣ ΛΕΙΤΟΥΡΓΙΑΣ ΓΙΑ ΤΟ BUILD
+export const dynamic = 'force-dynamic'
+
+import { useState, useEffect, Suspense } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 
-export default function LoginPage() {
+// 2. ΤΟ ΕΣΩΤΕΡΙΚΟ COMPONENT ΜΕ ΟΛΗ ΤΗ ΛΟΓΙΚΗ
+function LoginContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const mode = searchParams.get('mode') // 'fast' για PIN/Biometrics
@@ -14,17 +19,6 @@ export default function LoginPage() {
   const [enteredPin, setEnteredPin] = useState('')
   const [loading, setLoading] = useState(false)
   const [isFastMode, setIsFastMode] = useState(mode === 'fast')
-
-  // Έλεγχος για Βιομετρικά κατά την είσοδο στο Fast Mode
-  useEffect(() => {
-    if (isFastMode) {
-      const bioEnabled = localStorage.getItem('fleet_track_biometrics') === 'true'
-      if (bioEnabled && window.PublicKeyCredential) {
-        // Εδώ θα μπορούσε να μπει η κλήση WebAuthn, 
-        // προς το παρόν το PIN λειτουργεί ως κύριο backup.
-      }
-    }
-  }, [isFastMode])
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -66,7 +60,6 @@ export default function LoginPage() {
     }
   }
 
-  // --- UI ΓΙΑ PIN PAD (FAST MODE) ---
   if (isFastMode) {
     return (
       <main style={containerStyle}>
@@ -75,7 +68,6 @@ export default function LoginPage() {
             <h1 style={brandStyle}>COSY APP</h1>
             <p style={instructionStyle}>Εισάγετε το PIN σας</p>
           </div>
-
           <div style={dotsContainer}>
             {[1, 2, 3, 4].map((i) => (
               <div key={i} style={{ 
@@ -84,7 +76,6 @@ export default function LoginPage() {
               }} />
             ))}
           </div>
-
           <div style={numpadGrid}>
             {['1', '2', '3', '4', '5', '6', '7', '8', '9', 'C', '0', '⌫'].map((btn) => (
               <button 
@@ -100,7 +91,6 @@ export default function LoginPage() {
               </button>
             ))}
           </div>
-
           <button 
             onClick={() => setIsFastMode(false)}
             style={{ ...footerLinkStyle, marginTop: '30px', background: 'none', border: 'none', cursor: 'pointer' }}
@@ -112,7 +102,6 @@ export default function LoginPage() {
     )
   }
 
-  // --- UI ΓΙΑ STANDARD LOGIN ---
   return (
     <main style={containerStyle}>
       <div style={loginCardStyle}>
@@ -121,7 +110,6 @@ export default function LoginPage() {
           <div style={dividerStyle} />
           <p style={instructionStyle}>Είσοδος στο Σύστημα</p>
         </div>
-        
         <form onSubmit={handleLogin} style={formStyle}>
           <div style={fieldGroup}>
             <label style={labelStyle}>EMAIL</label>
@@ -135,7 +123,6 @@ export default function LoginPage() {
             {loading ? 'ΤΑΥΤΟΠΟΙΗΣΗ...' : 'ΕΙΣΟΔΟΣ'}
           </button>
         </form>
-
         <div style={footerStyle}>
           <p style={{fontSize:'13px', color:'#64748b', marginBottom:'10px'}}>Δεν έχετε λογαριασμό;</p>
           <Link href="/register" style={footerLinkStyle}>ΔΗΜΙΟΥΡΓΙΑ ΛΟΓΑΡΙΑΣΜΟΥ →</Link>
@@ -145,7 +132,16 @@ export default function LoginPage() {
   )
 }
 
-// --- STYLES ---
+// 3. ΤΟ ΚΕΝΤΡΙΚΟ EXPORT ΠΟΥ ΠΕΡΙΒΑΛΛΕΙ ΜΕ SUSPENSE
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<div style={containerStyle}>Φόρτωση...</div>}>
+      <LoginContent />
+    </Suspense>
+  )
+}
+
+// --- STYLES (Πλήρη) ---
 const containerStyle = { minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#f1f5f9', fontFamily: 'sans-serif', padding: '20px' };
 const loginCardStyle = { backgroundColor: '#ffffff', width: '100%', maxWidth: '420px', padding: '40px', borderRadius: '16px', boxShadow: '0 10px 25px rgba(0,0,0,0.05)', borderTop: '5px solid #1e40af', textAlign: 'center' as const };
 const headerStyle = { marginBottom: '30px' };
@@ -159,8 +155,6 @@ const inputStyle = { padding: '14px', borderRadius: '12px', border: '1px solid #
 const submitBtnStyle = { backgroundColor: '#1e40af', color: '#ffffff', padding: '16px', borderRadius: '12px', border: 'none', fontWeight: '800', cursor: 'pointer', marginTop: '10px' };
 const footerStyle = { marginTop: '30px', textAlign: 'center' as const, borderTop: '1px solid #f1f5f9', paddingTop: '20px' };
 const footerLinkStyle = { color: '#1e40af', fontWeight: '700', textDecoration: 'none', fontSize: '14px' };
-
-// --- PIN PAD SPECIFIC STYLES ---
 const dotsContainer = { display: 'flex', justifyContent: 'center', gap: '15px', marginBottom: '40px' };
 const dotStyle = { width: '14px', height: '14px', borderRadius: '50%', border: '2px solid #e2e8f0', transition: 'all 0.2s' };
 const numpadGrid = { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '15px', width: '100%', maxWidth: '280px', margin: '0 auto' };
