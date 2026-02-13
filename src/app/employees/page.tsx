@@ -37,6 +37,7 @@ function EmployeesContent() {
     availableYears.push(y);
   }
 
+  // ΔΙΟΡΘΩΣΗ: Αρχικοποίηση με κενά κείμενα ('') αντί για 0
   const [formData, setFormData] = useState({ 
     full_name: '', position: '', amka: '', iban: '', 
     bank_name: 'Εθνική Τράπεζα',
@@ -206,12 +207,16 @@ function EmployeesContent() {
                 <label style={labelStyle}>{payBasis === 'monthly' ? 'Μισθός (€) *' : 'Ημερομίσθιο (€) *'}</label>
                 <input 
                   type="number" 
+                  inputMode="decimal"
                   value={payBasis === 'monthly' ? formData.monthly_salary : formData.daily_rate} 
+                  // ΔΙΟΡΘΩΣΗ: Καθαρίζει το "0" αυτόματα στο Focus
+                  onFocus={(e) => { if(e.target.value === "0") setFormData({...formData, [payBasis === 'monthly' ? 'monthly_salary' : 'daily_rate']: ''}) }}
                   onChange={e => setFormData({
                     ...formData, 
                     [payBasis === 'monthly' ? 'monthly_salary' : 'daily_rate']: e.target.value
                   })} 
                   style={inputStyle} 
+                  placeholder="0"
                 />
               </div>
               <div style={{ flex: 1 }}>
