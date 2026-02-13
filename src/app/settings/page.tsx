@@ -30,9 +30,15 @@ function SettingsContent() {
 
   useEffect(() => {
     fetchProfile()
-    // Φόρτωση ρυθμίσεων ασφαλείας από τη συσκευή
-    setPinEnabled(localStorage.getItem('fleet_track_pin_enabled') === 'true')
-    setBioEnabled(localStorage.getItem('fleet_track_biometrics') === 'true')
+    
+    // Έλεγχος αν οι ρυθμίσεις υπάρχουν στη συσκευή
+    const savedPin = localStorage.getItem('fleet_track_pin_enabled') === 'true'
+    const savedBio = localStorage.getItem('fleet_track_biometrics') === 'true'
+    
+    setPinEnabled(savedPin)
+    setBioEnabled(savedBio)
+    
+    console.log("Security Status - PIN:", savedPin, "Bio:", savedBio)
   }, [])
 
   async function fetchProfile() {
@@ -62,7 +68,7 @@ function SettingsContent() {
     if (!pinEnabled) {
       setShowPinModal(true)
     } else {
-      if (confirm('Απενεργοποίηση PIN;')) {
+      if (confirm('Θέλετε να απενεργοποιήσετε την είσοδο με PIN;')) {
         localStorage.removeItem('fleet_track_pin')
         localStorage.setItem('fleet_track_pin_enabled', 'false')
         setPinEnabled(false)
@@ -71,34 +77,40 @@ function SettingsContent() {
   }
 
   const savePin = () => {
-    if (tempPin.length !== 4) return alert('Το PIN πρέπει να είναι 4 ψηφία')
+    if (tempPin.length !== 4) return alert('Το PIN πρέπει να είναι ακριβώς 4 ψηφία')
     localStorage.setItem('fleet_track_pin', tempPin)
     localStorage.setItem('fleet_track_pin_enabled', 'true')
     setPinEnabled(true)
     setShowPinModal(false)
     setTempPin('')
-    alert('Το PIN ενεργοποιήθηκε επιτυχώς!')
+    alert('Το PIN ενεργοποιήθηκε στη συσκευή σας!')
   }
 
   const handleToggleBio = () => {
     const newVal = !bioEnabled
     localStorage.setItem('fleet_track_biometrics', String(newVal))
     setBioEnabled(newVal)
+    if (newVal) alert('Τα βιομετρικά ενεργοποιήθηκαν!')
   }
 
   async function handleSave() {
     setLoading(true)
-    const { data: { user } } = await supabase.auth.getUser()
-    if (user) {
-      const { error } = await supabase.from('profiles').upsert({ 
-        id: user.id, 
-        ...formData,
-        updated_at: new Date().toISOString()
-      })
-      if (!error) alert('Οι αλλαγές αποθηκεύτηκαν επιτυχώς!')
-      else alert('Σφάλμα: ' + error.message)
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
+        const { error } = await supabase.from('profiles').upsert({ 
+          id: user.id, 
+          ...formData,
+          updated_at: new Date().toISOString()
+        })
+        if (!error) alert('Οι αλλαγές αποθηκεύτηκαν επιτυχώς!')
+        else throw error
+      }
+    } catch (error: any) {
+      alert('Σφάλμα: ' + error.message)
+    } finally {
+      setLoading(false)
     }
-    setLoading(false)
   }
 
   const handleWhatsAppRedirect = () => {
@@ -110,19 +122,13 @@ function SettingsContent() {
   return (
     <div style={{ maxWidth: '500px', margin: '0 auto', fontFamily: 'sans-serif' }}>
       
-      {/* PROFESSIONAL HEADER */}
+      {/* HEADER */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '25px', paddingTop: '15px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <div style={logoBoxStyle}>
-            <span style={{ fontSize: '20px' }}>⚙️</span>
-          </div>
+          <div style={logoBoxStyle}>⚙️</div>
           <div>
-            <h1 style={{ fontWeight: '900', fontSize: '22px', margin: 0, color: '#0f172a', lineHeight: '1.1' }}>
-              Ρυθμίσεις
-            </h1>
-            <p style={{ margin: '2px 0 0', fontSize: '10px', color: '#94a3b8', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '1px' }}>
-              ΔΙΑΧΕΙΡΙΣΗ ΠΡΟΦΙΛ & ΑΣΦΑΛΕΙΑΣ
-            </p>
+            <h1 style={{ fontWeight: '900', fontSize: '22px', margin: 0, color: '#0f172a' }}>Ρυθμίσεις</h1>
+            <p style={{ margin: '2px 0 0', fontSize: '10px', color: '#94a3b8', fontWeight: '800', textTransform: 'uppercase' }}>ΔΙΑΧΕΙΡΙΣΗ ΠΡΟΦΙΛ & ΑΣΦΑΛΕΙΑΣ</p>
           </div>
         </div>
         <Link href="/" style={backBtnStyle}>✕</Link>
@@ -130,20 +136,20 @@ function SettingsContent() {
 
       <div style={mainCardStyle}>
         
-        {/* SECTION: ΑΣΦΑΛΕΙΑ ΣΥΣΚΕΥΗΣ */}
-        <p style={sectionLabel}>ΑΣΦΑΛΕΙΑ ΣΥΣΚΕΥΗΣ</p>
+        {/* ΑΣΦΑΛΕΙΑ ΣΥΣΚΕΥΗΣ */}
+        <p style={sectionLabel}>ΑΣΦΑΛΕΙΑ ΣΥΣΚΕΥΗΣ (Local)</p>
         <div style={securityBoxStyle}>
           <div style={settingRow}>
             <div>
-              <p style={settingText}>🔐 Χρήση 4ψήφιου PIN</p>
-              <p style={settingSubText}>Γρήγορη είσοδος σε αυτή τη συσκευή</p>
+              <p style={settingText}>🔐 Χρήση 4ψηφιου PIN</p>
+              <p style={settingSubText}>Γρήγορη είσοδος χωρίς κωδικό</p>
             </div>
             <input type="checkbox" checked={pinEnabled} onChange={handleTogglePin} style={checkboxStyle} />
           </div>
           <div style={{...settingRow, marginTop: '15px', borderTop: '1px solid #e2e8f0', paddingTop: '15px'}}>
             <div>
-              <p style={settingText}>📸 FaceID / Δακτυλικό Αποτύπωμα</p>
-              <p style={settingSubText}>Χρήση βιομετρικών αισθητήρων</p>
+              <p style={settingText}>📸 FaceID / Αποτύπωμα</p>
+              <p style={settingSubText}>Χρήση αισθητήρα συσκευής</p>
             </div>
             <input type="checkbox" checked={bioEnabled} onChange={handleToggleBio} style={checkboxStyle} />
           </div>
@@ -151,7 +157,7 @@ function SettingsContent() {
 
         <div style={divider} />
 
-        {/* SECTION: ΠΡΟΣΩΠΙΚΑ ΣΤΟΙΧΕΙΑ */}
+        {/* ΠΡΟΣΩΠΙΚΑ ΣΤΟΙΧΕΙΑ */}
         <p style={sectionLabel}>ΠΡΟΣΩΠΙΚΑ ΣΤΟΙΧΕΙΑ</p>
         <div style={infoBoxStyle}>
           <label style={labelStyle}>👤 ΤΟ ΟΝΟΜΑ ΣΑΣ (ΥΠΟΓΡΑΦΗ)</label>
@@ -161,7 +167,6 @@ function SettingsContent() {
             onChange={e => setFormData({...formData, username: e.target.value})} 
             placeholder="π.χ. ΓΙΑΝΝΗΣ Π."
           />
-          <p style={hintStyle}>Αυτό το όνομα θα συνοδεύει κάθε κίνηση που καταχωρείτε.</p>
         </div>
 
         <div style={{ marginBottom: '25px' }}>
@@ -171,7 +176,7 @@ function SettingsContent() {
 
         <div style={divider} />
 
-        {/* SECTION: ΣΤΟΙΧΕΙΑ ΕΠΙΧΕΙΡΗΣΗΣ */}
+        {/* ΣΤΟΙΧΕΙΑ ΕΠΙΧΕΙΡΗΣΗΣ */}
         <p style={sectionLabel}>ΣΤΟΙΧΕΙΑ ΕΠΙΧΕΙΡΗΣΗΣ</p>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginBottom: '15px' }}>
           <div>
@@ -195,14 +200,9 @@ function SettingsContent() {
           </div>
         </div>
 
-        <div style={{ marginBottom: '15px' }}>
-          <label style={labelStyle}>ΤΗΛΕΦΩΝΟ ΕΠΙΚΟΙΝΩΝΙΑΣ</label>
-          <input style={inputStyle} value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} />
-        </div>
-
         <div style={{ marginBottom: '30px' }}>
           <label style={labelStyle}>ΔΙΕΥΘΥΝΣΗ</label>
-          <textarea style={{ ...inputStyle, height: '70px', resize: 'none', paddingTop: '10px' }} value={formData.address} onChange={e => setFormData({...formData, address: e.target.value})} />
+          <textarea style={{ ...inputStyle, height: '60px', resize: 'none' }} value={formData.address} onChange={e => setFormData({...formData, address: e.target.value})} />
         </div>
 
         <button onClick={handleSave} disabled={loading} style={saveBtnStyle}>
@@ -215,7 +215,7 @@ function SettingsContent() {
         <div style={modalOverlay}>
           <div style={modalContent}>
             <h3 style={{ margin: '0 0 10px 0' }}>Ορισμός PIN</h3>
-            <p style={{ fontSize: '12px', color: '#64748b', marginBottom: '20px' }}>Εισάγετε ένα 4ψήφιο κωδικό για γρήγορη είσοδο.</p>
+            <p style={{ fontSize: '12px', color: '#64748b', marginBottom: '20px' }}>Επιλέξτε έναν 4ψήφιο κωδικό:</p>
             <input 
               type="password" 
               inputMode="numeric" 
@@ -233,53 +233,40 @@ function SettingsContent() {
         </div>
       )}
 
-      {/* SUPPORT & DELETE SECTION */}
+      {/* SUPPORT */}
       {!showContact ? (
-        <button onClick={() => setShowContact(true)} style={deleteLinkStyle}>
-          Αίτημα διαγραφής επιχείρησης & υποστήριξη
-        </button>
+        <button onClick={() => setShowContact(true)} style={deleteLinkStyle}>Υποστήριξη & Διαγραφή</button>
       ) : (
         <div style={supportCardStyle}>
-          <h2 style={{ fontSize: '18px', fontWeight: '900', textAlign: 'center', marginBottom: '15px', color: '#991b1b' }}>Υποστήριξη</h2>
-          <button onClick={handleWhatsAppRedirect} style={waBtnStyle}>ΕΠΙΚΟΙΝΩΝΙΑ ΜΕΣΩ WHATSAPP 💬</button>
-          <div style={supportBoxStyle}>
-            <p style={{ fontSize: '12px', color: '#854d0e', margin: 0, fontWeight: '700' }}>
-              Γραμμή άμεσης βοήθειας:<br/>
-              <span style={{ fontSize: '18px', color: '#422006' }}>6942216191</span>
-            </p>
-          </div>
-          <button onClick={() => setShowContact(false)} style={cancelLinkStyle}>Επιστροφή στις ρυθμίσεις</button>
+          <button onClick={handleWhatsAppRedirect} style={waBtnStyle}>WHATSAPP 💬</button>
+          <button onClick={() => setShowContact(false)} style={cancelLinkStyle}>Επιστροφή</button>
         </div>
       )}
     </div>
   )
 }
 
-// STYLES
+// --- STYLES ---
 const logoBoxStyle: any = { width: '42px', height: '42px', backgroundColor: '#f1f5f9', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' };
-const backBtnStyle: any = { textDecoration: 'none', color: '#94a3b8', fontSize: '18px', fontWeight: 'bold', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#fff', borderRadius: '10px', border: '1px solid #e2e8f0' };
-const mainCardStyle: any = { backgroundColor: 'white', padding: '24px', borderRadius: '28px', border: '1px solid #f1f5f9', boxShadow: '0 4px 12px rgba(0,0,0,0.02)', marginBottom: '20px' };
-const sectionLabel: any = { fontSize: '11px', fontWeight: '900', color: '#0f172a', marginBottom: '15px', letterSpacing: '0.5px' };
-const infoBoxStyle: any = { marginBottom: '20px', padding: '15px', backgroundColor: '#f0f9ff', borderRadius: '16px', border: '1px solid #e0f2fe' };
-const labelStyle: any = { fontSize: '10px', color: '#94a3b8', fontWeight: '800', marginBottom: '6px', display: 'block', textTransform: 'uppercase' };
-const inputStyle: any = { width: '100%', padding: '14px', borderRadius: '12px', border: '1px solid #e2e8f0', fontSize: '15px', fontWeight: '700', outline: 'none', boxSizing: 'border-box', backgroundColor: '#f8fafc' };
-const hintStyle: any = { fontSize: '10px', color: '#0ea5e9', marginTop: '6px', fontWeight: '700' };
+const backBtnStyle: any = { textDecoration: 'none', color: '#94a3b8', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#fff', borderRadius: '10px', border: '1px solid #e2e8f0' };
+const mainCardStyle: any = { backgroundColor: 'white', padding: '24px', borderRadius: '28px', border: '1px solid #f1f5f9' };
+const sectionLabel: any = { fontSize: '11px', fontWeight: '900', color: '#0f172a', marginBottom: '15px' };
+const infoBoxStyle: any = { marginBottom: '20px', padding: '15px', backgroundColor: '#f0f9ff', borderRadius: '16px' };
+const labelStyle: any = { fontSize: '10px', color: '#94a3b8', fontWeight: '800', marginBottom: '6px', display: 'block' };
+const inputStyle: any = { width: '100%', padding: '14px', borderRadius: '12px', border: '1px solid #e2e8f0', fontSize: '15px', fontWeight: '700', boxSizing: 'border-box' };
 const divider: any = { height: '1px', backgroundColor: '#f1f5f9', margin: '25px 0' };
-const saveBtnStyle: any = { width: '100%', backgroundColor: '#0f172a', color: 'white', padding: '18px', borderRadius: '16px', border: 'none', fontWeight: '900', fontSize: '15px', cursor: 'pointer' };
-const deleteLinkStyle: any = { width: '100%', background: 'none', border: 'none', color: '#ef4444', textDecoration: 'underline', cursor: 'pointer', fontSize: '12px', fontWeight: '700', marginTop: '10px' };
-const supportCardStyle: any = { backgroundColor: 'white', padding: '25px', borderRadius: '28px', border: '1px solid #fee2e2' };
-const waBtnStyle: any = { width: '100%', backgroundColor: '#25d366', color: 'white', padding: '16px', borderRadius: '14px', border: 'none', fontWeight: '900', fontSize: '13px', cursor: 'pointer', marginBottom: '15px' };
-const supportBoxStyle: any = { backgroundColor: '#fefce8', padding: '15px', borderRadius: '14px', textAlign: 'center', border: '1px solid #fef08a' };
-const cancelLinkStyle: any = { width: '100%', background: 'none', border: 'none', color: '#94a3b8', marginTop: '20px', fontSize: '13px', fontWeight: '800', cursor: 'pointer' };
-
-// --- SECURITY SPECIFIC STYLES ---
+const saveBtnStyle: any = { width: '100%', backgroundColor: '#0f172a', color: 'white', padding: '18px', borderRadius: '16px', border: 'none', fontWeight: '900', cursor: 'pointer' };
 const securityBoxStyle: any = { backgroundColor: '#f8fafc', padding: '18px', borderRadius: '18px', border: '1px solid #e2e8f0' };
 const settingRow: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center' };
 const settingText: any = { fontSize: '14px', fontWeight: '700', color: '#1e293b', margin: 0 };
-const settingSubText: any = { fontSize: '11px', color: '#64748b', margin: '2px 0 0 0' };
+const settingSubText: any = { fontSize: '11px', color: '#64748b', margin: 0 };
 const checkboxStyle: any = { width: '20px', height: '20px', cursor: 'pointer' };
-const modalOverlay: any = { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px' };
-const modalContent: any = { backgroundColor: 'white', padding: '25px', borderRadius: '24px', width: '100%', maxWidth: '320px', textAlign: 'center' };
+const modalOverlay: any = { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 };
+const modalContent: any = { backgroundColor: 'white', padding: '25px', borderRadius: '24px', width: '90%', maxWidth: '320px' };
+const deleteLinkStyle: any = { width: '100%', background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '12px', marginTop: '15px' };
+const supportCardStyle: any = { backgroundColor: 'white', padding: '20px', borderRadius: '28px' };
+const waBtnStyle: any = { width: '100%', backgroundColor: '#25d366', color: 'white', padding: '15px', borderRadius: '14px', border: 'none', fontWeight: '900' };
+const cancelLinkStyle: any = { width: '100%', background: 'none', border: 'none', color: '#94a3b8', marginTop: '10px' };
 
 export default function SettingsPage() {
   return (
