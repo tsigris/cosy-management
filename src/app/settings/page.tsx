@@ -10,12 +10,6 @@ function SettingsContent() {
   const router = useRouter()
   const [loading, setLoading] = useState(true)
   const [showContact, setShowContact] = useState(false)
-  
-  // --- STATES ΓΙΑ ΑΣΦΑΛΕΙΑ ---
-  const [pinEnabled, setPinEnabled] = useState(false)
-  const [bioEnabled, setBioEnabled] = useState(false)
-  const [showPinModal, setShowPinModal] = useState(false)
-  const [tempPin, setTempPin] = useState('')
 
   const [formData, setFormData] = useState({
     store_name: '',
@@ -30,15 +24,10 @@ function SettingsContent() {
 
   useEffect(() => {
     fetchProfile()
-    
-    // Φόρτωση ρυθμίσεων ασφαλείας από το localStorage
-    const savedPin = localStorage.getItem('fleet_track_pin_enabled') === 'true'
-    const savedBio = localStorage.getItem('fleet_track_biometrics') === 'true'
-    
-    setPinEnabled(savedPin)
-    setBioEnabled(savedBio)
-    
-    console.log("Security Loaded - PIN:", savedPin, "Bio:", savedBio)
+    // Καθαρισμός των ρυθμίσεων από τη συσκευή αφού δεν τις θέλουμε πια
+    localStorage.removeItem('fleet_track_pin')
+    localStorage.removeItem('fleet_track_pin_enabled')
+    localStorage.removeItem('fleet_track_biometrics')
   }, [])
 
   async function fetchProfile() {
@@ -61,40 +50,7 @@ function SettingsContent() {
           setFormData(prev => ({ ...prev, email: user.email || '' }))
         }
       }
-    } catch (err) { 
-      console.error(err) 
-    } finally { 
-      setLoading(false) 
-    }
-  }
-
-  const handleTogglePin = () => {
-    if (!pinEnabled) {
-      setShowPinModal(true)
-    } else {
-      if (confirm('Θέλετε να απενεργοποιήσετε την είσοδο με PIN;')) {
-        localStorage.removeItem('fleet_track_pin')
-        localStorage.setItem('fleet_track_pin_enabled', 'false')
-        setPinEnabled(false)
-      }
-    }
-  }
-
-  const savePin = () => {
-    if (tempPin.length !== 4) return alert('Το PIN πρέπει να είναι ακριβώς 4 ψηφία')
-    localStorage.setItem('fleet_track_pin', tempPin)
-    localStorage.setItem('fleet_track_pin_enabled', 'true')
-    setPinEnabled(true)
-    setShowPinModal(false)
-    setTempPin('')
-    alert('Το PIN ενεργοποιήθηκε επιτυχώς σε αυτή τη συσκευή!')
-  }
-
-  const handleToggleBio = () => {
-    const newVal = !bioEnabled
-    localStorage.setItem('fleet_track_biometrics', String(newVal))
-    setBioEnabled(newVal)
-    if (newVal) alert('Τα βιομετρικά ενεργοποιήθηκαν!')
+    } catch (err) { console.error(err) } finally { setLoading(false) }
   }
 
   async function handleSave() {
@@ -132,7 +88,7 @@ function SettingsContent() {
           <div style={logoBoxStyle}>⚙️</div>
           <div>
             <h1 style={{ fontWeight: '900', fontSize: '22px', margin: 0, color: '#0f172a' }}>Ρυθμίσεις</h1>
-            <p style={{ margin: '2px 0 0', fontSize: '10px', color: '#94a3b8', fontWeight: '800', textTransform: 'uppercase' }}>ΔΙΑΧΕΙΡΙΣΗ ΠΡΟΦΙΛ & ΑΣΦΑΛΕΙΑΣ</p>
+            <p style={{ margin: '2px 0 0', fontSize: '10px', color: '#94a3b8', fontWeight: '800', textTransform: 'uppercase' }}>ΔΙΑΧΕΙΡΙΣΗ ΠΡΟΦΙΛ</p>
           </div>
         </div>
         <Link href="/" style={backBtnStyle}>✕</Link>
@@ -140,27 +96,6 @@ function SettingsContent() {
 
       <div style={mainCardStyle}>
         
-        {/* ΑΣΦΑΛΕΙΑ ΣΥΣΚΕΥΗΣ */}
-        <p style={sectionLabel}>ΑΣΦΑΛΕΙΑ ΣΥΣΚΕΥΗΣ (LOCAL)</p>
-        <div style={securityBoxStyle}>
-          <div style={settingRow}>
-            <div>
-              <p style={settingText}>🔐 Χρήση 4ψηφιου PIN</p>
-              <p style={settingSubText}>Γρήγορη είσοδος χωρίς κωδικό</p>
-            </div>
-            <input type="checkbox" checked={pinEnabled} onChange={handleTogglePin} style={checkboxStyle} />
-          </div>
-          <div style={{...settingRow, marginTop: '15px', borderTop: '1px solid #e2e8f0', paddingTop: '15px'}}>
-            <div>
-              <p style={settingText}>📸 FaceID / Αποτύπωμα</p>
-              <p style={settingSubText}>Χρήση βιομετρικών αισθητήρων</p>
-            </div>
-            <input type="checkbox" checked={bioEnabled} onChange={handleToggleBio} style={checkboxStyle} />
-          </div>
-        </div>
-
-        <div style={divider} />
-
         {/* ΠΡΟΣΩΠΙΚΑ ΣΤΟΙΧΕΙΑ */}
         <p style={sectionLabel}>ΠΡΟΣΩΠΙΚΑ ΣΤΟΙΧΕΙΑ</p>
         <div style={infoBoxStyle}>
@@ -219,29 +154,6 @@ function SettingsContent() {
         </button>
       </div>
 
-      {/* PIN MODAL */}
-      {showPinModal && (
-        <div style={modalOverlay}>
-          <div style={modalContent}>
-            <h3 style={{ margin: '0 0 10px 0' }}>Ορισμός PIN</h3>
-            <p style={{ fontSize: '12px', color: '#64748b', marginBottom: '20px' }}>Εισάγετε έναν 4ψήφιο κωδικό για γρήγορη είσοδο.</p>
-            <input 
-              type="password" 
-              inputMode="numeric" 
-              maxLength={4} 
-              value={tempPin}
-              onChange={e => setTempPin(e.target.value.replace(/\D/g, ''))}
-              style={{ ...inputStyle, textAlign: 'center', fontSize: '24px', letterSpacing: '10px' }}
-              autoFocus
-            />
-            <div style={{ display: 'flex', gap: '10px', marginTop: '20px' }}>
-              <button onClick={() => { setShowPinModal(false); setTempPin(''); }} style={{ ...saveBtnStyle, backgroundColor: '#e2e8f0', color: '#64748b' }}>ΑΚΥΡΟ</button>
-              <button onClick={savePin} style={saveBtnStyle}>ΟΡΙΣΜΟΣ</button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* SUPPORT */}
       {!showContact ? (
         <button onClick={() => setShowContact(true)} style={deleteLinkStyle}>Υποστήριξη & Διαγραφή Επιχείρησης</button>
@@ -266,14 +178,7 @@ const labelStyle: any = { fontSize: '10px', color: '#94a3b8', fontWeight: '800',
 const inputStyle: any = { width: '100%', padding: '14px', borderRadius: '12px', border: '1px solid #e2e8f0', fontSize: '15px', fontWeight: '700', boxSizing: 'border-box', backgroundColor: '#f8fafc' };
 const divider: any = { height: '1px', backgroundColor: '#f1f5f9', margin: '25px 0' };
 const saveBtnStyle: any = { width: '100%', backgroundColor: '#0f172a', color: 'white', padding: '18px', borderRadius: '16px', border: 'none', fontWeight: '900', cursor: 'pointer' };
-const securityBoxStyle: any = { backgroundColor: '#f8fafc', padding: '18px', borderRadius: '18px', border: '1px solid #e2e8f0' };
-const settingRow: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center' };
-const settingText: any = { fontSize: '14px', fontWeight: '700', color: '#1e293b', margin: 0 };
-const settingSubText: any = { fontSize: '11px', color: '#64748b', margin: 0 };
-const checkboxStyle: any = { width: '22px', height: '22px', cursor: 'pointer' };
-const modalOverlay: any = { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 };
-const modalContent: any = { backgroundColor: 'white', padding: '25px', borderRadius: '24px', width: '90%', maxWidth: '320px', textAlign: 'center' };
-const deleteLinkStyle: any = { width: '100%', background: 'none', border: 'none', color: '#ef4444', textDecoration: 'underline', cursor: 'pointer', fontSize: '12px', fontWeight: '700', marginTop: '10px' };
+const deleteLinkStyle: any = { width: '100%', background: 'none', border: 'none', color: '#ef4444', textDecoration: 'underline', cursor: 'pointer', fontSize: '12px', fontWeight: '700', marginTop: '15px' };
 const supportCardStyle: any = { backgroundColor: 'white', padding: '25px', borderRadius: '28px', border: '1px solid #fee2e2' };
 const waBtnStyle: any = { width: '100%', backgroundColor: '#25d366', color: 'white', padding: '16px', borderRadius: '14px', border: 'none', fontWeight: '900', fontSize: '13px', cursor: 'pointer' };
 const cancelLinkStyle: any = { width: '100%', background: 'none', border: 'none', color: '#94a3b8', marginTop: '20px', fontSize: '13px', fontWeight: '800', cursor: 'pointer' };
