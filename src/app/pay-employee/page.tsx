@@ -24,32 +24,36 @@ function PayEmployeeContent() {
   const empId = searchParams.get('id')
   const empName = searchParams.get('name')
 
-  // STATES ΥΠΟΛΟΓΙΣΜΟΥ
-  const [agreementType, setAgreementType] = useState('monthly') 
-  const [agreementSalary, setAgreementSalary] = useState<number>(1000)
+  // ΤΥΠΟΣ ΥΠΟΛΟΓΙΣΜΟΥ
+  const [payBasis, setPayBasis] = useState<'monthly' | 'daily'>('monthly')
+
+  // STATES ΓΙΑ ΜΗΝΙΑΙΟ
+  const [monthlySalary, setMonthlySalary] = useState<number>(1000)
   const [agreementDays, setAgreementDays] = useState<number>(26)
   const [absences, setAbsences] = useState<number>(0)
-  const [workedDays, setWorkedDays] = useState<number>(1) 
-  const [dailyRateInput, setDailyRateInput] = useState<number>(50) 
 
-  // EXTRA ΠΑΡΟΧΕΣ (Κοινά και για τους δύο τύπους)
+  // STATES ΓΙΑ ΗΜΕΡΟΜΙΣΘΙΟ
+  const [dailyRate, setDailyRate] = useState<number>(50)
+  const [daysWorked, setDaysWorked] = useState<number>(1)
+
+  // EXTRA ΠΑΡΟΧΕΣ (ΚΟΙΝΑ)
   const [overtime, setOvertime] = useState<string>('')
   const [bonus, setBonus] = useState<string>('')
   const [gifts, setGifts] = useState<string>('')
 
-  // ΛΟΓΙΣΤΙΚΑ STATES
+  // ΛΟΓΙΣΤΙΚΑ & ΚΑΤΑΝΟΜΗ
   const [accountingPayroll, setAccountingPayroll] = useState<string>('') 
   const [date, setDate] = useState(new Date().toISOString().split('T')[0])
   const [loading, setLoading] = useState(true)
   const [userData, setUserData] = useState({ store_id: '', username: '' })
 
-  // ΔΥΝΑΜΙΚΟΙ ΥΠΟΛΟΓΙΣΜΟΙ
+  // ΔΥΝΑΜΙΚΟΣ ΥΠΟΛΟΓΙΣΜΟΣ ΣΥΝΟΛΟΥ
   const calculateBase = () => {
-    if (agreementType === 'monthly') {
-      const rate = agreementSalary / agreementDays;
+    if (payBasis === 'monthly') {
+      const rate = monthlySalary / agreementDays;
       return (agreementDays - absences) * rate;
     } else {
-      return workedDays * dailyRateInput;
+      return daysWorked * dailyRate;
     }
   };
 
@@ -66,10 +70,16 @@ function PayEmployeeContent() {
       if (profile) setUserData({ store_id: profile.store_id, username: profile.username || 'Admin' })
 
       if (empId) {
-        const { data: employee } = await supabase.from('employees').select('monthly_salary, monthly_days').eq('id', empId).maybeSingle()
+        const { data: employee } = await supabase.from('employees').select('monthly_salary, monthly_days, daily_rate').eq('id', empId).maybeSingle()
         if (employee) {
-          setAgreementSalary(employee.monthly_salary || 1000)
-          setAgreementDays(employee.monthly_days || 26)
+          if (employee.daily_rate) {
+             setDailyRate(employee.daily_rate)
+             setPayBasis('daily')
+          } else {
+             setMonthlySalary(employee.monthly_salary || 1000)
+             setAgreementDays(employee.monthly_days || 26)
+             setPayBasis('monthly')
+          }
         }
       }
     } catch (err) { console.error(err) } finally { setLoading(false) }
@@ -78,30 +88,30 @@ function PayEmployeeContent() {
   useEffect(() => { loadData() }, [loadData])
 
   async function handlePayment() {
-    if (totalEarnings <= 0) return toast.error('Υπολογίστε το ποσό πληρωμής.')
+    if (totalEarnings <= 0) return toast.error('Συμπληρώστε τα ποσά πληρωμής.')
     setLoading(true)
     
-    const breakdown = `Σύνολο: ${totalEarnings.toFixed(2)}€ (Τράπεζα: ${bankAmount}€, Μετρητά: ${autoCashAmount.toFixed(2)}€)`;
+    const notes = `Εκκαθάριση: ${totalEarnings.toFixed(2)}€ [Τράπεζα: ${bankAmount}€, Μετρητά: ${autoCashAmount.toFixed(2)}€]`;
 
     const transactionBatch = [];
     if (bankAmount > 0) {
       transactionBatch.push({
         amount: bankAmount, type: 'expense', category: 'Προσωπικό', method: 'Τράπεζα',
         date, employee_id: empId, store_id: userData.store_id, created_by_name: userData.username,
-        notes: `Μισθοδοσία ${empName} (Λογιστής) [${breakdown}]`
+        notes: `Μισθοδοσία ${empName} (Λογιστής) [${notes}]`
       });
     }
     if (autoCashAmount > 0) {
       transactionBatch.push({
         amount: autoCashAmount, type: 'expense', category: 'Προσωπικό', method: 'Μετρητά',
         date, employee_id: empId, store_id: userData.store_id, created_by_name: userData.username,
-        notes: `Διαφορά Μισθού ${empName} (Μετρητά) [${breakdown}]`
+        notes: `Υπόλοιπο Μισθού ${empName} (Μετρητά) [${notes}]`
       });
     }
 
     const { error } = await supabase.from('transactions').insert(transactionBatch)
     if (!error) { 
-      toast.success('Η πληρωμή καταχωρήθηκε!');
+      toast.success('Η πληρωμή ολοκληρώθηκε!');
       router.push('/employees');
     } else { 
       toast.error(error.message); 
@@ -126,19 +136,23 @@ function PayEmployeeContent() {
         </div>
 
         <div style={formCardStyle}>
-          {/* ΤΥΠΟΣ ΑΠΑΣΧΟΛΗΣΗΣ */}
+          {/* ΕΠΙΛΟΓΗ ΒΑΣΗΣ ΜΙΣΘΟΥ */}
           <div style={{ marginBottom: '20px' }}>
-            <label style={subLabel}>ΤΥΠΟΣ ΑΠΑΣΧΟΛΗΣΗΣ</label>
+            <label style={subLabel}>ΒΑΣΗ ΥΠΟΛΟΓΙΣΜΟΥ</label>
             <div style={{ display: 'flex', gap: '10px' }}>
-              <button onClick={() => setAgreementType('monthly')} style={agreementType === 'monthly' ? activeTab : inactiveTab}>ΜΗΝΙΑΙΟΣ</button>
-              <button onClick={() => setAgreementType('daily')} style={agreementType === 'daily' ? activeTab : inactiveTab}>ΗΜΕΡΟΜΙΣΘΙΟ</button>
+              <button onClick={() => setPayBasis('monthly')} style={payBasis === 'monthly' ? activeTab : inactiveTab}>ΜΗΝΙΑΙΟΣ</button>
+              <button onClick={() => setPayBasis('daily')} style={payBasis === 'daily' ? activeTab : inactiveTab}>ΗΜΕΡΟΜΙΣΘΙΟ</button>
             </div>
           </div>
 
-          {/* ΡΥΘΜΙΣΕΙΣ ΒΑΣΙΚΟΥ */}
+          {/* ΡΥΘΜΙΣΕΙΣ ΑΝΑΛΟΓΑ ΜΕ ΤΗ ΒΑΣΗ */}
           <div style={agreementGrid}>
-            {agreementType === 'monthly' ? (
+            {payBasis === 'monthly' ? (
               <>
+                <div style={inputGroup}>
+                  <label style={subLabel}>ΜΗΝΙΑΙΟΣ ΜΙΣΘΟΣ (€)</label>
+                  <input type="number" value={monthlySalary} onChange={e => setMonthlySalary(Number(e.target.value))} style={smallInput} />
+                </div>
                 <div style={inputGroup}>
                   <label style={subLabel}>ΣΥΜΦΩΝΙΑ (ΗΜΕΡΕΣ)</label>
                   <select value={agreementDays} onChange={e => setAgreementDays(Number(e.target.value))} style={selectStyle}>
@@ -147,40 +161,31 @@ function PayEmployeeContent() {
                     <option value={22}>22 Ημέρες (2 Ρεπό)</option>
                   </select>
                 </div>
-                <div style={inputGroup}>
-                  <label style={subLabel}>ΑΠΟΥΣΙΕΣ (-)</label>
-                  <input type="number" value={absences} onChange={e => setAbsences(Number(e.target.value))} style={smallInput} />
+                <div style={{...inputGroup, gridColumn: 'span 2', marginTop: '10px'}}>
+                  <label style={subLabel}>ΑΠΟΥΣΙΕΣ (ΗΜΕΡΕΣ -)</label>
+                  <input type="number" value={absences} onChange={e => setAbsences(Number(e.target.value))} style={{...smallInput, color: colors.accentRed}} />
                 </div>
               </>
             ) : (
               <>
                 <div style={inputGroup}>
                   <label style={subLabel}>ΗΜΕΡΟΜΙΣΘΙΟ (€)</label>
-                  <input type="number" value={dailyRateInput} onChange={e => setDailyRateInput(Number(e.target.value))} style={smallInput} />
+                  <input type="number" value={dailyRate} onChange={e => setDailyRate(Number(e.target.value))} style={smallInput} />
                 </div>
                 <div style={inputGroup}>
                   <label style={subLabel}>ΗΜΕΡΕΣ ΕΡΓΑΣΙΑΣ</label>
-                  <input type="number" value={workedDays} onChange={e => setWorkedDays(Number(e.target.value))} style={smallInput} />
+                  <input type="number" value={daysWorked} onChange={e => setDaysWorked(Number(e.target.value))} style={smallInput} />
                 </div>
               </>
             )}
           </div>
 
-          {/* EXTRA ΠΑΡΟΧΕΣ */}
-          <p style={sectionTitle}>EXTRA ΠΑΡΟΧΕΣ (€)</p>
+          {/* EXTRA ΠΑΡΟΧΕΣ (ΚΟΙΝΑ ΚΑΙ ΓΙΑ ΤΑ ΔΥΟ) */}
+          <p style={sectionTitle}>BONUS & ΥΠΕΡΩΡΙΕΣ (€)</p>
           <div style={extraGrid}>
-            <div style={inputGroup}>
-              <label style={subLabel}>ΥΠΕΡΩΡΙΕΣ</label>
-              <input type="number" value={overtime} onChange={e => setOvertime(e.target.value)} style={smallInput} placeholder="0" />
-            </div>
-            <div style={inputGroup}>
-              <label style={subLabel}>BONUS</label>
-              <input type="number" value={bonus} onChange={e => setBonus(e.target.value)} style={smallInput} placeholder="0" />
-            </div>
-            <div style={inputGroup}>
-              <label style={subLabel}>ΔΩΡΑ</label>
-              <input type="number" value={gifts} onChange={e => setGifts(e.target.value)} style={smallInput} placeholder="0" />
-            </div>
+            <div style={inputGroup}><label style={subLabel}>ΥΠΕΡΩΡΙΕΣ</label><input type="number" value={overtime} onChange={e => setOvertime(e.target.value)} style={smallInput} placeholder="0" /></div>
+            <div style={inputGroup}><label style={subLabel}>BONUS</label><input type="number" value={bonus} onChange={e => setBonus(e.target.value)} style={smallInput} placeholder="0" /></div>
+            <div style={inputGroup}><label style={subLabel}>ΔΩΡΑ</label><input type="number" value={gifts} onChange={e => setGifts(e.target.value)} style={smallInput} placeholder="0" /></div>
           </div>
 
           {/* ΜΙΣΘΟΔΟΣΙΑ ΛΟΓΙΣΤΗ */}
@@ -195,6 +200,7 @@ function PayEmployeeContent() {
             />
           </div>
 
+          {/* ΤΕΛΙΚΑ ΠΟΣΑ */}
           <div style={resultRow}>
             <div style={resultItem}>
                 <label style={subLabel}>ΣΥΝΟΛΟ ΠΛΗΡΩΤΕΟ</label>
@@ -212,7 +218,7 @@ function PayEmployeeContent() {
           </div>
 
           <button onClick={handlePayment} disabled={loading || totalEarnings <= 0} style={saveBtnStyle}>
-            {loading ? 'ΚΑΤΑΧΩΡΗΣΗ...' : 'ΟΛΟΚΛΗΡΩΣΗ ΠΛΗΡΩΜΗΣ'}
+            {loading ? 'ΚΑΤΑΧΩΡΗΣΗ...' : 'ΟΛΟΚΛΗΡΩΣΗ ΕΚΚΑΘΑΡΙΣΗΣ'}
           </button>
         </div>
       </div>
@@ -231,7 +237,7 @@ const subLabel: any = { fontSize: '9px', fontWeight: '800', color: colors.second
 const activeTab: any = { flex: 1, padding: '10px', backgroundColor: colors.primaryDark, color: 'white', border: 'none', borderRadius: '8px', fontSize: '11px', fontWeight: '700' };
 const inactiveTab: any = { flex: 1, padding: '10px', backgroundColor: '#f1f5f9', color: colors.secondaryText, border: 'none', borderRadius: '8px', fontSize: '11px', fontWeight: '700' };
 const agreementGrid: any = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '10px' };
-const extraGrid: any = { display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px', marginBottom: '15px' };
+const extraGrid: any = { display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px' };
 const inputGroup: any = { display: 'flex', flexDirection: 'column' };
 const smallInput: any = { width: '100%', padding: '12px', borderRadius: '10px', border: `1px solid ${colors.border}`, fontSize: '14px', fontWeight: '700', outline: 'none' };
 const selectStyle: any = { ...smallInput };
