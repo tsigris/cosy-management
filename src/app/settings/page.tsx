@@ -10,6 +10,13 @@ function SettingsContent() {
   const router = useRouter()
   const [loading, setLoading] = useState(true)
   const [showContact, setShowContact] = useState(false)
+  
+  // --- STATES ΓΙΑ ΑΣΦΑΛΕΙΑ ---
+  const [pinEnabled, setPinEnabled] = useState(false)
+  const [bioEnabled, setBioEnabled] = useState(false)
+  const [showPinModal, setShowPinModal] = useState(false)
+  const [tempPin, setTempPin] = useState('')
+
   const [formData, setFormData] = useState({
     store_name: '',
     company_name: '',
@@ -23,13 +30,16 @@ function SettingsContent() {
 
   useEffect(() => {
     fetchProfile()
+    // Φόρτωση ρυθμίσεων ασφαλείας από τη συσκευή
+    setPinEnabled(localStorage.getItem('fleet_track_pin_enabled') === 'true')
+    setBioEnabled(localStorage.getItem('fleet_track_biometrics') === 'true')
   }, [])
 
   async function fetchProfile() {
     try {
       const { data: { user } } = await supabase.auth.getUser()
       if (user) {
-        const { data } = await supabase.from('profiles').select('*').eq('id', user.id).single()
+        const { data } = await supabase.from('profiles').select('*').eq('id', user.id).maybeSingle()
         if (data) {
           setFormData({
             store_name: data.store_name || '',
@@ -46,6 +56,34 @@ function SettingsContent() {
         }
       }
     } catch (err) { console.error(err) } finally { setLoading(false) }
+  }
+
+  const handleTogglePin = () => {
+    if (!pinEnabled) {
+      setShowPinModal(true)
+    } else {
+      if (confirm('Απενεργοποίηση PIN;')) {
+        localStorage.removeItem('fleet_track_pin')
+        localStorage.setItem('fleet_track_pin_enabled', 'false')
+        setPinEnabled(false)
+      }
+    }
+  }
+
+  const savePin = () => {
+    if (tempPin.length !== 4) return alert('Το PIN πρέπει να είναι 4 ψηφία')
+    localStorage.setItem('fleet_track_pin', tempPin)
+    localStorage.setItem('fleet_track_pin_enabled', 'true')
+    setPinEnabled(true)
+    setShowPinModal(false)
+    setTempPin('')
+    alert('Το PIN ενεργοποιήθηκε επιτυχώς!')
+  }
+
+  const handleToggleBio = () => {
+    const newVal = !bioEnabled
+    localStorage.setItem('fleet_track_biometrics', String(newVal))
+    setBioEnabled(newVal)
   }
 
   async function handleSave() {
@@ -83,7 +121,7 @@ function SettingsContent() {
               Ρυθμίσεις
             </h1>
             <p style={{ margin: '2px 0 0', fontSize: '10px', color: '#94a3b8', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '1px' }}>
-              ΔΙΑΧΕΙΡΙΣΗ ΠΡΟΦΙΛ & ΕΤΑΙΡΕΙΑΣ
+              ΔΙΑΧΕΙΡΙΣΗ ΠΡΟΦΙΛ & ΑΣΦΑΛΕΙΑΣ
             </p>
           </div>
         </div>
@@ -92,6 +130,27 @@ function SettingsContent() {
 
       <div style={mainCardStyle}>
         
+        {/* SECTION: ΑΣΦΑΛΕΙΑ ΣΥΣΚΕΥΗΣ */}
+        <p style={sectionLabel}>ΑΣΦΑΛΕΙΑ ΣΥΣΚΕΥΗΣ</p>
+        <div style={securityBoxStyle}>
+          <div style={settingRow}>
+            <div>
+              <p style={settingText}>🔐 Χρήση 4ψήφιου PIN</p>
+              <p style={settingSubText}>Γρήγορη είσοδος σε αυτή τη συσκευή</p>
+            </div>
+            <input type="checkbox" checked={pinEnabled} onChange={handleTogglePin} style={checkboxStyle} />
+          </div>
+          <div style={{...settingRow, marginTop: '15px', borderTop: '1px solid #e2e8f0', paddingTop: '15px'}}>
+            <div>
+              <p style={settingText}>📸 FaceID / Δακτυλικό Αποτύπωμα</p>
+              <p style={settingSubText}>Χρήση βιομετρικών αισθητήρων</p>
+            </div>
+            <input type="checkbox" checked={bioEnabled} onChange={handleToggleBio} style={checkboxStyle} />
+          </div>
+        </div>
+
+        <div style={divider} />
+
         {/* SECTION: ΠΡΟΣΩΠΙΚΑ ΣΤΟΙΧΕΙΑ */}
         <p style={sectionLabel}>ΠΡΟΣΩΠΙΚΑ ΣΤΟΙΧΕΙΑ</p>
         <div style={infoBoxStyle}>
@@ -151,6 +210,29 @@ function SettingsContent() {
         </button>
       </div>
 
+      {/* PIN MODAL */}
+      {showPinModal && (
+        <div style={modalOverlay}>
+          <div style={modalContent}>
+            <h3 style={{ margin: '0 0 10px 0' }}>Ορισμός PIN</h3>
+            <p style={{ fontSize: '12px', color: '#64748b', marginBottom: '20px' }}>Εισάγετε ένα 4ψήφιο κωδικό για γρήγορη είσοδο.</p>
+            <input 
+              type="password" 
+              inputMode="numeric" 
+              maxLength={4} 
+              value={tempPin}
+              onChange={e => setTempPin(e.target.value.replace(/\D/g, ''))}
+              style={{ ...inputStyle, textAlign: 'center', fontSize: '24px', letterSpacing: '10px' }}
+              autoFocus
+            />
+            <div style={{ display: 'flex', gap: '10px', marginTop: '20px' }}>
+              <button onClick={() => { setShowPinModal(false); setTempPin(''); }} style={{ ...saveBtnStyle, backgroundColor: '#e2e8f0', color: '#64748b' }}>ΑΚΥΡΟ</button>
+              <button onClick={savePin} style={saveBtnStyle}>ΟΡΙΣΜΟΣ</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* SUPPORT & DELETE SECTION */}
       {!showContact ? (
         <button onClick={() => setShowContact(true)} style={deleteLinkStyle}>
@@ -159,18 +241,13 @@ function SettingsContent() {
       ) : (
         <div style={supportCardStyle}>
           <h2 style={{ fontSize: '18px', fontWeight: '900', textAlign: 'center', marginBottom: '15px', color: '#991b1b' }}>Υποστήριξη</h2>
-          
-          <button onClick={handleWhatsAppRedirect} style={waBtnStyle}>
-            ΕΠΙΚΟΙΝΩΝΙΑ ΜΕΣΩ WHATSAPP 💬
-          </button>
-          
+          <button onClick={handleWhatsAppRedirect} style={waBtnStyle}>ΕΠΙΚΟΙΝΩΝΙΑ ΜΕΣΩ WHATSAPP 💬</button>
           <div style={supportBoxStyle}>
             <p style={{ fontSize: '12px', color: '#854d0e', margin: 0, fontWeight: '700' }}>
               Γραμμή άμεσης βοήθειας:<br/>
               <span style={{ fontSize: '18px', color: '#422006' }}>6942216191</span>
             </p>
           </div>
-          
           <button onClick={() => setShowContact(false)} style={cancelLinkStyle}>Επιστροφή στις ρυθμίσεις</button>
         </div>
       )}
@@ -194,6 +271,15 @@ const supportCardStyle: any = { backgroundColor: 'white', padding: '25px', borde
 const waBtnStyle: any = { width: '100%', backgroundColor: '#25d366', color: 'white', padding: '16px', borderRadius: '14px', border: 'none', fontWeight: '900', fontSize: '13px', cursor: 'pointer', marginBottom: '15px' };
 const supportBoxStyle: any = { backgroundColor: '#fefce8', padding: '15px', borderRadius: '14px', textAlign: 'center', border: '1px solid #fef08a' };
 const cancelLinkStyle: any = { width: '100%', background: 'none', border: 'none', color: '#94a3b8', marginTop: '20px', fontSize: '13px', fontWeight: '800', cursor: 'pointer' };
+
+// --- SECURITY SPECIFIC STYLES ---
+const securityBoxStyle: any = { backgroundColor: '#f8fafc', padding: '18px', borderRadius: '18px', border: '1px solid #e2e8f0' };
+const settingRow: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center' };
+const settingText: any = { fontSize: '14px', fontWeight: '700', color: '#1e293b', margin: 0 };
+const settingSubText: any = { fontSize: '11px', color: '#64748b', margin: '2px 0 0 0' };
+const checkboxStyle: any = { width: '20px', height: '20px', cursor: 'pointer' };
+const modalOverlay: any = { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px' };
+const modalContent: any = { backgroundColor: 'white', padding: '25px', borderRadius: '24px', width: '100%', maxWidth: '320px', textAlign: 'center' };
 
 export default function SettingsPage() {
   return (
