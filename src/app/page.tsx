@@ -72,9 +72,9 @@ function DashboardContent() {
         const hasBio = localStorage.getItem('fleet_track_biometrics') === 'true'
         
         if (hasPin || hasBio) {
-          router.push('/login?mode=fast') // Ανακατεύθυνση στο PIN Pad
+          router.push('/login?mode=fast')
         } else {
-          router.push('/login') // Ανακατεύθυνση στο κανονικό Login
+          router.push('/login')
         }
         return
       }
@@ -190,7 +190,6 @@ function DashboardContent() {
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
-    // Δεν κάνουμε localStorage.clear() για να μην χάσουμε το PIN preference της συσκευής
     localStorage.removeItem('supabase.auth.token') 
     window.location.href = '/login'
   }
@@ -244,7 +243,6 @@ function DashboardContent() {
           </div>
         </div>
 
-        {/* ΥΠΟΛΟΙΠΟΣ ΚΩΔΙΚΑΣ (Stats, Buttons, Lists) ΟΠΩΣ ΗΤΑΝ... */}
         {/* DATE SELECTOR */}
         <div style={dateBarStyle}>
           <button onClick={() => shiftDate(-1)} style={arrowStyle}>←</button>
@@ -360,6 +358,7 @@ function DashboardContent() {
               )}
             </div>
           ))}
+          {transactions.length === 0 && !loading && <p style={{ textAlign: 'center', padding: '40px', color: colors.secondaryText, fontWeight: '600' }}>Καμία κίνηση.</p>}
         </div>
       </div>
     </div>
