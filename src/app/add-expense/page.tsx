@@ -42,10 +42,12 @@ function AddExpenseForm() {
   const [selectedSup, setSelectedSup] = useState(urlSupId || '')
   const [selectedFixed, setSelectedFixed] = useState(urlAssetId || '')
 
-  // States για το Modal Νέου Προμηθευτή
   const [isSupModalOpen, setIsSupModalOpen] = useState(false)
   const [newSupName, setNewSupName] = useState('')
   const [newSupPhone, setNewSupPhone] = useState('')
+  const [newSupAfm, setNewSupAfm] = useState('')
+  const [newSupIban, setNewSupIban] = useState('')
+  const [newSupCategory, setNewSupCategory] = useState('Εμπορεύματα')
 
   const loadFormData = useCallback(async () => {
     try {
@@ -72,14 +74,20 @@ function AddExpenseForm() {
     s.name.toLowerCase().includes(searchTerm.toLowerCase())
   )
 
-  // ΛΕΙΤΟΥΡΓΙΑ ΓΡΗΓΟΡΗΣ ΠΡΟΣΘΗΚΗΣ ΠΡΟΜΗΘΕΥΤΗ
   async function handleQuickAddSupplier() {
     if (!newSupName) return toast.error('Δώστε όνομα προμηθευτή');
     if (!storeId) return toast.error('Σφάλμα καταστήματος');
 
     try {
       const { data, error } = await supabase.from('suppliers').insert([
-        { name: newSupName, phone: newSupPhone, store_id: storeId, category: 'Εμπορεύματα' }
+        { 
+          name: newSupName, 
+          phone: newSupPhone, 
+          afm: newSupAfm, 
+          iban: newSupIban,
+          category: newSupCategory,
+          store_id: storeId 
+        }
       ]).select().single();
 
       if (error) throw error;
@@ -88,7 +96,7 @@ function AddExpenseForm() {
       setSelectedSup(data.id);
       setSearchTerm(data.name);
       setIsSupModalOpen(false);
-      setNewSupName(''); setNewSupPhone('');
+      setNewSupName(''); setNewSupPhone(''); setNewSupAfm(''); setNewSupIban(''); setNewSupCategory('Εμπορεύματα');
       toast.success('Ο προμηθευτής προστέθηκε!');
     } catch (err: any) { toast.error(err.message); }
   }
@@ -120,7 +128,7 @@ function AddExpenseForm() {
   }
 
   return (
-    <main style={{ backgroundColor: colors.bgLight, minHeight: '100vh', padding: '16px 16px 100px 16px', overflowY: 'auto' }}>
+    <main style={{ backgroundColor: colors.bgLight, minHeight: '100vh', padding: '24px 16px 120px 16px', display: 'block' }}>
       <Toaster position="top-center" richColors />
       
       <div style={formCardStyle}>
@@ -136,7 +144,6 @@ function AddExpenseForm() {
           <Link href="/" style={backBtnStyle}>✕</Link>
         </div>
 
-        {/* ΜΕΘΟΔΟΣ ΠΛΗΡΩΜΗΣ ΜΕ ΕΙΚΟΝΙΔΙΑ */}
         <div style={{ marginBottom: '24px' }}>
           <label style={labelStyle}>ΜΕΘΟΔΟΣ ΠΛΗΡΩΜΗΣ</label>
           <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
@@ -165,7 +172,6 @@ function AddExpenseForm() {
           </div>
         </div>
 
-        {/* ΑΝΑΖΗΤΗΣΗ & DROPDOWN ΠΡΟΜΗΘΕΥΤΗ */}
         <div style={{ marginBottom: '20px' }}>
           <label style={labelStyle}>🏭 ΑΝΑΖΗΤΗΣΗ ΠΡΟΜΗΘΕΥΤΗ</label>
           <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '12px' }}>
@@ -211,23 +217,46 @@ function AddExpenseForm() {
         <button onClick={handleSave} disabled={loading} style={saveBtn}>
           {loading ? 'ΑΠΟΘΗΚΕΥΣΗ...' : 'ΟΛΟΚΛΗΡΩΣΗ'}
         </button>
-        <div style={{ height: '40px' }}></div>
       </div>
 
-      {/* MODAL ΓΙΑ ΝΕΟ ΠΡΟΜΗΘΕΥΤΗ */}
       {isSupModalOpen && (
         <div style={modalOverlay}>
           <div style={modalCard}>
             <h2 style={{margin: '0 0 20px', fontSize: '18px', fontWeight: '800'}}>Νέος Προμηθευτής</h2>
-            <label style={labelStyle}>ΕΠΩΝΥΜΙΑ</label>
-            <input value={newSupName} onChange={e => setNewSupName(e.target.value)} style={inputStyle} placeholder="Όνομα..." />
-            <div style={{height: '15px'}}></div>
-            <label style={labelStyle}>ΤΗΛΕΦΩΝΟ</label>
-            <input value={newSupPhone} onChange={e => setNewSupPhone(e.target.value)} style={inputStyle} placeholder="210..." />
+            
+            <div style={{ marginBottom: '15px' }}>
+              <label style={labelStyle}>ΕΠΩΝΥΜΙΑ</label>
+              <input value={newSupName} onChange={e => setNewSupName(e.target.value)} style={inputStyle} placeholder="Όνομα προμηθευτή" />
+            </div>
+
+            <div style={{ display: 'flex', gap: '10px', marginBottom: '15px' }}>
+              <div style={{ flex: 1 }}>
+                <label style={labelStyle}>ΤΗΛΕΦΩΝΟ</label>
+                <input value={newSupPhone} onChange={e => setNewSupPhone(e.target.value)} style={inputStyle} placeholder="..." />
+              </div>
+              <div style={{ flex: 1 }}>
+                <label style={labelStyle}>Α.Φ.Μ.</label>
+                <input value={newSupAfm} onChange={e => setNewSupAfm(e.target.value)} style={inputStyle} placeholder="..." />
+              </div>
+            </div>
+
+            <div style={{ marginBottom: '15px' }}>
+              <label style={labelStyle}>IBAN ΠΡΟΜΗΘΕΥΤΗ</label>
+              <input value={newSupIban} onChange={e => setNewSupIban(e.target.value)} style={inputStyle} placeholder="GR00 0000 0000..." />
+            </div>
+
+            <div style={{ marginBottom: '15px' }}>
+              <label style={labelStyle}>ΚΑΤΗΓΟΡΙΑ</label>
+              <select value={newSupCategory} onChange={e => setNewSupCategory(e.target.value)} style={inputStyle}>
+                <option value="Εμπορεύματα">🛒 Εμπορεύματα</option>
+                <option value="Πάγια">🏢 Πάγια</option>
+                <option value="Λοιπά">📦 Λοιπά</option>
+              </select>
+            </div>
             
             <div style={{display: 'flex', gap: '10px', marginTop: '25px'}}>
-              <button onClick={() => setIsSupModalOpen(false)} style={{...saveBtn, backgroundColor: colors.secondaryText, flex: 1}}>ΑΚΥΡΟ</button>
-              <button onClick={handleQuickAddSupplier} style={{...saveBtn, backgroundColor: colors.accentGreen, flex: 2}}>ΠΡΟΣΘΗΚΗ</button>
+              <button onClick={() => setIsSupModalOpen(false)} style={{...saveBtn, backgroundColor: colors.secondaryText, flex: 1, padding: '14px'}}>ΑΚΥΡΟ</button>
+              <button onClick={handleQuickAddSupplier} style={{...saveBtn, backgroundColor: colors.accentGreen, flex: 2, padding: '14px'}}>ΔΗΜΙΟΥΡΓΙΑ ΠΡΟΜΗΘΕΥΤΗ</button>
             </div>
           </div>
         </div>
@@ -236,8 +265,7 @@ function AddExpenseForm() {
   )
 }
 
-// --- STYLES ---
-const formCardStyle = { maxWidth: '500px', margin: '0 auto', backgroundColor: colors.white, borderRadius: '28px', padding: '24px' };
+const formCardStyle = { maxWidth: '500px', margin: '0 auto', backgroundColor: colors.white, borderRadius: '28px', padding: '24px', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' };
 const headerRow = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' };
 const titleStyle = { fontWeight: '800', fontSize: '18px', margin: 0, color: colors.primaryDark };
 const dateSubtitle = { margin: 0, fontSize: '10px', color: colors.secondaryText, fontWeight: '700' };
@@ -251,10 +279,37 @@ const checkboxStyle = { width: '20px', height: '20px' };
 const checkLabel = { fontSize: '12px', fontWeight: '700', color: colors.primaryDark };
 const searchIconRight = { position: 'absolute' as const, right: '14px', top: '50%', transform: 'translateY(-50%)', fontSize: '16px', color: colors.secondaryText, pointerEvents: 'none' as const };
 const plusBtn = { width: '48px', height: '48px', backgroundColor: colors.accentBlue, color: 'white', border: 'none', borderRadius: '14px', fontSize: '24px', fontWeight: 'bold', cursor: 'pointer' };
-const saveBtn = { width: '100%', padding: '18px', color: 'white', border: 'none', borderRadius: '18px', fontWeight: '800', fontSize: '16px', backgroundColor: colors.accentRed };
+const saveBtn = { width: '100%', padding: '18px', color: 'white', border: 'none', borderRadius: '18px', fontWeight: '800', fontSize: '16px', backgroundColor: colors.accentRed, cursor: 'pointer' };
 const dropdownList = { position: 'absolute' as const, top: '100%', left: 0, right: 0, backgroundColor: 'white', border: `1px solid ${colors.border}`, borderRadius: '12px', marginTop: '4px', zIndex: 100, maxHeight: '200px', overflowY: 'auto' as const, boxShadow: '0 8px 20px rgba(0,0,0,0.1)' };
 const dropdownItem = { padding: '14px', borderBottom: `1px solid ${colors.border}`, fontSize: '14px', fontWeight: '700', cursor: 'pointer', color: colors.primaryDark };
-const modalOverlay: any = { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px' };
-const modalCard = { backgroundColor: 'white', padding: '30px', borderRadius: '24px', width: '100%', maxWidth: '400px', boxShadow: '0 20px 40px rgba(0,0,0,0.2)' };
+
+// Διορθωμένο modalOverlay για PC
+const modalOverlay: any = { 
+  position: 'fixed', 
+  top: 0, 
+  left: 0, 
+  right: 0, 
+  bottom: 0, 
+  backgroundColor: 'rgba(0,0,0,0.6)', 
+  display: 'flex', 
+  alignItems: 'center', 
+  justifyContent: 'center', 
+  zIndex: 1000, 
+  padding: '20px',
+  backdropFilter: 'blur(2px)'
+};
+
+// Διορθωμένο modalCard για PC (προσθήκη εσωτερικού scroll αν χρειαστεί)
+const modalCard = { 
+  backgroundColor: 'white', 
+  padding: '24px', 
+  borderRadius: '24px', 
+  width: '100%', 
+  maxWidth: '450px', 
+  boxShadow: '0 20px 40px rgba(0,0,0,0.2)', 
+  maxHeight: '90vh', 
+  overflowY: 'auto' as const,
+  scrollbarWidth: 'thin' as const // Για Firefox
+};
 
 export default function AddExpensePage() { return <Suspense><AddExpenseForm /></Suspense> }
