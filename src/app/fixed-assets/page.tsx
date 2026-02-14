@@ -5,7 +5,7 @@ import { useEffect, useState, Suspense, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { toast, Toaster } from 'sonner' 
+import { toast, Toaster } from 'sonner'
 
 const DEFAULT_ASSETS = [
   'ΔΕΗ / Ρεύμα', 'Ενοίκιο', 'Νερό / ΕΥΔΑΠ', 'Λογιστής', 
@@ -78,7 +78,7 @@ function FixedAssetsContent() {
       setNewName(''); setNewRf(''); setEditingId(null); setIsAdding(false)
       fetchAssets()
       toast.success('Αποθηκεύτηκε επιτυχώς')
-    } catch (err) { alert('Σφάλμα αποθήκευσης') } finally { setLoading(false) }
+    } catch (err) { toast.error('Σφάλμα αποθήκευσης') } finally { setLoading(false) }
   }
 
   async function handleDelete(id: string) {
@@ -116,10 +116,20 @@ function FixedAssetsContent() {
       {isAdding && (
         <div style={{...formCard, borderColor: editingId ? '#f59e0b' : '#0f172a'}}>
           <p style={labelStyle}>ΟΝΟΜΑ ΠΑΓΙΟΥ</p>
-          <input value={newName} onChange={e => setNewName(e.target.value)} placeholder="π.χ. ΔΕΗ, Ενοίκιο..." style={inputStyle} />
+          <input 
+            value={newName} 
+            onChange={e => setNewName(e.target.value)} 
+            placeholder="π.χ. ΔΕΗ, Ενοίκιο..." 
+            style={inputStyle} 
+          />
           
           <p style={labelStyle}>ΚΩΔΙΚΟΣ ΠΛΗΡΩΜΗΣ (RF)</p>
-          <input value={newRf} onChange={e => setNewRf(e.target.value)} placeholder="RF00 0000..." style={inputStyle} />
+          <input 
+            value={newRf} 
+            onChange={e => setNewRf(e.target.value)} 
+            placeholder="RF00 0000..." 
+            style={inputStyle} 
+          />
           
           <button onClick={handleSave} style={{...saveBtn, backgroundColor: editingId ? '#f59e0b' : '#0f172a'}}>
              {editingId ? 'ΕΝΗΜΕΡΩΣΗ ΑΛΛΑΓΩΝ' : 'ΠΡΟΣΘΗΚΗ ΣΤΗ ΛΙΣΤΑ'}
@@ -133,25 +143,32 @@ function FixedAssetsContent() {
         ) : assets.map(asset => (
           <div key={asset.id} style={assetCard}>
             <div style={{ flex: 1 }}>
-              <div onClick={() => router.push(`/fixed-assets/history?id=${asset.id}&name=${asset.name}`)} style={{ cursor: 'pointer' }}>
+              <div 
+                onClick={() => router.push(`/fixed-assets/history?id=${asset.id}&name=${asset.name}`)}
+                style={{ cursor: 'pointer' }}
+              >
                 <div style={{ fontWeight: '800', color: '#1e293b', fontSize: '15px' }}>{asset.name.toUpperCase()}</div>
                 <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginTop: '4px' }}>
                    <span style={badgeStyle}>ΣΥΝΟΛΟ ΕΞΟΔΩΝ</span>
-                   <span style={{ fontSize: '14px', color: '#dc2626', fontWeight: '900' }}>-{asset.total.toFixed(2)}€</span>
+                   <span style={{ fontSize: '14px', color: '#dc2626', fontWeight: '900' }}>
+                     -{asset.total.toFixed(2)}€
+                   </span>
                 </div>
               </div>
 
-              {/* Εμφάνιση RF αν υπάρχει */}
-              {asset.rf_code && asset.rf_code.trim() !== "" && (
-                <div onClick={(e) => handleCopy(e, asset.rf_code)} style={rfBadgeStyle}>
+              {asset.rf_code && asset.rf_code.trim() !== '' && (
+                <div 
+                  onClick={(e) => handleCopy(e, asset.rf_code)}
+                  style={rfBadgeStyle}
+                >
                   <span style={{ fontSize: '10px', fontWeight: '900' }}>RF: {asset.rf_code}</span>
                   <span style={{ marginLeft: '6px' }}>📋</span>
                 </div>
               )}
 
-              {/* ΔΙΟΡΘΩΜΕΝΟ LINK: Στέλνει στη σελίδα add-expense όπως στις Καρτέλες */}
+              {/* ΚΟΥΜΠΙ ΓΙΑ ΜΕΤΑΒΑΣΗ ΣΤΗΝ ΠΛΗΡΩΜΗ */}
               <button 
-                onClick={() => router.push(`/add-expense?assetId=${asset.id}&cat=fixed`)}
+                onClick={() => router.push(`/add-expense?assetId=${asset.id}`)}
                 style={payBtnStyle}
               >
                 ΚΑΤΑΧΩΡΗΣΗ ΠΛΗΡΩΜΗΣ →

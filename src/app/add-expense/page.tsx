@@ -8,12 +8,12 @@ import Link from 'next/link'
 
 // --- ΕΠΑΓΓΕΛΜΑΤΙΚΗ ΠΑΛΕΤΑ ΧΡΩΜΑΤΩΝ ---
 const colors = {
-  primaryDark: '#1e293b', // Slate 800
-  secondaryText: '#64748b', // Slate 500
-  accentRed: '#dc2626',   // Red 600
-  accentBlue: '#2563eb',  // Blue 600
-  bgLight: '#f8fafc',     // Slate 50
-  border: '#e2e8f0',      // Slate 200
+  primaryDark: '#1e293b', 
+  secondaryText: '#64748b', 
+  accentRed: '#dc2626',   
+  accentBlue: '#2563eb',  
+  bgLight: '#f8fafc',     
+  border: '#e2e8f0',      
   white: '#ffffff'
 };
 
@@ -22,6 +22,7 @@ function AddExpenseForm() {
   const searchParams = useSearchParams()
 
   const urlSupId = searchParams.get('supId')
+  const urlAssetId = searchParams.get('assetId') // ΔΙΑΒΑΖΟΥΜΕ ΤΟ ASSET ID ΑΠΟ ΤΟ URL
   const isDebtMode = searchParams.get('mode') === 'debt'
 
   const getBusinessDate = () => {
@@ -49,7 +50,7 @@ function AddExpenseForm() {
   const [suppliers, setSuppliers] = useState<any[]>([])
   const [fixedAssets, setFixedAssets] = useState<any[]>([])
   const [selectedSup, setSelectedSup] = useState(urlSupId || '')
-  const [selectedFixed, setSelectedFixed] = useState('')
+  const [selectedFixed, setSelectedFixed] = useState(urlAssetId || '') // ΑΡΧΙΚΟΠΟΙΗΣΗ ΜΕ ΤΟ URL ASSET ID
 
   const loadFormData = useCallback(async () => {
     try {
@@ -70,13 +71,19 @@ function AddExpenseForm() {
         
         if (sRes.data) setSuppliers(sRes.data)
         if (fRes.data) setFixedAssets(fRes.data)
+
+        // ΑΝ ΗΡΘΑΜΕ ΑΠΟ ΤΑ ΠΑΓΙΑ, ΣΙΓΟΥΡΕΥΟΥΜΕ ΟΤΙ ΕΧΕΙ ΕΠΙΛΕΓΕΙ ΤΟ ΣΩΣΤΟ
+        if (urlAssetId) {
+            setSelectedFixed(urlAssetId)
+            setSelectedSup('')
+        }
       }
     } catch (error) {
       console.error('Error loading form data:', error)
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [urlAssetId, urlSupId])
 
   useEffect(() => {
     loadFormData()
@@ -126,33 +133,30 @@ function AddExpenseForm() {
   const themeColor = isAgainstDebt ? colors.accentBlue : colors.accentRed;
 
   return (
-    /* ΔΙΟΡΘΩΣΗ: Προσθήκη overflow-y-auto και h-screen για να σκρολάρει το κινητό */
     <main style={{ backgroundColor: colors.bgLight, height: '100vh', overflowY: 'auto', WebkitOverflowScrolling: 'touch' }}>
       <div style={{ ...formCardStyle, marginBottom: '100px' }}>
         
-        {/* HEADER */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div style={{ ...logoBoxStyle, backgroundColor: isAgainstDebt ? '#dbeafe' : '#fef2f2' }}>
-              {isAgainstDebt ? '💳' : '💸'}
+            <div style={{ ...logoBoxStyle, backgroundColor: (isAgainstDebt || urlAssetId) ? '#dbeafe' : '#fef2f2' }}>
+              {(isAgainstDebt || urlAssetId) ? '💳' : '💸'}
             </div>
             <div>
               <h1 style={{ fontWeight: '800', fontSize: '20px', margin: 0, color: colors.primaryDark }}>
-                {isAgainstDebt ? 'Εξόφληση Χρέους' : 'Νέο Έξοδο'}
+                {urlAssetId ? 'Πληρωμή Παγίου' : (isAgainstDebt ? 'Εξόφληση Χρέους' : 'Νέο Έξοδο')}
               </h1>
               <p style={{ margin: 0, fontSize: '10px', color: colors.secondaryText, fontWeight: '700' }}>
                 {new Date(selectedDate).toLocaleDateString('el-GR', { day: 'numeric', month: 'long' }).toUpperCase()}
               </p>
             </div>
           </div>
-          <Link href={isDebtMode ? "/suppliers-balance" : "/"} style={backBtnStyle}>✕</Link>
+          <Link href={urlAssetId ? "/fixed-assets" : (isDebtMode ? "/suppliers-balance" : "/")} style={backBtnStyle}>✕</Link>
         </div>
 
         <div style={userIndicator}>
           <span style={{ fontSize: '11px', fontWeight: '800', color: colors.secondaryText }}>👤 ΚΑΤΑΧΩΡΗΣΗ: {currentUsername.toUpperCase()}</span>
         </div>
 
-        {/* ΠΗΓΗ ΧΡΗΜΑΤΩΝ */}
         <div style={{ marginBottom: '24px' }}>
           <label style={labelStyle}>ΠΗΓΗ ΧΡΗΜΑΤΩΝ</label>
           <div style={{ display: 'flex', gap: '10px', marginTop: '8px' }}>
@@ -176,7 +180,7 @@ function AddExpenseForm() {
         <div style={{ display: 'flex', gap: '12px', marginBottom: '20px' }}>
           <div style={{ flex: 1.5 }}>
             <label style={labelStyle}>ΠΟΣΟ (€)</label>
-            <input type="number" inputMode="decimal" value={amount} onChange={e => setAmount(e.target.value)} style={inputStyle} placeholder="0.00" />
+            <input type="number" inputMode="decimal" value={amount} onChange={e => setAmount(e.target.value)} style={inputStyle} placeholder="0.00" autoFocus />
           </div>
           <div style={{ flex: 1 }}>
             <label style={labelStyle}>ΜΕΘΟΔΟΣ</label>
@@ -188,7 +192,7 @@ function AddExpenseForm() {
         </div>
 
         {source === 'store' && (
-          <div style={{ ...creditPanel, border: isAgainstDebt ? `2px solid ${colors.accentBlue}` : `1px solid ${colors.border}` }}>
+          <div style={{ ...creditPanel, border: (isAgainstDebt || urlAssetId) ? `2px solid ${colors.accentBlue}` : `1px solid ${colors.border}` }}>
             <div style={{ marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '10px' }}>
               <input type="checkbox" checked={isCredit} onChange={e => {setIsCredit(e.target.checked); if(e.target.checked) setIsAgainstDebt(false)}} id="credit" style={checkboxStyle} />
               <label htmlFor="credit" style={checkLabel}>ΕΠΙ ΠΙΣΤΩΣΕΙ (ΝΕΟ ΧΡΕΟΣ)</label>
@@ -210,7 +214,11 @@ function AddExpenseForm() {
 
         <div style={selectGroup}>
           <label style={labelStyle}>🏢 ΠΑΓΙΟ / ΛΟΓΑΡΙΑΣΜΟΣ</label>
-          <select value={selectedFixed} onChange={e => {setSelectedFixed(e.target.value); setSelectedSup('');}} style={inputStyle}>
+          <select 
+            value={selectedFixed} 
+            onChange={e => {setSelectedFixed(e.target.value); setSelectedSup('');}} 
+            style={{...inputStyle, border: urlAssetId ? `2px solid ${colors.accentBlue}` : `1px solid ${colors.border}`}}
+          >
             <option value="">— Επιλογή —</option>
             {fixedAssets.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
           </select>
@@ -221,9 +229,8 @@ function AddExpenseForm() {
           <textarea value={notes} onChange={e => setNotes(e.target.value)} style={{ ...inputStyle, height: '80px', paddingTop: '12px' }} placeholder="Περιγραφή..." />
         </div>
 
-        {/* ΔΙΟΡΘΩΣΗ: Μεγάλο margin στο κουμπί για να μην το κρύβει το κινητό */}
-        <button onClick={handleSave} disabled={loading} style={{ ...saveBtn, backgroundColor: themeColor, marginBottom: '60px' }}>
-          {loading ? 'ΓΙΝΕΤΑΙ ΑΠΟΘΗΚΕΥΣΗ...' : (isAgainstDebt ? 'ΟΛΟΚΛΗΡΩΣΗ ΕΞΟΦΛΗΣΗΣ' : 'ΟΛΟΚΛΗΡΩΣΗ ΕΞΟΔΟΥ')}
+        <button onClick={handleSave} disabled={loading} style={{ ...saveBtn, backgroundColor: (urlAssetId || isAgainstDebt) ? colors.accentBlue : colors.accentRed, marginBottom: '60px' }}>
+          {loading ? 'ΓΙΝΕΤΑΙ ΑΠΟΘΗΚΕΥΣΗ...' : (urlAssetId ? 'ΚΑΤΑΧΩΡΗΣΗ ΠΛΗΡΩΜΗΣ' : (isAgainstDebt ? 'ΟΛΟΚΛΗΡΩΣΗ ΕΞΟΦΛΗΣΗΣ' : 'ΟΛΟΚΛΗΡΩΣΗ ΕΞΟΔΟΥ'))}
         </button>
       </div>
     </main>
