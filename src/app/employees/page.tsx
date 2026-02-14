@@ -2,6 +2,7 @@
 export const dynamic = 'force-dynamic'
 
 import { useEffect, useState, Suspense, useCallback } from 'react'
+import { Eye, EyeOff, Power } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
@@ -23,6 +24,7 @@ const colors = {
 function EmployeesContent() {
   const router = useRouter()
   const [employees, setEmployees] = useState<any[]>([])
+  const [showInactive, setShowInactive] = useState(false)
   const [transactions, setTransactions] = useState<any[]>([])
   const [overtimes, setOvertimes] = useState<any[]>([]) // Νέο state για υπερωρίες
   const [loading, setLoading] = useState(true)
@@ -177,7 +179,8 @@ function EmployeesContent() {
       monthly_salary: payBasis === 'monthly' ? Number(formData.monthly_salary) : null,
       daily_rate: payBasis === 'daily' ? Number(formData.daily_rate) : null,
       start_date: formData.start_date, 
-      store_id: storeId
+      store_id: storeId,
+      is_active: true
     }
     const { error } = editingId ? await supabase.from('employees').update(payload).eq('id', editingId) : await supabase.from('employees').insert([payload])
     if (!error) { setEditingId(null); resetForm(); setIsAdding(false); fetchInitialData(); }
@@ -205,6 +208,22 @@ function EmployeesContent() {
     setEditingId(null);
   }
 
+  // Toggle is_active for employee
+  async function toggleActive(id: string, currentActive: boolean) {
+    setLoading(true);
+    const { error } = await supabase.from('employees').update({ is_active: !currentActive }).eq('id', id);
+    if (!error) {
+      toast.success('Η κατάσταση ενημερώθηκε!');
+      fetchInitialData();
+    } else {
+      toast.error('Σφάλμα ενημέρωσης');
+      setLoading(false);
+    }
+  }
+
+  // Filter employees based on showInactive
+  const visibleEmployees = showInactive ? employees : employees.filter(emp => emp.is_active !== false);
+
   return (
     <div style={iphoneWrapper}>
       <Toaster position="top-center" richColors />
@@ -217,7 +236,18 @@ function EmployeesContent() {
           </div>
           <Link href="/" style={backBtnStyle}>✕</Link>
         </div>
-
+        <div style={{ marginBottom: '18px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <button
+            onClick={() => setShowInactive(v => !v)}
+            style={{
+              background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', fontWeight: '700', color: colors.secondaryText
+            }}
+            aria-label={showInactive ? 'Κρύψε ανενεργούς' : 'Εμφάνισε ανενεργούς'}
+          >
+            {showInactive ? <EyeOff size={20} /> : <Eye size={20} />}
+            <span>{showInactive ? 'Κρύψε ανενεργούς' : 'Εμφάνισε ανενεργούς'}</span>
+          </button>
+        </div>
         {/* MODAL ΓΙΑ ΓΡΗΓΟΡΗ ΥΠΕΡΩΡΙΑ */}
         {otModal && (
           <div style={modalOverlay}>
@@ -310,99 +340,54 @@ function EmployeesContent() {
         )}
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '10px' }}>
-          {employees.map((emp) => {
+          {visibleEmployees.map((emp) => {
             const yearlyStats = getYearlyStats(emp.id);
             const monthlyRem = getCurrentMonthRemaining(emp);
             const isSelected = selectedEmpId === emp.id;
             const daysLeft = getDaysUntilPayment(emp.start_date);
-            const pendingOt = getPendingOtHours(emp.id); // Απλήρωτες ώρες
-
+            const pendingOt = getPendingOtHours(emp.id);
+            const inactive = emp.is_active === false;
             return (
-              <div key={emp.id} style={employeeCard}>
+              <div key={emp.id} style={{ ...employeeCard, opacity: inactive ? 0.6 : 1 }}>
                 <div onClick={() => setSelectedEmpId(isSelected ? null : emp.id)} style={{ padding: '18px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div style={{ flex: 1 }}>
                     <p style={{ fontWeight: '700', color: colors.primaryDark, fontSize: '16px', margin: 0 }}>{emp.full_name.toUpperCase()}</p>
                     <div style={{ marginTop: '6px', display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
-                       <span style={{...badgeStyle, backgroundColor: (daysLeft === 0 || daysLeft === null) ? '#fef2f2' : '#eff6ff', color: (daysLeft === 0 || daysLeft === null) ? colors.accentRed : colors.accentBlue}}>
-                         {daysLeft === 0 ? 'ΣΗΜΕΡΑ 💰' : `ΣΕ ${daysLeft} ΗΜΕΡΕΣ 📅`}
-                       </span>
-                       {pendingOt > 0 && (
-                         <span style={{...badgeStyle, backgroundColor: '#fff7ed', color: '#c2410c'}}>
-                           ⏱️ {pendingOt} ΩΡΕΣ
-                         </span>
-                       )}
+                      <span style={{...badgeStyle, backgroundColor: (daysLeft === 0 || daysLeft === null) ? '#fef2f2' : '#eff6ff', color: (daysLeft === 0 || daysLeft === null) ? colors.accentRed : colors.accentBlue}}>
+                        {daysLeft === 0 ? 'ΣΗΜΕΡΑ 💰' : `ΣΕ ${daysLeft} ΗΜΕΡΕΣ 📅`}
+                      </span>
+                      {pendingOt > 0 && (
+                        <span style={{...badgeStyle, backgroundColor: '#fff7ed', color: '#c2410c'}}>
+                          ⏱️ {pendingOt} ΩΡΕΣ
+                        </span>
+                      )}
+                      {inactive && (
+                        <span style={{...badgeStyle, backgroundColor: '#fee2e2', color: colors.accentRed}}>ΑΝΕΝΕΡΓΟΣ</span>
+                      )}
                     </div>
                   </div>
-                  
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <button 
-                      onClick={(e) => { e.stopPropagation(); setOtModal({empId: emp.id, name: emp.full_name}) }}
-                      style={quickOtBtn}
+                    <button
+                      onClick={e => { e.stopPropagation(); toggleActive(emp.id, emp.is_active !== false); }}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+                      aria-label={inactive ? 'Ενεργοποίηση' : 'Απενεργοποίηση'}
                     >
-                      + ⏱️
+                      <Power size={22} color={inactive ? colors.accentRed : colors.accentGreen} />
                     </button>
+                    {!inactive && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setOtModal({ empId: emp.id, name: emp.full_name }) }}
+                        style={quickOtBtn}
+                      >
+                        + ⏱️
+                      </button>
+                    )}
                     <Link href={`/pay-employee?id=${emp.id}&name=${emp.full_name}`} onClick={(e) => e.stopPropagation()} style={payBtnStyle}>ΠΛΗΡΩΜΗ</Link>
                   </div>
                 </div>
-
                 {isSelected && (
                   <div style={{ backgroundColor: '#ffffff', padding: '18px', borderTop: `1px solid ${colors.border}` }}>
-                    
-                    <div style={{ marginBottom: '20px', padding: '12px', backgroundColor: colors.slate100, borderRadius: '12px', fontSize: '12px' }}>
-                        <p style={{ margin: '0 0 5px 0', fontWeight: '800', color: colors.secondaryText }}>ΣΤΟΙΧΕΙΑ ΠΛΗΡΩΜΗΣ</p>
-                        <p style={{ margin: 0, fontWeight: '700' }}>🏦 {emp.bank_name || 'Δεν ορίστηκε'}</p>
-                        <p style={{ margin: '3px 0 0 0', fontWeight: '600', color: colors.accentBlue, fontSize: '11px' }}>{emp.iban || 'Δεν ορίστηκε IBAN'}</p>
-                        {pendingOt > 0 && (
-                          <p style={{ margin: '8px 0 0 0', fontWeight: '800', color: '#c2410c', fontSize: '11px' }}>
-                            ⚠️ ΕΚΚΡΕΜΟΥΝ: {pendingOt} ώρες υπερωρίας
-                          </p>
-                        )}
-                    </div>
-
-                    <div style={filterContainer}>
-                        <label style={{...labelStyle, margin: 0, flex: 1, alignSelf: 'center'}}>ΕΤΗΣΙΑ ΑΝΑΛΥΣΗ</label>
-                        <select value={viewYear} onChange={e => setViewYear(parseInt(e.target.value))} style={filterSelect}>
-                            {availableYears.map(y => <option key={y} value={y}>{y}</option>)}
-                        </select>
-                    </div>
-
-                    <div style={statsGrid}>
-                        <div style={statBox}><p style={statLabel}>ΒΑΣΙΚΟΣ ({viewYear})</p><p style={statValue}>{yearlyStats.base.toFixed(2)}€</p></div>
-                        <div style={statBox}><p style={statLabel}>BONUS ({viewYear})</p><p style={statValue}>{yearlyStats.bonus.toFixed(2)}€</p></div>
-                        <div style={statBox}><p style={statLabel}>ΥΠΕΡΩΡΙΕΣ ({viewYear})</p><p style={statValue}>{yearlyStats.overtime.toFixed(2)}€</p></div>
-                        <div style={{...statBox, backgroundColor: colors.primaryDark}}><p style={{...statLabel, color: '#94a3b8'}}>ΣΥΝΟΛΟ ΕΤΟΥΣ</p><p style={{...statValue, color: colors.accentGreen}}>{yearlyStats.total.toFixed(2)}€</p></div>
-                    </div>
-
-                    <p style={historyTitle}>ΙΣΤΟΡΙΚΟ ΠΛΗΡΩΜΩΝ {viewYear}</p>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '20px' }}>
-                        {transactions.filter(t => t.employee_id === emp.id && new Date(t.date).getFullYear() === viewYear).map(t => (
-                            <div key={t.id} style={historyItemExtended}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                    <span style={{ color: colors.secondaryText, fontWeight: '700', fontSize: '11px' }}>{new Date(t.date).toLocaleDateString('el-GR')}</span>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                        <span>{t.method === 'Τράπεζα' ? '🏦' : '💵'}</span>
-                                        <span style={{ fontWeight: '800', color: colors.primaryDark }}>{Number(t.amount).toFixed(2)}€</span>
-                                        <button onClick={() => deleteTransaction(t.id)} style={transDeleteBtn}>🗑️</button>
-                                    </div>
-                                </div>
-                                <p style={{ margin: '4px 0 0', fontSize: '10px', color: colors.secondaryText, fontStyle: 'italic' }}>{t.notes?.split('[')[1]?.replace(']', '') || 'Πληρωμή'}</p>
-                            </div>
-                        ))}
-                    </div>
-
-                    <div style={{ display: 'flex', gap: '10px' }}>
-                      <button onClick={() => { 
-                        setPayBasis(emp.pay_basis || 'monthly');
-                        setFormData({
-                          full_name: emp.full_name, position: emp.position || '', amka: emp.amka || '', 
-                          iban: emp.iban || '', bank_name: emp.bank_name || 'Εθνική Τράπεζα',
-                          monthly_salary: emp.monthly_salary?.toString() || '',
-                          daily_rate: emp.daily_rate?.toString() || '', start_date: emp.start_date
-                        }); 
-                        setEditingId(emp.id); setIsAdding(true); window.scrollTo(0,0); 
-                      }} style={editBtn}>ΕΠΕΞΕΡΓΑΣΙΑ ✎</button>
-                      <button onClick={() => deleteEmployee(emp.id, emp.full_name)} style={deleteBtn}>ΔΙΑΓΡΑΦΗ 🗑️</button>
-                    </div>
+                    ...existing code...
                   </div>
                 )}
               </div>
