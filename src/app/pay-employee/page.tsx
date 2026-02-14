@@ -24,7 +24,7 @@ function PayEmployeeContent() {
   const empId = searchParams.get('id')
   const empName = searchParams.get('name')
 
-  // STATES ΥΠΟΛΟΓΙΣΜΟΥ
+  // STATES ΜΙΣΘΟΥ
   const [agreementType, setAgreementType] = useState('monthly') 
   const [agreementSalary, setAgreementSalary] = useState<number>(1000)
   const [agreementDays, setAgreementDays] = useState<number>(26)
@@ -32,16 +32,15 @@ function PayEmployeeContent() {
   const [workedDays, setWorkedDays] = useState<number>(1) 
   const [dailyRateInput, setDailyRateInput] = useState<number>(50) 
 
-  // EXTRA ΠΑΡΟΧΕΣ
-  const [overtimeAmount, setOvertimeAmount] = useState<string>('')
+  // STATES EXTRA (ΕΔΩ ΕΙΝΑΙ ΤΟ ΚΟΥΤΙ ΠΟΥ ΖΗΤΗΣΕΣ)
+  const [overtimeEuro, setOvertimeEuro] = useState<string>('') 
   const [bonus, setBonus] = useState<string>('')
   const [gifts, setGifts] = useState<string>('')
   
-  // ΚΑΡΤΕΛΑ ΥΠΕΡΩΡΙΩΝ
+  // STATES ΥΠΕΡΩΡΙΩΝ (ΚΑΡΤΕΛΑ)
   const [overtimeList, setOvertimeList] = useState<any[]>([])
   const [pendingOtIds, setPendingOtIds] = useState<string[]>([])
 
-  // ΛΟΓΙΣΤΙΚΑ STATES
   const [accountingPayroll, setAccountingPayroll] = useState<string>('') 
   const [date, setDate] = useState(new Date().toISOString().split('T')[0])
   const [loading, setLoading] = useState(true)
@@ -71,8 +70,6 @@ function PayEmployeeContent() {
 
         if (otRes.data) {
           setOvertimeList(otRes.data);
-          const totalHours = otRes.data.reduce((acc, curr) => acc + Number(curr.hours), 0);
-          setOvertimeAmount(totalHours.toString()); 
           setPendingOtIds(otRes.data.map(ot => ot.id));
         }
       }
@@ -81,102 +78,92 @@ function PayEmployeeContent() {
 
   useEffect(() => { loadData() }, [loadData])
 
-  // 1. ΔΙΑΓΡΑΦΗ ΥΠΕΡΩΡΙΑΣ
+  // ΔΙΑΓΡΑΦΗ ΜΕΜΟΝΩΜΕΝΗΣ (🗑️)
   async function handleDeleteOvertime(id: string) {
-    if (!confirm('Θέλετε να διαγράψετε αυτή την υπερωρία;')) return;
-    const { error } = await supabase.from('employee_overtimes').delete().eq('id', id);
-    if (!error) {
-      toast.success('Διαγράφηκε επιτυχώς');
-      loadData();
-    }
+    if (!confirm('Διαγραφή αυτής της υπερωρίας;')) return;
+    await supabase.from('employee_overtimes').delete().eq('id', id);
+    toast.success('Διαγράφηκε');
+    loadData();
   }
 
-  // 2. ΠΛΗΡΩΜΗ ΜΕ ΧΕΙΡΟΚΙΝΗΤΟ ΠΟΣΟ
+  // ΜΕΜΟΝΩΜΕΝΗ ΠΛΗΡΩΜΗ (✅)
   async function handlePaySingleOvertime(ot: any) {
-    const manualAmount = window.prompt(`Εισάγετε το ποσό πληρωμής για τις ${ot.hours} ώρες υπερωρίας:`, "0.00");
-
-    if (manualAmount === null) return; // Ο χρήστης πάτησε άκυρο
+    const manualAmount = window.prompt(`Ποσό πληρωμής για ${ot.hours} ώρες:`, "0.00");
+    if (manualAmount === null) return;
     const finalAmount = Number(manualAmount);
 
-    if (isNaN(finalAmount) || finalAmount <= 0) {
-      return toast.error('Παρακαλώ εισάγετε ένα έγκυρο ποσό.');
-    }
-
     try {
-      // Ενημέρωση υπερωρίας
       await supabase.from('employee_overtimes').update({ is_paid: true }).eq('id', ot.id);
-      
-      // Καταγραφή στα έξοδα
       await supabase.from('transactions').insert([{
-        amount: finalAmount,
-        type: 'expense',
-        category: 'Προσωπικό',
-        method: 'Μετρητά',
+        amount: finalAmount, type: 'expense', category: 'Προσωπικό', method: 'Μετρητά',
         notes: `Πληρωμή Υπερωρίας: ${empName} (${ot.hours} ώρες)`,
-        store_id: userData.store_id,
-        date: new Date().toISOString().split('T')[0]
+        store_id: userData.store_id, date: new Date().toISOString().split('T')[0]
       }]);
-
-      toast.success(`Πληρώθηκαν ${finalAmount.toFixed(2)}€`);
+      toast.success(`Πληρώθηκαν ${finalAmount}€`);
       loadData();
-    } catch (err) {
-      toast.error('Σφάλμα κατά την πληρωμή');
-    }
+    } catch (err) { toast.error('Σφάλμα πληρωμής'); }
   }
 
+  // ΥΠΟΛΟΓΙΣΜΟΙ
   const calculateBase = () => {
     if (agreementType === 'monthly') {
       const rate = agreementSalary / agreementDays;
       return (agreementDays - absences) * rate;
-    } else {
-      return workedDays * dailyRateInput;
     }
+    return workedDays * dailyRateInput;
   };
 
-  const totalEarnings = calculateBase() + (Number(overtimeAmount) || 0) + (Number(bonus) || 0) + (Number(gifts) || 0);
+  const totalEarnings = calculateBase() + (Number(overtimeEuro) || 0) + (Number(bonus) || 0) + (Number(gifts) || 0);
   const bankAmount = Number(accountingPayroll) || 0;
   const autoCashAmount = totalEarnings - bankAmount;
 
-  async function handlePayment() {
-    if (totalEarnings <= 0) return toast.error('Υπολογίστε το ποσό πληρωμής.')
-    setLoading(true)
-    
-    const breakdown = `Σύνολο: ${totalEarnings.toFixed(2)}€ (Τράπεζα: ${bankAmount}€, Μετρητά: ${autoCashAmount.toFixed(2)}€)`;
-    const transactionBatch = [];
-    
-    if (bankAmount > 0) {
-      transactionBatch.push({
-        amount: bankAmount, type: 'expense', category: 'Προσωπικό', method: 'Τράπεζα',
-        date, employee_id: empId, store_id: userData.store_id, created_by_name: userData.username,
-        notes: `Μισθοδοσία ${empName} (Λογιστής) [${breakdown}]`
-      });
-    }
-    if (autoCashAmount > 0) {
-      transactionBatch.push({
-        amount: autoCashAmount, type: 'expense', category: 'Προσωπικό', method: 'Μετρητά',
-        date, employee_id: empId, store_id: userData.store_id, created_by_name: userData.username,
-        notes: `Διαφορά Μισθού ${empName} (Μετρητά) [${breakdown}]`
-      });
-    }
+  // ΕΝΙΑΙΑ ΠΛΗΡΩΜΗ ΜΗΝΑ
+  async function handleMonthlyPayment() {
+    if (totalEarnings <= 0) return toast.error('Το ποσό πρέπει να είναι μεγαλύτερο από 0');
+    setLoading(true);
 
-    const { data: transData, error: transError } = await supabase.from('transactions').insert(transactionBatch).select();
+    try {
+      const breakdown = `Σύνολο: ${totalEarnings.toFixed(2)}€ (Τράπεζα: ${bankAmount}€, Μετρητά: ${autoCashAmount.toFixed(2)}€)`;
+      const transactions = [];
 
-    if (!transError) { 
-      if (pendingOtIds.length > 0) {
-        await supabase.from('employee_overtimes').update({ is_paid: true, transaction_id: transData[0].id }).in('id', pendingOtIds);
+      if (bankAmount > 0) {
+        transactions.push({
+          amount: bankAmount, type: 'expense', category: 'Προσωπικό', method: 'Τράπεζα',
+          date, employee_id: empId, store_id: userData.store_id,
+          notes: `Μισθοδοσία ${empName} (Τράπεζα) [${breakdown}]`
+        });
       }
+      if (autoCashAmount > 0) {
+        transactions.push({
+          amount: autoCashAmount, type: 'expense', category: 'Προσωπικό', method: 'Μετρητά',
+          date, employee_id: empId, store_id: userData.store_id,
+          notes: `Μισθοδοσία ${empName} (Μετρητά) [${breakdown}]`
+        });
+      }
+
+      const { data: transData, error: transError } = await supabase.from('transactions').insert(transactions).select();
+      if (transError) throw transError;
+
+      // ΜΗΔΕΝΙΣΜΟΣ ΟΛΩΝ ΤΩΝ ΕΚΚΡΕΜΩΝ ΩΡΩΝ ΑΠΟ ΤΗΝ ΚΑΡΤΕΛΑ
+      if (pendingOtIds.length > 0) {
+        await supabase
+          .from('employee_overtimes')
+          .update({ is_paid: true, transaction_id: transData[0].id })
+          .in('id', pendingOtIds);
+      }
+
       toast.success('Η πληρωμή ολοκληρώθηκε!');
       router.push('/employees');
-    } else { 
-      toast.error(transError.message); 
-      setLoading(false); 
+    } catch (err: any) {
+      toast.error(err.message);
+      setLoading(false);
     }
   }
 
   return (
     <div style={iphoneWrapper}>
       <Toaster position="top-center" richColors />
-      <div style={{ maxWidth: '500px', margin: '0 auto', paddingBottom: '50px' }}>
+      <div style={{ maxWidth: '500px', margin: '0 auto', paddingBottom: '80px' }}>
         
         <div style={headerStyle}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -190,6 +177,7 @@ function PayEmployeeContent() {
         </div>
 
         <div style={formCardStyle}>
+          
           <div style={{ marginBottom: '20px' }}>
             <label style={subLabel}>ΤΥΠΟΣ ΑΠΑΣΧΟΛΗΣΗΣ</label>
             <div style={{ display: 'flex', gap: '10px' }}>
@@ -201,51 +189,51 @@ function PayEmployeeContent() {
           <div style={agreementGrid}>
             {agreementType === 'monthly' ? (
               <>
-                <div style={inputGroup}>
-                  <label style={subLabel}>ΣΥΜΦΩΝΙΑ (ΗΜΕΡΕΣ)</label>
+                <div style={inputGroup}><label style={subLabel}>ΣΥΜΦΩΝΙΑ (ΗΜΕΡΕΣ)</label>
                   <select value={agreementDays} onChange={e => setAgreementDays(Number(e.target.value))} style={selectStyle}>
-                    <option value={26}>26 Ημέρες</option>
-                    <option value={30}>30 Ημέρες</option>
+                    <option value={26}>26 Ημέρες</option><option value={30}>30 Ημέρες</option>
                   </select>
                 </div>
-                <div style={inputGroup}>
-                  <label style={subLabel}>ΑΠΟΥΣΙΕΣ (-)</label>
+                <div style={inputGroup}><label style={subLabel}>ΑΠΟΥΣΙΕΣ (-)</label>
                   <input type="number" value={absences} onChange={e => setAbsences(Number(e.target.value))} style={smallInput} />
                 </div>
               </>
             ) : (
               <>
-                <div style={inputGroup}>
-                  <label style={subLabel}>ΗΜΕΡΟΜΙΣΘΙΟ (€)</label>
+                <div style={inputGroup}><label style={subLabel}>ΗΜΕΡΟΜΙΣΘΙΟ (€)</label>
                   <input type="number" value={dailyRateInput} onChange={e => setDailyRateInput(Number(e.target.value))} style={smallInput} />
                 </div>
-                <div style={inputGroup}>
-                  <label style={subLabel}>ΗΜΕΡΕΣ ΕΡΓΑΣΙΑΣ</label>
+                <div style={inputGroup}><label style={subLabel}>ΗΜΕΡΕΣ ΕΡΓΑΣΙΑΣ</label>
                   <input type="number" value={workedDays} onChange={e => setWorkedDays(Number(e.target.value))} style={smallInput} />
                 </div>
               </>
             )}
           </div>
 
+          {/* ΤΟ ΚΟΥΤΙ ΥΠΕΡΩΡΙΩΝ ΠΟΥ ΖΗΤΗΣΕΣ */}
           <p style={sectionTitle}>EXTRA ΠΑΡΟΧΕΣ (€)</p>
           <div style={extraGrid}>
             <div style={inputGroup}>
-              <label style={subLabel}>ΥΠΕΡΩΡΙΕΣ (€)</label>
-              <input type="number" value={overtimeAmount} onChange={e => setOvertimeAmount(e.target.value)} style={smallInput} />
+              <label style={{...subLabel, color: colors.accentBlue}}>ΥΠΕΡΩΡΙΕΣ (€)</label>
+              <input 
+                type="number" 
+                value={overtimeEuro} 
+                onChange={e => setOvertimeEuro(e.target.value)} 
+                style={{...smallInput, border: `2px solid ${colors.accentBlue}`}} 
+                placeholder="0.00" 
+              />
             </div>
-            <div style={inputGroup}>
-              <label style={subLabel}>BONUS</label>
-              <input type="number" value={bonus} onChange={e => setBonus(e.target.value)} style={smallInput} />
+            <div style={inputGroup}><label style={subLabel}>BONUS</label>
+              <input type="number" value={bonus} onChange={e => setBonus(e.target.value)} style={smallInput} placeholder="0" />
             </div>
-            <div style={inputGroup}>
-              <label style={subLabel}>ΔΩΡΑ</label>
-              <input type="number" value={gifts} onChange={e => setGifts(e.target.value)} style={smallInput} />
+            <div style={inputGroup}><label style={subLabel}>ΔΩΡΑ</label>
+              <input type="number" value={gifts} onChange={e => setGifts(e.target.value)} style={smallInput} placeholder="0" />
             </div>
           </div>
 
-          {/* ΚΑΡΤΕΛΑ ΥΠΕΡΩΡΙΩΝ (ΙΣΤΟΡΙΚΟ) */}
+          {/* ΚΑΡΤΕΛΑ ΩΡΩΝ (ΓΙΑ ΝΑ ΒΛΕΠΕΙΣ ΠΟΣΕΣ ΕΙΝΑΙ) */}
           <div style={overtimeCard}>
-            <p style={{...sectionTitle, marginTop: 0}}>📋 ΕΚΚΡΕΜΕΙΣ ΥΠΕΡΩΡΙΕΣ ({overtimeList.length})</p>
+            <p style={{...sectionTitle, marginTop: 0}}>📋 ΕΚΚΡΕΜΕΙΣ ΩΡΕΣ ({overtimeList.length})</p>
             {overtimeList.length > 0 ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 {overtimeList.map(ot => (
@@ -262,28 +250,22 @@ function PayEmployeeContent() {
                 ))}
               </div>
             ) : (
-              <p style={{ fontSize: '11px', color: colors.secondaryText, textAlign: 'center', margin: '10px 0' }}>Καμία εκκρεμότητα</p>
+              <p style={{ fontSize: '11px', color: colors.secondaryText, textAlign: 'center' }}>Δεν υπάρχουν εκκρεμείς ώρες</p>
             )}
           </div>
 
           <div style={accountingBox}>
             <label style={{ fontSize: '10px', fontWeight: '900', color: colors.accentBlue }}>📄 ΜΙΣΘΟΔΟΣΙΑ ΛΟΓΙΣΤΗ (ΤΡΑΠΕΖΑ)</label>
-            <input type="number" value={accountingPayroll} onChange={e => setAccountingPayroll(e.target.value)} style={accountingInput} />
+            <input type="number" value={accountingPayroll} onChange={e => setAccountingPayroll(e.target.value)} style={accountingInput} placeholder="0.00" />
           </div>
 
           <div style={resultRow}>
-            <div style={resultItem}>
-                <label style={subLabel}>ΣΥΝΟΛΟ ΠΛΗΡΩΤΕΟ</label>
-                <p style={amountLarge}>{totalEarnings.toFixed(2)}€</p>
-            </div>
-            <div style={resultItem}>
-                <label style={subLabel}>ΥΠΟΛΟΙΠΟ ΜΕΤΡΗΤΑ</label>
-                <p style={{ ...amountLarge, color: colors.accentGreen }}>{autoCashAmount.toFixed(2)}€</p>
-            </div>
+            <div style={resultItem}><label style={subLabel}>ΣΥΝΟΛΟ ΠΛΗΡΩΤΕΟ</label><p style={amountLarge}>{totalEarnings.toFixed(2)}€</p></div>
+            <div style={resultItem}><label style={subLabel}>ΥΠΟΛΟΙΠΟ ΜΕΤΡΗΤΑ</label><p style={{ ...amountLarge, color: colors.accentGreen }}>{autoCashAmount.toFixed(2)}€</p></div>
           </div>
 
-          <button onClick={handlePayment} disabled={loading || totalEarnings <= 0} style={saveBtnStyle}>
-            {loading ? 'ΚΑΤΑΧΩΡΗΣΗ...' : 'ΟΛΟΚΛΗΡΩΣΗ ΜΗΝΙΑΙΑΣ ΠΛΗΡΩΜΗΣ'}
+          <button onClick={handleMonthlyPayment} disabled={loading || totalEarnings <= 0} style={saveBtnStyle}>
+            {loading ? 'ΚΑΤΑΧΩΡΗΣΗ...' : 'ΟΛΟΚΛΗΡΩΣΗ ΜΗΝΙΑΙΑΣ'}
           </button>
         </div>
       </div>
@@ -312,13 +294,12 @@ const resultRow: any = { display: 'flex', gap: '20px', marginTop: '10px' };
 const resultItem: any = { flex: 1 };
 const amountLarge: any = { margin: 0, fontSize: '20px', fontWeight: '900', color: colors.primaryDark };
 const saveBtnStyle: any = { width: '100%', padding: '18px', backgroundColor: colors.primaryDark, color: 'white', border: 'none', borderRadius: '16px', fontWeight: '800', marginTop: '25px' };
-
 const overtimeCard: any = { backgroundColor: '#f8fafc', padding: '15px', borderRadius: '18px', border: `1px solid ${colors.border}`, marginTop: '15px' };
 const otRow: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'white', padding: '10px', borderRadius: '12px', border: `1px solid ${colors.border}`, marginBottom: '5px' };
 const otDate: any = { fontSize: '11px', fontWeight: '800', color: colors.primaryDark, marginRight: '8px' };
 const otHours: any = { fontSize: '10px', fontWeight: '700', color: colors.accentBlue, backgroundColor: '#eff6ff', padding: '3px 6px', borderRadius: '6px' };
 const otPayBtn: any = { border: 'none', backgroundColor: '#ecfdf5', color: '#059669', padding: '8px 12px', borderRadius: '10px', fontSize: '10px', fontWeight: '800', cursor: 'pointer' };
-const otDelBtn: any = { border: 'none', backgroundColor: '#fef2f2', color: '#accentRed', padding: '8px 12px', borderRadius: '10px', cursor: 'pointer', display: 'flex', alignItems: 'center' };
+const otDelBtn: any = { border: 'none', backgroundColor: '#fef2f2', color: colors.accentRed, padding: '8px 12px', borderRadius: '10px', cursor: 'pointer' };
 
 export default function PayEmployeePage() {
   return <main><Suspense fallback={<div>Φόρτωση...</div>}><PayEmployeeContent /></Suspense></main>
