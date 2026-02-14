@@ -5,7 +5,7 @@ import { useEffect, useState, Suspense, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { toast, Toaster } from 'sonner' // Για ειδοποίηση "Αντιγράφηκε"
+import { toast, Toaster } from 'sonner' 
 
 const DEFAULT_ASSETS = [
   'ΔΕΗ / Ρεύμα', 'Ενοίκιο', 'Νερό / ΕΥΔΑΠ', 'Λογιστής', 
@@ -18,7 +18,7 @@ function FixedAssetsContent() {
   const [loading, setLoading] = useState(true)
   const [isAdding, setIsAdding] = useState(false)
   const [newName, setNewName] = useState('')
-  const [newRf, setNewRf] = useState('') // Νέο State για RF
+  const [newRf, setNewRf] = useState('') 
   const [editingId, setEditingId] = useState<string | null>(null)
   const [storeId, setStoreId] = useState<string | null>(null)
 
@@ -89,7 +89,7 @@ function FixedAssetsContent() {
   }
 
   const handleCopy = (e: React.MouseEvent, rf: string) => {
-    e.stopPropagation() // Για να μην ανοίξει το ιστορικό
+    e.stopPropagation() 
     navigator.clipboard.writeText(rf)
     toast.success('Ο κωδικός RF αντιγράφηκε!')
   }
@@ -142,12 +142,21 @@ function FixedAssetsContent() {
            <div style={{ textAlign: 'center', padding: '40px', color: '#94a3b8' }}>Φόρτωση...</div>
         ) : assets.map(asset => (
           <div key={asset.id} style={assetCard}>
-            <div 
-              onClick={() => router.push(`/fixed-assets/history?id=${asset.id}&name=${asset.name}`)}
-              style={{ flex: 1, cursor: 'pointer' }}
-            >
-              <div style={{ fontWeight: '800', color: '#1e293b', fontSize: '15px' }}>{asset.name.toUpperCase()}</div>
-              
+            <div style={{ flex: 1 }}>
+              <div 
+                onClick={() => router.push(`/fixed-assets/history?id=${asset.id}&name=${asset.name}`)}
+                style={{ cursor: 'pointer' }}
+              >
+                <div style={{ fontWeight: '800', color: '#1e293b', fontSize: '15px' }}>{asset.name.toUpperCase()}</div>
+                
+                <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginTop: '4px' }}>
+                   <span style={badgeStyle}>ΣΥΝΟΛΟ ΕΞΟΔΩΝ</span>
+                   <span style={{ fontSize: '14px', color: '#dc2626', fontWeight: '900' }}>
+                     -{asset.total.toFixed(2)}€
+                   </span>
+                </div>
+              </div>
+
               {asset.rf_code && (
                 <div 
                   onClick={(e) => handleCopy(e, asset.rf_code)}
@@ -158,15 +167,16 @@ function FixedAssetsContent() {
                 </div>
               )}
 
-              <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginTop: '8px' }}>
-                 <span style={badgeStyle}>ΣΥΝΟΛΟ ΕΞΟΔΩΝ</span>
-                 <span style={{ fontSize: '14px', color: '#dc2626', fontWeight: '900' }}>
-                   -{asset.total.toFixed(2)}€
-                 </span>
-              </div>
+              {/* ΚΟΥΜΠΙ ΠΛΗΡΩΜΗΣ */}
+              <Link 
+                href={`/transactions/new?type=expense&category=Πάγια&assetId=${asset.id}`}
+                style={payBtnStyle}
+              >
+                ΚΑΤΑΧΩΡΗΣΗ ΠΛΗΡΩΜΗΣ →
+              </Link>
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginLeft: '10px' }}>
               <button onClick={() => { setEditingId(asset.id); setNewName(asset.name); setNewRf(asset.rf_code || ''); setIsAdding(true); window.scrollTo(0,0); }} style={editBtnSmall}>✎</button>
               <button onClick={() => handleDelete(asset.id)} style={delBtnSmall}>🗑️</button>
             </div>
@@ -191,6 +201,7 @@ const inputStyle: any = { width: '100%', padding: '14px', borderRadius: '14px', 
 const saveBtn: any = { width: '100%', padding: '16px', color: 'white', border: 'none', borderRadius: '14px', fontWeight: '900', fontSize: '15px', cursor: 'pointer' };
 const badgeStyle: any = { fontSize: '9px', fontWeight: '800', backgroundColor: '#f1f5f9', padding: '4px 8px', borderRadius: '6px', color: '#64748b' };
 const rfBadgeStyle: any = { display: 'inline-flex', alignItems: 'center', padding: '6px 10px', backgroundColor: '#eff6ff', borderRadius: '8px', color: '#2563eb', border: '1px solid #dbeafe', marginTop: '6px', cursor: 'pointer' };
+const payBtnStyle: any = { display: 'inline-block', marginTop: '12px', fontSize: '10px', fontWeight: '900', color: '#059669', textDecoration: 'none', backgroundColor: '#f0fdf4', padding: '8px 12px', borderRadius: '10px', border: '1px solid #bbf7d0' };
 const editBtnSmall: any = { backgroundColor: '#fef3c7', color: '#d97706', border: 'none', padding: '10px', borderRadius: '12px', cursor: 'pointer', fontSize: '16px' };
 const delBtnSmall: any = { backgroundColor: '#fee2e2', color: '#ef4444', border: 'none', padding: '10px', borderRadius: '12px', cursor: 'pointer', fontSize: '16px' };
 
