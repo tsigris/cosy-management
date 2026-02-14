@@ -13,9 +13,8 @@ function RegisterForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
 
-  // 1. ΔΙΑΒΑΣΜΑ ΠΑΡΑΜΕΤΡΩΝ
   const inviteCode = searchParams.get('invite') 
-  const requestedRole = searchParams.get('role') // 'admin' ή 'user'
+  const requestedRole = searchParams.get('role')
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -28,24 +27,27 @@ function RegisterForm() {
     setLoading(true)
 
     try {
-      // 2. ΕΓΓΡΑΦΗ ΣΤΟ SUPABASE AUTH
+      // 1. ΕΓΓΡΑΦΗ ΣΤΟ AUTH ΜΕ METADATA (Για να τα διαβάζει ο SQL Trigger)
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: email.trim(),
         password: password.trim(),
+        options: {
+          data: {
+            username: username || email.split('@')[0],
+          }
+        }
       })
 
       if (authError) throw authError
 
       if (authData.user) {
-        // 3. ΥΠΟΛΟΓΙΣΜΟΣ ΣΤΟΙΧΕΙΩΝ
-        // Αν έχεις invite, μπαίνεις στο μαγαζί του άλλου. Αν όχι, φτιάχνεις δικό σου.
+        // 2. ΥΠΟΛΟΓΙΣΜΟΣ ΣΤΟΙΧΕΙΩΝ
         const targetStoreId = inviteCode ? inviteCode : authData.user.id
         const targetRole = inviteCode ? (requestedRole || 'user') : 'admin'
-        
-        // Ο admin έχει πρόσβαση παντού
         const hasFullAccess = targetRole === 'admin'
 
-        // 4. ΔΗΜΙΟΥΡΓΙΑ ΠΡΟΦΙΛ (PROFILES)
+        // 3. ΔΗΜΙΟΥΡΓΙΑ/ΕΝΗΜΕΡΩΣΗ ΠΡΟΦΙΛ (PROFILES)
+        // Χρησιμοποιούμε upsert για να μην κολλήσει αν ο Trigger πρόλαβε να φτιάξει το row
         const { error: profileError } = await supabase
           .from('profiles')
           .upsert({
@@ -57,42 +59,33 @@ function RegisterForm() {
             can_view_analysis: hasFullAccess,
             can_view_history: hasFullAccess,
             can_edit_transactions: hasFullAccess,
+            subscription_status: 'active',
+            subscription_expires_at: '2026-12-31',
             updated_at: new Date().toISOString(),
           }, { onConflict: 'id' })
 
         if (profileError) throw profileError
 
-        // ---[ Η ΔΙΟΡΘΩΣΗ ΕΙΝΑΙ ΕΔΩ ]---
-        
-        // 4.5. ΔΗΜΙΟΥΡΓΙΑ ΒΑΣΙΚΩΝ ΠΑΓΙΩΝ
-        // Το εκτελούμε ΜΟΝΟ αν ΔΕΝ υπάρχει inviteCode (δηλαδή είναι νέο κατάστημα/Admin).
-        // Οι υπάλληλοι (inviteCode exists) δεν επιτρέπεται να φτιάξουν πάγια, γι' αυτό το προσπερνούν.
+        // 4. ΔΗΜΙΟΥΡΓΙΑ ΒΑΣΙΚΩΝ ΠΑΓΙΩΝ (Μόνο για νέους Admin)
         if (!inviteCode) {
             const defaultAssets = [
-                { name: 'Ενοίκιο', type: 'expense', store_id: targetStoreId },
-                { name: 'Ρεύμα', type: 'expense', store_id: targetStoreId },
-                { name: 'Τηλεφωνία/Internet', type: 'expense', store_id: targetStoreId },
-                { name: 'Νερό', type: 'expense', store_id: targetStoreId },
-                { name: 'Μισθοδοσία', type: 'expense', store_id: targetStoreId },
+                { name: 'Ενοίκιο', store_id: targetStoreId },
+                { name: 'ΔΕΗ / Ρεύμα', store_id: targetStoreId },
+                { name: 'Λογιστής', store_id: targetStoreId },
+                { name: 'Νερό / ΕΥΔΑΠ', store_id: targetStoreId },
+                { name: 'Τηλεφωνία / Internet', store_id: targetStoreId }
             ]
 
-            const { error: assetError } = await supabase
-                .from('fixed_assets')
-                .insert(defaultAssets)
-            
-            // Δεν κάνουμε throw error εδώ, για να μην κολλήσει η εγγραφή αν κάτι πάει στραβά στα πάγια
-            if (assetError) console.error('Error creating default assets:', assetError)
+            await supabase.from('fixed_assets').insert(defaultAssets)
         }
 
-        // 5. ΕΠΙΤΥΧΙΑ
-        alert(`Η εγγραφή ολοκληρώθηκε επιτυχώς!\nΡόλος: ${targetRole === 'admin' ? 'Διαχειριστής' : 'Υπάλληλος'}`)
-        
+        alert('Η εγγραφή ολοκληρώθηκε επιτυχώς!')
         router.push('/') 
         router.refresh()
       }
     } catch (error: any) {
       console.error('Registration Error:', error)
-      alert('Σφάλμα κατά την εγγραφή: ' + (error.message || error))
+      alert('Σφάλμα: ' + error.message)
     } finally {
       setLoading(false)
     }
@@ -103,29 +96,14 @@ function RegisterForm() {
       <div style={headerStyle}>
         <h1 style={brandStyle}>COSY APP</h1>
         <div style={dividerStyle} />
-        
-        <div style={instructionStyle}>
-          {inviteCode ? (
-            <div style={inviteBox}>
-              <span style={{fontSize: '18px'}}>📩</span>
-              <div>
-                <span style={{display: 'block', fontWeight: 'bold', color: '#059669'}}>
-                  Πρόσκληση Αποδεκτή!
-                </span>
-                <span style={{fontSize: '12px'}}>
-                  Εγγραφή ως <b>{requestedRole === 'admin' ? 'ΔΙΑΧΕΙΡΙΣΤΗΣ' : 'ΥΠΑΛΛΗΛΟΣ'}</b>
-                </span>
-              </div>
-            </div>
-          ) : (
-            'Δημιουργία Νέου Λογαριασμού'
-          )}
-        </div>
+        <p style={instructionStyle}>
+          {inviteCode ? 'Αποδοχή Πρόσκλησης Συνεργάτη' : 'Δημιουργία Νέου Λογαριασμού'}
+        </p>
       </div>
       
       <form onSubmit={handleSignUp} style={formStyle}>
         <div style={fieldGroup}>
-          <label style={labelStyle}>ΟΝΟΜΑ ΧΡΗΣΤΗ (Προαιρετικό)</label>
+          <label style={labelStyle}>ΟΝΟΜΑ ΧΡΗΣΤΗ</label>
           <input 
             type="text" 
             value={username} 
@@ -162,12 +140,9 @@ function RegisterForm() {
         <button 
           type="submit" 
           disabled={loading} 
-          style={{
-            ...submitBtnStyle, 
-            backgroundColor: inviteCode ? (requestedRole === 'admin' ? '#f97316' : '#10b981') : '#3b82f6'
-          }}
+          style={{...submitBtnStyle, backgroundColor: loading ? '#94a3b8' : '#3b82f6'}}
         >
-          {loading ? 'ΔΗΜΙΟΥΡΓΙΑ...' : 'ΟΛΟΚΛΗΡΩΣΗ ΕΓΓΡΑΦΗΣ'}
+          {loading ? 'ΠΑΡΑΚΑΛΩ ΠΕΡΙΜΕΝΕΤΕ...' : 'ΟΛΟΚΛΗΡΩΣΗ ΕΓΓΡΑΦΗΣ'}
         </button>
       </form>
 
@@ -181,7 +156,7 @@ function RegisterForm() {
 export default function RegisterPage() {
   return (
     <main style={containerStyle}>
-      <Suspense fallback={<div style={{textAlign:'center', marginTop:'50px'}}>Φόρτωση φόρμας...</div>}>
+      <Suspense fallback={<div>Φόρτωση...</div>}>
         <RegisterForm />
       </Suspense>
     </main>
@@ -189,17 +164,16 @@ export default function RegisterPage() {
 }
 
 // --- STYLES ---
-const containerStyle = { minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#f8fafc', fontFamily: 'sans-serif', padding: '20px' };
-const cardStyle = { backgroundColor: '#ffffff', width: '100%', maxWidth: '420px', padding: '40px', borderRadius: '16px', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)', border: '1px solid #e2e8f0' };
+const containerStyle = { minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#f8fafc', padding: '20px' };
+const cardStyle = { backgroundColor: '#ffffff', width: '100%', maxWidth: '420px', padding: '40px', borderRadius: '16px', boxShadow: '0 10px 25px rgba(0,0,0,0.05)', border: '1px solid #e2e8f0' };
 const headerStyle = { textAlign: 'center' as const, marginBottom: '32px' };
-const brandStyle = { fontSize: '26px', fontWeight: '800', color: '#0f172a', margin: '0 0 10px 0', letterSpacing: '-0.5px' };
-const dividerStyle = { height: '3px', width: '40px', backgroundColor: '#cbd5e1', margin: '0 auto 20px auto', borderRadius: '2px' };
-const instructionStyle = { fontSize: '14px', color: '#64748b', fontWeight: '500', minHeight: '40px' };
-const inviteBox = { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', backgroundColor: '#ecfdf5', padding: '10px', borderRadius: '8px', border: '1px solid #a7f3d0', color: '#065f46' };
-const formStyle = { display: 'flex', flexDirection: 'column' as const, gap: '20px' };
+const brandStyle = { fontSize: '24px', fontWeight: '900', color: '#0f172a', margin: '0' };
+const dividerStyle = { height: '3px', width: '30px', backgroundColor: '#3b82f6', margin: '10px auto 20px auto', borderRadius: '2px' };
+const instructionStyle = { fontSize: '14px', color: '#64748b', fontWeight: '600' };
+const formStyle = { display: 'flex', flexDirection: 'column' as const, gap: '18px' };
 const fieldGroup = { display: 'flex', flexDirection: 'column' as const, gap: '6px' };
-const labelStyle = { fontSize: '11px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase' as const, letterSpacing: '0.5px' };
-const inputStyle = { padding: '12px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '15px', outline: 'none', transition: 'border-color 0.2s' };
-const submitBtnStyle = { color: '#ffffff', padding: '14px', borderRadius: '10px', border: 'none', fontWeight: '700', cursor: 'pointer', fontSize: '15px', marginTop: '10px', transition: 'opacity 0.2s' };
-const footerStyle = { marginTop: '30px', textAlign: 'center' as const, paddingTop: '20px', borderTop: '1px solid #f1f5f9' };
-const linkStyle = { color: '#64748b', fontWeight: '600', textDecoration: 'none', fontSize: '13px' };
+const labelStyle = { fontSize: '10px', fontWeight: '800', color: '#94a3b8', letterSpacing: '0.5px' };
+const inputStyle = { padding: '12px', borderRadius: '10px', border: '1px solid #e2e8f0', fontSize: '15px', outline: 'none', backgroundColor: '#f8fafc' };
+const submitBtnStyle = { color: '#ffffff', padding: '14px', borderRadius: '12px', border: 'none', fontWeight: '800', cursor: 'pointer', fontSize: '15px', marginTop: '10px' };
+const footerStyle = { marginTop: '25px', textAlign: 'center' as const, paddingTop: '20px', borderTop: '1px solid #f1f5f9' };
+const linkStyle = { color: '#64748b', fontWeight: '700', textDecoration: 'none', fontSize: '12px' };
