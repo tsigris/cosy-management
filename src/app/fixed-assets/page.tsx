@@ -116,20 +116,10 @@ function FixedAssetsContent() {
       {isAdding && (
         <div style={{...formCard, borderColor: editingId ? '#f59e0b' : '#0f172a'}}>
           <p style={labelStyle}>ΟΝΟΜΑ ΠΑΓΙΟΥ</p>
-          <input 
-            value={newName} 
-            onChange={e => setNewName(e.target.value)} 
-            placeholder="π.χ. ΔΕΗ, Ενοίκιο..." 
-            style={inputStyle} 
-          />
+          <input value={newName} onChange={e => setNewName(e.target.value)} placeholder="π.χ. ΔΕΗ, Ενοίκιο..." style={inputStyle} />
           
           <p style={labelStyle}>ΚΩΔΙΚΟΣ ΠΛΗΡΩΜΗΣ (RF)</p>
-          <input 
-            value={newRf} 
-            onChange={e => setNewRf(e.target.value)} 
-            placeholder="RF00 0000..." 
-            style={inputStyle} 
-          />
+          <input value={newRf} onChange={e => setNewRf(e.target.value)} placeholder="RF00 0000..." style={inputStyle} />
           
           <button onClick={handleSave} style={{...saveBtn, backgroundColor: editingId ? '#f59e0b' : '#0f172a'}}>
              {editingId ? 'ΕΝΗΜΕΡΩΣΗ ΑΛΛΑΓΩΝ' : 'ΠΡΟΣΘΗΚΗ ΣΤΗ ΛΙΣΤΑ'}
@@ -143,37 +133,29 @@ function FixedAssetsContent() {
         ) : assets.map(asset => (
           <div key={asset.id} style={assetCard}>
             <div style={{ flex: 1 }}>
-              <div 
-                onClick={() => router.push(`/fixed-assets/history?id=${asset.id}&name=${asset.name}`)}
-                style={{ cursor: 'pointer' }}
-              >
+              <div onClick={() => router.push(`/fixed-assets/history?id=${asset.id}&name=${asset.name}`)} style={{ cursor: 'pointer' }}>
                 <div style={{ fontWeight: '800', color: '#1e293b', fontSize: '15px' }}>{asset.name.toUpperCase()}</div>
-                
                 <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginTop: '4px' }}>
                    <span style={badgeStyle}>ΣΥΝΟΛΟ ΕΞΟΔΩΝ</span>
-                   <span style={{ fontSize: '14px', color: '#dc2626', fontWeight: '900' }}>
-                     -{asset.total.toFixed(2)}€
-                   </span>
+                   <span style={{ fontSize: '14px', color: '#dc2626', fontWeight: '900' }}>-{asset.total.toFixed(2)}€</span>
                 </div>
               </div>
 
-              {asset.rf_code && (
-                <div 
-                  onClick={(e) => handleCopy(e, asset.rf_code)}
-                  style={rfBadgeStyle}
-                >
+              {/* Εμφάνιση RF αν υπάρχει */}
+              {asset.rf_code && asset.rf_code.trim() !== "" && (
+                <div onClick={(e) => handleCopy(e, asset.rf_code)} style={rfBadgeStyle}>
                   <span style={{ fontSize: '10px', fontWeight: '900' }}>RF: {asset.rf_code}</span>
                   <span style={{ marginLeft: '6px' }}>📋</span>
                 </div>
               )}
 
-              {/* ΚΟΥΜΠΙ ΠΛΗΡΩΜΗΣ */}
-              <Link 
-                href={`/transactions/new?type=expense&category=Πάγια&assetId=${asset.id}`}
+              {/* ΔΙΟΡΘΩΜΕΝΟ LINK: Στέλνει στη σελίδα add-expense όπως στις Καρτέλες */}
+              <button 
+                onClick={() => router.push(`/add-expense?assetId=${asset.id}&cat=fixed`)}
                 style={payBtnStyle}
               >
                 ΚΑΤΑΧΩΡΗΣΗ ΠΛΗΡΩΜΗΣ →
-              </Link>
+              </button>
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginLeft: '10px' }}>
@@ -201,7 +183,7 @@ const inputStyle: any = { width: '100%', padding: '14px', borderRadius: '14px', 
 const saveBtn: any = { width: '100%', padding: '16px', color: 'white', border: 'none', borderRadius: '14px', fontWeight: '900', fontSize: '15px', cursor: 'pointer' };
 const badgeStyle: any = { fontSize: '9px', fontWeight: '800', backgroundColor: '#f1f5f9', padding: '4px 8px', borderRadius: '6px', color: '#64748b' };
 const rfBadgeStyle: any = { display: 'inline-flex', alignItems: 'center', padding: '6px 10px', backgroundColor: '#eff6ff', borderRadius: '8px', color: '#2563eb', border: '1px solid #dbeafe', marginTop: '6px', cursor: 'pointer' };
-const payBtnStyle: any = { display: 'inline-block', marginTop: '12px', fontSize: '10px', fontWeight: '900', color: '#059669', textDecoration: 'none', backgroundColor: '#f0fdf4', padding: '8px 12px', borderRadius: '10px', border: '1px solid #bbf7d0' };
+const payBtnStyle: any = { display: 'inline-block', marginTop: '12px', fontSize: '10px', fontWeight: '900', color: '#059669', textDecoration: 'none', backgroundColor: '#f0fdf4', padding: '8px 12px', borderRadius: '10px', border: '1px solid #bbf7d0', cursor: 'pointer' };
 const editBtnSmall: any = { backgroundColor: '#fef3c7', color: '#d97706', border: 'none', padding: '10px', borderRadius: '12px', cursor: 'pointer', fontSize: '16px' };
 const delBtnSmall: any = { backgroundColor: '#fee2e2', color: '#ef4444', border: 'none', padding: '10px', borderRadius: '12px', cursor: 'pointer', fontSize: '16px' };
 
