@@ -32,16 +32,50 @@ function PayEmployeeContent() {
   const [workedDays, setWorkedDays] = useState<number>(1) 
   const [dailyRateInput, setDailyRateInput] = useState<number>(50) 
 
-  // EXTRA ΠΑΡΟΧΕΣ (Κοινά και για τους δύο τύπους)
+  // EXTRA ΠΑΡΟΧΕΣ
   const [overtime, setOvertime] = useState<string>('')
   const [bonus, setBonus] = useState<string>('')
   const [gifts, setGifts] = useState<string>('')
+  const [pendingOtIds, setPendingOtIds] = useState<string[]>([]) // Για τον μηδενισμό
 
   // ΛΟΓΙΣΤΙΚΑ STATES
   const [accountingPayroll, setAccountingPayroll] = useState<string>('') 
   const [date, setDate] = useState(new Date().toISOString().split('T')[0])
   const [loading, setLoading] = useState(true)
   const [userData, setUserData] = useState({ store_id: '', username: '' })
+
+  const loadData = useCallback(async () => {
+    try {
+      setLoading(true)
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.user) return
+      const { data: profile } = await supabase.from('profiles').select('store_id, username').eq('id', session.user.id).maybeSingle()
+      if (profile) setUserData({ store_id: profile.store_id, username: profile.username || 'Admin' })
+
+      if (empId) {
+        const [empRes, otRes] = await Promise.all([
+          supabase.from('employees').select('monthly_salary, monthly_days, pay_basis, daily_rate').eq('id', empId).maybeSingle(),
+          supabase.from('employee_overtimes').select('id, hours').eq('employee_id', empId).eq('is_paid', false)
+        ])
+
+        if (empRes.data) {
+          const emp = empRes.data;
+          setAgreementType(emp.pay_basis || 'monthly');
+          setAgreementSalary(emp.monthly_salary || 1000);
+          setAgreementDays(emp.monthly_days || 26);
+          setDailyRateInput(emp.daily_rate || 50);
+        }
+
+        if (otRes.data && otRes.data.length > 0) {
+          const totalHours = otRes.data.reduce((acc, curr) => acc + Number(curr.hours), 0);
+          setOvertime(totalHours.toString()); // Αυτόματη συμπλήρωση ωρών
+          setPendingOtIds(otRes.data.map(ot => ot.id));
+        }
+      }
+    } catch (err) { console.error(err) } finally { setLoading(false) }
+  }, [empId])
+
+  useEffect(() => { loadData() }, [loadData])
 
   // ΔΥΝΑΜΙΚΟΙ ΥΠΟΛΟΓΙΣΜΟΙ
   const calculateBase = () => {
@@ -56,26 +90,6 @@ function PayEmployeeContent() {
   const totalEarnings = calculateBase() + (Number(overtime) || 0) + (Number(bonus) || 0) + (Number(gifts) || 0);
   const bankAmount = Number(accountingPayroll) || 0;
   const autoCashAmount = totalEarnings - bankAmount;
-
-  const loadData = useCallback(async () => {
-    try {
-      setLoading(true)
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session?.user) return
-      const { data: profile } = await supabase.from('profiles').select('store_id, username').eq('id', session.user.id).maybeSingle()
-      if (profile) setUserData({ store_id: profile.store_id, username: profile.username || 'Admin' })
-
-      if (empId) {
-        const { data: employee } = await supabase.from('employees').select('monthly_salary, monthly_days').eq('id', empId).maybeSingle()
-        if (employee) {
-          setAgreementSalary(employee.monthly_salary || 1000)
-          setAgreementDays(employee.monthly_days || 26)
-        }
-      }
-    } catch (err) { console.error(err) } finally { setLoading(false) }
-  }, [empId])
-
-  useEffect(() => { loadData() }, [loadData])
 
   async function handlePayment() {
     if (totalEarnings <= 0) return toast.error('Υπολογίστε το ποσό πληρωμής.')
@@ -99,12 +113,21 @@ function PayEmployeeContent() {
       });
     }
 
-    const { error } = await supabase.from('transactions').insert(transactionBatch)
-    if (!error) { 
-      toast.success('Η πληρωμή καταχωρήθηκε!');
+    const { data: transData, error: transError } = await supabase.from('transactions').insert(transactionBatch).select();
+
+    if (!transError) { 
+      // ΜΗΔΕΝΙΣΜΟΣ ΥΠΕΡΩΡΙΩΝ
+      if (pendingOtIds.length > 0) {
+        await supabase
+          .from('employee_overtimes')
+          .update({ is_paid: true, transaction_id: transData[0].id })
+          .in('id', pendingOtIds);
+      }
+
+      toast.success('Η πληρωμή καταχωρήθηκε και οι υπερωρίες μηδενίστηκαν!');
       router.push('/employees');
     } else { 
-      toast.error(error.message); 
+      toast.error(transError.message); 
       setLoading(false); 
     }
   }
@@ -126,7 +149,6 @@ function PayEmployeeContent() {
         </div>
 
         <div style={formCardStyle}>
-          {/* ΤΥΠΟΣ ΑΠΑΣΧΟΛΗΣΗΣ */}
           <div style={{ marginBottom: '20px' }}>
             <label style={subLabel}>ΤΥΠΟΣ ΑΠΑΣΧΟΛΗΣΗΣ</label>
             <div style={{ display: 'flex', gap: '10px' }}>
@@ -135,63 +157,92 @@ function PayEmployeeContent() {
             </div>
           </div>
 
-          {/* ΡΥΘΜΙΣΕΙΣ ΒΑΣΙΚΟΥ */}
           <div style={agreementGrid}>
             {agreementType === 'monthly' ? (
               <>
                 <div style={inputGroup}>
                   <label style={subLabel}>ΣΥΜΦΩΝΙΑ (ΗΜΕΡΕΣ)</label>
                   <select value={agreementDays} onChange={e => setAgreementDays(Number(e.target.value))} style={selectStyle}>
-                    <option value={30}>30 Ημέρες (0 Ρεπό)</option>
-                    <option value={26}>26 Ημέρες (1 Ρεπό)</option>
-                    <option value={22}>22 Ημέρες (2 Ρεπό)</option>
+                    <option value={30}>30 Ημέρες</option>
+                    <option value={26}>26 Ημέρες</option>
+                    <option value={22}>22 Ημέρες</option>
                   </select>
                 </div>
                 <div style={inputGroup}>
                   <label style={subLabel}>ΑΠΟΥΣΙΕΣ (-)</label>
-                  <input type="number" value={absences} onChange={e => setAbsences(Number(e.target.value))} style={smallInput} />
+                  <input 
+                    type="number" value={absences} 
+                    onFocus={(e) => e.target.value === '0' && setAbsences(Number(''))}
+                    onChange={e => setAbsences(Number(e.target.value))} 
+                    style={smallInput} 
+                  />
                 </div>
               </>
             ) : (
               <>
                 <div style={inputGroup}>
                   <label style={subLabel}>ΗΜΕΡΟΜΙΣΘΙΟ (€)</label>
-                  <input type="number" value={dailyRateInput} onChange={e => setDailyRateInput(Number(e.target.value))} style={smallInput} />
+                  <input 
+                    type="number" value={dailyRateInput} 
+                    onFocus={(e) => e.target.value === '0' && setDailyRateInput(Number(''))}
+                    onChange={e => setDailyRateInput(Number(e.target.value))} 
+                    style={smallInput} 
+                  />
                 </div>
                 <div style={inputGroup}>
                   <label style={subLabel}>ΗΜΕΡΕΣ ΕΡΓΑΣΙΑΣ</label>
-                  <input type="number" value={workedDays} onChange={e => setWorkedDays(Number(e.target.value))} style={smallInput} />
+                  <input 
+                    type="number" value={workedDays} 
+                    onFocus={(e) => e.target.value === '0' && setWorkedDays(Number(''))}
+                    onChange={e => setWorkedDays(Number(e.target.value))} 
+                    style={smallInput} 
+                  />
                 </div>
               </>
             )}
           </div>
 
-          {/* EXTRA ΠΑΡΟΧΕΣ */}
           <p style={sectionTitle}>EXTRA ΠΑΡΟΧΕΣ (€)</p>
           <div style={extraGrid}>
             <div style={inputGroup}>
-              <label style={subLabel}>ΥΠΕΡΩΡΙΕΣ</label>
-              <input type="number" value={overtime} onChange={e => setOvertime(e.target.value)} style={smallInput} placeholder="0" />
+              <label style={{...subLabel, color: pendingOtIds.length > 0 ? colors.accentRed : colors.secondaryText}}>
+                {pendingOtIds.length > 0 ? 'ΥΠΕΡΩΡΙΕΣ (ΑΥΤΟΜΑΤΟ)' : 'ΥΠΕΡΩΡΙΕΣ'}
+              </label>
+              <input 
+                type="number" value={overtime} 
+                onFocus={(e) => e.target.value === '0' && setOvertime('')}
+                onChange={e => setOvertime(e.target.value)} 
+                style={{...smallInput, borderColor: pendingOtIds.length > 0 ? colors.accentRed : colors.border}} 
+                placeholder="0" 
+              />
             </div>
             <div style={inputGroup}>
               <label style={subLabel}>BONUS</label>
-              <input type="number" value={bonus} onChange={e => setBonus(e.target.value)} style={smallInput} placeholder="0" />
+              <input 
+                type="number" value={bonus} 
+                onFocus={(e) => e.target.value === '0' && setBonus('')}
+                onChange={e => setBonus(e.target.value)} 
+                style={smallInput} placeholder="0" 
+              />
             </div>
             <div style={inputGroup}>
               <label style={subLabel}>ΔΩΡΑ</label>
-              <input type="number" value={gifts} onChange={e => setGifts(e.target.value)} style={smallInput} placeholder="0" />
+              <input 
+                type="number" value={gifts} 
+                onFocus={(e) => e.target.value === '0' && setGifts('')}
+                onChange={e => setGifts(e.target.value)} 
+                style={smallInput} placeholder="0" 
+              />
             </div>
           </div>
 
-          {/* ΜΙΣΘΟΔΟΣΙΑ ΛΟΓΙΣΤΗ */}
           <div style={accountingBox}>
             <label style={{ fontSize: '10px', fontWeight: '900', color: colors.accentBlue }}>📄 ΜΙΣΘΟΔΟΣΙΑ ΛΟΓΙΣΤΗ (ΤΡΑΠΕΖΑ)</label>
             <input 
-              type="number" 
-              value={accountingPayroll} 
+              type="number" value={accountingPayroll} 
+              onFocus={(e) => e.target.value === '0' && setAccountingPayroll('')}
               onChange={e => setAccountingPayroll(e.target.value)} 
-              placeholder="Ποσό τράπεζας"
-              style={accountingInput}
+              placeholder="Ποσό τράπεζας" style={accountingInput}
             />
           </div>
 
@@ -220,7 +271,7 @@ function PayEmployeeContent() {
   )
 }
 
-// STYLES
+// STYLES (Παραμένουν τα ίδια όπως τα έστειλες)
 const iphoneWrapper: any = { backgroundColor: colors.bgLight, minHeight: '100dvh', padding: '20px', position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, overflowY: 'auto' };
 const headerStyle: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' };
 const logoBoxStyle: any = { width: '42px', height: '42px', backgroundColor: '#e0f2fe', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px' };
