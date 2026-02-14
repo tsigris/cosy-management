@@ -5,10 +5,12 @@ import { useEffect, useState, Suspense } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import * as XLSX from 'xlsx' // Προσθήκη για το Excel
 
 function SettingsContent() {
   const router = useRouter()
   const [loading, setLoading] = useState(true)
+  const [isExporting, setIsExporting] = useState(false) // State για την εξαγωγή
   const [showContact, setShowContact] = useState(false)
 
   const [formData, setFormData] = useState({
@@ -24,7 +26,6 @@ function SettingsContent() {
 
   useEffect(() => {
     fetchProfile()
-    // Καθαρισμός των ρυθμίσεων από τη συσκευή αφού δεν τις θέλουμε πια
     localStorage.removeItem('fleet_track_pin')
     localStorage.removeItem('fleet_track_pin_enabled')
     localStorage.removeItem('fleet_track_biometrics')
@@ -51,6 +52,47 @@ function SettingsContent() {
         }
       }
     } catch (err) { console.error(err) } finally { setLoading(false) }
+  }
+
+  // --- ΣΥΝΑΡΤΗΣΗ ΕΞΑΓΩΓΗΣ EXCEL ---
+  const handleExportAll = async () => {
+    setIsExporting(true)
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      const { data: profile } = await supabase.from('profiles').select('store_id').eq('id', user?.id).single()
+
+      if (!profile?.store_id) throw new Error('Δεν βρέθηκε κατάστημα')
+
+      // Τραβάμε όλα τα δεδομένα
+      const [trans, sups, assets, emps] = await Promise.all([
+        supabase.from('transactions').select('*').eq('store_id', profile.store_id),
+        supabase.from('suppliers').select('*').eq('store_id', profile.store_id),
+        supabase.from('fixed_assets').select('*').eq('store_id', profile.store_id),
+        supabase.from('employees').select('*').eq('store_id', profile.store_id)
+      ])
+
+      const wb = XLSX.utils.book_new()
+
+      const addSheet = (data: any[] | null, name: string) => {
+        if (data && data.length > 0) {
+          const ws = XLSX.utils.json_to_sheet(data)
+          XLSX.utils.book_append_sheet(wb, ws, name)
+        }
+      }
+
+      addSheet(trans.data, "Συναλλαγές")
+      addSheet(sups.data, "Προμηθευτές")
+      addSheet(assets.data, "Πάγια")
+      addSheet(emps.data, "Υπάλληλοι")
+
+      const fileName = `Cosy_Backup_${new Date().toISOString().split('T')[0]}.xlsx`
+      XLSX.writeFile(wb, fileName)
+      alert('Το Excel κατέβηκε επιτυχώς!')
+    } catch (error: any) {
+      alert('Σφάλμα εξαγωγής: ' + error.message)
+    } finally {
+      setIsExporting(false)
+    }
   }
 
   async function handleSave() {
@@ -82,7 +124,6 @@ function SettingsContent() {
   return (
     <div style={{ maxWidth: '500px', margin: '0 auto', fontFamily: 'sans-serif' }}>
       
-      {/* HEADER */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '25px', paddingTop: '15px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <div style={logoBoxStyle}>⚙️</div>
@@ -96,7 +137,6 @@ function SettingsContent() {
 
       <div style={mainCardStyle}>
         
-        {/* ΠΡΟΣΩΠΙΚΑ ΣΤΟΙΧΕΙΑ */}
         <p style={sectionLabel}>ΠΡΟΣΩΠΙΚΑ ΣΤΟΙΧΕΙΑ</p>
         <div style={infoBoxStyle}>
           <label style={labelStyle}>👤 ΤΟ ΟΝΟΜΑ ΣΑΣ (ΥΠΟΓΡΑΦΗ)</label>
@@ -115,7 +155,6 @@ function SettingsContent() {
 
         <div style={divider} />
 
-        {/* ΣΤΟΙΧΕΙΑ ΕΠΙΧΕΙΡΗΣΗΣ */}
         <p style={sectionLabel}>ΣΤΟΙΧΕΙΑ ΕΠΙΧΕΙΡΗΣΗΣ</p>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginBottom: '15px' }}>
           <div>
@@ -152,9 +191,17 @@ function SettingsContent() {
         <button onClick={handleSave} disabled={loading} style={saveBtnStyle}>
           {loading ? 'ΑΠΟΘΗΚΕΥΣΗ...' : 'ΕΝΗΜΕΡΩΣΗ ΡΥΘΜΙΣΕΩΝ'}
         </button>
+
+        {/* ΝΕΟ ΚΟΥΜΠΙ EXCEL */}
+        <button 
+          onClick={handleExportAll} 
+          disabled={isExporting} 
+          style={{ ...saveBtnStyle, backgroundColor: '#059669', marginTop: '12px' }}
+        >
+          {isExporting ? 'ΠΡΟΕΤΟΙΜΑΣΙΑ...' : '📥 ΕΞΑΓΩΓΗ ΣΕ EXCEL (.xlsx)'}
+        </button>
       </div>
 
-      {/* SUPPORT */}
       {!showContact ? (
         <button onClick={() => setShowContact(true)} style={deleteLinkStyle}>Υποστήριξη & Διαγραφή Επιχείρησης</button>
       ) : (
@@ -168,7 +215,7 @@ function SettingsContent() {
   )
 }
 
-// --- STYLES (Ακριβώς όπως τα είχες) ---
+// --- STYLES ---
 const logoBoxStyle: any = { width: '42px', height: '42px', backgroundColor: '#f1f5f9', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' };
 const backBtnStyle: any = { textDecoration: 'none', color: '#94a3b8', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#fff', borderRadius: '10px', border: '1px solid #e2e8f0' };
 const mainCardStyle: any = { backgroundColor: 'white', padding: '24px', borderRadius: '28px', border: '1px solid #f1f5f9', boxShadow: '0 4px 12px rgba(0,0,0,0.02)', marginBottom: '20px' };
