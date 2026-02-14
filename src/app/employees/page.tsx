@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
 import { toast, Toaster } from 'sonner'
-import { Eye, EyeOff, Power } from 'lucide-react'
+import { Eye, EyeOff, Power, Coins } from 'lucide-react'
 
 // --- ΠΑΛΕΤΑ ΧΡΩΜΑΤΩΝ ---
 const colors = {
@@ -35,12 +35,24 @@ function EmployeesContent() {
   const [payBasis, setPayBasis] = useState<'monthly' | 'daily'>('monthly')
   const [viewYear, setViewYear] = useState(new Date().getFullYear())
 
-  // ✅ ΝΕΟ: Toggle εμφάνισης ανενεργών
+  // Active / Inactive
   const [showInactive, setShowInactive] = useState(false)
 
-  // States για το modal υπερωρίας
+  // Modal υπερωρίας
   const [otModal, setOtModal] = useState<{ empId: string; name: string } | null>(null)
   const [otHours, setOtHours] = useState('')
+
+  // Quick Tips
+  const [tipModal, setTipModal] = useState<{ empId: string; name: string } | null>(null)
+  const [tipAmount, setTipAmount] = useState('')
+
+  // Tips Analysis (Dashboard section)
+  const [tipsStats, setTipsStats] = useState({
+    dailyTips: 0,
+    monthlyTips: 0,
+    lastTips: [] as Array<{ id: string; name: string; date: string; amount: number }>
+  })
+  const [showTipsList, setShowTipsList] = useState(false)
 
   const availableYears: number[] = []
   for (let y = 2024; y <= new Date().getFullYear(); y++) {
@@ -58,6 +70,62 @@ function EmployeesContent() {
     start_date: new Date().toISOString().split('T')[0]
   })
 
+  // ✅ Tips stats fetcher
+  const getTipsStats = useCallback(async () => {
+    try {
+      if (!storeId) return
+
+      const { data, error } = await supabase
+        .from('transactions')
+        .select('id,date,notes,employee_id,employees(full_name)')
+        .eq('store_id', storeId)
+        .ilike('notes', '%tips%')
+        .order('date', { ascending: false })
+        .limit(500)
+
+      if (error) {
+        console.error(error)
+        return
+      }
+
+      const today = new Date()
+      const todayStr = today.toISOString().split('T')[0]
+      const currentMonth = today.getMonth()
+      const currentYear = today.getFullYear()
+
+      let dailyTips = 0
+      let monthlyTips = 0
+
+      const mapped = (data || []).map((t: any) => {
+        const note = String(t.notes || '')
+        const m = note.replace(',', '.').match(/[\d.]+/)
+        const amount = m ? parseFloat(m[0]) : 0
+
+        const d = new Date(t.date)
+        const isToday = t.date === todayStr
+        const isThisMonth = d.getFullYear() === currentYear && d.getMonth() === currentMonth
+
+        if (isToday) dailyTips += amount
+        if (isThisMonth) monthlyTips += amount
+
+        return {
+          id: t.id,
+          name: t?.employees?.full_name || '—',
+          date: t.date,
+          amount
+        }
+      })
+
+      setTipsStats({
+        dailyTips,
+        monthlyTips,
+        lastTips: mapped.slice(0, 5)
+      })
+    } catch (e) {
+      console.error(e)
+    }
+  }, [storeId])
+
   const fetchInitialData = useCallback(async () => {
     setLoading(true)
     try {
@@ -74,6 +142,7 @@ function EmployeesContent() {
 
       if (profile?.store_id) {
         setStoreId(profile.store_id)
+
         const [empsRes, transRes, otRes] = await Promise.all([
           supabase.from('employees').select('*').eq('store_id', profile.store_id).order('full_name'),
           supabase
@@ -104,12 +173,14 @@ function EmployeesContent() {
     fetchInitialData()
   }, [fetchInitialData])
 
-  // ✅ ΝΕΟ: Φιλτράρισμα λίστας βάσει showInactive
-  const visibleEmployees = showInactive
-    ? employees
-    : employees.filter((e) => e.is_active !== false) // null/undefined => ενεργός
+  useEffect(() => {
+    if (storeId) getTipsStats()
+  }, [storeId, getTipsStats])
 
-  // ✅ ΝΕΟ: Toggle ενεργός/ανενεργός (Supabase update)
+  // Φιλτράρισμα λίστας βάσει showInactive
+  const visibleEmployees = showInactive ? employees : employees.filter((e) => e.is_active !== false)
+
+  // Toggle Active/Inactive
   async function toggleActive(empId: string, currentValue: boolean | null | undefined) {
     const nextValue = currentValue === false ? true : false
 
@@ -130,9 +201,7 @@ function EmployeesContent() {
 
   // Υπολογισμός εκκρεμών ωρών
   const getPendingOtHours = (empId: string) => {
-    return overtimes
-      .filter((ot) => ot.employee_id === empId)
-      .reduce((acc, curr) => acc + Number(curr.hours), 0)
+    return overtimes.filter((ot) => ot.employee_id === empId).reduce((acc, curr) => acc + Number(curr.hours), 0)
   }
 
   // Καταγραφή νέας υπερωρίας
@@ -155,36 +224,41 @@ function EmployeesContent() {
     }
   }
 
-  const getCurrentMonthRemaining = (emp: any) => {
-    const now = new Date()
-    const currentMonthTrans = transactions.filter(
-      (t) =>
-        t.employee_id === emp.id &&
-        new Date(t.date).getMonth() === now.getMonth() &&
-        new Date(t.date).getFullYear() === now.getFullYear()
-    )
+  // ✅ Καταγραφή νέων Tips σαν transaction
+  async function handleQuickTip() {
+    if (!tipAmount || !tipModal) return
 
-    let totalPaid = 0
-    let extraEarnings = 0
-    const processedDates = new Set()
+    const amountNum = Number(tipAmount)
+    if (Number.isNaN(amountNum) || amountNum <= 0) {
+      toast.error('Βάλε έγκυρο ποσό tips.')
+      return
+    }
 
-    currentMonthTrans.forEach((t) => {
-      totalPaid += Number(t.amount) || 0
-      if (!processedDates.has(t.date)) {
-        const note = t.notes || ''
-        const extract = (label: string) => {
-          const regex = new RegExp(`${label}:\\s*(\\d+(\\.\\d+)?)`, 'i')
-          const match = note.match(regex)
-          return match ? parseFloat(match[1]) : 0
-        }
-        extraEarnings += extract('Υπερ.') + extract('Bonus') + extract('Δώρο') + extract('Επίδ.')
-        processedDates.add(t.date)
+    const today = new Date().toISOString().split('T')[0]
+
+    const { error } = await supabase.from('transactions').insert([
+      {
+        store_id: storeId,
+        employee_id: tipModal.empId,
+        amount: 0,
+        type: 'expense',
+        category: 'Προσωπικό',
+        method: 'Μετρητά',
+        date: today,
+        notes: `Tips: ${amountNum}€ [${tipModal.name}]`
       }
-    })
+    ])
 
-    const baseSalary =
-      emp.pay_basis === 'daily' ? Number(emp.daily_rate) || 0 : Number(emp.monthly_salary) || 0
-    return baseSalary + extraEarnings - totalPaid
+    if (error) {
+      toast.error('Αποτυχία καταγραφής tips.')
+      return
+    }
+
+    toast.success(`Καταγράφηκαν Tips ${amountNum}€ για ${tipModal.name}`)
+    setTipModal(null)
+    setTipAmount('')
+    fetchInitialData()
+    getTipsStats()
   }
 
   const getDaysUntilPayment = (hireDateStr: string) => {
@@ -195,35 +269,45 @@ function EmployeesContent() {
     hireDate.setHours(0, 0, 0, 0)
     let nextPayDate = new Date(hireDate)
     nextPayDate.setMonth(nextPayDate.getMonth() + 1)
-    while (nextPayDate <= today) {
-      nextPayDate.setMonth(nextPayDate.getMonth() + 1)
-    }
+    while (nextPayDate <= today) nextPayDate.setMonth(nextPayDate.getMonth() + 1)
     const diffTime = nextPayDate.getTime() - today.getTime()
     return Math.ceil(diffTime / (1000 * 60 * 60 * 24))
   }
 
+  // ✅ UPDATED getYearlyStats: περιλαμβάνει tips
   const getYearlyStats = (id: string) => {
-    const yearTrans = transactions.filter(
-      (t) => t.employee_id === id && new Date(t.date).getFullYear() === viewYear
-    )
-    let stats = { base: 0, overtime: 0, bonus: 0, total: 0 }
+    const yearTrans = transactions.filter((t) => t.employee_id === id && new Date(t.date).getFullYear() === viewYear)
+
+    let stats = { base: 0, overtime: 0, bonus: 0, tips: 0, total: 0 }
     const processedDates = new Set()
 
     yearTrans.forEach((t) => {
       stats.total += Number(t.amount) || 0
+
       if (!processedDates.has(t.date)) {
-        const note = t.notes || ''
+        const note = String(t.notes || '')
+
         const extract = (label: string) => {
           const regex = new RegExp(`${label}:\\s*(\\d+(\\.\\d+)?)`, 'i')
           const match = note.match(regex)
           return match ? parseFloat(match[1]) : 0
         }
+
         stats.base += extract('Βασικός')
         stats.overtime += extract('Υπερ.')
         stats.bonus += extract('Bonus')
+
+        // Tips: 10€ (case-insensitive) - extract first number like requested
+        if (/tips/i.test(note)) {
+          const m = note.replace(',', '.').match(/[\d.]+/)
+          const tip = m ? parseFloat(m[0]) : 0
+          stats.tips += tip
+        }
+
         processedDates.add(t.date)
       }
     })
+
     return stats
   }
 
@@ -245,7 +329,6 @@ function EmployeesContent() {
       store_id: storeId
     }
 
-    // ✅ ΝΕΟ: στο create να μπαίνει is_active = true by default
     if (!editingId) payload.is_active = true
 
     const { error } = editingId
@@ -299,26 +382,53 @@ function EmployeesContent() {
     <div style={iphoneWrapper}>
       <Toaster position="top-center" richColors />
       <div style={{ maxWidth: '500px', margin: '0 auto', paddingBottom: '100px' }}>
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            marginBottom: '25px'
-          }}
-        >
+        {/* HEADER */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
             <div style={logoBoxStyle}>👥</div>
-            <h1 style={{ fontWeight: '800', fontSize: '22px', margin: 0, color: colors.primaryDark }}>
-              Υπάλληλοι
-            </h1>
+            <h1 style={{ fontWeight: '800', fontSize: '22px', margin: 0, color: colors.primaryDark }}>Υπάλληλοι</h1>
           </div>
           <Link href="/" style={backBtnStyle}>
             ✕
           </Link>
         </div>
 
-        {/* MODAL ΓΙΑ ΓΡΗΓΟΡΗ ΥΠΕΡΩΡΙΑ */}
+        {/* ✅ TIPS MODAL */}
+        {tipModal && (
+          <div style={modalOverlay}>
+            <div style={modalCard}>
+              <h3 style={{ margin: 0, fontSize: '16px' }}>Καταγραφή Tips</h3>
+              <p style={{ fontSize: '12px', color: colors.secondaryText }}>{tipModal.name}</p>
+              <input
+                type="number"
+                placeholder="Ποσό tips (π.χ. 10)"
+                value={tipAmount}
+                onFocus={(e) => {
+                  if (e.target.value === '0') setTipAmount('')
+                }}
+                onChange={(e) => setTipAmount(e.target.value)}
+                style={{ ...inputStyle, marginTop: '15px', textAlign: 'center', fontSize: '24px' }}
+                autoFocus
+              />
+              <div style={{ display: 'flex', gap: '10px', marginTop: '20px' }}>
+                <button
+                  onClick={() => {
+                    setTipModal(null)
+                    setTipAmount('')
+                  }}
+                  style={cancelBtnSmall}
+                >
+                  ΑΚΥΡΟ
+                </button>
+                <button onClick={handleQuickTip} style={saveBtnSmall}>
+                  ΠΡΟΣΘΗΚΗ
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* OT MODAL */}
         {otModal && (
           <div style={modalOverlay}>
             <div style={modalCard}>
@@ -347,8 +457,8 @@ function EmployeesContent() {
           </div>
         )}
 
-        {/* ✅ ΝΕΟ: Add + Toggle showInactive δίπλα */}
-        <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
+        {/* ADD + SHOW INACTIVE */}
+        <div style={{ display: 'flex', gap: '10px', marginBottom: '14px' }}>
           <button
             onClick={() => {
               if (isAdding) resetForm()
@@ -363,33 +473,69 @@ function EmployeesContent() {
             onClick={() => setShowInactive((v) => !v)}
             style={iconToggleBtn}
             title={showInactive ? 'Απόκρυψη ανενεργών' : 'Εμφάνιση ανενεργών'}
-            aria-label={showInactive ? 'Hide inactive employees' : 'Show inactive employees'}
           >
             {showInactive ? <EyeOff size={18} /> : <Eye size={18} />}
           </button>
         </div>
 
+        {/* ✅ TIPS ANALYSIS */}
+        <div style={tipsRow}>
+          <div style={tipsCard}>
+            <div style={tipsHeader}>
+              <Coins size={18} />
+              <span style={tipsTitle}>TODAY TIPS</span>
+            </div>
+            <div style={tipsValue}>{tipsStats.dailyTips.toFixed(2)}€</div>
+          </div>
+
+          <div style={tipsCard}>
+            <div style={tipsHeader}>
+              <Coins size={18} />
+              <span style={tipsTitle}>MONTH TIPS</span>
+            </div>
+            <div style={tipsValue}>{tipsStats.monthlyTips.toFixed(2)}€</div>
+            <button onClick={() => setShowTipsList((v) => !v)} style={tipsListBtn}>
+              {showTipsList ? 'Hide List' : 'View List'}
+            </button>
+          </div>
+        </div>
+
+        {showTipsList && (
+          <div style={tipsListWrap}>
+            {tipsStats.lastTips.length === 0 ? (
+              <p style={{ margin: 0, fontSize: '12px', color: colors.secondaryText, fontWeight: 700 }}>
+                Δεν υπάρχουν tips καταγραφές.
+              </p>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {tipsStats.lastTips.map((t) => (
+                  <div key={t.id} style={tipsListItem}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px' }}>
+                      <span style={{ fontWeight: 900, color: colors.primaryDark, fontSize: '12px' }}>{t.name}</span>
+                      <span style={{ fontWeight: 900, color: '#b45309', fontSize: '12px' }}>{t.amount.toFixed(2)}€</span>
+                    </div>
+                    <span style={{ fontSize: '10px', color: colors.secondaryText, fontWeight: 800 }}>
+                      {new Date(t.date).toLocaleDateString('el-GR')}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* FORM */}
         {isAdding && (
           <div style={{ ...formCard, borderColor: editingId ? '#f59e0b' : colors.primaryDark }}>
             <label style={labelStyle}>Ονοματεπώνυμο *</label>
-            <input
-              value={formData.full_name}
-              onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
-              style={inputStyle}
-            />
+            <input value={formData.full_name} onChange={(e) => setFormData({ ...formData, full_name: e.target.value })} style={inputStyle} />
 
             <label style={{ ...labelStyle, marginTop: '16px' }}>Τύπος Συμφωνίας</label>
             <div style={{ display: 'flex', gap: '10px', marginBottom: '16px' }}>
-              <button
-                onClick={() => setPayBasis('monthly')}
-                style={payBasis === 'monthly' ? activeToggle : inactiveToggle}
-              >
+              <button onClick={() => setPayBasis('monthly')} style={payBasis === 'monthly' ? activeToggle : inactiveToggle}>
                 ΜΗΝΙΑΙΟΣ
               </button>
-              <button
-                onClick={() => setPayBasis('daily')}
-                style={payBasis === 'daily' ? activeToggle : inactiveToggle}
-              >
+              <button onClick={() => setPayBasis('daily')} style={payBasis === 'daily' ? activeToggle : inactiveToggle}>
                 ΗΜΕΡΟΜΙΣΘΙΟ
               </button>
             </div>
@@ -402,11 +548,7 @@ function EmployeesContent() {
                   inputMode="decimal"
                   value={payBasis === 'monthly' ? formData.monthly_salary : formData.daily_rate}
                   onFocus={(e) => {
-                    if (e.target.value === '0')
-                      setFormData({
-                        ...formData,
-                        [payBasis === 'monthly' ? 'monthly_salary' : 'daily_rate']: ''
-                      } as any)
+                    if (e.target.value === '0') setFormData({ ...formData, [payBasis === 'monthly' ? 'monthly_salary' : 'daily_rate']: '' } as any)
                   }}
                   onChange={(e) =>
                     setFormData({
@@ -420,22 +562,13 @@ function EmployeesContent() {
               </div>
               <div style={{ flex: 1 }}>
                 <label style={labelStyle}>Ημ. Πρόσληψης</label>
-                <input
-                  type="date"
-                  value={formData.start_date}
-                  onChange={(e) => setFormData({ ...formData, start_date: e.target.value })}
-                  style={inputStyle}
-                />
+                <input type="date" value={formData.start_date} onChange={(e) => setFormData({ ...formData, start_date: e.target.value })} style={inputStyle} />
               </div>
             </div>
 
             <div style={{ marginTop: '16px' }}>
               <label style={labelStyle}>Τράπεζα Υπαλλήλου</label>
-              <select
-                value={formData.bank_name}
-                onChange={(e) => setFormData({ ...formData, bank_name: e.target.value })}
-                style={inputStyle}
-              >
+              <select value={formData.bank_name} onChange={(e) => setFormData({ ...formData, bank_name: e.target.value })} style={inputStyle}>
                 <option value="Εθνική Τράπεζα">Εθνική Τράπεζα</option>
                 <option value="Eurobank">Eurobank</option>
                 <option value="Alpha Bank">Alpha Bank</option>
@@ -446,32 +579,19 @@ function EmployeesContent() {
 
             <div style={{ marginTop: '16px' }}>
               <label style={labelStyle}>IBAN Υπαλλήλου</label>
-              <input
-                value={formData.iban}
-                onChange={(e) => setFormData({ ...formData, iban: e.target.value.toUpperCase() })}
-                placeholder="GR00 0000 0000..."
-                style={inputStyle}
-              />
+              <input value={formData.iban} onChange={(e) => setFormData({ ...formData, iban: e.target.value.toUpperCase() })} placeholder="GR00 0000 0000..." style={inputStyle} />
             </div>
 
-            <button
-              onClick={handleSave}
-              disabled={loading}
-              style={{
-                ...saveBtnStyle,
-                backgroundColor: editingId ? '#f59e0b' : colors.primaryDark
-              }}
-            >
+            <button onClick={handleSave} disabled={loading} style={{ ...saveBtnStyle, backgroundColor: editingId ? '#f59e0b' : colors.primaryDark }}>
               {loading ? 'ΓΙΝΕΤΑΙ ΑΠΟΘΗΚΕΥΣΗ...' : editingId ? 'ΕΝΗΜΕΡΩΣΗ ΣΤΟΙΧΕΙΩΝ' : 'ΑΠΟΘΗΚΕΥΣΗ'}
             </button>
           </div>
         )}
 
+        {/* LIST */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '10px' }}>
-          {/* ✅ ΝΕΟ: map visibleEmployees */}
           {visibleEmployees.map((emp) => {
             const yearlyStats = getYearlyStats(emp.id)
-            const monthlyRem = getCurrentMonthRemaining(emp)
             const isSelected = selectedEmpId === emp.id
             const daysLeft = getDaysUntilPayment(emp.start_date)
             const pendingOt = getPendingOtHours(emp.id)
@@ -487,18 +607,10 @@ function EmployeesContent() {
               >
                 <div
                   onClick={() => setSelectedEmpId(isSelected ? null : emp.id)}
-                  style={{
-                    padding: '18px',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center'
-                  }}
+                  style={{ padding: '18px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
                 >
                   <div style={{ flex: 1 }}>
-                    <p style={{ fontWeight: '700', color: colors.primaryDark, fontSize: '16px', margin: 0 }}>
-                      {emp.full_name.toUpperCase()}
-                    </p>
+                    <p style={{ fontWeight: '700', color: colors.primaryDark, fontSize: '16px', margin: 0 }}>{emp.full_name.toUpperCase()}</p>
                     <div style={{ marginTop: '6px', display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
                       <span
                         style={{
@@ -509,17 +621,12 @@ function EmployeesContent() {
                       >
                         {daysLeft === 0 ? 'ΣΗΜΕΡΑ 💰' : `ΣΕ ${daysLeft} ΗΜΕΡΕΣ 📅`}
                       </span>
-                      {pendingOt > 0 && (
-                        <span style={{ ...badgeStyle, backgroundColor: '#fff7ed', color: '#c2410c' }}>⏱️ {pendingOt} ΩΡΕΣ</span>
-                      )}
-                      {isInactive && (
-                        <span style={{ ...badgeStyle, backgroundColor: '#fef2f2', color: colors.accentRed }}>ΑΝΕΝΕΡΓΟΣ</span>
-                      )}
+                      {pendingOt > 0 && <span style={{ ...badgeStyle, backgroundColor: '#fff7ed', color: '#c2410c' }}>⏱️ {pendingOt} ΩΡΕΣ</span>}
+                      {isInactive && <span style={{ ...badgeStyle, backgroundColor: '#fef2f2', color: colors.accentRed }}>ΑΝΕΝΕΡΓΟΣ</span>}
                     </div>
                   </div>
 
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    {/* ✅ ΝΕΟ: Power button για toggleActive */}
                     <button
                       onClick={(e) => {
                         e.stopPropagation()
@@ -532,29 +639,35 @@ function EmployeesContent() {
                         color: isInactive ? colors.accentRed : colors.accentGreen
                       }}
                       title={isInactive ? 'Ενεργοποίηση' : 'Απενεργοποίηση'}
-                      aria-label={isInactive ? 'Activate employee' : 'Deactivate employee'}
                     >
                       <Power size={16} />
                     </button>
 
-                    {/* ✅ ΝΕΟ: Αν ανενεργός, κρύβουμε το quick overtime */}
                     {!isInactive && (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          setOtModal({ empId: emp.id, name: emp.full_name })
-                        }}
-                        style={quickOtBtn}
-                      >
-                        + ⏱️
-                      </button>
+                      <>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setOtModal({ empId: emp.id, name: emp.full_name })
+                          }}
+                          style={quickOtBtn}
+                        >
+                          + ⏱️
+                        </button>
+
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setTipModal({ empId: emp.id, name: emp.full_name })
+                          }}
+                          style={quickTipBtn}
+                        >
+                          +💰 Tips
+                        </button>
+                      </>
                     )}
 
-                    <Link
-                      href={`/pay-employee?id=${emp.id}&name=${emp.full_name}`}
-                      onClick={(e) => e.stopPropagation()}
-                      style={payBtnStyle}
-                    >
+                    <Link href={`/pay-employee?id=${emp.id}&name=${emp.full_name}`} onClick={(e) => e.stopPropagation()} style={payBtnStyle}>
                       ΠΛΗΡΩΜΗ
                     </Link>
                   </div>
@@ -565,9 +678,7 @@ function EmployeesContent() {
                     <div style={{ marginBottom: '20px', padding: '12px', backgroundColor: colors.slate100, borderRadius: '12px', fontSize: '12px' }}>
                       <p style={{ margin: '0 0 5px 0', fontWeight: '800', color: colors.secondaryText }}>ΣΤΟΙΧΕΙΑ ΠΛΗΡΩΜΗΣ</p>
                       <p style={{ margin: 0, fontWeight: '700' }}>🏦 {emp.bank_name || 'Δεν ορίστηκε'}</p>
-                      <p style={{ margin: '3px 0 0 0', fontWeight: '600', color: colors.accentBlue, fontSize: '11px' }}>
-                        {emp.iban || 'Δεν ορίστηκε IBAN'}
-                      </p>
+                      <p style={{ margin: '3px 0 0 0', fontWeight: '600', color: colors.accentBlue, fontSize: '11px' }}>{emp.iban || 'Δεν ορίστηκε IBAN'}</p>
                       {pendingOt > 0 && (
                         <p style={{ margin: '8px 0 0 0', fontWeight: '800', color: '#c2410c', fontSize: '11px' }}>
                           ⚠️ ΕΚΚΡΕΜΟΥΝ: {pendingOt} ώρες υπερωρίας
@@ -586,6 +697,7 @@ function EmployeesContent() {
                       </select>
                     </div>
 
+                    {/* ✅ Stats grid with tips */}
                     <div style={statsGrid}>
                       <div style={statBox}>
                         <p style={statLabel}>ΒΑΣΙΚΟΣ ({viewYear})</p>
@@ -599,12 +711,19 @@ function EmployeesContent() {
                         <p style={statLabel}>ΥΠΕΡΩΡΙΕΣ ({viewYear})</p>
                         <p style={statValue}>{yearlyStats.overtime.toFixed(2)}€</p>
                       </div>
+
+                      <div style={statBox}>
+                        <p style={statLabel}>TIPS ({viewYear})</p>
+                        <p style={statValue}>{yearlyStats.tips.toFixed(2)}€</p>
+                      </div>
+
                       <div style={{ ...statBox, backgroundColor: colors.primaryDark }}>
                         <p style={{ ...statLabel, color: '#94a3b8' }}>ΣΥΝΟΛΟ ΕΤΟΥΣ</p>
                         <p style={{ ...statValue, color: colors.accentGreen }}>{yearlyStats.total.toFixed(2)}€</p>
                       </div>
                     </div>
 
+                    {/* ΙΣΤΟΡΙΚΟ (όπως ήταν) */}
                     <p style={historyTitle}>ΙΣΤΟΡΙΚΟ ΠΛΗΡΩΜΩΝ {viewYear}</p>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '20px' }}>
                       {transactions
@@ -612,9 +731,7 @@ function EmployeesContent() {
                         .map((t) => (
                           <div key={t.id} style={historyItemExtended}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                              <span style={{ color: colors.secondaryText, fontWeight: '700', fontSize: '11px' }}>
-                                {new Date(t.date).toLocaleDateString('el-GR')}
-                              </span>
+                              <span style={{ color: colors.secondaryText, fontWeight: '700', fontSize: '11px' }}>{new Date(t.date).toLocaleDateString('el-GR')}</span>
                               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                                 <span>{t.method === 'Τράπεζα' ? '🏦' : '💵'}</span>
                                 <span style={{ fontWeight: '800', color: colors.primaryDark }}>{Number(t.amount).toFixed(2)}€</span>
@@ -668,233 +785,52 @@ function EmployeesContent() {
 }
 
 // --- STYLES ---
-const iphoneWrapper: any = {
-  backgroundColor: colors.bgLight,
-  minHeight: '100dvh',
-  padding: '20px',
-  overflowY: 'auto',
-  position: 'absolute',
-  top: 0,
-  left: 0,
-  right: 0,
-  bottom: 0
-}
-const logoBoxStyle: any = {
-  width: '42px',
-  height: '42px',
-  backgroundColor: '#dbeafe',
-  borderRadius: '12px',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  fontSize: '20px'
-}
-const backBtnStyle: any = {
-  textDecoration: 'none',
-  color: colors.secondaryText,
-  fontSize: '18px',
-  fontWeight: 'bold',
-  width: '38px',
-  height: '38px',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  backgroundColor: colors.white,
-  borderRadius: '12px',
-  border: `1px solid ${colors.border}`
-}
-const payBtnStyle: any = {
-  backgroundColor: colors.accentBlue,
-  color: 'white',
-  padding: '8px 14px',
-  borderRadius: '10px',
-  fontSize: '10px',
-  fontWeight: '800',
-  textDecoration: 'none',
-  boxShadow: '0 4px 8px rgba(37, 99, 235, 0.2)'
-}
-const addBtn: any = {
-  width: '100%',
-  padding: '16px',
-  backgroundColor: colors.primaryDark,
-  color: 'white',
-  border: 'none',
-  borderRadius: '16px',
-  fontWeight: '700',
-  fontSize: '14px',
-  marginBottom: '20px'
-}
+const iphoneWrapper: any = { backgroundColor: colors.bgLight, minHeight: '100dvh', padding: '20px', overflowY: 'auto', position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }
+const logoBoxStyle: any = { width: '42px', height: '42px', backgroundColor: '#dbeafe', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px' }
+const backBtnStyle: any = { textDecoration: 'none', color: colors.secondaryText, fontSize: '18px', fontWeight: 'bold', width: '38px', height: '38px', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: colors.white, borderRadius: '12px', border: `1px solid ${colors.border}` }
+const payBtnStyle: any = { backgroundColor: colors.accentBlue, color: 'white', padding: '8px 14px', borderRadius: '10px', fontSize: '10px', fontWeight: '800', textDecoration: 'none', boxShadow: '0 4px 8px rgba(37, 99, 235, 0.2)' }
+const addBtn: any = { width: '100%', padding: '16px', backgroundColor: colors.primaryDark, color: 'white', border: 'none', borderRadius: '16px', fontWeight: '700', fontSize: '14px', marginBottom: '20px' }
 const cancelBtn: any = { ...addBtn, backgroundColor: colors.white, color: colors.secondaryText, border: `1px solid ${colors.border}` }
-const formCard: any = {
-  backgroundColor: colors.white,
-  padding: '24px',
-  borderRadius: '24px',
-  border: '2px solid',
-  marginBottom: '25px',
-  boxShadow: '0 4px 12px rgba(0,0,0,0.05)'
-}
-const labelStyle: any = {
-  fontSize: '10px',
-  fontWeight: '800',
-  color: colors.secondaryText,
-  display: 'block',
-  marginBottom: '6px',
-  textTransform: 'uppercase'
-}
-const inputStyle: any = {
-  width: '100%',
-  padding: '14px',
-  borderRadius: '12px',
-  border: `1px solid ${colors.border}`,
-  fontSize: '15px',
-  fontWeight: '700',
-  backgroundColor: colors.bgLight,
-  boxSizing: 'border-box',
-  outline: 'none'
-}
-const saveBtnStyle: any = {
-  width: '100%',
-  color: 'white',
-  padding: '16px',
-  borderRadius: '14px',
-  border: 'none',
-  fontWeight: '800',
-  fontSize: '15px',
-  marginTop: '20px'
-}
-const employeeCard: any = {
-  backgroundColor: colors.white,
-  borderRadius: '22px',
-  border: `1px solid ${colors.border}`,
-  overflow: 'hidden',
-  marginBottom: '12px'
-}
+const formCard: any = { backgroundColor: colors.white, padding: '24px', borderRadius: '24px', border: '2px solid', marginBottom: '25px', boxShadow: '0 4px 12px rgba(0,0,0,0.05)' }
+const labelStyle: any = { fontSize: '10px', fontWeight: '800', color: colors.secondaryText, display: 'block', marginBottom: '6px', textTransform: 'uppercase' }
+const inputStyle: any = { width: '100%', padding: '14px', borderRadius: '12px', border: `1px solid ${colors.border}`, fontSize: '15px', fontWeight: '700', backgroundColor: colors.bgLight, boxSizing: 'border-box', outline: 'none' }
+const saveBtnStyle: any = { width: '100%', color: 'white', padding: '16px', borderRadius: '14px', border: 'none', fontWeight: '800', fontSize: '15px', marginTop: '20px' }
+const employeeCard: any = { backgroundColor: colors.white, borderRadius: '22px', border: `1px solid ${colors.border}`, overflow: 'hidden', marginBottom: '12px' }
 const badgeStyle: any = { fontSize: '9px', fontWeight: '700', padding: '4px 10px', borderRadius: '6px' }
-const filterContainer: any = {
-  display: 'flex',
-  gap: '8px',
-  marginBottom: '15px',
-  padding: '8px',
-  backgroundColor: colors.slate100,
-  borderRadius: '12px'
-}
-const filterSelect: any = {
-  padding: '6px',
-  borderRadius: '8px',
-  border: `1px solid ${colors.border}`,
-  backgroundColor: colors.white,
-  fontSize: '12px',
-  fontWeight: '800'
-}
+const filterContainer: any = { display: 'flex', gap: '8px', marginBottom: '15px', padding: '8px', backgroundColor: colors.slate100, borderRadius: '12px' }
+const filterSelect: any = { padding: '6px', borderRadius: '8px', border: `1px solid ${colors.border}`, backgroundColor: colors.white, fontSize: '12px', fontWeight: '800' }
 const statsGrid: any = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '25px' }
 const statBox: any = { padding: '15px', backgroundColor: colors.slate100, borderRadius: '16px', textAlign: 'center' }
 const statLabel: any = { margin: 0, fontSize: '8px', fontWeight: '800', color: colors.secondaryText }
 const statValue: any = { margin: '4px 0 0', fontSize: '16px', fontWeight: '900', color: colors.primaryDark }
 const historyTitle: any = { fontSize: '9px', fontWeight: '800', color: colors.secondaryText, marginBottom: '12px', textTransform: 'uppercase' }
-const historyItemExtended: any = {
-  padding: '12px',
-  borderRadius: '14px',
-  border: `1px solid ${colors.border}`,
-  backgroundColor: colors.bgLight,
-  marginBottom: '8px'
-}
+const historyItemExtended: any = { padding: '12px', borderRadius: '14px', border: `1px solid ${colors.border}`, backgroundColor: colors.bgLight, marginBottom: '8px' }
 const transDeleteBtn: any = { background: 'none', border: 'none', cursor: 'pointer', fontSize: '12px', opacity: 0.5 }
-const editBtn: any = {
-  flex: 3,
-  background: '#fffbeb',
-  border: `1px solid #fef3c7`,
-  padding: '12px',
-  borderRadius: '10px',
-  cursor: 'pointer',
-  fontSize: '11px',
-  fontWeight: '700',
-  color: '#92400e'
-}
-const deleteBtn: any = {
-  flex: 2,
-  background: '#fef2f2',
-  border: `1px solid #fee2e2`,
-  padding: '12px',
-  borderRadius: '10px',
-  cursor: 'pointer',
-  fontSize: '11px',
-  fontWeight: '700',
-  color: colors.accentRed
-}
-const activeToggle: any = {
-  flex: 1,
-  padding: '12px',
-  backgroundColor: colors.primaryDark,
-  color: 'white',
-  border: 'none',
-  borderRadius: '10px',
-  fontWeight: 'bold',
-  fontSize: '11px',
-  cursor: 'pointer'
-}
-const inactiveToggle: any = {
-  flex: 1,
-  padding: '12px',
-  backgroundColor: '#f1f5f9',
-  color: colors.secondaryText,
-  border: 'none',
-  borderRadius: '10px',
-  fontWeight: 'bold',
-  fontSize: '11px',
-  cursor: 'pointer'
-}
+const editBtn: any = { flex: 3, background: '#fffbeb', border: `1px solid #fef3c7`, padding: '12px', borderRadius: '10px', cursor: 'pointer', fontSize: '11px', fontWeight: '700', color: '#92400e' }
+const deleteBtn: any = { flex: 2, background: '#fef2f2', border: `1px solid #fee2e2`, padding: '12px', borderRadius: '10px', cursor: 'pointer', fontSize: '11px', fontWeight: '700', color: colors.accentRed }
+const activeToggle: any = { flex: 1, padding: '12px', backgroundColor: colors.primaryDark, color: 'white', border: 'none', borderRadius: '10px', fontWeight: 'bold', fontSize: '11px', cursor: 'pointer' }
+const inactiveToggle: any = { flex: 1, padding: '12px', backgroundColor: '#f1f5f9', color: colors.secondaryText, border: 'none', borderRadius: '10px', fontWeight: 'bold', fontSize: '11px', cursor: 'pointer' }
 
-// ΝΕΑ STYLES ΓΙΑ ΤΟ TRACKER
-const quickOtBtn: any = {
-  backgroundColor: '#fffbeb',
-  color: '#92400e',
-  border: '1px solid #fcd34d',
-  padding: '10px 12px',
-  borderRadius: '10px',
-  fontSize: '11px',
-  fontWeight: '800',
-  cursor: 'pointer'
-}
-const modalOverlay: any = {
-  position: 'fixed',
-  top: 0,
-  left: 0,
-  right: 0,
-  bottom: 0,
-  backgroundColor: 'rgba(0,0,0,0.6)',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  zIndex: 1000,
-  padding: '20px'
-}
+const quickOtBtn: any = { backgroundColor: '#fffbeb', color: '#92400e', border: '1px solid #fcd34d', padding: '10px 12px', borderRadius: '10px', fontSize: '11px', fontWeight: '800', cursor: 'pointer' }
+const quickTipBtn: any = { backgroundColor: '#ecfeff', color: '#0e7490', border: '1px solid #67e8f9', padding: '10px 12px', borderRadius: '10px', fontSize: '11px', fontWeight: '800', cursor: 'pointer' }
+
+const modalOverlay: any = { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px' }
 const modalCard: any = { backgroundColor: 'white', padding: '25px', borderRadius: '25px', width: '100%', maxWidth: '350px', textAlign: 'center' }
 const saveBtnSmall: any = { flex: 1, padding: '14px', backgroundColor: colors.primaryDark, color: 'white', border: 'none', borderRadius: '12px', fontWeight: '700' }
 const cancelBtnSmall: any = { flex: 1, padding: '14px', backgroundColor: 'white', color: colors.secondaryText, border: `1px solid ${colors.border}`, borderRadius: '12px', fontWeight: '700' }
 
-// ✅ ΝΕΟ: Styles για τα icon buttons
-const iconToggleBtn: any = {
-  width: '56px',
-  borderRadius: '16px',
-  border: `1px solid ${colors.border}`,
-  backgroundColor: colors.white,
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  cursor: 'pointer',
-  boxShadow: '0 4px 12px rgba(0,0,0,0.04)'
-}
+const iconToggleBtn: any = { width: '56px', borderRadius: '16px', border: `1px solid ${colors.border}`, backgroundColor: colors.white, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', boxShadow: '0 4px 12px rgba(0,0,0,0.04)' }
+const powerBtn: any = { width: '38px', height: '38px', borderRadius: '12px', border: `1px solid ${colors.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }
 
-const powerBtn: any = {
-  width: '38px',
-  height: '38px',
-  borderRadius: '12px',
-  border: `1px solid ${colors.border}`,
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  cursor: 'pointer'
-}
+// ✅ Tips analysis styles (orange theme)
+const tipsRow: any = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '14px' }
+const tipsCard: any = { backgroundColor: '#fffbeb', border: '1px solid #f59e0b', borderRadius: '16px', padding: '14px', boxShadow: '0 4px 12px rgba(0,0,0,0.04)', position: 'relative' }
+const tipsHeader: any = { display: 'flex', alignItems: 'center', gap: '8px', color: '#b45309', fontWeight: 900 }
+const tipsTitle: any = { fontSize: '10px', letterSpacing: '0.08em' }
+const tipsValue: any = { marginTop: '8px', fontSize: '20px', fontWeight: 900, color: colors.primaryDark }
+const tipsListBtn: any = { marginTop: '10px', width: '100%', padding: '10px', borderRadius: '12px', border: '1px solid #f59e0b', backgroundColor: '#fff7ed', color: '#b45309', fontWeight: 900, fontSize: '11px', cursor: 'pointer' }
+const tipsListWrap: any = { backgroundColor: colors.white, border: `1px solid ${colors.border}`, borderRadius: '16px', padding: '14px', marginBottom: '18px' }
+const tipsListItem: any = { padding: '10px', borderRadius: '12px', border: `1px solid ${colors.border}`, backgroundColor: colors.bgLight }
 
 export default function EmployeesPage() {
   return (
