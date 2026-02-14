@@ -84,9 +84,9 @@ function AddExpenseForm() {
         { 
           name: newSupName, 
           phone: newSupPhone, 
-          vat_number: newSupAfm, // Συγχρονισμένο με τη βάση σου
+          vat_number: newSupAfm, 
           iban: newSupIban,
-          category: 'Εμπορεύματα', // Αυτόματη κατηγορία
+          category: 'Εμπορεύματα', // Αυτόματη απόδοση κατηγορίας
           store_id: storeId 
         }
       ]).select().single();
@@ -97,8 +97,6 @@ function AddExpenseForm() {
       setSelectedSup(data.id);
       setSearchTerm(data.name);
       setIsSupModalOpen(false);
-      
-      // Reset fields
       setNewSupName(''); setNewSupPhone(''); setNewSupAfm(''); setNewSupIban('');
       
       toast.success('Ο προμηθευτής προστέθηκε!');
@@ -138,11 +136,13 @@ function AddExpenseForm() {
       <Toaster position="top-center" richColors />
       
       <div style={formCardStyle}>
+        
+        {/* HEADER: ΝΕΟΣ ΤΙΤΛΟΣ ΚΑΙ ΕΙΚΟΝΙΔΙΟ */}
         <div style={headerRow}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div style={{ ...logoBoxStyle, backgroundColor: '#fef2f2' }}>💸</div>
+            <div style={{ ...logoBoxStyle, backgroundColor: '#f0fdf4' }}>🛒</div>
             <div>
-              <h1 style={titleStyle}>{isAgainstDebt ? 'Εξόφληση Χρέους' : 'Νέο Έξοδο'}</h1>
+              <h1 style={titleStyle}>{isAgainstDebt ? 'Εξόφληση Χρέους' : 'Προσθήκη Δαπάνης'}</h1>
               <p style={dateSubtitle}>{new Date(selectedDate).toLocaleDateString('el-GR', { day: 'numeric', month: 'long' }).toUpperCase()}</p>
             </div>
           </div>
@@ -224,6 +224,7 @@ function AddExpenseForm() {
         </button>
       </div>
 
+      {/* MODAL ΝΕΟΥ ΠΡΟΜΗΘΕΥΤΗ */}
       {isSupModalOpen && (
         <div style={modalOverlay}>
           <div style={modalCard}>
