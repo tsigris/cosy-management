@@ -45,7 +45,7 @@ function EmployeesContent() {
   const [tipModal, setTipModal] = useState<{ empId: string; name: string } | null>(null)
   const [tipAmount, setTipAmount] = useState('')
 
-  // ✅ Tips Edit (edit existing tip)
+  // Tips Edit (edit existing tip)
   const [tipEditModal, setTipEditModal] = useState<{ id: string; name: string; amount: number } | null>(null)
   const [tipEditAmount, setTipEditAmount] = useState('')
 
@@ -77,7 +77,7 @@ function EmployeesContent() {
 
       const { data, error } = await supabase
         .from('transactions')
-        .select('id,date,notes,employee_id,employees(full_name)')
+        .select('id,date,notes,employee_id,amount,employees(full_name)')
         .eq('store_id', storeId)
         .ilike('notes', '%tips%')
         .order('date', { ascending: false })
@@ -96,8 +96,15 @@ function EmployeesContent() {
 
       const mapped = (data || []).map((t: any) => {
         const note = String(t.notes || '')
-        const m = note.replace(',', '.').match(/[\d.]+/)
-        const amount = m ? parseFloat(m[0]) : 0
+        const isTip = /tips/i.test(note)
+
+        // ✅ ΠΡΟΤΕΡΑΙΟΤΗΤΑ: amount από DB (για να δείχνει σωστά στο ιστορικό)
+        // backup: αν παλιά tips έχουν amount=0, τότε παίρνουμε από το note
+        let amount = Number(t.amount) || 0
+        if (isTip && amount === 0) {
+          const m = note.replace(',', '.').match(/[\d.]+/)
+          amount = m ? parseFloat(m[0]) : 0
+        }
 
         const d = new Date(t.date)
         const isThisMonth = d.getFullYear() === currentYear && d.getMonth() === currentMonth
@@ -219,6 +226,7 @@ function EmployeesContent() {
   }
 
   // ✅ Καταγραφή νέων Tips σαν transaction
+  // ✅ ΔΙΟΡΘΩΣΗ: amount = amountNum ώστε στο ιστορικό να δείχνει σωστά 10€ (όχι 0€)
   async function handleQuickTip() {
     if (!tipAmount || !tipModal) return
 
@@ -234,7 +242,7 @@ function EmployeesContent() {
       {
         store_id: storeId,
         employee_id: tipModal.empId,
-        amount: 0,
+        amount: amountNum,
         type: 'expense',
         category: 'Προσωπικό',
         method: 'Μετρητά',
@@ -255,7 +263,7 @@ function EmployeesContent() {
     getTipsStats()
   }
 
-  // ✅ Επεξεργασία υπάρχοντος Tip (αλλάζει το notes)
+  // ✅ Επεξεργασία υπάρχοντος Tip (αλλάζει notes + amount)
   async function handleEditTipSave() {
     if (!tipEditModal) return
     const amountNum = Number(tipEditAmount)
@@ -268,6 +276,7 @@ function EmployeesContent() {
     const { error } = await supabase
       .from('transactions')
       .update({
+        amount: amountNum,
         notes: `Tips: ${amountNum}€ [${tipEditModal.name}]`
       })
       .eq('id', tipEditModal.id)
@@ -312,7 +321,7 @@ function EmployeesContent() {
     return Math.ceil(diffTime / (1000 * 60 * 60 * 24))
   }
 
-  // ✅ UPDATED getYearlyStats: περιλαμβάνει tips
+  // ✅ UPDATED getYearlyStats: tips από amount (και fallback από note για παλιά entries)
   const getYearlyStats = (id: string) => {
     const yearTrans = transactions.filter((t) => t.employee_id === id && new Date(t.date).getFullYear() === viewYear)
 
@@ -336,9 +345,14 @@ function EmployeesContent() {
         stats.bonus += extract('Bonus')
 
         if (/tips/i.test(note)) {
-          const m = note.replace(',', '.').match(/[\d.]+/)
-          const tip = m ? parseFloat(m[0]) : 0
-          stats.tips += tip
+          const amt = Number(t.amount) || 0
+          if (amt > 0) {
+            stats.tips += amt
+          } else {
+            const m = note.replace(',', '.').match(/[\d.]+/)
+            const tip = m ? parseFloat(m[0]) : 0
+            stats.tips += tip
+          }
         }
 
         processedDates.add(t.date)
@@ -577,6 +591,7 @@ function EmployeesContent() {
                         <span style={{ fontSize: '10px', color: colors.secondaryText, fontWeight: 800 }}>
                           {new Date(t.date).toLocaleDateString('el-GR')}
                         </span>
+                        <span style={{ fontSize: '10px', color: '#b45309', fontWeight: 900 }}>Tips</span>
                       </div>
 
                       <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -593,11 +608,7 @@ function EmployeesContent() {
                           <Pencil size={16} />
                         </button>
 
-                        <button
-                          style={miniIconBtnDanger}
-                          title="Διαγραφή"
-                          onClick={() => deleteTipTransaction(t.id)}
-                        >
+                        <button style={miniIconBtnDanger} title="Διαγραφή" onClick={() => deleteTipTransaction(t.id)}>
                           <Trash2 size={16} />
                         </button>
                       </div>
@@ -795,23 +806,28 @@ function EmployeesContent() {
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '20px' }}>
                       {transactions
                         .filter((t) => t.employee_id === emp.id && new Date(t.date).getFullYear() === viewYear)
-                        .map((t) => (
-                          <div key={t.id} style={historyItemExtended}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                              <span style={{ color: colors.secondaryText, fontWeight: '700', fontSize: '11px' }}>{new Date(t.date).toLocaleDateString('el-GR')}</span>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                <span>{t.method === 'Τράπεζα' ? '🏦' : '💵'}</span>
-                                <span style={{ fontWeight: '800', color: colors.primaryDark }}>{Number(t.amount).toFixed(2)}€</span>
-                                <button onClick={() => deleteTransaction(t.id)} style={transDeleteBtn}>
-                                  🗑️
-                                </button>
+                        .map((t) => {
+                          const isTip = /tips/i.test(t.notes || '')
+                          const note = String(t.notes || '')
+                          const noteLabel = isTip ? note.split('[')[0]?.trim() || 'Tips' : (note.split('[')[1]?.replace(']', '') || 'Πληρωμή')
+                          return (
+                            <div key={t.id} style={historyItemExtended}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <span style={{ color: colors.secondaryText, fontWeight: '700', fontSize: '11px' }}>{new Date(t.date).toLocaleDateString('el-GR')}</span>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                  <span>{t.method === 'Τράπεζα' ? '🏦' : '💵'}</span>
+                                  <span style={{ fontWeight: '800', color: colors.primaryDark }}>{Number(t.amount).toFixed(2)}€</span>
+                                  <button onClick={() => deleteTransaction(t.id)} style={transDeleteBtn}>
+                                    🗑️
+                                  </button>
+                                </div>
                               </div>
+                              <p style={{ margin: '4px 0 0', fontSize: '10px', color: isTip ? '#b45309' : colors.secondaryText, fontStyle: 'italic', fontWeight: isTip ? 900 : 600 }}>
+                                {noteLabel}
+                              </p>
                             </div>
-                            <p style={{ margin: '4px 0 0', fontSize: '10px', color: colors.secondaryText, fontStyle: 'italic' }}>
-                              {t.notes?.split('[')[1]?.replace(']', '') || 'Πληρωμή'}
-                            </p>
-                          </div>
-                        ))}
+                          )
+                        })}
                     </div>
 
                     <div style={{ display: 'flex', gap: '10px' }}>
