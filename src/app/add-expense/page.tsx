@@ -42,6 +42,7 @@ function AddExpenseForm() {
   const [selectedSup, setSelectedSup] = useState(urlSupId || '')
   const [selectedFixed, setSelectedFixed] = useState(urlAssetId || '')
 
+  // States για το Modal Νέου Προμηθευτή
   const [isSupModalOpen, setIsSupModalOpen] = useState(false)
   const [newSupName, setNewSupName] = useState('')
   const [newSupPhone, setNewSupPhone] = useState('')
@@ -74,6 +75,7 @@ function AddExpenseForm() {
     s.name.toLowerCase().includes(searchTerm.toLowerCase())
   )
 
+  // ΛΕΙΤΟΥΡΓΙΑ ΓΡΗΓΟΡΗΣ ΠΡΟΣΘΗΚΗΣ ΠΡΟΜΗΘΕΥΤΗ
   async function handleQuickAddSupplier() {
     if (!newSupName) return toast.error('Δώστε όνομα προμηθευτή');
     if (!storeId) return toast.error('Σφάλμα καταστήματος');
@@ -83,7 +85,7 @@ function AddExpenseForm() {
         { 
           name: newSupName, 
           phone: newSupPhone, 
-          afm: newSupAfm, 
+          vat_number: newSupAfm, // Χρήση vat_number όπως στη βάση σου
           iban: newSupIban,
           category: newSupCategory,
           store_id: storeId 
@@ -96,9 +98,13 @@ function AddExpenseForm() {
       setSelectedSup(data.id);
       setSearchTerm(data.name);
       setIsSupModalOpen(false);
+      
       setNewSupName(''); setNewSupPhone(''); setNewSupAfm(''); setNewSupIban(''); setNewSupCategory('Εμπορεύματα');
       toast.success('Ο προμηθευτής προστέθηκε!');
-    } catch (err: any) { toast.error(err.message); }
+    } catch (err: any) { 
+        console.error(err);
+        toast.error(err.message); 
+    }
   }
 
   async function handleSave() {
@@ -219,6 +225,7 @@ function AddExpenseForm() {
         </button>
       </div>
 
+      {/* MODAL ΝΕΟΥ ΠΡΟΜΗΘΕΥΤΗ */}
       {isSupModalOpen && (
         <div style={modalOverlay}>
           <div style={modalCard}>
@@ -265,6 +272,7 @@ function AddExpenseForm() {
   )
 }
 
+// STYLES
 const formCardStyle = { maxWidth: '500px', margin: '0 auto', backgroundColor: colors.white, borderRadius: '28px', padding: '24px', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' };
 const headerRow = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' };
 const titleStyle = { fontWeight: '800', fontSize: '18px', margin: 0, color: colors.primaryDark };
@@ -282,34 +290,7 @@ const plusBtn = { width: '48px', height: '48px', backgroundColor: colors.accentB
 const saveBtn = { width: '100%', padding: '18px', color: 'white', border: 'none', borderRadius: '18px', fontWeight: '800', fontSize: '16px', backgroundColor: colors.accentRed, cursor: 'pointer' };
 const dropdownList = { position: 'absolute' as const, top: '100%', left: 0, right: 0, backgroundColor: 'white', border: `1px solid ${colors.border}`, borderRadius: '12px', marginTop: '4px', zIndex: 100, maxHeight: '200px', overflowY: 'auto' as const, boxShadow: '0 8px 20px rgba(0,0,0,0.1)' };
 const dropdownItem = { padding: '14px', borderBottom: `1px solid ${colors.border}`, fontSize: '14px', fontWeight: '700', cursor: 'pointer', color: colors.primaryDark };
-
-// Διορθωμένο modalOverlay για PC
-const modalOverlay: any = { 
-  position: 'fixed', 
-  top: 0, 
-  left: 0, 
-  right: 0, 
-  bottom: 0, 
-  backgroundColor: 'rgba(0,0,0,0.6)', 
-  display: 'flex', 
-  alignItems: 'center', 
-  justifyContent: 'center', 
-  zIndex: 1000, 
-  padding: '20px',
-  backdropFilter: 'blur(2px)'
-};
-
-// Διορθωμένο modalCard για PC (προσθήκη εσωτερικού scroll αν χρειαστεί)
-const modalCard = { 
-  backgroundColor: 'white', 
-  padding: '24px', 
-  borderRadius: '24px', 
-  width: '100%', 
-  maxWidth: '450px', 
-  boxShadow: '0 20px 40px rgba(0,0,0,0.2)', 
-  maxHeight: '90vh', 
-  overflowY: 'auto' as const,
-  scrollbarWidth: 'thin' as const // Για Firefox
-};
+const modalOverlay: any = { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px', backdropFilter: 'blur(2px)' };
+const modalCard = { backgroundColor: 'white', padding: '24px', borderRadius: '24px', width: '100%', maxWidth: '450px', boxShadow: '0 20px 40px rgba(0,0,0,0.2)', maxHeight: '90vh', overflowY: 'auto' as const };
 
 export default function AddExpensePage() { return <Suspense><AddExpenseForm /></Suspense> }
