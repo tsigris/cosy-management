@@ -59,7 +59,12 @@ function AddExpenseForm() {
         setStoreId(profile.store_id)
         
         const [sRes, fRes] = await Promise.all([
-          supabase.from('suppliers').select('*').eq('store_id', profile.store_id).order('name'),
+          // ΔΙΟΡΘΩΣΗ: Φιλτράρουμε μόνο τους ενεργούς (is_active !== false)
+          supabase.from('suppliers')
+            .select('*')
+            .eq('store_id', profile.store_id)
+            .neq('is_active', false) 
+            .order('name'),
           supabase.from('fixed_assets').select('id, name').eq('store_id', profile.store_id).order('name')
         ])
         if (sRes.data) setSuppliers(sRes.data)
@@ -86,8 +91,9 @@ function AddExpenseForm() {
           phone: newSupPhone, 
           vat_number: newSupAfm, 
           iban: newSupIban,
-          category: 'Εμπορεύματα', // Αυτόματη απόδοση κατηγορίας
-          store_id: storeId 
+          category: 'Εμπορεύματα',
+          store_id: storeId,
+          is_active: true // Πάντα ενεργός κατά τη δημιουργία
         }
       ]).select().single();
 
@@ -137,7 +143,6 @@ function AddExpenseForm() {
       
       <div style={formCardStyle}>
         
-        {/* HEADER: ΝΕΟΣ ΤΙΤΛΟΣ ΚΑΙ ΕΙΚΟΝΙΔΙΟ */}
         <div style={headerRow}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <div style={{ ...logoBoxStyle, backgroundColor: '#f0fdf4' }}>🛒</div>
