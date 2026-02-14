@@ -24,7 +24,7 @@ const colors = {
 function EmployeesContent() {
   const router = useRouter()
   const [employees, setEmployees] = useState<any[]>([])
-  const [showInactive, setShowInactive] = useState(false)
+    const [showInactive, setShowInactive] = useState(false)
   const [transactions, setTransactions] = useState<any[]>([])
   const [overtimes, setOvertimes] = useState<any[]>([]) // Νέο state για υπερωρίες
   const [loading, setLoading] = useState(true)
@@ -222,13 +222,12 @@ function EmployeesContent() {
   }
 
   // Filter employees based on showInactive
-  const visibleEmployees = showInactive ? employees : employees.filter(emp => emp.is_active !== false);
+    const visibleEmployees = employees.filter(emp => showInactive ? true : emp.is_active !== false);
 
   return (
     <div style={iphoneWrapper}>
       <Toaster position="top-center" richColors />
       <div style={{ maxWidth: '500px', margin: '0 auto', paddingBottom: '100px' }}>
-        
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
             <div style={logoBoxStyle}>👥</div>
@@ -270,22 +269,18 @@ function EmployeesContent() {
             </div>
           </div>
         )}
-
         <button onClick={() => { if(isAdding) resetForm(); setIsAdding(!isAdding); }} style={isAdding ? cancelBtn : addBtn}>
           {isAdding ? 'ΑΚΥΡΩΣΗ' : '+ ΝΕΟΣ ΥΠΑΛΛΗΛΟΣ'}
         </button>
-
         {isAdding && (
           <div style={{ ...formCard, borderColor: editingId ? '#f59e0b' : colors.primaryDark }}>
             <label style={labelStyle}>Ονοματεπώνυμο *</label>
             <input value={formData.full_name} onChange={e => setFormData({...formData, full_name: e.target.value})} style={inputStyle} />
-            
             <label style={{...labelStyle, marginTop: '16px'}}>Τύπος Συμφωνίας</label>
             <div style={{ display: 'flex', gap: '10px', marginBottom: '16px' }}>
               <button onClick={() => setPayBasis('monthly')} style={payBasis === 'monthly' ? activeToggle : inactiveToggle}>ΜΗΝΙΑΙΟΣ</button>
               <button onClick={() => setPayBasis('daily')} style={payBasis === 'daily' ? activeToggle : inactiveToggle}>ΗΜΕΡΟΜΙΣΘΙΟ</button>
             </div>
-
             <div style={{ display: 'flex', gap: '12px', marginTop: '16px' }}>
               <div style={{ flex: 1 }}>
                 <label style={labelStyle}>{payBasis === 'monthly' ? 'Μισθός (€) *' : 'Ημερομίσθιο (€) *'}</label>
@@ -307,7 +302,6 @@ function EmployeesContent() {
                 <input type="date" value={formData.start_date} onChange={e => setFormData({...formData, start_date: e.target.value})} style={inputStyle} />
               </div>
             </div>
-
             <div style={{ marginTop: '16px' }}>
                 <label style={labelStyle}>Τράπεζα Υπαλλήλου</label>
                 <select 
@@ -322,7 +316,6 @@ function EmployeesContent() {
                     <option value="Viva Wallet">Viva Wallet</option>
                 </select>
             </div>
-
             <div style={{ marginTop: '16px' }}>
                 <label style={labelStyle}>IBAN Υπαλλήλου</label>
                 <input 
@@ -332,13 +325,11 @@ function EmployeesContent() {
                     style={inputStyle} 
                 />
             </div>
-
             <button onClick={handleSave} disabled={loading} style={{...saveBtnStyle, backgroundColor: editingId ? '#f59e0b' : colors.primaryDark}}>
               {loading ? 'ΓΙΝΕΤΑΙ ΑΠΟΘΗΚΕΥΣΗ...' : (editingId ? 'ΕΝΗΜΕΡΩΣΗ ΣΤΟΙΧΕΙΩΝ' : 'ΑΠΟΘΗΚΕΥΣΗ')}
             </button>
           </div>
         )}
-
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '10px' }}>
           {visibleEmployees.map((emp) => {
             const yearlyStats = getYearlyStats(emp.id);
@@ -349,7 +340,7 @@ function EmployeesContent() {
             const inactive = emp.is_active === false;
             return (
               <div key={emp.id} style={{ ...employeeCard, opacity: inactive ? 0.6 : 1 }}>
-                <div onClick={() => setSelectedEmpId(isSelected ? null : emp.id)} style={{ padding: '18px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div onClick={() => setSelectedEmpId(selectedEmpId === emp.id ? null : emp.id)} style={{ padding: '18px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div style={{ flex: 1 }}>
                     <p style={{ fontWeight: '700', color: colors.primaryDark, fontSize: '16px', margin: 0 }}>{emp.full_name.toUpperCase()}</p>
                     <div style={{ marginTop: '6px', display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
@@ -387,7 +378,7 @@ function EmployeesContent() {
                 </div>
                 {isSelected && (
                   <div style={{ backgroundColor: '#ffffff', padding: '18px', borderTop: `1px solid ${colors.border}` }}>
-                    ...existing code...
+                    {/* ...employee details... */}
                   </div>
                 )}
               </div>
@@ -396,7 +387,7 @@ function EmployeesContent() {
         </div>
       </div>
     </div>
-  )
+  );
 }
 
 // --- STYLES ---
