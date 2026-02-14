@@ -22,36 +22,27 @@ function AddExpenseForm() {
 
   const urlSupId = searchParams.get('supId')
   const urlAssetId = searchParams.get('assetId')
-  const isDebtMode = searchParams.get('mode') === 'debt'
-
-  const getBusinessDate = () => {
-    const now = new Date()
-    if (now.getHours() < 7) now.setDate(now.getDate() - 1)
-    return now.toISOString().split('T')[0]
-  }
-
-  const selectedDate = searchParams.get('date') || getBusinessDate()
+  const selectedDate = searchParams.get('date') || new Date().toISOString().split('T')[0]
   
   const [amount, setAmount] = useState('')
   const [method, setMethod] = useState('Μετρητά')
   const [notes, setNotes] = useState('')
   const [isCredit, setIsCredit] = useState(false) 
-  const [isAgainstDebt, setIsAgainstDebt] = useState(isDebtMode)
+  const [isAgainstDebt, setIsAgainstDebt] = useState(searchParams.get('mode') === 'debt')
   const [currentUsername, setCurrentUsername] = useState('Χρήστης')
   const [loading, setLoading] = useState(true)
 
   const [suppliers, setSuppliers] = useState<any[]>([])
   const [fixedAssets, setFixedAssets] = useState<any[]>([])
   const [searchTerm, setSearchTerm] = useState('')
+  const [showDropdown, setShowDropdown] = useState(false)
   const [selectedSup, setSelectedSup] = useState(urlSupId || '')
   const [selectedFixed, setSelectedFixed] = useState(urlAssetId || '')
 
   const loadFormData = useCallback(async () => {
     try {
       const { data: { session } } = await supabase.auth.getSession()
-      if (!session?.user) return
-
-      const { data: profile } = await supabase.from('profiles').select('username, store_id').eq('id', session.user.id).maybeSingle()
+      const { data: profile } = await supabase.from('profiles').select('username, store_id').eq('id', session?.user.id).maybeSingle()
       if (profile?.username) setCurrentUsername(profile.username)
 
       if (profile?.store_id) {
@@ -59,20 +50,14 @@ function AddExpenseForm() {
           supabase.from('suppliers').select('id, name').eq('store_id', profile.store_id).order('name'),
           supabase.from('fixed_assets').select('id, name').eq('store_id', profile.store_id).order('name')
         ])
-        
         if (sRes.data) setSuppliers(sRes.data)
         if (fRes.data) setFixedAssets(fRes.data)
       }
-    } catch (error) {
-      console.error(error)
-    } finally {
-      setLoading(false)
-    }
+    } catch (error) { console.error(error) } finally { setLoading(false) }
   }, [])
 
   useEffect(() => { loadFormData() }, [loadFormData])
 
-  // Φιλτράρισμα προμηθευτών για την αναζήτηση
   const filteredSuppliers = suppliers.filter(s => 
     s.name.toLowerCase().includes(searchTerm.toLowerCase())
   )
@@ -80,15 +65,9 @@ function AddExpenseForm() {
   async function handleSave() {
     if (!amount || Number(amount) <= 0) return alert('Συμπληρώστε το ποσό')
     setLoading(true)
-
     try {
       const { data: { session } } = await supabase.auth.getSession()
       const { data: profile } = await supabase.from('profiles').select('store_id').eq('id', session?.user.id).maybeSingle()
-
-      let category = 'Λοιπά'
-      if (selectedSup) category = 'Εμπορεύματα'
-      else if (selectedFixed) category = 'Πάγια'
-
       const payload = {
         amount: Number(amount),
         method: isCredit ? 'Πίστωση' : method,
@@ -99,24 +78,19 @@ function AddExpenseForm() {
         store_id: profile?.store_id,
         supplier_id: selectedSup || null,
         fixed_asset_id: selectedFixed || null,
-        category: isAgainstDebt ? 'Εξόφληση Χρέους' : category,
+        category: isAgainstDebt ? 'Εξόφληση Χρέους' : (selectedSup ? 'Εμπορεύματα' : (selectedFixed ? 'Πάγια' : 'Λοιπά')),
         created_by_name: currentUsername,
         notes
       }
-
       const { error } = await supabase.from('transactions').insert([payload])
       if (error) throw error
-
       router.push(`/?date=${selectedDate}`)
       router.refresh()
-    } catch (error: any) {
-      alert(error.message)
-      setLoading(false)
-    }
+    } catch (error: any) { alert(error.message); setLoading(false); }
   }
 
   return (
-    <main style={{ backgroundColor: colors.bgLight, minHeight: '100vh', padding: '16px' }}>
+    <main style={{ backgroundColor: colors.bgLight, minHeight: '100vh', padding: '16px', overflowY: 'auto' }}>
       <div style={formCardStyle}>
         
         <div style={headerRow}>
@@ -130,23 +104,14 @@ function AddExpenseForm() {
           <Link href="/" style={backBtnStyle}>✕</Link>
         </div>
 
-        {/* ΜΕΘΟΔΟΣ ΠΛΗΡΩΜΗΣ ΜΕ ΕΙΚΟΝΙΔΙΑ */}
         <div style={{ marginBottom: '24px' }}>
           <label style={labelStyle}>ΜΕΘΟΔΟΣ ΠΛΗΡΩΜΗΣ</label>
           <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
-            <button 
-              onClick={() => {setMethod('Μετρητά'); setIsCredit(false);}}
-              style={{ ...methodBtn, backgroundColor: method === 'Μετρητά' && !isCredit ? colors.primaryDark : colors.white, color: method === 'Μετρητά' && !isCredit ? 'white' : colors.secondaryText }}
-            >
-              <span style={{fontSize: '20px'}}>💵</span>
-              <span>Μετρητά</span>
+            <button onClick={() => {setMethod('Μετρητά'); setIsCredit(false);}} style={{ ...methodBtn, backgroundColor: method === 'Μετρητά' && !isCredit ? colors.primaryDark : colors.white, color: method === 'Μετρητά' && !isCredit ? 'white' : colors.secondaryText }}>
+              <span style={{fontSize: '20px'}}>💵</span><span>Μετρητά</span>
             </button>
-            <button 
-              onClick={() => {setMethod('Τράπεζα'); setIsCredit(false);}}
-              style={{ ...methodBtn, backgroundColor: method === 'Τράπεζα' && !isCredit ? colors.primaryDark : colors.white, color: method === 'Τράπεζα' && !isCredit ? 'white' : colors.secondaryText }}
-            >
-              <span style={{fontSize: '20px'}}>🏛️</span>
-              <span>Τράπεζα</span>
+            <button onClick={() => {setMethod('Τράπεζα'); setIsCredit(false);}} style={{ ...methodBtn, backgroundColor: method === 'Τράπεζα' && !isCredit ? colors.primaryDark : colors.white, color: method === 'Τράπεζα' && !isCredit ? 'white' : colors.secondaryText }}>
+              <span style={{fontSize: '20px'}}>🏛️</span><span>Τράπεζα</span>
             </button>
           </div>
         </div>
@@ -167,23 +132,23 @@ function AddExpenseForm() {
           </div>
         </div>
 
-        {/* ΑΝΑΖΗΤΗΣΗ ΠΡΟΜΗΘΕΥΤΗ ΜΕ + */}
         <div style={{ marginBottom: '20px' }}>
           <label style={labelStyle}>🏭 ΠΡΟΜΗΘΕΥΤΗΣ</label>
           <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
             <div style={{ position: 'relative', flex: 1 }}>
-              <span style={searchIcon}>🔍</span>
               <input 
                 type="text" 
                 placeholder="Αναζήτηση..." 
                 value={searchTerm} 
-                onChange={(e) => setSearchTerm(e.target.value)}
-                style={{ ...inputStyle, paddingLeft: '40px' }}
+                onFocus={() => setShowDropdown(true)}
+                onChange={(e) => {setSearchTerm(e.target.value); setShowDropdown(true);}}
+                style={{ ...inputStyle, paddingRight: '40px' }} 
               />
-              {searchTerm && (
+              <span style={searchIconRight}>🔍</span>
+              {showDropdown && searchTerm && (
                 <div style={dropdownList}>
                   {filteredSuppliers.map(s => (
-                    <div key={s.id} onClick={() => {setSelectedSup(s.id); setSearchTerm(s.name);}} style={dropdownItem}>
+                    <div key={s.id} onClick={() => {setSelectedSup(s.id); setSearchTerm(s.name); setShowDropdown(false);}} style={dropdownItem}>
                       {s.name}
                     </div>
                   ))}
@@ -207,33 +172,33 @@ function AddExpenseForm() {
           <textarea value={notes} onChange={e => setNotes(e.target.value)} style={{ ...inputStyle, height: '80px' }} placeholder="Περιγραφή..." />
         </div>
 
-        <button onClick={handleSave} disabled={loading} style={{ ...saveBtn, backgroundColor: isAgainstDebt ? colors.accentBlue : colors.accentRed }}>
+        <button onClick={handleSave} disabled={loading} style={saveBtn}>
           {loading ? 'ΑΠΟΘΗΚΕΥΣΗ...' : 'ΟΛΟΚΛΗΡΩΣΗ'}
         </button>
+        
+        {/* ΚΕΝΟ ΓΙΑ ΝΑ ΠΑΕΙ ΜΕΧΡΙ ΚΑΤΩ ΣΤΟ ΚΙΝΗΤΟ */}
+        <div style={{ height: '80px' }}></div>
       </div>
     </main>
   )
 }
 
-// --- STYLES ---
-const formCardStyle = { maxWidth: '500px', margin: '0 auto', backgroundColor: colors.white, borderRadius: '28px', padding: '24px', boxShadow: '0 10px 25px rgba(0,0,0,0.05)' };
+const formCardStyle = { maxWidth: '500px', margin: '0 auto', backgroundColor: colors.white, borderRadius: '28px', padding: '24px', paddingBottom: '40px' };
 const headerRow = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' };
 const titleStyle = { fontWeight: '800', fontSize: '18px', margin: 0, color: colors.primaryDark };
 const dateSubtitle = { margin: 0, fontSize: '10px', color: colors.secondaryText, fontWeight: '700' };
 const logoBoxStyle = { width: '45px', height: '45px', borderRadius: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '22px' };
 const backBtnStyle = { textDecoration: 'none', color: colors.secondaryText, width: '35px', height: '35px', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bgLight, borderRadius: '12px' };
-const labelStyle = { fontSize: '10px', fontWeight: '800', color: colors.secondaryText, marginBottom: '8px', display: 'block', letterSpacing: '0.5px' };
-const inputStyle = { width: '100%', padding: '14px', borderRadius: '14px', border: `1px solid ${colors.border}`, fontSize: '15px', fontWeight: '700', outline: 'none', backgroundColor: colors.bgLight };
-const methodBtn: any = { flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', padding: '16px', borderRadius: '18px', border: `1px solid ${colors.border}`, cursor: 'pointer', fontWeight: '700', transition: '0.2s' };
+const labelStyle = { fontSize: '10px', fontWeight: '800', color: colors.secondaryText, marginBottom: '8px', display: 'block' };
+const inputStyle = { width: '100%', padding: '14px', borderRadius: '14px', border: `1px solid ${colors.border}`, fontSize: '15px', fontWeight: '700', outline: 'none', backgroundColor: colors.bgLight, boxSizing: 'border-box' as const };
+const methodBtn: any = { flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', padding: '16px', borderRadius: '18px', border: `1px solid ${colors.border}`, cursor: 'pointer', fontWeight: '700' };
 const creditPanel = { backgroundColor: colors.bgLight, padding: '16px', borderRadius: '18px', marginBottom: '20px' };
 const checkboxStyle = { width: '20px', height: '20px' };
 const checkLabel = { fontSize: '12px', fontWeight: '700', color: colors.primaryDark };
-const searchIcon = { position: 'absolute' as const, left: '14px', top: '50%', transform: 'translateY(-50%)', fontSize: '16px' };
+const searchIconRight = { position: 'absolute' as const, right: '14px', top: '50%', transform: 'translateY(-50%)', fontSize: '16px', color: colors.secondaryText };
 const plusBtn = { width: '48px', height: '48px', backgroundColor: colors.accentBlue, color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '14px', fontSize: '24px', textDecoration: 'none', fontWeight: 'bold' };
-const saveBtn = { width: '100%', padding: '18px', color: 'white', border: 'none', borderRadius: '18px', fontWeight: '800', fontSize: '16px' };
-const dropdownList = { position: 'absolute' as const, top: '100%', left: 0, right: 0, backgroundColor: 'white', border: `1px solid ${colors.border}`, borderRadius: '12px', marginTop: '4px', zIndex: 10, maxHeight: '200px', overflowY: 'auto' as const };
-const dropdownItem = { padding: '12px', borderBottom: `1px solid ${colors.border}`, fontSize: '14px', fontWeight: '600', cursor: 'pointer' };
+const saveBtn = { width: '100%', padding: '18px', color: 'white', border: 'none', borderRadius: '18px', fontWeight: '800', fontSize: '16px', backgroundColor: colors.accentRed };
+const dropdownList = { position: 'absolute' as const, top: '100%', left: 0, right: 0, backgroundColor: 'white', border: `1px solid ${colors.border}`, borderRadius: '12px', marginTop: '4px', zIndex: 100, maxHeight: '200px', overflowY: 'auto' as const, boxShadow: '0 4px 15px rgba(0,0,0,0.1)' };
+const dropdownItem = { padding: '14px', borderBottom: `1px solid ${colors.border}`, fontSize: '14px', fontWeight: '700', cursor: 'pointer', color: colors.primaryDark };
 
-export default function AddExpensePage() {
-  return <Suspense><AddExpenseForm /></Suspense>
-}
+export default function AddExpensePage() { return <Suspense><AddExpenseForm /></Suspense> }
