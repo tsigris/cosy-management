@@ -60,7 +60,7 @@ function AddExpenseForm() {
         setStoreId(profile.store_id)
         
         const [sRes, fRes] = await Promise.all([
-          supabase.from('suppliers').select('id, name').eq('store_id', profile.store_id).order('name'),
+          supabase.from('suppliers').select('*').eq('store_id', profile.store_id).order('name'),
           supabase.from('fixed_assets').select('id, name').eq('store_id', profile.store_id).order('name')
         ])
         if (sRes.data) setSuppliers(sRes.data)
@@ -75,17 +75,17 @@ function AddExpenseForm() {
     s.name.toLowerCase().includes(searchTerm.toLowerCase())
   )
 
-  // ΛΕΙΤΟΥΡΓΙΑ ΓΡΗΓΟΡΗΣ ΠΡΟΣΘΗΚΗΣ ΠΡΟΜΗΘΕΥΤΗ
+  // ΛΕΙΤΟΥΡΓΙΑ ΓΡΗΓΟΡΗΣ ΠΡΟΣΘΗΚΗΣ ΠΡΟΜΗΘΕΥΤΗ (ΠΛΗΡΩΣ ΣΥΜΒΑΤΗ ΜΕ SAAS ΚΑΙ VAT_NUMBER)
   async function handleQuickAddSupplier() {
     if (!newSupName) return toast.error('Δώστε όνομα προμηθευτή');
-    if (!storeId) return toast.error('Σφάλμα καταστήματος');
+    if (!storeId) return toast.error('Σφάλμα: Δεν βρέθηκε το ID καταστήματος');
 
     try {
       const { data, error } = await supabase.from('suppliers').insert([
         { 
           name: newSupName, 
           phone: newSupPhone, 
-          vat_number: newSupAfm, // Χρήση vat_number όπως στη βάση σου
+          vat_number: newSupAfm, // Χρήση vat_number για συμβατότητα με τη σελίδα προμηθευτών
           iban: newSupIban,
           category: newSupCategory,
           store_id: storeId 
@@ -102,8 +102,7 @@ function AddExpenseForm() {
       setNewSupName(''); setNewSupPhone(''); setNewSupAfm(''); setNewSupIban(''); setNewSupCategory('Εμπορεύματα');
       toast.success('Ο προμηθευτής προστέθηκε!');
     } catch (err: any) { 
-        console.error(err);
-        toast.error(err.message); 
+        toast.error('Σφάλμα: ' + err.message); 
     }
   }
 
@@ -138,7 +137,6 @@ function AddExpenseForm() {
       <Toaster position="top-center" richColors />
       
       <div style={formCardStyle}>
-        
         <div style={headerRow}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <div style={{ ...logoBoxStyle, backgroundColor: '#fef2f2' }}>💸</div>
@@ -225,7 +223,6 @@ function AddExpenseForm() {
         </button>
       </div>
 
-      {/* MODAL ΝΕΟΥ ΠΡΟΜΗΘΕΥΤΗ */}
       {isSupModalOpen && (
         <div style={modalOverlay}>
           <div style={modalCard}>
@@ -256,8 +253,8 @@ function AddExpenseForm() {
               <label style={labelStyle}>ΚΑΤΗΓΟΡΙΑ</label>
               <select value={newSupCategory} onChange={e => setNewSupCategory(e.target.value)} style={inputStyle}>
                 <option value="Εμπορεύματα">🛒 Εμπορεύματα</option>
-                <option value="Πάγια">🏢 Πάγια</option>
-                <option value="Λοιπά">📦 Λοιπά</option>
+                <option value="Πάγια">🏢 Πάγια / Λογαριασμοί</option>
+                <option value="Λοιπά">📦 Λοιπά Έξοδα</option>
               </select>
             </div>
             
