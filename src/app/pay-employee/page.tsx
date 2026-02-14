@@ -24,6 +24,7 @@ function PayEmployeeContent() {
   const empId = searchParams.get('id')
   const empName = searchParams.get('name')
 
+  // STATES ΥΠΟΛΟΓΙΣΜΟΥ
   const [agreementType, setAgreementType] = useState('monthly') 
   const [agreementSalary, setAgreementSalary] = useState<number>(1000)
   const [agreementDays, setAgreementDays] = useState<number>(26)
@@ -31,14 +32,16 @@ function PayEmployeeContent() {
   const [workedDays, setWorkedDays] = useState<number>(1) 
   const [dailyRateInput, setDailyRateInput] = useState<number>(50) 
 
+  // EXTRA ΠΑΡΟΧΕΣ
   const [overtimeAmount, setOvertimeAmount] = useState<string>('')
   const [bonus, setBonus] = useState<string>('')
   const [gifts, setGifts] = useState<string>('')
   
-  // NEW: Για την καρτέλα υπερωριών
+  // ΚΑΡΤΕΛΑ ΥΠΕΡΩΡΙΩΝ
   const [overtimeList, setOvertimeList] = useState<any[]>([])
   const [pendingOtIds, setPendingOtIds] = useState<string[]>([])
 
+  // ΛΟΓΙΣΤΙΚΑ STATES
   const [accountingPayroll, setAccountingPayroll] = useState<string>('') 
   const [date, setDate] = useState(new Date().toISOString().split('T')[0])
   const [loading, setLoading] = useState(true)
@@ -69,8 +72,6 @@ function PayEmployeeContent() {
         if (otRes.data) {
           setOvertimeList(otRes.data);
           const totalHours = otRes.data.reduce((acc, curr) => acc + Number(curr.hours), 0);
-          // Εδώ υπολογίζουμε το ποσό (π.χ. 5€ η ώρα ή βάσει ωρομισθίου)
-          // Για το παράδειγμα το αφήνουμε ως ώρες ή το μετατρέπεις σε €
           setOvertimeAmount(totalHours.toString()); 
           setPendingOtIds(otRes.data.map(ot => ot.id));
         }
@@ -80,39 +81,47 @@ function PayEmployeeContent() {
 
   useEffect(() => { loadData() }, [loadData])
 
-  // ΛΕΙΤΟΥΡΓΙΑ ΔΙΑΓΡΑΦΗΣ ΥΠΕΡΩΡΙΑΣ
+  // 1. ΔΙΑΓΡΑΦΗ ΥΠΕΡΩΡΙΑΣ
   async function handleDeleteOvertime(id: string) {
     if (!confirm('Θέλετε να διαγράψετε αυτή την υπερωρία;')) return;
     const { error } = await supabase.from('employee_overtimes').delete().eq('id', id);
     if (!error) {
-      toast.success('Διαγράφηκε');
+      toast.success('Διαγράφηκε επιτυχώς');
       loadData();
     }
   }
 
-  // ΛΕΙΤΟΥΡΓΙΑ ΑΜΕΣΗΣ ΠΛΗΡΩΜΗΣ ΜΕΜΟΝΩΜΕΝΗΣ ΥΠΕΡΩΡΙΑΣ
+  // 2. ΠΛΗΡΩΜΗ ΜΕ ΧΕΙΡΟΚΙΝΗΤΟ ΠΟΣΟ
   async function handlePaySingleOvertime(ot: any) {
-    const hours = Number(ot.hours);
-    const hourlyRate = (agreementSalary / agreementDays / 8) * 1.5; // Παράδειγμα υπολογισμού
-    const amountToPay = hours * (hourlyRate || 5);
+    const manualAmount = window.prompt(`Εισάγετε το ποσό πληρωμής για τις ${ot.hours} ώρες υπερωρίας:`, "0.00");
 
-    if (!confirm(`Πληρωμή ${hours} ωρών (${amountToPay.toFixed(2)}€) τώρα;`)) return;
+    if (manualAmount === null) return; // Ο χρήστης πάτησε άκυρο
+    const finalAmount = Number(manualAmount);
 
-    // 1. Μαρκάρισμα ως πληρωμένη
-    await supabase.from('employee_overtimes').update({ is_paid: true }).eq('id', ot.id);
-    
-    // 2. Εγγραφή στα έξοδα
-    await supabase.from('transactions').insert([{
-      amount: amountToPay,
-      type: 'expense',
-      category: 'Προσωπικό',
-      notes: `Πληρωμή Υπερωρίας: ${empName} (${hours} ώρες)`,
-      store_id: userData.store_id,
-      date: new Date().toISOString().split('T')[0]
-    }]);
+    if (isNaN(finalAmount) || finalAmount <= 0) {
+      return toast.error('Παρακαλώ εισάγετε ένα έγκυρο ποσό.');
+    }
 
-    toast.success('Πληρώθηκε και καταχωρήθηκε στα έξοδα');
-    loadData();
+    try {
+      // Ενημέρωση υπερωρίας
+      await supabase.from('employee_overtimes').update({ is_paid: true }).eq('id', ot.id);
+      
+      // Καταγραφή στα έξοδα
+      await supabase.from('transactions').insert([{
+        amount: finalAmount,
+        type: 'expense',
+        category: 'Προσωπικό',
+        method: 'Μετρητά',
+        notes: `Πληρωμή Υπερωρίας: ${empName} (${ot.hours} ώρες)`,
+        store_id: userData.store_id,
+        date: new Date().toISOString().split('T')[0]
+      }]);
+
+      toast.success(`Πληρώθηκαν ${finalAmount.toFixed(2)}€`);
+      loadData();
+    } catch (err) {
+      toast.error('Σφάλμα κατά την πληρωμή');
+    }
   }
 
   const calculateBase = () => {
@@ -134,6 +143,7 @@ function PayEmployeeContent() {
     
     const breakdown = `Σύνολο: ${totalEarnings.toFixed(2)}€ (Τράπεζα: ${bankAmount}€, Μετρητά: ${autoCashAmount.toFixed(2)}€)`;
     const transactionBatch = [];
+    
     if (bankAmount > 0) {
       transactionBatch.push({
         amount: bankAmount, type: 'expense', category: 'Προσωπικό', method: 'Τράπεζα',
@@ -157,7 +167,10 @@ function PayEmployeeContent() {
       }
       toast.success('Η πληρωμή ολοκληρώθηκε!');
       router.push('/employees');
-    } else { toast.error(transError.message); setLoading(false); }
+    } else { 
+      toast.error(transError.message); 
+      setLoading(false); 
+    }
   }
 
   return (
@@ -177,7 +190,6 @@ function PayEmployeeContent() {
         </div>
 
         <div style={formCardStyle}>
-          {/* ΤΥΠΟΣ ΑΠΑΣΧΟΛΗΣΗΣ κλπ (Όπως τα είχες) */}
           <div style={{ marginBottom: '20px' }}>
             <label style={subLabel}>ΤΥΠΟΣ ΑΠΑΣΧΟΛΗΣΗΣ</label>
             <div style={{ display: 'flex', gap: '10px' }}>
@@ -231,7 +243,7 @@ function PayEmployeeContent() {
             </div>
           </div>
 
-          {/* NEW: ΚΑΡΤΕΛΑ ΥΠΕΡΩΡΙΩΝ (ΙΣΤΟΡΙΚΟ) */}
+          {/* ΚΑΡΤΕΛΑ ΥΠΕΡΩΡΙΩΝ (ΙΣΤΟΡΙΚΟ) */}
           <div style={overtimeCard}>
             <p style={{...sectionTitle, marginTop: 0}}>📋 ΕΚΚΡΕΜΕΙΣ ΥΠΕΡΩΡΙΕΣ ({overtimeList.length})</p>
             {overtimeList.length > 0 ? (
@@ -240,7 +252,7 @@ function PayEmployeeContent() {
                   <div key={ot.id} style={otRow}>
                     <div>
                       <span style={otDate}>{new Date(ot.created_at).toLocaleDateString('el-GR')}</span>
-                      <span style={otHours}>{ot.hours} ώρες</span>
+                      <span style={otHours}>{ot.hours} Ώρες</span>
                     </div>
                     <div style={{ display: 'flex', gap: '8px' }}>
                       <button onClick={() => handlePaySingleOvertime(ot)} style={otPayBtn}>✅ ΠΛΗΡΩΜΗ</button>
@@ -250,7 +262,7 @@ function PayEmployeeContent() {
                 ))}
               </div>
             ) : (
-              <p style={{ fontSize: '11px', color: colors.secondaryText, textAlign: 'center' }}>Καμία εκκρεμότητα</p>
+              <p style={{ fontSize: '11px', color: colors.secondaryText, textAlign: 'center', margin: '10px 0' }}>Καμία εκκρεμότητα</p>
             )}
           </div>
 
@@ -279,15 +291,7 @@ function PayEmployeeContent() {
   )
 }
 
-// ΕΠΙΠΛΕΟΝ STYLES ΓΙΑ ΤΗΝ ΚΑΡΤΕΛΑ
-const overtimeCard: any = { backgroundColor: '#f8fafc', padding: '15px', borderRadius: '18px', border: `1px solid ${colors.border}`, marginTop: '15px' };
-const otRow: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'white', padding: '10px', borderRadius: '12px', border: `1px solid ${colors.border}` };
-const otDate: any = { fontSize: '11px', fontWeight: '800', color: colors.primaryDark, marginRight: '8px' };
-const otHours: any = { fontSize: '11px', fontWeight: '700', color: colors.accentBlue, backgroundColor: '#eff6ff', padding: '2px 6px', borderRadius: '5px' };
-const otPayBtn: any = { border: 'none', backgroundColor: '#ecfdf5', color: '#059669', padding: '6px 10px', borderRadius: '8px', fontSize: '10px', fontWeight: '800', cursor: 'pointer' };
-const otDelBtn: any = { border: 'none', backgroundColor: '#fef2f2', color: '#dc2626', padding: '6px 10px', borderRadius: '8px', cursor: 'pointer' };
-
-// (Τα υπόλοιπα styles από τον κώδικά σου...)
+// STYLES
 const iphoneWrapper: any = { backgroundColor: colors.bgLight, minHeight: '100dvh', padding: '20px', position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, overflowY: 'auto' };
 const headerStyle: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' };
 const logoBoxStyle: any = { width: '42px', height: '42px', backgroundColor: '#e0f2fe', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px' };
@@ -308,6 +312,13 @@ const resultRow: any = { display: 'flex', gap: '20px', marginTop: '10px' };
 const resultItem: any = { flex: 1 };
 const amountLarge: any = { margin: 0, fontSize: '20px', fontWeight: '900', color: colors.primaryDark };
 const saveBtnStyle: any = { width: '100%', padding: '18px', backgroundColor: colors.primaryDark, color: 'white', border: 'none', borderRadius: '16px', fontWeight: '800', marginTop: '25px' };
+
+const overtimeCard: any = { backgroundColor: '#f8fafc', padding: '15px', borderRadius: '18px', border: `1px solid ${colors.border}`, marginTop: '15px' };
+const otRow: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'white', padding: '10px', borderRadius: '12px', border: `1px solid ${colors.border}`, marginBottom: '5px' };
+const otDate: any = { fontSize: '11px', fontWeight: '800', color: colors.primaryDark, marginRight: '8px' };
+const otHours: any = { fontSize: '10px', fontWeight: '700', color: colors.accentBlue, backgroundColor: '#eff6ff', padding: '3px 6px', borderRadius: '6px' };
+const otPayBtn: any = { border: 'none', backgroundColor: '#ecfdf5', color: '#059669', padding: '8px 12px', borderRadius: '10px', fontSize: '10px', fontWeight: '800', cursor: 'pointer' };
+const otDelBtn: any = { border: 'none', backgroundColor: '#fef2f2', color: '#accentRed', padding: '8px 12px', borderRadius: '10px', cursor: 'pointer', display: 'flex', alignItems: 'center' };
 
 export default function PayEmployeePage() {
   return <main><Suspense fallback={<div>Φόρτωση...</div>}><PayEmployeeContent /></Suspense></main>
