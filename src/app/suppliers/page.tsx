@@ -4,7 +4,7 @@ export const dynamic = 'force-dynamic'
 import { useEffect, useState, Suspense, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
-import { Copy, Check, Power, PowerOff, Trash2, Edit2 } from 'lucide-react'
+import { Copy, Check, Trash2, Edit2, Eye, EyeOff } from 'lucide-react'
 import { toast, Toaster } from 'sonner'
 
 const colors = {
@@ -23,6 +23,9 @@ function SuppliersContent() {
   const [loading, setLoading] = useState(true)
   const [storeId, setStoreId] = useState<string | null>(null)
   
+  // Φίλτρο για εμφάνιση ανενεργών
+  const [showInactive, setShowInactive] = useState(false)
+
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
   const [afm, setAfm] = useState('') 
@@ -59,9 +62,7 @@ function SuppliersContent() {
     }
   }, [])
 
-  useEffect(() => {
-    fetchSuppliersData()
-  }, [fetchSuppliersData])
+  useEffect(() => { fetchSuppliersData() }, [fetchSuppliersData])
 
   const getSupplierTurnover = (supplierId: string) => {
     return transactions
@@ -78,28 +79,21 @@ function SuppliersContent() {
 
   async function toggleActive(supplier: any) {
     try {
-      const { error } = await supabase
-        .from('suppliers')
-        .update({ is_active: !supplier.is_active })
-        .eq('id', supplier.id);
+      const { error } = await supabase.from('suppliers').update({ is_active: !supplier.is_active }).eq('id', supplier.id);
       if (error) throw error;
       toast.success(supplier.is_active ? 'Απενεργοποιήθηκε' : 'Ενεργοποιήθηκε');
       fetchSuppliersData();
-    } catch (err: any) {
-      toast.error('Σφάλμα: ' + err.message);
-    }
+    } catch (err: any) { toast.error('Σφάλμα: ' + err.message); }
   }
 
   async function handleDelete(id: string) {
-    if (!confirm('Είστε σίγουροι; Η διαγραφή είναι οριστική και μπορεί να επηρεάσει το ιστορικό των συναλλαγών.')) return;
+    if (!confirm('Προσοχή: Η διαγραφή είναι οριστική. Θέλετε να συνεχίσετε;')) return;
     try {
       const { error } = await supabase.from('suppliers').delete().eq('id', id);
       if (error) throw error;
-      toast.success('Ο προμηθευτής διαγράφηκε');
+      toast.success('Διαγράφηκε οριστικά');
       fetchSuppliersData();
-    } catch (err: any) {
-      toast.error('Σφάλμα κατά τη διαγραφή');
-    }
+    } catch (err: any) { toast.error('Σφάλμα κατά τη διαγραφή'); }
   }
 
   async function handleSave() {
@@ -120,11 +114,7 @@ function SuppliersContent() {
       toast.success(editingId ? 'Ενημερώθηκε!' : 'Προστέθηκε!');
       resetForm();
       fetchSuppliersData();
-    } catch (error: any) {
-      toast.error('Σφάλμα: ' + error.message)
-    } finally {
-      setIsSaving(false)
-    }
+    } catch (error: any) { toast.error('Σφάλμα: ' + error.message) } finally { setIsSaving(false) }
   }
 
   const handleEdit = (s: any) => {
@@ -138,6 +128,9 @@ function SuppliersContent() {
     setName(''); setPhone(''); setAfm(''); setIban(''); setCategory('Εμπορεύματα');
     setEditingId(null); setIsFormOpen(false);
   }
+
+  // Φιλτράρισμα λίστας βάσει του κουμπιού
+  const visibleSuppliers = suppliers.filter(s => showInactive ? true : s.is_active !== false);
 
   if (loading) return <div style={{ padding: '40px', textAlign: 'center', color: colors.secondaryText }}>Φόρτωση...</div>
 
@@ -157,9 +150,18 @@ function SuppliersContent() {
           <Link href="/" style={backBtnStyle}>✕</Link>
         </div>
 
-        <button onClick={() => { if(isFormOpen) resetForm(); setIsFormOpen(!isFormOpen); }} style={isFormOpen ? cancelBtnStyle : addBtnStyle}>
-          {isFormOpen ? 'ΑΚΥΡΩΣΗ' : '+ ΝΕΟΣ ΠΡΟΜΗΘΕΥΤΗΣ'}
-        </button>
+        <div style={{ display: 'flex', gap: '10px', marginBottom: '25px' }}>
+          <button onClick={() => { if(isFormOpen) resetForm(); setIsFormOpen(!isFormOpen); }} style={{ ...addBtnStyle, flex: 2, marginBottom: 0 }}>
+            {isFormOpen ? 'ΑΚΥΡΩΣΗ' : '+ ΝΕΟΣ ΠΡΟΜΗΘΕΥΤΗΣ'}
+          </button>
+          
+          <button 
+            onClick={() => setShowInactive(!showInactive)} 
+            style={{ ...filterBtnStyle, backgroundColor: showInactive ? colors.primaryDark : colors.white, color: showInactive ? 'white' : colors.primaryDark }}
+          >
+            {showInactive ? <Eye size={18} /> : <EyeOff size={18} />}
+          </button>
+        </div>
 
         {isFormOpen && (
           <div style={formCard}>
@@ -181,8 +183,8 @@ function SuppliersContent() {
         )}
 
         <div style={{ marginTop: '15px' }}>
-          {suppliers.map(s => (
-            <div key={s.id} style={{ marginBottom: '12px', opacity: s.is_active === false ? 0.5 : 1 }}>
+          {visibleSuppliers.map(s => (
+            <div key={s.id} style={{ marginBottom: '12px', opacity: s.is_active === false ? 0.6 : 1 }}>
               <div style={supplierItem}>
                 <div style={{ flex: 1 }}>
                   <p style={{ fontWeight: '700', margin: 0, fontSize: '16px', color: colors.primaryDark }}>
@@ -201,19 +203,21 @@ function SuppliersContent() {
               </div>
             </div>
           ))}
+          {visibleSuppliers.length === 0 && !isFormOpen && (
+            <div style={{ textAlign: 'center', padding: '40px', color: colors.secondaryText }}>Δεν βρέθηκαν {showInactive ? 'προμηθευτές' : 'ενεργοί προμηθευτές'}.</div>
+          )}
         </div>
       </div>
     </div>
   )
 }
 
-// STYLES
+const filterBtnStyle: any = { width: '48px', height: '48px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '16px', border: `1px solid ${colors.border}`, cursor: 'pointer' };
 const iphoneWrapper: any = { backgroundColor: colors.bgLight, minHeight: '100dvh', padding: '20px', overflowY: 'auto', position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 };
 const headerStyle = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px' };
 const logoBoxStyle: any = { width: '48px', height: '48px', backgroundColor: colors.primaryDark, borderRadius: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '22px' };
 const backBtnStyle: any = { textDecoration: 'none', color: colors.secondaryText, fontSize: '18px', width: '38px', height: '38px', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: colors.white, borderRadius: '12px', border: `1px solid ${colors.border}` };
-const addBtnStyle: any = { width: '100%', padding: '16px', backgroundColor: colors.primaryDark, color: 'white', border: 'none', borderRadius: '16px', fontWeight: '700', fontSize: '14px', marginBottom: '25px' };
-const cancelBtnStyle: any = { ...addBtnStyle, backgroundColor: colors.white, color: colors.secondaryText, border: `1px solid ${colors.border}` };
+const addBtnStyle: any = { padding: '16px', backgroundColor: colors.primaryDark, color: 'white', border: 'none', borderRadius: '16px', fontWeight: '700', fontSize: '14px' };
 const formCard: any = { backgroundColor: colors.white, padding: '24px', borderRadius: '24px', border: `1px solid ${colors.border}`, marginBottom: '25px' };
 const labelStyle: any = { fontSize: '10px', fontWeight: '800', color: colors.secondaryText, marginBottom: '6px', display: 'block' };
 const inputStyle: any = { width: '100%', padding: '14px', borderRadius: '12px', border: `1px solid ${colors.border}`, fontSize: '15px', fontWeight: '600', backgroundColor: colors.bgLight, boxSizing: 'border-box' };
