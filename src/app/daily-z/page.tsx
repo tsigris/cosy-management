@@ -9,7 +9,6 @@ export default function DailyZPage() {
   const [cashZ, setCashZ] = useState('')      
   const [posZ, setPosZ] = useState('')        
   const [noTax, setNoTax] = useState('')      
-  const [withdraw, setWithdraw] = useState('') 
   const [date, setDate] = useState(new Date().toISOString().split('T')[0])
   const [loading, setLoading] = useState(false)
   const [username, setUsername] = useState('Admin')
@@ -43,17 +42,9 @@ export default function DailyZPage() {
       { amount: Number(noTax), method: 'Μετρητά', notes: 'ΧΩΡΙΣ ΣΗΜΑΝΣΗ', type: 'income', date, category: 'Εσοδα Ζ', created_by_name: username }
     ].filter(t => t.amount > 0)
 
-    const pocketTransaction = Number(withdraw) > 0 ? [{
-      amount: Number(withdraw),
-      method: 'Μετρητά',
-      notes: 'ΑΝΑΛΗΨΗ ΓΙΑ ΤΣΕΠΗ (ΣΠΙΤΙ)',
-      type: 'expense',
-      date,
-      category: 'pocket',
-      created_by_name: username
-    }] : []
+    // ΑΦΑΙΡΕΘΗΚΕ Η POCKET TRANSACTION ΛΟΓΙΚΗ
 
-    const { error } = await supabase.from('transactions').insert([...incomeTransactions, ...pocketTransaction])
+    const { error } = await supabase.from('transactions').insert(incomeTransactions)
     
     if (!error) {
       alert(`Το ταμείο έκλεισε επιτυχώς από τον χρήστη: ${username}`)
@@ -71,7 +62,7 @@ export default function DailyZPage() {
         {/* HEADER */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '15px', marginBottom: '15px' }}>
           <Link href="/" style={backBtnStyle}>←</Link>
-          <h2 style={{ fontSize: '20px', fontWeight: '900', color: '#1e293b', margin: 0 }}>Κλείσιμο Ζ & Ανάληψη</h2>
+          <h2 style={{ fontSize: '20px', fontWeight: '900', color: '#1e293b', margin: 0 }}>Κλείσιμο Ζ</h2>
         </div>
 
         {/* USER LABEL */}
@@ -96,14 +87,7 @@ export default function DailyZPage() {
           </div>
         </div>
 
-        {/* SECTION: ΑΝΑΛΗΨΗ */}
-        <div style={{...sectionBox, backgroundColor: '#f0fdf4', borderColor: '#bbf7d0'}}>
-          <p style={{...sectionTitle, color: '#166534'}}>🏠 ΑΝΑΛΗΨΗ ΓΙΑ ΤΣΕΠΗ (ΣΠΙΤΙ)</p>
-          <div style={fieldBox}>
-            <label style={{...labelStyle, color: '#166534'}}>ΠΟΣΟ ΠΟΥ ΒΓΑΖΩ ΑΠΟ ΤΟ ΣΥΡΤΑΡΙ</label>
-            <input type="number" value={withdraw} onChange={e => setWithdraw(e.target.value)} style={{...inputStyle, color: '#15803d'}} placeholder="0.00" />
-          </div>
-        </div>
+        {/* Η ΕΝΟΤΗΤΑ ΑΝΑΛΗΨΗΣ ΑΦΑΙΡΕΘΗΚΕ ΕΝΤΕΛΩΣ */}
 
         {/* ΗΜΕΡΟΜΗΝΙΑ */}
         <div style={{ marginBottom: '20px' }}>
@@ -127,7 +111,6 @@ export default function DailyZPage() {
   )
 }
 
-// Styles remain the same
 const cardStyle = { maxWidth: '500px', margin: '0 auto', backgroundColor: 'white', borderRadius: '28px', padding: '24px', boxShadow: '0 10px 15px rgba(0,0,0,0.05)' };
 const sectionBox = { marginBottom: '20px', padding: '18px', borderRadius: '22px', border: '1px solid #e2e8f0' };
 const sectionTitle = { fontSize: '10px', fontWeight: '900', color: '#64748b', marginBottom: '15px', letterSpacing: '0.5px' };
