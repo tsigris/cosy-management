@@ -5,6 +5,7 @@ import { useEffect, useState, Suspense, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
+import { toast, Toaster } from 'sonner' // Προσθήκη για ειδοποιήσεις
 
 // --- ΠΑΛΕΤΑ ΧΡΩΜΑΤΩΝ ---
 const colors = {
@@ -23,6 +24,7 @@ function EmployeesContent() {
   const router = useRouter()
   const [employees, setEmployees] = useState<any[]>([])
   const [transactions, setTransactions] = useState<any[]>([])
+  const [overtimes, setOvertimes] = useState<any[]>([]) // Νέο state για υπερωρίες
   const [loading, setLoading] = useState(true)
   const [isAdding, setIsAdding] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -32,12 +34,15 @@ function EmployeesContent() {
   const [payBasis, setPayBasis] = useState<'monthly' | 'daily'>('monthly')
   const [viewYear, setViewYear] = useState(new Date().getFullYear())
 
+  // States για το modal υπερωρίας
+  const [otModal, setOtModal] = useState<{empId: string, name: string} | null>(null)
+  const [otHours, setOtHours] = useState('')
+
   const availableYears: number[] = [];
   for (let y = 2024; y <= new Date().getFullYear(); y++) {
     availableYears.push(y);
   }
 
-  // ΔΙΟΡΘΩΣΗ: Αρχικοποίηση με κενά κείμενα ('') αντί για 0
   const [formData, setFormData] = useState({ 
     full_name: '', position: '', amka: '', iban: '', 
     bank_name: 'Εθνική Τράπεζα',
@@ -54,17 +59,42 @@ function EmployeesContent() {
       const { data: profile } = await supabase.from('profiles').select('store_id').eq('id', session.user.id).single()
       if (profile?.store_id) {
         setStoreId(profile.store_id)
-        const [empsRes, transRes] = await Promise.all([
+        const [empsRes, transRes, otRes] = await Promise.all([
           supabase.from('employees').select('*').eq('store_id', profile.store_id).order('full_name'),
-          supabase.from('transactions').select('*').eq('store_id', profile.store_id).not('employee_id', 'is', null).order('date', { ascending: false })
+          supabase.from('transactions').select('*').eq('store_id', profile.store_id).not('employee_id', 'is', null).order('date', { ascending: false }),
+          supabase.from('employee_overtimes').select('*').eq('store_id', profile.store_id).eq('is_paid', false) // Μόνο απλήρωτες
         ])
         if (empsRes.data) setEmployees(empsRes.data)
         if (transRes.data) setTransactions(transRes.data)
+        if (otRes.data) setOvertimes(otRes.data)
       }
     } catch (err) { console.error(err) } finally { setLoading(false) }
   }, [])
 
   useEffect(() => { fetchInitialData() }, [fetchInitialData])
+
+  // Υπολογισμός εκκρεμών ωρών
+  const getPendingOtHours = (empId: string) => {
+    return overtimes
+      .filter(ot => ot.employee_id === empId)
+      .reduce((acc, curr) => acc + Number(curr.hours), 0)
+  }
+
+  // Καταγραφή νέας υπερωρίας
+  async function handleQuickOvertime() {
+    if (!otHours || !otModal) return
+    const { error } = await supabase.from('employee_overtimes').insert([{
+      employee_id: otModal.empId,
+      store_id: storeId,
+      hours: Number(otHours),
+      date: new Date().toISOString().split('T')[0],
+      is_paid: false
+    }])
+    if (!error) {
+      toast.success(`Προστέθηκαν ${otHours} ώρες στην ${otModal.name}`)
+      setOtModal(null); setOtHours(''); fetchInitialData()
+    }
+  }
 
   const getCurrentMonthRemaining = (emp: any) => {
     const now = new Date();
@@ -177,6 +207,7 @@ function EmployeesContent() {
 
   return (
     <div style={iphoneWrapper}>
+      <Toaster position="top-center" richColors />
       <div style={{ maxWidth: '500px', margin: '0 auto', paddingBottom: '100px' }}>
         
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px' }}>
@@ -186,6 +217,29 @@ function EmployeesContent() {
           </div>
           <Link href="/" style={backBtnStyle}>✕</Link>
         </div>
+
+        {/* MODAL ΓΙΑ ΓΡΗΓΟΡΗ ΥΠΕΡΩΡΙΑ */}
+        {otModal && (
+          <div style={modalOverlay}>
+            <div style={modalCard}>
+              <h3 style={{margin:0, fontSize: '16px'}}>Καταγραφή Υπερωρίας</h3>
+              <p style={{fontSize: '12px', color: colors.secondaryText}}>{otModal.name}</p>
+              <input 
+                type="number" 
+                placeholder="Ώρες (π.χ. 1.5)" 
+                value={otHours}
+                onFocus={(e) => { if(e.target.value === "0") setOtHours('') }}
+                onChange={e => setOtHours(e.target.value)}
+                style={{...inputStyle, marginTop: '15px', textAlign: 'center', fontSize: '24px'}}
+                autoFocus
+              />
+              <div style={{display:'flex', gap: '10px', marginTop: '20px'}}>
+                <button onClick={() => setOtModal(null)} style={cancelBtnSmall}>ΑΚΥΡΟ</button>
+                <button onClick={handleQuickOvertime} style={saveBtnSmall}>ΠΡΟΣΘΗΚΗ</button>
+              </div>
+            </div>
+          </div>
+        )}
 
         <button onClick={() => { if(isAdding) resetForm(); setIsAdding(!isAdding); }} style={isAdding ? cancelBtn : addBtn}>
           {isAdding ? 'ΑΚΥΡΩΣΗ' : '+ ΝΕΟΣ ΥΠΑΛΛΗΛΟΣ'}
@@ -209,7 +263,6 @@ function EmployeesContent() {
                   type="number" 
                   inputMode="decimal"
                   value={payBasis === 'monthly' ? formData.monthly_salary : formData.daily_rate} 
-                  // ΔΙΟΡΘΩΣΗ: Καθαρίζει το "0" αυτόματα στο Focus
                   onFocus={(e) => { if(e.target.value === "0") setFormData({...formData, [payBasis === 'monthly' ? 'monthly_salary' : 'daily_rate']: ''}) }}
                   onChange={e => setFormData({
                     ...formData, 
@@ -262,30 +315,33 @@ function EmployeesContent() {
             const monthlyRem = getCurrentMonthRemaining(emp);
             const isSelected = selectedEmpId === emp.id;
             const daysLeft = getDaysUntilPayment(emp.start_date);
+            const pendingOt = getPendingOtHours(emp.id); // Απλήρωτες ώρες
 
             return (
               <div key={emp.id} style={employeeCard}>
                 <div onClick={() => setSelectedEmpId(isSelected ? null : emp.id)} style={{ padding: '18px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div style={{ flex: 1 }}>
                     <p style={{ fontWeight: '700', color: colors.primaryDark, fontSize: '16px', margin: 0 }}>{emp.full_name.toUpperCase()}</p>
-                    <div style={{ marginTop: '6px', display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <div style={{ marginTop: '6px', display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
                        <span style={{...badgeStyle, backgroundColor: (daysLeft === 0 || daysLeft === null) ? '#fef2f2' : '#eff6ff', color: (daysLeft === 0 || daysLeft === null) ? colors.accentRed : colors.accentBlue}}>
                          {daysLeft === 0 ? 'ΣΗΜΕΡΑ 💰' : `ΣΕ ${daysLeft} ΗΜΕΡΕΣ 📅`}
                        </span>
-                       <span style={{ fontSize: '10px', color: colors.secondaryText, fontWeight: '700' }}>
-                         {emp.pay_basis === 'daily' ? 'Ημερομίσθιος' : 'Μηνιαίος'}
-                       </span>
+                       {pendingOt > 0 && (
+                         <span style={{...badgeStyle, backgroundColor: '#fff7ed', color: '#c2410c'}}>
+                           ⏱️ {pendingOt} ΩΡΕΣ
+                         </span>
+                       )}
                     </div>
                   </div>
                   
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); setOtModal({empId: emp.id, name: emp.full_name}) }}
+                      style={quickOtBtn}
+                    >
+                      + ⏱️
+                    </button>
                     <Link href={`/pay-employee?id=${emp.id}&name=${emp.full_name}`} onClick={(e) => e.stopPropagation()} style={payBtnStyle}>ΠΛΗΡΩΜΗ</Link>
-                    <div style={{ textAlign: 'right' }}>
-                        <p style={{ margin: 0, fontSize: '17px', fontWeight: '800', color: monthlyRem > 0 ? colors.accentRed : colors.accentGreen }}>
-                           {monthlyRem.toFixed(2)}€
-                        </p>
-                        <p style={{ margin: 0, fontSize: '8px', fontWeight: '800', color: colors.secondaryText }}>ΥΠΟΛΟΙΠΟ</p>
-                    </div>
                   </div>
                 </div>
 
@@ -296,6 +352,11 @@ function EmployeesContent() {
                         <p style={{ margin: '0 0 5px 0', fontWeight: '800', color: colors.secondaryText }}>ΣΤΟΙΧΕΙΑ ΠΛΗΡΩΜΗΣ</p>
                         <p style={{ margin: 0, fontWeight: '700' }}>🏦 {emp.bank_name || 'Δεν ορίστηκε'}</p>
                         <p style={{ margin: '3px 0 0 0', fontWeight: '600', color: colors.accentBlue, fontSize: '11px' }}>{emp.iban || 'Δεν ορίστηκε IBAN'}</p>
+                        {pendingOt > 0 && (
+                          <p style={{ margin: '8px 0 0 0', fontWeight: '800', color: '#c2410c', fontSize: '11px' }}>
+                            ⚠️ ΕΚΚΡΕΜΟΥΝ: {pendingOt} ώρες υπερωρίας
+                          </p>
+                        )}
                     </div>
 
                     <div style={filterContainer}>
@@ -379,6 +440,13 @@ const editBtn: any = { flex: 3, background: '#fffbeb', border: `1px solid #fef3c
 const deleteBtn: any = { flex: 2, background: '#fef2f2', border: `1px solid #fee2e2`, padding: '12px', borderRadius: '10px', cursor: 'pointer', fontSize: '11px', fontWeight: '700', color: colors.accentRed };
 const activeToggle: any = { flex: 1, padding: '12px', backgroundColor: colors.primaryDark, color: 'white', border: 'none', borderRadius: '10px', fontWeight: 'bold', fontSize: '11px', cursor: 'pointer' };
 const inactiveToggle: any = { flex: 1, padding: '12px', backgroundColor: '#f1f5f9', color: colors.secondaryText, border: 'none', borderRadius: '10px', fontWeight: 'bold', fontSize: '11px', cursor: 'pointer' };
+
+// ΝΕΑ STYLES ΓΙΑ ΤΟ TRACKER
+const quickOtBtn: any = { backgroundColor: '#fffbeb', color: '#92400e', border: '1px solid #fcd34d', padding: '10px 12px', borderRadius: '10px', fontSize: '11px', fontWeight: '800', cursor: 'pointer' };
+const modalOverlay: any = { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px' };
+const modalCard: any = { backgroundColor: 'white', padding: '25px', borderRadius: '25px', width: '100%', maxWidth: '350px', textAlign: 'center' };
+const saveBtnSmall: any = { flex: 1, padding: '14px', backgroundColor: colors.primaryDark, color: 'white', border: 'none', borderRadius: '12px', fontWeight: '700' };
+const cancelBtnSmall: any = { flex: 1, padding: '14px', backgroundColor: 'white', color: colors.secondaryText, border: `1px solid ${colors.border}`, borderRadius: '12px', fontWeight: '700' };
 
 export default function EmployeesPage() {
   return <main><Suspense fallback={<div>Φόρτωση...</div>}><EmployeesContent /></Suspense></main>
