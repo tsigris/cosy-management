@@ -5,12 +5,12 @@ import { useEffect, useState, Suspense } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import * as XLSX from 'xlsx' // Προσθήκη για το Excel
+import * as XLSX from 'xlsx'
 
 function SettingsContent() {
   const router = useRouter()
   const [loading, setLoading] = useState(true)
-  const [isExporting, setIsExporting] = useState(false) // State για την εξαγωγή
+  const [isExporting, setIsExporting] = useState(false)
   const [showContact, setShowContact] = useState(false)
 
   const [formData, setFormData] = useState({
@@ -54,7 +54,7 @@ function SettingsContent() {
     } catch (err) { console.error(err) } finally { setLoading(false) }
   }
 
-  // --- ΣΥΝΑΡΤΗΣΗ ΕΞΑΓΩΓΗΣ EXCEL ---
+  // --- ΣΥΝΑΡΤΗΣΗ ΕΞΑΓΩΓΗΣ EXCEL ΜΕ ΟΝΟΜΑΤΑ ΑΝΤΙ ΓΙΑ IDs ---
   const handleExportAll = async () => {
     setIsExporting(true)
     try {
@@ -63,31 +63,52 @@ function SettingsContent() {
 
       if (!profile?.store_id) throw new Error('Δεν βρέθηκε κατάστημα')
 
-      // Τραβάμε όλα τα δεδομένα
+      // 1. Τραβάμε τα δεδομένα από όλους τους πίνακες
       const [trans, sups, assets, emps] = await Promise.all([
-        supabase.from('transactions').select('*').eq('store_id', profile.store_id),
-        supabase.from('suppliers').select('*').eq('store_id', profile.store_id),
-        supabase.from('fixed_assets').select('*').eq('store_id', profile.store_id),
-        supabase.from('employees').select('*').eq('store_id', profile.store_id)
+        supabase.from('transactions').select('*').eq('store_id', profile.store_id).order('date', { ascending: false }),
+        supabase.from('suppliers').select('id, name').eq('store_id', profile.store_id),
+        supabase.from('fixed_assets').select('id, name').eq('store_id', profile.store_id),
+        supabase.from('employees').select('id, name').eq('store_id', profile.store_id)
       ])
+
+      // 2. Δημιουργούμε "Χάρτες" (Maps) για να βρίσκουμε το όνομα από το ID
+      const supplierMap = Object.fromEntries(sups.data?.map(s => [s.id, s.name]) || [])
+      const assetMap = Object.fromEntries(assets.data?.map(a => [a.id, a.name]) || [])
+      const employeeMap = Object.fromEntries(emps.data?.map(e => [e.id, e.name]) || [])
+
+      // 3. Καθαρίζουμε τα δεδομένα των συναλλαγών για το Excel
+      const formattedTransactions = trans.data?.map(t => ({
+        'Ημερομηνία': t.date,
+        'Ποσό (€)': t.amount,
+        'Τύπος': t.type === 'expense' ? 'Έξοδο' : 'Έσοδο',
+        'Κατηγορία': t.category,
+        'Μέθοδος': t.method,
+        'Προμηθευτής': supplierMap[t.supplier_id] || '-',
+        'Πάγιο/Λογαριασμός': assetMap[t.fixed_asset_id] || '-',
+        'Υπάλληλος': employeeMap[t.employee_id] || '-',
+        'Σημειώσεις': t.notes,
+        'Καταχώρηση από': t.created_by_name
+      })) || []
 
       const wb = XLSX.utils.book_new()
 
-      const addSheet = (data: any[] | null, name: string) => {
-        if (data && data.length > 0) {
-          const ws = XLSX.utils.json_to_sheet(data)
-          XLSX.utils.book_append_sheet(wb, ws, name)
-        }
-      }
+      // 4. Προσθήκη φύλλων στο Excel
+      const wsTrans = XLSX.utils.json_to_sheet(formattedTransactions)
+      XLSX.utils.book_append_sheet(wb, wsTrans, "Συναλλαγές")
 
-      addSheet(trans.data, "Συναλλαγές")
-      addSheet(sups.data, "Προμηθευτές")
-      addSheet(assets.data, "Πάγια")
-      addSheet(emps.data, "Υπάλληλοι")
+      if (sups.data && sups.data.length > 0) {
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(sups.data), "Προμηθευτές")
+      }
+      if (assets.data && assets.data.length > 0) {
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(assets.data), "Πάγια")
+      }
+      if (emps.data && emps.data.length > 0) {
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(emps.data), "Υπάλληλοι")
+      }
 
       const fileName = `Cosy_Backup_${new Date().toISOString().split('T')[0]}.xlsx`
       XLSX.writeFile(wb, fileName)
-      alert('Το Excel κατέβηκε επιτυχώς!')
+      alert('Το Excel δημιουργήθηκε με επιτυχία!')
     } catch (error: any) {
       alert('Σφάλμα εξαγωγής: ' + error.message)
     } finally {
@@ -192,7 +213,6 @@ function SettingsContent() {
           {loading ? 'ΑΠΟΘΗΚΕΥΣΗ...' : 'ΕΝΗΜΕΡΩΣΗ ΡΥΘΜΙΣΕΩΝ'}
         </button>
 
-        {/* ΝΕΟ ΚΟΥΜΠΙ EXCEL */}
         <button 
           onClick={handleExportAll} 
           disabled={isExporting} 
