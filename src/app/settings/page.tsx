@@ -13,6 +13,10 @@ function SettingsContent() {
   const [isExporting, setIsExporting] = useState(false)
   const [showContact, setShowContact] = useState(false)
 
+  // States για το φίλτρο ημερομηνιών
+  const [startDate, setStartDate] = useState(new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0]) // Πρώτη μέρα του μήνα
+  const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]) // Σήμερα
+
   const [formData, setFormData] = useState({
     store_name: '',
     company_name: '',
@@ -54,7 +58,6 @@ function SettingsContent() {
     } catch (err) { console.error(err) } finally { setLoading(false) }
   }
 
-  // --- ΣΥΝΑΡΤΗΣΗ ΕΞΑΓΩΓΗΣ EXCEL ΜΕ ΟΝΟΜΑΤΑ ΑΝΤΙ ΓΙΑ IDs ---
   const handleExportAll = async () => {
     setIsExporting(true)
     try {
@@ -63,20 +66,23 @@ function SettingsContent() {
 
       if (!profile?.store_id) throw new Error('Δεν βρέθηκε κατάστημα')
 
-      // 1. Τραβάμε τα δεδομένα από όλους τους πίνακες
+      // 1. Τραβάμε τις συναλλαγές ΜΟΝΟ για το επιλεγμένο διάστημα
       const [trans, sups, assets, emps] = await Promise.all([
-        supabase.from('transactions').select('*').eq('store_id', profile.store_id).order('date', { ascending: false }),
+        supabase.from('transactions')
+          .select('*')
+          .eq('store_id', profile.store_id)
+          .gte('date', startDate) // Μεγαλύτερο ή ίσο από
+          .lte('date', endDate)   // Μικρότερο ή ίσο από
+          .order('date', { ascending: false }),
         supabase.from('suppliers').select('id, name').eq('store_id', profile.store_id),
         supabase.from('fixed_assets').select('id, name').eq('store_id', profile.store_id),
         supabase.from('employees').select('id, name').eq('store_id', profile.store_id)
       ])
 
-      // 2. Δημιουργούμε "Χάρτες" (Maps) για να βρίσκουμε το όνομα από το ID
       const supplierMap = Object.fromEntries(sups.data?.map(s => [s.id, s.name]) || [])
       const assetMap = Object.fromEntries(assets.data?.map(a => [a.id, a.name]) || [])
       const employeeMap = Object.fromEntries(emps.data?.map(e => [e.id, e.name]) || [])
 
-      // 3. Καθαρίζουμε τα δεδομένα των συναλλαγών για το Excel
       const formattedTransactions = trans.data?.map(t => ({
         'Ημερομηνία': t.date,
         'Ποσό (€)': t.amount,
@@ -91,24 +97,15 @@ function SettingsContent() {
       })) || []
 
       const wb = XLSX.utils.book_new()
-
-      // 4. Προσθήκη φύλλων στο Excel
       const wsTrans = XLSX.utils.json_to_sheet(formattedTransactions)
       XLSX.utils.book_append_sheet(wb, wsTrans, "Συναλλαγές")
 
-      if (sups.data && sups.data.length > 0) {
-        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(sups.data), "Προμηθευτές")
-      }
-      if (assets.data && assets.data.length > 0) {
-        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(assets.data), "Πάγια")
-      }
-      if (emps.data && emps.data.length > 0) {
-        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(emps.data), "Υπάλληλοι")
-      }
-
-      const fileName = `Cosy_Backup_${new Date().toISOString().split('T')[0]}.xlsx`
+      // Προσθήκη υπόλοιπων πινάκων (αυτοί κατεβαίνουν ολόκληροι ως backup)
+      if (sups.data?.length) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(sups.data), "Προμηθευτές")
+      
+      const fileName = `Cosy_Export_${startDate}_to_${endDate}.xlsx`
       XLSX.writeFile(wb, fileName)
-      alert('Το Excel δημιουργήθηκε με επιτυχία!')
+      alert(`Η εξαγωγή για το διάστημα ${startDate} έως ${endDate} ολοκληρώθηκε!`)
     } catch (error: any) {
       alert('Σφάλμα εξαγωγής: ' + error.message)
     } finally {
@@ -161,12 +158,7 @@ function SettingsContent() {
         <p style={sectionLabel}>ΠΡΟΣΩΠΙΚΑ ΣΤΟΙΧΕΙΑ</p>
         <div style={infoBoxStyle}>
           <label style={labelStyle}>👤 ΤΟ ΟΝΟΜΑ ΣΑΣ (ΥΠΟΓΡΑΦΗ)</label>
-          <input 
-            style={inputStyle} 
-            value={formData.username} 
-            onChange={e => setFormData({...formData, username: e.target.value})} 
-            placeholder="π.χ. ΓΙΑΝΝΗΣ Π."
-          />
+          <input style={inputStyle} value={formData.username} onChange={e => setFormData({...formData, username: e.target.value})} />
         </div>
 
         <div style={{ marginBottom: '25px' }}>
@@ -213,12 +205,27 @@ function SettingsContent() {
           {loading ? 'ΑΠΟΘΗΚΕΥΣΗ...' : 'ΕΝΗΜΕΡΩΣΗ ΡΥΘΜΙΣΕΩΝ'}
         </button>
 
+        <div style={divider} />
+
+        {/* --- EXCEL EXPORT SECTION --- */}
+        <p style={sectionLabel}>ΕΞΑΓΩΓΗ ΔΕΔΟΜΕΝΩΝ (EXCEL)</p>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginBottom: '15px' }}>
+          <div>
+            <label style={labelStyle}>📅 ΑΠΟ</label>
+            <input type="date" style={inputStyle} value={startDate} onChange={e => setStartDate(e.target.value)} />
+          </div>
+          <div>
+            <label style={labelStyle}>📅 ΕΩΣ</label>
+            <input type="date" style={inputStyle} value={endDate} onChange={e => setEndDate(e.target.value)} />
+          </div>
+        </div>
+
         <button 
           onClick={handleExportAll} 
           disabled={isExporting} 
-          style={{ ...saveBtnStyle, backgroundColor: '#059669', marginTop: '12px' }}
+          style={{ ...saveBtnStyle, backgroundColor: '#059669' }}
         >
-          {isExporting ? 'ΠΡΟΕΤΟΙΜΑΣΙΑ...' : '📥 ΕΞΑΓΩΓΗ ΣΕ EXCEL (.xlsx)'}
+          {isExporting ? 'ΠΡΟΕΤΟΙΜΑΣΙΑ...' : '📥 ΕΞΑΓΩΓΗ ΕΠΙΛΕΓΜΕΝΩΝ ΣΕ EXCEL'}
         </button>
       </div>
 
@@ -235,7 +242,7 @@ function SettingsContent() {
   )
 }
 
-// --- STYLES ---
+// STYLES (Παραμένουν ίδια)
 const logoBoxStyle: any = { width: '42px', height: '42px', backgroundColor: '#f1f5f9', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' };
 const backBtnStyle: any = { textDecoration: 'none', color: '#94a3b8', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#fff', borderRadius: '10px', border: '1px solid #e2e8f0' };
 const mainCardStyle: any = { backgroundColor: 'white', padding: '24px', borderRadius: '28px', border: '1px solid #f1f5f9', boxShadow: '0 4px 12px rgba(0,0,0,0.02)', marginBottom: '20px' };
