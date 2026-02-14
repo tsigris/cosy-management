@@ -32,12 +32,12 @@ function PayEmployeeContent() {
   const [workedDays, setWorkedDays] = useState<number>(1) 
   const [dailyRateInput, setDailyRateInput] = useState<number>(50) 
 
-  // STATES EXTRA (ΕΔΩ ΕΙΝΑΙ ΤΟ ΚΟΥΤΙ ΠΟΥ ΖΗΤΗΣΕΣ)
+  // STATES EXTRA (ΤΟ ΧΕΙΡΟΚΙΝΗΤΟ ΚΟΥΤΙ ΠΟΥ ΖΗΤΗΣΕΣ)
   const [overtimeEuro, setOvertimeEuro] = useState<string>('') 
   const [bonus, setBonus] = useState<string>('')
   const [gifts, setGifts] = useState<string>('')
   
-  // STATES ΥΠΕΡΩΡΙΩΝ (ΚΑΡΤΕΛΑ)
+  // STATES ΥΠΕΡΩΡΙΩΝ (ΚΑΡΤΕΛΑ ΩΡΩΝ)
   const [overtimeList, setOvertimeList] = useState<any[]>([])
   const [pendingOtIds, setPendingOtIds] = useState<string[]>([])
 
@@ -78,28 +78,36 @@ function PayEmployeeContent() {
 
   useEffect(() => { loadData() }, [loadData])
 
-  // ΔΙΑΓΡΑΦΗ ΜΕΜΟΝΩΜΕΝΗΣ (🗑️)
+  // 1. ΔΙΑΓΡΑΦΗ ΜΕΜΟΝΩΜΕΝΗΣ ΥΠΕΡΩΡΙΑΣ (🗑️)
   async function handleDeleteOvertime(id: string) {
-    if (!confirm('Διαγραφή αυτής της υπερωρίας;')) return;
+    if (!confirm('Θέλετε να διαγράψετε αυτή την εγγραφή;')) return;
     await supabase.from('employee_overtimes').delete().eq('id', id);
-    toast.success('Διαγράφηκε');
+    toast.success('Η υπερωρία διαγράφηκε.');
     loadData();
   }
 
-  // ΜΕΜΟΝΩΜΕΝΗ ΠΛΗΡΩΜΗ (✅)
+  // 2. ΠΛΗΡΩΜΗ ΜΕΜΟΝΩΜΕΝΗΣ ΥΠΕΡΩΡΙΑΣ (✅)
   async function handlePaySingleOvertime(ot: any) {
-    const manualAmount = window.prompt(`Ποσό πληρωμής για ${ot.hours} ώρες:`, "0.00");
+    const manualAmount = window.prompt(`Εισάγετε το ποσό πληρωμής για ${ot.hours} ώρες υπερωρίας:`, "0.00");
     if (manualAmount === null) return;
     const finalAmount = Number(manualAmount);
+
+    if (isNaN(finalAmount) || finalAmount <= 0) {
+      return toast.error('Εισάγετε έγκυρο ποσό.');
+    }
 
     try {
       await supabase.from('employee_overtimes').update({ is_paid: true }).eq('id', ot.id);
       await supabase.from('transactions').insert([{
-        amount: finalAmount, type: 'expense', category: 'Προσωπικό', method: 'Μετρητά',
+        amount: finalAmount,
+        type: 'expense',
+        category: 'Προσωπικό',
+        method: 'Μετρητά',
         notes: `Πληρωμή Υπερωρίας: ${empName} (${ot.hours} ώρες)`,
-        store_id: userData.store_id, date: new Date().toISOString().split('T')[0]
+        store_id: userData.store_id,
+        date: new Date().toISOString().split('T')[0]
       }]);
-      toast.success(`Πληρώθηκαν ${finalAmount}€`);
+      toast.success(`Πληρώθηκαν ${finalAmount.toFixed(2)}€`);
       loadData();
     } catch (err) { toast.error('Σφάλμα πληρωμής'); }
   }
@@ -117,9 +125,9 @@ function PayEmployeeContent() {
   const bankAmount = Number(accountingPayroll) || 0;
   const autoCashAmount = totalEarnings - bankAmount;
 
-  // ΕΝΙΑΙΑ ΠΛΗΡΩΜΗ ΜΗΝΑ
+  // 3. ΕΝΙΑΙΑ ΠΛΗΡΩΜΗ ΜΗΝΑ (ΤΟ ΜΕΓΑΛΟ ΚΟΥΜΠΙ)
   async function handleMonthlyPayment() {
-    if (totalEarnings <= 0) return toast.error('Το ποσό πρέπει να είναι μεγαλύτερο από 0');
+    if (totalEarnings <= 0) return toast.error('Υπολογίστε το ποσό πληρωμής.');
     setLoading(true);
 
     try {
@@ -144,7 +152,7 @@ function PayEmployeeContent() {
       const { data: transData, error: transError } = await supabase.from('transactions').insert(transactions).select();
       if (transError) throw transError;
 
-      // ΜΗΔΕΝΙΣΜΟΣ ΟΛΩΝ ΤΩΝ ΕΚΚΡΕΜΩΝ ΩΡΩΝ ΑΠΟ ΤΗΝ ΚΑΡΤΕΛΑ
+      // ΜΗΔΕΝΙΣΜΟΣ ΟΛΩΝ ΤΩΝ ΕΚΚΡΕΜΩΝ ΩΡΩΝ ΤΗΣ ΚΑΡΤΕΛΑΣ
       if (pendingOtIds.length > 0) {
         await supabase
           .from('employee_overtimes')
@@ -152,7 +160,7 @@ function PayEmployeeContent() {
           .in('id', pendingOtIds);
       }
 
-      toast.success('Η πληρωμή ολοκληρώθηκε!');
+      toast.success('Η ενιαία πληρωμή ολοκληρώθηκε και οι ώρες μηδενίστηκαν!');
       router.push('/employees');
     } catch (err: any) {
       toast.error(err.message);
@@ -219,7 +227,7 @@ function PayEmployeeContent() {
                 type="number" 
                 value={overtimeEuro} 
                 onChange={e => setOvertimeEuro(e.target.value)} 
-                style={{...smallInput, border: `2px solid ${colors.accentBlue}`}} 
+                style={{...smallInput, border: `2px solid ${colors.accentBlue}`, backgroundColor: '#f0f9ff'}} 
                 placeholder="0.00" 
               />
             </div>
@@ -231,7 +239,7 @@ function PayEmployeeContent() {
             </div>
           </div>
 
-          {/* ΚΑΡΤΕΛΑ ΩΡΩΝ (ΓΙΑ ΝΑ ΒΛΕΠΕΙΣ ΠΟΣΕΣ ΕΙΝΑΙ) */}
+          {/* ΚΑΡΤΕΛΑ ΩΡΩΝ (ΓΙΑ ΝΑ ΒΛΕΠΕΙΣ ΠΟΣΕΣ ΩΡΕΣ ΧΡΩΣΤΑΣ) */}
           <div style={overtimeCard}>
             <p style={{...sectionTitle, marginTop: 0}}>📋 ΕΚΚΡΕΜΕΙΣ ΩΡΕΣ ({overtimeList.length})</p>
             {overtimeList.length > 0 ? (
@@ -250,7 +258,7 @@ function PayEmployeeContent() {
                 ))}
               </div>
             ) : (
-              <p style={{ fontSize: '11px', color: colors.secondaryText, textAlign: 'center' }}>Δεν υπάρχουν εκκρεμείς ώρες</p>
+              <p style={{ fontSize: '11px', color: colors.secondaryText, textAlign: 'center', margin: '10px 0' }}>Δεν υπάρχουν εκκρεμείς ώρες.</p>
             )}
           </div>
 
@@ -264,8 +272,13 @@ function PayEmployeeContent() {
             <div style={resultItem}><label style={subLabel}>ΥΠΟΛΟΙΠΟ ΜΕΤΡΗΤΑ</label><p style={{ ...amountLarge, color: colors.accentGreen }}>{autoCashAmount.toFixed(2)}€</p></div>
           </div>
 
+          <div style={{ marginTop: '20px' }}>
+            <label style={subLabel}>ΗΜΕΡΟΜΗΝΙΑ ΠΛΗΡΩΜΗΣ</label>
+            <input type="date" value={date} onChange={e => setDate(e.target.value)} style={smallInput} />
+          </div>
+
           <button onClick={handleMonthlyPayment} disabled={loading || totalEarnings <= 0} style={saveBtnStyle}>
-            {loading ? 'ΚΑΤΑΧΩΡΗΣΗ...' : 'ΟΛΟΚΛΗΡΩΣΗ ΜΗΝΙΑΙΑΣ'}
+            {loading ? 'ΚΑΤΑΧΩΡΗΣΗ...' : 'ΟΛΟΚΛΗΡΩΣΗ ΜΗΝΙΑΙΑΣ ΠΛΗΡΩΜΗΣ'}
           </button>
         </div>
       </div>
@@ -273,7 +286,7 @@ function PayEmployeeContent() {
   )
 }
 
-// STYLES
+// --- STYLES ---
 const iphoneWrapper: any = { backgroundColor: colors.bgLight, minHeight: '100dvh', padding: '20px', position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, overflowY: 'auto' };
 const headerStyle: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' };
 const logoBoxStyle: any = { width: '42px', height: '42px', backgroundColor: '#e0f2fe', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px' };
@@ -289,11 +302,12 @@ const inputGroup: any = { display: 'flex', flexDirection: 'column' };
 const smallInput: any = { width: '100%', padding: '12px', borderRadius: '10px', border: `1px solid ${colors.border}`, fontSize: '14px', fontWeight: '700', outline: 'none' };
 const selectStyle: any = { ...smallInput };
 const accountingBox: any = { padding: '15px', backgroundColor: '#f0f9ff', borderRadius: '15px', border: `1px solid #bae6fd`, margin: '15px 0' };
-const accountingInput: any = { width: '100%', padding: '10px', marginTop: '5px', borderRadius: '8px', border: `2px solid ${colors.accentBlue}`, fontSize: '18px', fontWeight: '900' };
+const accountingInput: any = { width: '100%', padding: '10px', marginTop: '5px', borderRadius: '8px', border: `2px solid ${colors.accentBlue}`, fontSize: '18px', fontWeight: '900', outline: 'none' };
 const resultRow: any = { display: 'flex', gap: '20px', marginTop: '10px' };
 const resultItem: any = { flex: 1 };
 const amountLarge: any = { margin: 0, fontSize: '20px', fontWeight: '900', color: colors.primaryDark };
 const saveBtnStyle: any = { width: '100%', padding: '18px', backgroundColor: colors.primaryDark, color: 'white', border: 'none', borderRadius: '16px', fontWeight: '800', marginTop: '25px' };
+
 const overtimeCard: any = { backgroundColor: '#f8fafc', padding: '15px', borderRadius: '18px', border: `1px solid ${colors.border}`, marginTop: '15px' };
 const otRow: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'white', padding: '10px', borderRadius: '12px', border: `1px solid ${colors.border}`, marginBottom: '5px' };
 const otDate: any = { fontSize: '11px', fontWeight: '800', color: colors.primaryDark, marginRight: '8px' };
