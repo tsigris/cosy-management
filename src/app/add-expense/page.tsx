@@ -48,7 +48,6 @@ function AddExpenseForm() {
   const [newSupPhone, setNewSupPhone] = useState('')
   const [newSupAfm, setNewSupAfm] = useState('')
   const [newSupIban, setNewSupIban] = useState('')
-  const [newSupCategory, setNewSupCategory] = useState('Εμπορεύματα')
 
   const loadFormData = useCallback(async () => {
     try {
@@ -75,7 +74,7 @@ function AddExpenseForm() {
     s.name.toLowerCase().includes(searchTerm.toLowerCase())
   )
 
-  // ΛΕΙΤΟΥΡΓΙΑ ΓΡΗΓΟΡΗΣ ΠΡΟΣΘΗΚΗΣ ΠΡΟΜΗΘΕΥΤΗ (ΠΛΗΡΩΣ ΣΥΜΒΑΤΗ ΜΕ SAAS ΚΑΙ VAT_NUMBER)
+  // ΛΕΙΤΟΥΡΓΙΑ ΓΡΗΓΟΡΗΣ ΠΡΟΣΘΗΚΗΣ ΠΡΟΜΗΘΕΥΤΗ
   async function handleQuickAddSupplier() {
     if (!newSupName) return toast.error('Δώστε όνομα προμηθευτή');
     if (!storeId) return toast.error('Σφάλμα: Δεν βρέθηκε το ID καταστήματος');
@@ -85,9 +84,9 @@ function AddExpenseForm() {
         { 
           name: newSupName, 
           phone: newSupPhone, 
-          vat_number: newSupAfm, // Χρήση vat_number για συμβατότητα με τη σελίδα προμηθευτών
+          vat_number: newSupAfm, // Συγχρονισμένο με τη βάση σου
           iban: newSupIban,
-          category: newSupCategory,
+          category: 'Εμπορεύματα', // Αυτόματη κατηγορία
           store_id: storeId 
         }
       ]).select().single();
@@ -99,7 +98,9 @@ function AddExpenseForm() {
       setSearchTerm(data.name);
       setIsSupModalOpen(false);
       
-      setNewSupName(''); setNewSupPhone(''); setNewSupAfm(''); setNewSupIban(''); setNewSupCategory('Εμπορεύματα');
+      // Reset fields
+      setNewSupName(''); setNewSupPhone(''); setNewSupAfm(''); setNewSupIban('');
+      
       toast.success('Ο προμηθευτής προστέθηκε!');
     } catch (err: any) { 
         toast.error('Σφάλμα: ' + err.message); 
@@ -249,15 +250,6 @@ function AddExpenseForm() {
               <input value={newSupIban} onChange={e => setNewSupIban(e.target.value)} style={inputStyle} placeholder="GR00 0000 0000..." />
             </div>
 
-            <div style={{ marginBottom: '15px' }}>
-              <label style={labelStyle}>ΚΑΤΗΓΟΡΙΑ</label>
-              <select value={newSupCategory} onChange={e => setNewSupCategory(e.target.value)} style={inputStyle}>
-                <option value="Εμπορεύματα">🛒 Εμπορεύματα</option>
-                <option value="Πάγια">🏢 Πάγια / Λογαριασμοί</option>
-                <option value="Λοιπά">📦 Λοιπά Έξοδα</option>
-              </select>
-            </div>
-            
             <div style={{display: 'flex', gap: '10px', marginTop: '25px'}}>
               <button onClick={() => setIsSupModalOpen(false)} style={{...saveBtn, backgroundColor: colors.secondaryText, flex: 1, padding: '14px'}}>ΑΚΥΡΟ</button>
               <button onClick={handleQuickAddSupplier} style={{...saveBtn, backgroundColor: colors.accentGreen, flex: 2, padding: '14px'}}>ΔΗΜΙΟΥΡΓΙΑ ΠΡΟΜΗΘΕΥΤΗ</button>
