@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
 import { toast, Toaster } from 'sonner'
 
+// ΧΡΩΜΑΤΑ ΕΦΑΡΜΟΓΗΣ
 const colors = {
   primaryDark: '#1e293b',
   secondaryText: '#64748b',
@@ -24,7 +25,7 @@ function PayEmployeeContent() {
   const empId = searchParams.get('id')
   const empName = searchParams.get('name')
 
-  // STATES ΜΙΣΘΟΥ
+  // 1. STATES ΜΙΣΘΟΥ & ΣΥΜΦΩΝΙΑΣ
   const [agreementType, setAgreementType] = useState('monthly') 
   const [agreementSalary, setAgreementSalary] = useState<number>(1000)
   const [agreementDays, setAgreementDays] = useState<number>(26)
@@ -32,15 +33,16 @@ function PayEmployeeContent() {
   const [workedDays, setWorkedDays] = useState<number>(1) 
   const [dailyRateInput, setDailyRateInput] = useState<number>(50) 
 
-  // STATES EXTRA (ΤΟ ΧΕΙΡΟΚΙΝΗΤΟ ΚΟΥΤΙ ΠΟΥ ΖΗΤΗΣΕΣ)
+  // 2. STATES EXTRA ΠΑΡΟΧΩΝ (ΤΟ ΧΕΙΡΟΚΙΝΗΤΟ ΚΟΥΤΙ)
   const [overtimeEuro, setOvertimeEuro] = useState<string>('') 
   const [bonus, setBonus] = useState<string>('')
   const [gifts, setGifts] = useState<string>('')
   
-  // STATES ΥΠΕΡΩΡΙΩΝ (ΚΑΡΤΕΛΑ ΩΡΩΝ)
+  // 3. STATES ΥΠΕΡΩΡΙΩΝ (ΚΑΡΤΕΛΑ ΩΡΩΝ)
   const [overtimeList, setOvertimeList] = useState<any[]>([])
   const [pendingOtIds, setPendingOtIds] = useState<string[]>([])
 
+  // 4. ΛΟΓΙΣΤΙΚΑ & USER DATA
   const [accountingPayroll, setAccountingPayroll] = useState<string>('') 
   const [date, setDate] = useState(new Date().toISOString().split('T')[0])
   const [loading, setLoading] = useState(true)
@@ -51,7 +53,12 @@ function PayEmployeeContent() {
       setLoading(true)
       const { data: { session } } = await supabase.auth.getSession()
       if (!session?.user) return
-      const { data: profile } = await supabase.from('profiles').select('store_id, username').eq('id', session.user.id).maybeSingle()
+      
+      const { data: profile } = await supabase.from('profiles')
+        .select('store_id, username')
+        .eq('id', session.user.id)
+        .maybeSingle()
+        
       if (profile) setUserData({ store_id: profile.store_id, username: profile.username || 'Admin' })
 
       if (empId) {
@@ -78,23 +85,23 @@ function PayEmployeeContent() {
 
   useEffect(() => { loadData() }, [loadData])
 
-  // 1. ΔΙΑΓΡΑΦΗ ΜΕΜΟΝΩΜΕΝΗΣ ΥΠΕΡΩΡΙΑΣ (🗑️)
+  // ΛΕΙΤΟΥΡΓΙΑ ΔΙΑΓΡΑΦΗΣ (🗑️)
   async function handleDeleteOvertime(id: string) {
-    if (!confirm('Θέλετε να διαγράψετε αυτή την εγγραφή;')) return;
-    await supabase.from('employee_overtimes').delete().eq('id', id);
-    toast.success('Η υπερωρία διαγράφηκε.');
-    loadData();
+    if (!confirm('Διαγραφή αυτής της υπερωρίας;')) return;
+    const { error } = await supabase.from('employee_overtimes').delete().eq('id', id);
+    if (!error) {
+      toast.success('Διαγράφηκε');
+      loadData();
+    }
   }
 
-  // 2. ΠΛΗΡΩΜΗ ΜΕΜΟΝΩΜΕΝΗΣ ΥΠΕΡΩΡΙΑΣ (✅)
+  // ΜΕΜΟΝΩΜΕΝΗ ΠΛΗΡΩΜΗ (✅)
   async function handlePaySingleOvertime(ot: any) {
-    const manualAmount = window.prompt(`Εισάγετε το ποσό πληρωμής για ${ot.hours} ώρες υπερωρίας:`, "0.00");
+    const manualAmount = window.prompt(`Ποσό πληρωμής για ${ot.hours} ώρες:`, "0.00");
     if (manualAmount === null) return;
     const finalAmount = Number(manualAmount);
 
-    if (isNaN(finalAmount) || finalAmount <= 0) {
-      return toast.error('Εισάγετε έγκυρο ποσό.');
-    }
+    if (isNaN(finalAmount) || finalAmount <= 0) return toast.error('Εισάγετε έγκυρο ποσό.');
 
     try {
       await supabase.from('employee_overtimes').update({ is_paid: true }).eq('id', ot.id);
@@ -125,9 +132,9 @@ function PayEmployeeContent() {
   const bankAmount = Number(accountingPayroll) || 0;
   const autoCashAmount = totalEarnings - bankAmount;
 
-  // 3. ΕΝΙΑΙΑ ΠΛΗΡΩΜΗ ΜΗΝΑ (ΤΟ ΜΕΓΑΛΟ ΚΟΥΜΠΙ)
+  // ΕΝΙΑΙΑ ΠΛΗΡΩΜΗ ΜΗΝΑ
   async function handleMonthlyPayment() {
-    if (totalEarnings <= 0) return toast.error('Υπολογίστε το ποσό πληρωμής.');
+    if (totalEarnings <= 0) return toast.error('Το ποσό πρέπει να είναι μεγαλύτερο από 0');
     setLoading(true);
 
     try {
@@ -152,7 +159,7 @@ function PayEmployeeContent() {
       const { data: transData, error: transError } = await supabase.from('transactions').insert(transactions).select();
       if (transError) throw transError;
 
-      // ΜΗΔΕΝΙΣΜΟΣ ΟΛΩΝ ΤΩΝ ΕΚΚΡΕΜΩΝ ΩΡΩΝ ΤΗΣ ΚΑΡΤΕΛΑΣ
+      // ΜΗΔΕΝΙΣΜΟΣ ΟΛΩΝ ΤΩΝ ΕΚΚΡΕΜΩΝ ΩΡΩΝ (ΚΑΡΤΕΛΑ)
       if (pendingOtIds.length > 0) {
         await supabase
           .from('employee_overtimes')
@@ -160,7 +167,7 @@ function PayEmployeeContent() {
           .in('id', pendingOtIds);
       }
 
-      toast.success('Η ενιαία πληρωμή ολοκληρώθηκε και οι ώρες μηδενίστηκαν!');
+      toast.success('Η πληρωμή ολοκληρώθηκε!');
       router.push('/employees');
     } catch (err: any) {
       toast.error(err.message);
@@ -171,8 +178,9 @@ function PayEmployeeContent() {
   return (
     <div style={iphoneWrapper}>
       <Toaster position="top-center" richColors />
-      <div style={{ maxWidth: '500px', margin: '0 auto', paddingBottom: '80px' }}>
+      <div style={{ maxWidth: '500px', margin: '0 auto', paddingBottom: '100px' }}>
         
+        {/* HEADER */}
         <div style={headerStyle}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <div style={logoBoxStyle}>⚖️</div>
@@ -186,6 +194,7 @@ function PayEmployeeContent() {
 
         <div style={formCardStyle}>
           
+          {/* ΤΥΠΟΣ ΑΠΑΣΧΟΛΗΣΗΣ */}
           <div style={{ marginBottom: '20px' }}>
             <label style={subLabel}>ΤΥΠΟΣ ΑΠΑΣΧΟΛΗΣΗΣ</label>
             <div style={{ display: 'flex', gap: '10px' }}>
@@ -194,6 +203,7 @@ function PayEmployeeContent() {
             </div>
           </div>
 
+          {/* GRID ΣΥΜΦΩΝΙΑΣ */}
           <div style={agreementGrid}>
             {agreementType === 'monthly' ? (
               <>
@@ -218,14 +228,13 @@ function PayEmployeeContent() {
             )}
           </div>
 
-          {/* ΤΟ ΚΟΥΤΙ ΥΠΕΡΩΡΙΩΝ ΠΟΥ ΖΗΤΗΣΕΣ */}
+          {/* EXTRA ΠΑΡΟΧΕΣ - ΤΟ ΚΟΥΤΙ ΠΟΥ ΖΗΤΗΣΕΣ */}
           <p style={sectionTitle}>EXTRA ΠΑΡΟΧΕΣ (€)</p>
           <div style={extraGrid}>
             <div style={inputGroup}>
               <label style={{...subLabel, color: colors.accentBlue}}>ΥΠΕΡΩΡΙΕΣ (€)</label>
               <input 
-                type="number" 
-                value={overtimeEuro} 
+                type="number" value={overtimeEuro} 
                 onChange={e => setOvertimeEuro(e.target.value)} 
                 style={{...smallInput, border: `2px solid ${colors.accentBlue}`, backgroundColor: '#f0f9ff'}} 
                 placeholder="0.00" 
@@ -239,7 +248,7 @@ function PayEmployeeContent() {
             </div>
           </div>
 
-          {/* ΚΑΡΤΕΛΑ ΩΡΩΝ (ΓΙΑ ΝΑ ΒΛΕΠΕΙΣ ΠΟΣΕΣ ΩΡΕΣ ΧΡΩΣΤΑΣ) */}
+          {/* ΚΑΡΤΕΛΑ ΩΡΩΝ */}
           <div style={overtimeCard}>
             <p style={{...sectionTitle, marginTop: 0}}>📋 ΕΚΚΡΕΜΕΙΣ ΩΡΕΣ ({overtimeList.length})</p>
             {overtimeList.length > 0 ? (
@@ -262,18 +271,24 @@ function PayEmployeeContent() {
             )}
           </div>
 
+          {/* ΛΟΓΙΣΤΙΚΟ ΠΟΣΟ */}
           <div style={accountingBox}>
             <label style={{ fontSize: '10px', fontWeight: '900', color: colors.accentBlue }}>📄 ΜΙΣΘΟΔΟΣΙΑ ΛΟΓΙΣΤΗ (ΤΡΑΠΕΖΑ)</label>
-            <input type="number" value={accountingPayroll} onChange={e => setAccountingPayroll(e.target.value)} style={accountingInput} placeholder="0.00" />
+            <input 
+              type="number" value={accountingPayroll} 
+              onChange={e => setAccountingPayroll(e.target.value)} 
+              style={accountingInput} placeholder="0.00" 
+            />
           </div>
 
+          {/* ΑΠΟΤΕΛΕΣΜΑΤΑ */}
           <div style={resultRow}>
             <div style={resultItem}><label style={subLabel}>ΣΥΝΟΛΟ ΠΛΗΡΩΤΕΟ</label><p style={amountLarge}>{totalEarnings.toFixed(2)}€</p></div>
             <div style={resultItem}><label style={subLabel}>ΥΠΟΛΟΙΠΟ ΜΕΤΡΗΤΑ</label><p style={{ ...amountLarge, color: colors.accentGreen }}>{autoCashAmount.toFixed(2)}€</p></div>
           </div>
 
           <div style={{ marginTop: '20px' }}>
-            <label style={subLabel}>ΗΜΕΡΟΜΗΝΙΑ ΠΛΗΡΩΜΗΣ</label>
+            <label style={subLabel}>ΗΜΕΡΟΜΗΝΙΑ</label>
             <input type="date" value={date} onChange={e => setDate(e.target.value)} style={smallInput} />
           </div>
 
@@ -286,7 +301,7 @@ function PayEmployeeContent() {
   )
 }
 
-// --- STYLES ---
+// --- ΟΛΑ ΤΑ STYLES ---
 const iphoneWrapper: any = { backgroundColor: colors.bgLight, minHeight: '100dvh', padding: '20px', position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, overflowY: 'auto' };
 const headerStyle: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' };
 const logoBoxStyle: any = { width: '42px', height: '42px', backgroundColor: '#e0f2fe', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px' };
@@ -316,5 +331,11 @@ const otPayBtn: any = { border: 'none', backgroundColor: '#ecfdf5', color: '#059
 const otDelBtn: any = { border: 'none', backgroundColor: '#fef2f2', color: colors.accentRed, padding: '8px 12px', borderRadius: '10px', cursor: 'pointer' };
 
 export default function PayEmployeePage() {
-  return <main><Suspense fallback={<div>Φόρτωση...</div>}><PayEmployeeContent /></Suspense></main>
+  return (
+    <main>
+      <Suspense fallback={<div>Φόρτωση...</div>}>
+        <PayEmployeeContent />
+      </Suspense>
+    </main>
+  );
 }
