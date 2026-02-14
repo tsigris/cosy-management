@@ -207,9 +207,16 @@ function PayEmployeeContent() {
           <div style={agreementGrid}>
             {agreementType === 'monthly' ? (
               <>
-                <div style={inputGroup}><label style={subLabel}>ΣΥΜΦΩΝΙΑ (ΗΜΕΡΕΣ)</label>
-                  <select value={agreementDays} onChange={e => setAgreementDays(Number(e.target.value))} style={selectStyle}>
-                    <option value={26}>26 Ημέρες</option><option value={30}>30 Ημέρες</option>
+                <div style={inputGroup}>
+                  <label style={subLabel}>ΣΥΜΦΩΝΙΑ (ΗΜΕΡΕΣ)</label>
+                  <select 
+                    value={agreementDays} 
+                    onChange={e => setAgreementDays(Number(e.target.value))} 
+                    style={selectStyle}
+                  >
+                    <option value={22}>22 Ημέρες (8 Ρεπό)</option>
+                    <option value={26}>26 Ημέρες (4 Ρεπό)</option>
+                    <option value={30}>30 Ημέρες (0 Ρεπό)</option>
                   </select>
                 </div>
                 <div style={inputGroup}><label style={subLabel}>ΑΠΟΥΣΙΕΣ (-)</label>
