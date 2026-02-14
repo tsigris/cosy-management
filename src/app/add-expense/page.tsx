@@ -90,7 +90,7 @@ function AddExpenseForm() {
   }
 
   return (
-    <main style={{ backgroundColor: colors.bgLight, minHeight: '100vh', padding: '16px 16px 80px 16px', overflowY: 'auto' }}>
+    <main style={{ backgroundColor: colors.bgLight, minHeight: '100vh', padding: '16px 16px 100px 16px', overflowY: 'auto' }}>
       <div style={formCardStyle}>
         
         <div style={headerRow}>
@@ -133,14 +133,14 @@ function AddExpenseForm() {
           </div>
         </div>
 
-        {/* ΑΝΑΖΗΤΗΣΗ ΠΡΟΜΗΘΕΥΤΗ */}
+        {/* ΑΝΑΖΗΤΗΣΗ & ΕΠΙΛΟΓΗ ΠΡΟΜΗΘΕΥΤΗ */}
         <div style={{ marginBottom: '20px' }}>
-          <label style={labelStyle}>🏭 ΠΡΟΜΗΘΕΥΤΗΣ</label>
-          <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+          <label style={labelStyle}>🏭 ΑΝΑΖΗΤΗΣΗ ΠΡΟΜΗΘΕΥΤΗ</label>
+          <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '10px' }}>
             <div style={{ position: 'relative', flex: 1 }}>
               <input 
                 type="text" 
-                placeholder="Αναζήτηση..." 
+                placeholder="Γράψτε για αναζήτηση..." 
                 value={searchTerm} 
                 onFocus={() => setShowDropdown(true)}
                 onChange={(e) => {setSearchTerm(e.target.value); setShowDropdown(true);}}
@@ -165,13 +165,29 @@ function AddExpenseForm() {
                 </div>
               )}
             </div>
-            <Link href="/suppliers" style={plusBtn}>+</Link>
+            <Link href="/suppliers/new" style={plusBtn}>+</Link>
           </div>
+
+          <label style={labelStyle}>🏭 ΕΠΙΛΟΓΗ ΠΡΟΜΗΘΕΥΤΗ (ΛΙΣΤΑ)</label>
+          <select 
+            value={selectedSup} 
+            onChange={e => {
+              setSelectedSup(e.target.value); 
+              setSelectedFixed('');
+              // Ενημέρωση του searchTerm για να φαίνεται η επιλογή
+              const name = suppliers.find(s => s.id === e.target.value)?.name || '';
+              setSearchTerm(name);
+            }} 
+            style={inputStyle}
+          >
+            <option value="">— Επιλογή —</option>
+            {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </select>
         </div>
 
         <div style={{ marginBottom: '20px' }}>
           <label style={labelStyle}>🏢 ΠΑΓΙΟ / ΛΟΓΑΡΙΑΣΜΟΣ</label>
-          <select value={selectedFixed} onChange={e => setSelectedFixed(e.target.value)} style={inputStyle}>
+          <select value={selectedFixed} onChange={e => {setSelectedFixed(e.target.value); setSelectedSup(''); setSearchTerm('');}} style={inputStyle}>
             <option value="">— Επιλογή —</option>
             {fixedAssets.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
           </select>
@@ -186,14 +202,13 @@ function AddExpenseForm() {
           {loading ? 'ΑΠΟΘΗΚΕΥΣΗ...' : 'ΟΛΟΚΛΗΡΩΣΗ'}
         </button>
         
-        {/* ΚΕΝΟ DIV ΓΙΑ ΣΩΣΤΟ SCROLLING ΣΤΟ ΚΙΝΗΤΟ */}
         <div style={{ height: '40px' }}></div>
       </div>
     </main>
   )
 }
 
-const formCardStyle = { maxWidth: '500px', margin: '0 auto', backgroundColor: colors.white, borderRadius: '28px', padding: '24px', boxShadow: '0 4px 15px rgba(0,0,0,0.05)' };
+const formCardStyle = { maxWidth: '500px', margin: '0 auto', backgroundColor: colors.white, borderRadius: '28px', padding: '24px' };
 const headerRow = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' };
 const titleStyle = { fontWeight: '800', fontSize: '18px', margin: 0, color: colors.primaryDark };
 const dateSubtitle = { margin: 0, fontSize: '10px', color: colors.secondaryText, fontWeight: '700' };
