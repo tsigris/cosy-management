@@ -58,9 +58,12 @@ function EmployeesContent() {
   // Tips Analysis (month + list)
   const [tipsStats, setTipsStats] = useState({
     monthlyTips: 0,
-    lastTips: [] as Array<{ id: string; name: string; date: string; amount: number }>
+    lastTips: [] as Array<{ id: string; name: string; date: string; amount: number }>,
+    allTips: [] as Array<{ id: string; name: string; date: string; amount: number }>
   })
-  const [showTipsList, setShowTipsList] = useState(false)
+
+  // ✅ Modal αντί για inline list (για να μη γεμίζει η οθόνη)
+  const [showTipsModal, setShowTipsModal] = useState(false)
 
   const availableYears: number[] = []
   for (let y = 2024; y <= new Date().getFullYear(); y++) availableYears.push(y)
@@ -88,7 +91,7 @@ function EmployeesContent() {
     start_date: new Date().toISOString().split('T')[0]
   })
 
-  // ✅ Tips stats fetcher (month + last 5 of selected month)
+  // ✅ Tips stats fetcher (month + full list in modal)
   const getTipsStats = useCallback(async () => {
     try {
       if (!storeId) return
@@ -106,8 +109,6 @@ function EmployeesContent() {
         return
       }
 
-      let monthlyTips = 0
-
       const tipsThisSelectedMonth = (data || [])
         .map((t: any) => {
           const note = String(t.notes || '')
@@ -124,27 +125,21 @@ function EmployeesContent() {
             id: t.id,
             name: t?.employees?.full_name || '—',
             date: t.date,
-            amount,
-            note
+            amount
           }
         })
         .filter((t: any) => {
           const d = new Date(t.date)
           return d.getFullYear() === tipsMonth.year && d.getMonth() === tipsMonth.month
         })
+        .sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime())
 
-      tipsThisSelectedMonth.forEach((t: any) => {
-        monthlyTips += t.amount
-      })
+      const monthlyTips = tipsThisSelectedMonth.reduce((acc: number, t: any) => acc + (Number(t.amount) || 0), 0)
 
       setTipsStats({
         monthlyTips,
-        lastTips: tipsThisSelectedMonth.slice(0, 5).map((t: any) => ({
-          id: t.id,
-          name: t.name,
-          date: t.date,
-          amount: t.amount
-        }))
+        lastTips: tipsThisSelectedMonth.slice(0, 5), // ✅ μόνο preview (αν θες να δείχνει 0, πες μου)
+        allTips: tipsThisSelectedMonth // ✅ όλη η λίστα για modal
       })
     } catch (e) {
       console.error(e)
@@ -250,7 +245,6 @@ function EmployeesContent() {
   }
 
   // ✅ Καταγραφή νέων Tips σαν transaction
-  // ✅ amount = amountNum για να φαίνεται σωστά στο ιστορικό
   async function handleQuickTip() {
     if (!tipAmount || !tipModal) return
 
@@ -543,6 +537,90 @@ function EmployeesContent() {
           </div>
         )}
 
+        {/* ✅ MONTH TIPS - MODAL με όλες τις κινήσεις (για να μην γεμίζει η οθόνη) */}
+        {showTipsModal && (
+          <div style={modalOverlay}>
+            <div style={{ ...modalCard, maxWidth: '420px', textAlign: 'left' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                  <h3 style={{ margin: 0, fontSize: '16px' }}>Όλα τα Tips</h3>
+                  <p style={{ margin: '4px 0 0', fontSize: '12px', color: colors.secondaryText, fontWeight: 800 }}>
+                    {monthOptions.find((o) => o.year === tipsMonth.year && o.month === tipsMonth.month)?.label || ''}
+                  </p>
+                </div>
+
+                <button
+                  onClick={() => setShowTipsModal(false)}
+                  style={closeModalBtn}
+                  title="Κλείσιμο"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div style={{ marginTop: '14px', padding: '12px', borderRadius: '14px', backgroundColor: '#fffbeb', border: '1px solid #f59e0b' }}>
+                <div style={{ fontSize: '11px', fontWeight: 900, color: '#b45309' }}>ΣΥΝΟΛΟ ΜΗΝΑ</div>
+                <div style={{ marginTop: '6px', fontSize: '22px', fontWeight: 900, color: colors.primaryDark }}>
+                  {tipsStats.monthlyTips.toFixed(2)}€
+                </div>
+              </div>
+
+              <div style={{ marginTop: '14px', maxHeight: '50vh', overflowY: 'auto', paddingRight: '6px' }}>
+                {tipsStats.allTips.length === 0 ? (
+                  <p style={{ margin: 0, fontSize: '12px', color: colors.secondaryText, fontWeight: 800 }}>
+                    Δεν υπάρχουν tips καταγραφές για αυτόν τον μήνα.
+                  </p>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    {tipsStats.allTips.map((t) => (
+                      <div key={t.id} style={tipsListItem}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', alignItems: 'center' }}>
+                          <div style={{ display: 'flex', flexDirection: 'column' }}>
+                            <span style={{ fontWeight: 900, color: colors.primaryDark, fontSize: '12px' }}>{t.name}</span>
+                            <span style={{ fontSize: '10px', color: colors.secondaryText, fontWeight: 800 }}>
+                              {new Date(t.date).toLocaleDateString('el-GR')}
+                            </span>
+                            <span style={{ fontSize: '10px', color: '#b45309', fontWeight: 900 }}>Tips</span>
+                          </div>
+
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                            <span style={{ fontWeight: 900, color: '#b45309', fontSize: '12px' }}>{Number(t.amount).toFixed(2)}€</span>
+
+                            <button
+                              style={miniIconBtn}
+                              title="Επεξεργασία"
+                              onClick={() => {
+                                setTipEditModal({ id: t.id, name: t.name, amount: t.amount })
+                                setTipEditAmount(String(t.amount))
+                              }}
+                            >
+                              <Pencil size={16} />
+                            </button>
+
+                            <button
+                              style={miniIconBtnDanger}
+                              title="Διαγραφή"
+                              onClick={() => deleteTipTransaction(t.id)}
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div style={{ display: 'flex', gap: '10px', marginTop: '16px' }}>
+                <button onClick={() => setShowTipsModal(false)} style={cancelBtnSmall}>
+                  ΚΛΕΙΣΙΜΟ
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* OT MODAL */}
         {otModal && (
           <div style={modalOverlay}>
@@ -620,56 +698,17 @@ function EmployeesContent() {
 
             <div style={tipsValue}>{tipsStats.monthlyTips.toFixed(2)}€</div>
 
-            <button onClick={() => setShowTipsList((v) => !v)} style={tipsListBtn}>
-              {showTipsList ? 'Hide List' : 'View List'}
+            {/* ✅ Αντί να εμφανίζει όλη τη λίστα στην οθόνη, ανοίγει modal */}
+            <button
+              onClick={() => setShowTipsModal(true)}
+              style={tipsListBtn}
+              disabled={tipsStats.allTips.length === 0}
+              title={tipsStats.allTips.length === 0 ? 'Δεν υπάρχουν tips για αυτόν τον μήνα' : 'Άνοιγμα λίστας'}
+            >
+              View All
             </button>
           </div>
         </div>
-
-        {showTipsList && (
-          <div style={tipsListWrap}>
-            {tipsStats.lastTips.length === 0 ? (
-              <p style={{ margin: 0, fontSize: '12px', color: colors.secondaryText, fontWeight: 700 }}>
-                Δεν υπάρχουν tips καταγραφές για αυτόν τον μήνα.
-              </p>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                {tipsStats.lastTips.map((t) => (
-                  <div key={t.id} style={tipsListItem}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', alignItems: 'center' }}>
-                      <div style={{ display: 'flex', flexDirection: 'column' }}>
-                        <span style={{ fontWeight: 900, color: colors.primaryDark, fontSize: '12px' }}>{t.name}</span>
-                        <span style={{ fontSize: '10px', color: colors.secondaryText, fontWeight: 800 }}>
-                          {new Date(t.date).toLocaleDateString('el-GR')}
-                        </span>
-                        <span style={{ fontSize: '10px', color: '#b45309', fontWeight: 900 }}>Tips</span>
-                      </div>
-
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <span style={{ fontWeight: 900, color: '#b45309', fontSize: '12px' }}>{t.amount.toFixed(2)}€</span>
-
-                        <button
-                          style={miniIconBtn}
-                          title="Επεξεργασία"
-                          onClick={() => {
-                            setTipEditModal({ id: t.id, name: t.name, amount: t.amount })
-                            setTipEditAmount(String(t.amount))
-                          }}
-                        >
-                          <Pencil size={16} />
-                        </button>
-
-                        <button style={miniIconBtnDanger} title="Διαγραφή" onClick={() => deleteTipTransaction(t.id)}>
-                          <Trash2 size={16} />
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
 
         {/* FORM */}
         {isAdding && (
@@ -863,11 +902,20 @@ function EmployeesContent() {
                         .map((t) => {
                           const isTip = /tips/i.test(t.notes || '')
                           const note = String(t.notes || '')
-                          // Tips: δείξε το "Tips: XX€"
-                          // Άλλα: δείξε το [ ... ] (όπως πριν)
+
+                          // label
                           const noteLabel = isTip
                             ? (note.split('[')[0]?.trim() || 'Tips')
                             : (note.split('[')[1]?.replace(']', '') || 'Πληρωμή')
+
+                          // amount (tips μπορεί να είναι παλιό και να έχει amount=0)
+                          const amountForView = (() => {
+                            if (!isTip) return Number(t.amount) || 0
+                            const amt = Number(t.amount) || 0
+                            if (amt > 0) return amt
+                            const m = note.replace(',', '.').match(/[\d.]+/)
+                            return m ? parseFloat(m[0]) : 0
+                          })()
 
                           return (
                             <div key={t.id} style={historyItemExtended}>
@@ -875,12 +923,49 @@ function EmployeesContent() {
                                 <span style={{ color: colors.secondaryText, fontWeight: '700', fontSize: '11px' }}>
                                   {new Date(t.date).toLocaleDateString('el-GR')}
                                 </span>
+
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                                   <span>{t.method === 'Τράπεζα' ? '🏦' : '💵'}</span>
-                                  <span style={{ fontWeight: '800', color: colors.primaryDark }}>{Number(t.amount).toFixed(2)}€</span>
-                                  <button onClick={() => deleteTransaction(t.id)} style={transDeleteBtn}>
-                                    🗑️
-                                  </button>
+                                  <span style={{ fontWeight: '800', color: colors.primaryDark }}>{amountForView.toFixed(2)}€</span>
+
+                                  {/* ✅ Tips: Edit + Delete */}
+                                  {isTip ? (
+                                    <>
+                                      <button
+                                        style={transIconBtn}
+                                        title="Επεξεργασία Tips"
+                                        onClick={(e) => {
+                                          e.stopPropagation()
+                                          setTipEditModal({ id: t.id, name: emp.full_name, amount: amountForView })
+                                          setTipEditAmount(String(amountForView))
+                                        }}
+                                      >
+                                        <Pencil size={16} />
+                                      </button>
+
+                                      <button
+                                        style={transIconBtnDanger}
+                                        title="Διαγραφή Tips"
+                                        onClick={(e) => {
+                                          e.stopPropagation()
+                                          deleteTipTransaction(t.id)
+                                        }}
+                                      >
+                                        <Trash2 size={16} />
+                                      </button>
+                                    </>
+                                  ) : (
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        deleteTransaction(t.id)
+                                      }}
+                                      style={transDeleteBtn}
+                                      title="Διαγραφή"
+                                    >
+                                      🗑️
+                                    </button>
+                                  )}
                                 </div>
                               </div>
 
@@ -1105,6 +1190,20 @@ const modalCard: any = { backgroundColor: 'white', padding: '25px', borderRadius
 const saveBtnSmall: any = { flex: 1, padding: '14px', backgroundColor: colors.primaryDark, color: 'white', border: 'none', borderRadius: '12px', fontWeight: '700' }
 const cancelBtnSmall: any = { flex: 1, padding: '14px', backgroundColor: 'white', color: colors.secondaryText, border: `1px solid ${colors.border}`, borderRadius: '12px', fontWeight: '700' }
 
+const closeModalBtn: any = {
+  width: '36px',
+  height: '36px',
+  borderRadius: '12px',
+  border: `1px solid ${colors.border}`,
+  backgroundColor: colors.white,
+  cursor: 'pointer',
+  fontWeight: 900,
+  color: colors.secondaryText,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center'
+}
+
 const iconToggleBtn: any = { width: '56px', borderRadius: '16px', border: `1px solid ${colors.border}`, backgroundColor: colors.white, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', boxShadow: '0 4px 12px rgba(0,0,0,0.04)' }
 
 const tipsSingleWrap: any = { marginBottom: '14px' }
@@ -1113,7 +1212,6 @@ const tipsHeader: any = { display: 'flex', alignItems: 'center', gap: '8px', col
 const tipsTitle: any = { fontSize: '10px', letterSpacing: '0.08em' }
 const tipsValue: any = { marginTop: '8px', fontSize: '20px', fontWeight: 900, color: colors.primaryDark }
 const tipsListBtn: any = { marginTop: '10px', width: '100%', padding: '10px', borderRadius: '12px', border: '1px solid #f59e0b', backgroundColor: '#fff7ed', color: '#b45309', fontWeight: 900, fontSize: '11px', cursor: 'pointer' }
-const tipsListWrap: any = { backgroundColor: colors.white, border: `1px solid ${colors.border}`, borderRadius: '16px', padding: '14px', marginBottom: '18px' }
 const tipsListItem: any = { padding: '10px', borderRadius: '12px', border: `1px solid ${colors.border}`, backgroundColor: colors.bgLight }
 
 const tipsMonthSelect: any = {
@@ -1143,6 +1241,27 @@ const miniIconBtn: any = {
 
 const miniIconBtnDanger: any = {
   ...miniIconBtn,
+  border: '1px solid #fecaca',
+  backgroundColor: '#fef2f2',
+  color: colors.accentRed
+}
+
+// ✅ ΝΕΑ: Icon buttons για tips μέσα στο Ιστορικό
+const transIconBtn: any = {
+  width: '30px',
+  height: '30px',
+  borderRadius: '10px',
+  border: `1px solid ${colors.border}`,
+  backgroundColor: colors.white,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  cursor: 'pointer',
+  color: colors.primaryDark
+}
+
+const transIconBtnDanger: any = {
+  ...transIconBtn,
   border: '1px solid #fecaca',
   backgroundColor: '#fef2f2',
   color: colors.accentRed
