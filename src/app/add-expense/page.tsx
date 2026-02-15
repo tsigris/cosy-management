@@ -8,11 +8,11 @@ import Link from 'next/link'
 import { toast, Toaster } from 'sonner'
 
 const colors = {
-  primaryDark: '#0f172a', 
+  primaryDark: '#1e293b', 
   secondaryText: '#64748b', 
-  accentRed: '#f43f5e',   
-  accentBlue: '#6366f1',  
-  accentGreen: '#10b981',
+  accentRed: '#dc2626',   
+  accentBlue: '#2563eb',  
+  accentGreen: '#059669',
   bgLight: '#f8fafc',     
   border: '#e2e8f0',      
   white: '#ffffff'
@@ -23,8 +23,6 @@ function AddExpenseForm() {
   const searchParams = useSearchParams()
   const dropdownRef = useRef<HTMLDivElement>(null)
 
-  // URL Params
-  const editId = searchParams.get('editId') 
   const urlSupId = searchParams.get('supId')
   const urlAssetId = searchParams.get('assetId')
   const selectedDate = searchParams.get('date') || new Date().toISOString().split('T')[0]
@@ -47,6 +45,7 @@ function AddExpenseForm() {
   const [suppliers, setSuppliers] = useState<any[]>([])
   const [fixedAssets, setFixedAssets] = useState<any[]>([])
   
+  // LOGIC ΓΙΑ ΔΙΠΛΗ ΕΠΙΛΟΓΗ (SEARCH & SELECT)
   const [searchTerm, setSearchTerm] = useState('')
   const [showDropdown, setShowDropdown] = useState(false)
   const [selectedSup, setSelectedSup] = useState(urlSupId || '')
@@ -66,13 +65,10 @@ function AddExpenseForm() {
     return () => document.removeEventListener("mousedown", handleClickOutside)
   }, [])
 
-  // ✅ ΚΕΝΤΡΙΚΗ ΛΟΓΙΚΗ ΦΟΡΤΩΣΗΣ ΔΕΔΟΜΕΝΩΝ (INITIAL & EDIT)
   const loadFormData = useCallback(async () => {
     try {
       const { data: { session } } = await supabase.auth.getSession()
-      if (!session) return;
-
-      const { data: profile } = await supabase.from('profiles').select('username, store_id').eq('id', session.user.id).maybeSingle()
+      const { data: profile } = await supabase.from('profiles').select('username, store_id').eq('id', session?.user.id).maybeSingle()
       
       if (profile) {
         setCurrentUsername(profile.username || 'Admin')
@@ -82,35 +78,10 @@ function AddExpenseForm() {
           supabase.from('suppliers').select('*').eq('store_id', profile.store_id).neq('is_active', false).order('name'),
           supabase.from('fixed_assets').select('id, name').eq('store_id', profile.store_id).order('name')
         ])
-
         if (sRes.data) setSuppliers(sRes.data)
         if (fRes.data) setFixedAssets(fRes.data)
 
-        // 🛠 ΑΝ ΕΙΝΑΙ ΕΠΕΞΕΡΓΑΣΙΑ (EDIT MODE)
-        if (editId) {
-          const { data: tx, error: txErr } = await supabase
-            .from('transactions')
-            .select('*')
-            .eq('id', editId)
-            .single()
-
-          if (tx && !txErr) {
-            setAmount(Math.abs(tx.amount).toString())
-            setMethod(tx.is_credit ? 'Μετρητά' : (tx.method || 'Μετρητά')) // fallback αν είναι πίστωση
-            setIsCredit(tx.is_credit || false)
-            setIsAgainstDebt(tx.type === 'debt_payment')
-            setNotes(tx.notes || '')
-            setSelectedSup(tx.supplier_id || '')
-            setSelectedFixed(tx.fixed_asset_id || '')
-            setImagePreview(tx.image_url)
-            
-            // Ενημέρωση του search input για να φαίνεται ο προμηθευτής
-            if (tx.supplier_id && sRes.data) {
-              const sup = sRes.data.find((s: any) => s.id === tx.supplier_id)
-              if (sup) setSearchTerm(sup.name)
-            }
-          }
-        } else if (urlSupId && sRes.data) {
+        if (urlSupId && sRes.data) {
           const found = sRes.data.find((s: any) => s.id === urlSupId)
           if (found) {
             setSearchTerm(found.name)
@@ -119,7 +90,7 @@ function AddExpenseForm() {
         }
       }
     } catch (error) { console.error(error) } finally { setLoading(false) }
-  }, [editId, urlSupId])
+  }, [urlSupId])
 
   useEffect(() => { loadFormData() }, [loadFormData])
 
@@ -137,13 +108,13 @@ function AddExpenseForm() {
   }, [searchTerm, suppliers])
 
   const handleSave = async () => {
-    if (!amount || Number(amount) <= 0) return toast.error('Συμπληρώστε το ποσό')
-    if (!selectedSup && !selectedFixed) return toast.error('Επιλέξτε Προμηθευτή ή Πάγιο')
+    if (!amount || Number(amount) <= 0) return alert('Συμπληρώστε το ποσό')
+    if (!selectedSup && !selectedFixed) return alert('Επιλέξτε Προμηθευτή ή Πάγιο')
     setLoading(true)
     setIsUploading(true)
 
     try {
-      let imageUrl = imagePreview 
+      let imageUrl = null
       if (imageFile && storeId && !noInvoice) {
         const fileExt = imageFile.name.split('.').pop()
         const fileName = `${storeId}/${Date.now()}.${fileExt}`
@@ -170,16 +141,12 @@ function AddExpenseForm() {
         image_url: imageUrl
       }
 
-      const { error } = editId 
-        ? await supabase.from('transactions').update(payload).eq('id', editId)
-        : await supabase.from('transactions').insert([payload])
-
+      const { error } = await supabase.from('transactions').insert([payload])
       if (error) throw error
-      toast.success(editId ? 'Η συναλλαγή ενημερώθηκε!' : 'Η συναλλαγή καταχωρήθηκε!')
       router.push(`/?date=${selectedDate}`)
       router.refresh()
     } catch (error: any) { 
-      toast.error(error.message); setLoading(false); setIsUploading(false);
+      alert(error.message); setLoading(false); setIsUploading(false);
     }
   }
 
@@ -192,7 +159,7 @@ function AddExpenseForm() {
           <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
             <div style={logoBoxStyle}>💸</div>
             <div>
-              <h1 style={{ fontWeight: '800', fontSize: '22px', margin: 0, color: colors.primaryDark }}>{editId ? 'Επεξεργασία' : 'Έξοδο'}</h1>
+              <h1 style={{ fontWeight: '800', fontSize: '22px', margin: 0 }}>Έξοδο</h1>
               <p style={{ margin: 0, fontSize: '11px', color: colors.secondaryText, fontWeight: '700' }}>{new Date(selectedDate).toLocaleDateString('el-GR', { day: 'numeric', month: 'long' }).toUpperCase()}</p>
             </div>
           </div>
@@ -200,31 +167,36 @@ function AddExpenseForm() {
         </div>
 
         <div style={formCard}>
+          {/* ΠΟΣΟ */}
           <label style={labelStyle}>ΠΟΣΟ (€)</label>
           <input type="number" inputMode="decimal" autoFocus value={amount} onChange={e => setAmount(e.target.value)} style={inputStyle} placeholder="0.00" />
 
-          <div onClick={() => setNoInvoice(!noInvoice)} style={{ ...noInvoiceToggle, backgroundColor: noInvoice ? '#fee2e2' : colors.bgLight, border: `1px solid ${noInvoice ? colors.accentRed : colors.border}`, marginTop: '15px' }}>
+          {/* ΜΑΥΡΑ */}
+          <div onClick={() => setNoInvoice(!noInvoice)} style={{ ...noInvoiceToggle, backgroundColor: noInvoice ? '#fee2e2' : colors.bgLight, border: `1px solid ${noInvoice ? colors.accentRed : colors.border}` }}>
             <div style={{ ...checkboxBox, backgroundColor: noInvoice ? colors.accentRed : 'white', border: `2px solid ${noInvoice ? colors.accentRed : colors.secondaryText}` }}>{noInvoice && '✓'}</div>
             <span style={{ fontSize: '13px', fontWeight: '800', color: noInvoice ? colors.accentRed : colors.primaryDark }}>ΧΩΡΙΣ ΤΙΜΟΛΟΓΙΟ (Μαύρα)</span>
           </div>
 
+          {/* ΜΕΘΟΔΟΣ */}
           <label style={{ ...labelStyle, marginTop: '20px' }}>ΜΕΘΟΔΟΣ ΠΛΗΡΩΜΗΣ</label>
           <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
             <button type="button" onClick={() => {setMethod('Μετρητά'); setIsCredit(false);}} style={{ ...methodBtn, backgroundColor: method === 'Μετρητά' && !isCredit ? colors.primaryDark : colors.white, color: method === 'Μετρητά' && !isCredit ? 'white' : colors.secondaryText }}>💵 Μετρητά</button>
             <button type="button" onClick={() => {setMethod('Τράπεζα'); setIsCredit(false);}} style={{ ...methodBtn, backgroundColor: method === 'Τράπεζα' && !isCredit ? colors.primaryDark : colors.white, color: method === 'Τράπεζα' && !isCredit ? 'white' : colors.secondaryText }}>🏛️ Τράπεζα</button>
           </div>
 
+          {/* ΧΡΕΟΣ / ΠΙΣΤΩΣΗ */}
           <div style={creditPanel}>
             <div style={{ marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <input type="checkbox" id="isCredit" checked={isCredit} onChange={e => {setIsCredit(e.target.checked); if(e.target.checked) setIsAgainstDebt(false)}} style={checkboxStyle} />
-              <label htmlFor="isCredit" style={checkLabel}>ΕΠΙ ΠΙΣΤΩΣΕΙ (ΝΕΟ ΧΡΕΟΣ)</label>
+              <input type="checkbox" checked={isCredit} onChange={e => {setIsCredit(e.target.checked); if(e.target.checked) setIsAgainstDebt(false)}} id="credit" style={checkboxStyle} />
+              <label htmlFor="credit" style={checkLabel}>ΕΠΙ ΠΙΣΤΩΣΕΙ (ΝΕΟ ΧΡΕΟΣ)</label>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <input type="checkbox" id="isAgainstDebt" checked={isAgainstDebt} onChange={e => {setIsAgainstDebt(e.target.checked); if(e.target.checked) setIsCredit(false)}} style={checkboxStyle} />
-              <label htmlFor="isAgainstDebt" style={{...checkLabel, color: isAgainstDebt ? colors.accentBlue : colors.primaryDark }}>ΕΝΑΝΤΙ ΠΑΛΑΙΟΥ ΧΡΕΟΥ</label>
+              <input type="checkbox" checked={isAgainstDebt} onChange={e => {setIsAgainstDebt(e.target.checked); if(e.target.checked) setIsCredit(false)}} id="against" style={checkboxStyle} />
+              <label htmlFor="against" style={{...checkLabel, color: isAgainstDebt ? colors.accentBlue : colors.primaryDark }}>ΕΝΑΝΤΙ ΠΑΛΑΙΟΥ ΧΡΕΟΥ</label>
             </div>
           </div>
 
+          {/* 1. ΑΥΤΟΜΑΤΗ ΑΝΑΖΗΤΗΣΗ */}
           <label style={{ ...labelStyle, marginTop: '20px' }}>🏭 ΑΝΑΖΗΤΗΣΗ ΠΡΟΜΗΘΕΥΤΗ</label>
           <div style={{ position: 'relative' }} ref={dropdownRef}>
             <div style={{ display: 'flex', gap: '10px' }}>
@@ -238,7 +210,7 @@ function AddExpenseForm() {
               />
               <button type="button" onClick={() => setIsSupModalOpen(true)} style={plusBtn}>+</button>
             </div>
-            {showDropdown && searchTerm && filteredSuppliers.length > 0 && (
+            {showDropdown && searchTerm && (
               <div style={autocompleteDropdown}>
                 {filteredSuppliers.map(s => (
                   <div key={s.id} style={dropdownRow} onClick={() => { setSelectedSup(s.id); setSearchTerm(s.name); setShowDropdown(false); }}>{s.name}</div>
@@ -247,6 +219,23 @@ function AddExpenseForm() {
             )}
           </div>
 
+          {/* 2. ΚΛΑΣΙΚΟ DROPDOWN ΠΡΟΜΗΘΕΥΤΩΝ */}
+          <label style={{ ...labelStyle, marginTop: '15px' }}>ΛΙΣΤΑ ΠΡΟΜΗΘΕΥΤΩΝ (SELECT)</label>
+          <select 
+            value={selectedSup} 
+            onChange={(e) => {
+                const found = suppliers.find(s => s.id === e.target.value);
+                setSelectedSup(e.target.value);
+                if(found) setSearchTerm(found.name);
+                setSelectedFixed('');
+            }} 
+            style={inputStyle}
+          >
+            <option value="">Επιλογή από λίστα...</option>
+            {suppliers.map(s => <option key={s.id} value={s.id}>{s.name.toUpperCase()}</option>)}
+          </select>
+
+          {/* ΠΑΓΙΑ */}
           <label style={{ ...labelStyle, marginTop: '20px' }}>🏢 ΠΑΓΙΟ / ΛΟΓΑΡΙΑΣΜΟΣ</label>
           <select value={selectedFixed} onChange={e => {setSelectedFixed(e.target.value); if(e.target.value) {setSelectedSup(''); setSearchTerm('');}}} style={inputStyle}>
             <option value="">Επιλογή...</option>
@@ -256,12 +245,13 @@ function AddExpenseForm() {
           <label style={{ ...labelStyle, marginTop: '20px' }}>ΣΗΜΕΙΩΣΕΙΣ</label>
           <textarea value={notes} onChange={e => setNotes(e.target.value)} style={{ ...inputStyle, height: '60px' }} />
 
+          {/* ΦΩΤΟΓΡΑΦΙΑ */}
           {!noInvoice && (
             <div style={{ marginTop: '20px' }}>
               <label style={labelStyle}>📸 ΦΩΤΟΓΡΑΦΙΑ ΤΙΜΟΛΟΓΙΟΥ</label>
               <div style={imageUploadContainer}>
                 {imagePreview ? (
-                  <div style={{ position: 'relative', width: '100%', height: '150px' }}>
+                  <div style={{ position: 'relative', width: '100%', height: '120px' }}>
                     <img src={imagePreview} alt="Preview" style={imagePreviewStyle} />
                     <button onClick={() => {setImageFile(null); setImagePreview(null);}} style={removeImageBtn}>✕</button>
                   </div>
@@ -275,31 +265,17 @@ function AddExpenseForm() {
             </div>
           )}
 
-          <button onClick={handleSave} disabled={loading || isUploading} style={{...saveBtn, backgroundColor: editId ? colors.accentGreen : colors.accentRed }}>
-            {isUploading ? 'ΑΠΟΘΗΚΕΥΣΗ...' : (editId ? 'ΕΝΗΜΕΡΩΣΗ' : 'ΟΛΟΚΛΗΡΩΣΗ')}
-          </button>
+          <button onClick={handleSave} disabled={loading || isUploading} style={saveBtn}>{isUploading ? 'ΑΠΟΘΗΚΕΥΣΗ...' : 'ΟΛΟΚΛΗΡΩΣΗ'}</button>
         </div>
       </div>
       
+      {/* MODAL ΝΕΟΥ ΠΡΟΜΗΘΕΥΤΗ */}
       {isSupModalOpen && (
         <div style={modalOverlay}>
           <div style={modalCard}>
             <h2 style={{fontSize: '18px', margin: '0 0 15px'}}>Νέος Προμηθευτής</h2>
             <input value={newSupName} onChange={e => setNewSupName(e.target.value)} style={{...inputStyle, marginBottom:'15px'}} placeholder="Όνομα" />
-            <div style={{display:'flex', gap:'10px'}}>
-               <button onClick={() => setIsSupModalOpen(false)} style={{...saveBtn, marginTop:0, backgroundColor: colors.secondaryText}}>ΑΚΥΡΟ</button>
-               <button onClick={async () => {
-                  if(!newSupName) return;
-                  const { data, error } = await supabase.from('suppliers').insert([{ name: newSupName, store_id: storeId }]).select().single();
-                  if(data) {
-                    setSuppliers([...suppliers, data]);
-                    setSelectedSup(data.id);
-                    setSearchTerm(data.name);
-                    setIsSupModalOpen(false);
-                    setNewSupName('');
-                  }
-               }} style={{...saveBtn, marginTop:0}}>ΠΡΟΣΘΗΚΗ</button>
-            </div>
+            <button onClick={() => setIsSupModalOpen(false)} style={saveBtn}>ΠΡΟΣΘΗΚΗ</button>
           </div>
         </div>
       )}
@@ -307,29 +283,29 @@ function AddExpenseForm() {
   )
 }
 
-// STYLES (ΔΙΑΤΗΡΗΣΗ ΤΩΝ ΔΙΚΩΝ ΣΟΥ ΜΕ ΜΙΚΡΕΣ ΒΕΛΤΙΩΣΕΙΣ SPACING)
+// STYLES
 const autocompleteDropdown: any = { position: 'absolute', top: '105%', left: 0, right: 0, backgroundColor: 'white', border: `1px solid ${colors.border}`, borderRadius: '14px', zIndex: 1000, maxHeight: '200px', overflowY: 'auto', boxShadow: '0 10px 20px rgba(0,0,0,0.1)' };
 const dropdownRow = { padding: '12px 15px', fontSize: '14px', fontWeight: '700', cursor: 'pointer', borderBottom: `1px solid ${colors.bgLight}` };
 const iphoneWrapper: any = { backgroundColor: colors.bgLight, minHeight: '100dvh', padding: '20px', overflowY: 'auto', position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 };
 const headerStyle = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' };
 const logoBoxStyle: any = { width: '42px', height: '42px', backgroundColor: colors.primaryDark, borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '20px' };
-const backBtnStyle: any = { textDecoration: 'none', color: colors.secondaryText, padding: '8px 12px', backgroundColor: 'white', borderRadius: '10px', border: `1px solid ${colors.border}`, fontWeight:'700' };
-const formCard: any = { backgroundColor: 'white', padding: '20px', borderRadius: '24px', border: `1px solid ${colors.border}`, boxShadow: '0 4px 12px rgba(0,0,0,0.02)' };
+const backBtnStyle: any = { textDecoration: 'none', color: colors.secondaryText, padding: '8px 12px', backgroundColor: 'white', borderRadius: '10px', border: `1px solid ${colors.border}` };
+const formCard: any = { backgroundColor: 'white', padding: '20px', borderRadius: '24px', border: `1px solid ${colors.border}` };
 const labelStyle = { fontSize: '10px', fontWeight: '800', color: colors.secondaryText, display: 'block', marginBottom: '5px' };
 const inputStyle: any = { width: '100%', padding: '14px', borderRadius: '12px', border: `1px solid ${colors.border}`, fontSize: '14px', fontWeight: '600', backgroundColor: colors.bgLight, boxSizing: 'border-box' };
-const methodBtn: any = { flex: 1, padding: '14px', borderRadius: '12px', border: `1px solid ${colors.border}`, cursor: 'pointer', fontWeight: '700', fontSize: '13px', transition: 'all 0.2s' };
-const noInvoiceToggle = { display: 'flex', alignItems: 'center', gap: '10px', padding: '12px', borderRadius: '12px', cursor: 'pointer', transition: 'all 0.2s' };
+const methodBtn: any = { flex: 1, padding: '14px', borderRadius: '12px', border: `1px solid ${colors.border}`, cursor: 'pointer', fontWeight: '700', fontSize: '13px' };
+const noInvoiceToggle = { display: 'flex', alignItems: 'center', gap: '10px', padding: '12px', borderRadius: '12px', cursor: 'pointer' };
 const checkboxBox = { width: '18px', height: '18px', borderRadius: '5px', border: '2px solid #cbd5e1', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '10px' };
 const creditPanel = { backgroundColor: colors.bgLight, padding: '16px', borderRadius: '14px', border: `1px solid ${colors.border}`, marginTop: '20px' };
-const checkboxStyle = { width: '18px', height: '18px', cursor: 'pointer' };
-const checkLabel = { fontSize: '11px', fontWeight: '700', color: colors.primaryDark, cursor: 'pointer' };
-const plusBtn = { width: '48px', height: '48px', backgroundColor: colors.primaryDark, color: 'white', border: 'none', borderRadius: '12px', fontSize: '20px', cursor: 'pointer' };
-const saveBtn: any = { width: '100%', padding: '16px', color: 'white', border: 'none', borderRadius: '14px', fontWeight: '700', marginTop: '20px', cursor: 'pointer' };
+const checkboxStyle = { width: '18px', height: '18px' };
+const checkLabel = { fontSize: '11px', fontWeight: '700', color: colors.primaryDark };
+const plusBtn = { width: '48px', height: '48px', backgroundColor: colors.primaryDark, color: 'white', border: 'none', borderRadius: '12px', fontSize: '20px' };
+const saveBtn: any = { width: '100%', padding: '16px', backgroundColor: colors.accentRed, color: 'white', border: 'none', borderRadius: '14px', fontWeight: '700', marginTop: '20px' };
 const imageUploadContainer = { width: '100%', backgroundColor: colors.bgLight, borderRadius: '14px', border: `2px dashed ${colors.border}`, overflow: 'hidden' };
-const uploadPlaceholder = { display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '30px', cursor: 'pointer' };
-const imagePreviewStyle = { width: '100%', height: '150px', objectFit: 'cover' as const };
-const removeImageBtn: any = { position: 'absolute', top: '8px', right: '8px', backgroundColor: 'rgba(255, 63, 94, 0.9)', color: 'white', border: 'none', borderRadius: '50%', width: '24px', height: '24px', cursor:'pointer', fontWeight:'bold' };
-const modalOverlay: any = { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px' };
-const modalCard = { backgroundColor: 'white', padding: '25px', borderRadius: '24px', width: '100%', maxWidth: '400px', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' };
+const uploadPlaceholder = { display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', cursor: 'pointer' };
+const imagePreviewStyle = { width: '100%', height: '120px', objectFit: 'cover' as const };
+const removeImageBtn: any = { position: 'absolute', top: '5px', right: '5px', backgroundColor: 'rgba(0,0,0,0.5)', color: 'white', border: 'none', borderRadius: '50%', width: '20px', height: '20px' };
+const modalOverlay: any = { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px' };
+const modalCard = { backgroundColor: 'white', padding: '20px', borderRadius: '20px', width: '100%' };
 
 export default function AddExpensePage() { return <Suspense fallback={<div>Φόρτωση...</div>}><AddExpenseForm /></Suspense> }
