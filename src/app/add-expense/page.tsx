@@ -1,7 +1,7 @@
 'use client'
 export const dynamic = 'force-dynamic'
 
-import { useEffect, useState, Suspense, useCallback } from 'react'
+import { useEffect, useState, Suspense, useCallback, useMemo, useRef } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
@@ -21,6 +21,7 @@ const colors = {
 function AddExpenseForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
+  const dropdownRef = useRef<HTMLDivElement>(null)
 
   const urlSupId = searchParams.get('supId')
   const urlAssetId = searchParams.get('assetId')
@@ -43,14 +44,25 @@ function AddExpenseForm() {
 
   const [suppliers, setSuppliers] = useState<any[]>([])
   const [fixedAssets, setFixedAssets] = useState<any[]>([])
+  
   const [searchTerm, setSearchTerm] = useState('')
+  const [showDropdown, setShowDropdown] = useState(false)
   const [selectedSup, setSelectedSup] = useState(urlSupId || '')
   const [selectedFixed, setSelectedFixed] = useState(urlAssetId || '')
 
   const [isSupModalOpen, setIsSupModalOpen] = useState(false)
   const [newSupName, setNewSupName] = useState('')
-  const [newSupPhone, setNewSupPhone] = useState('')
   const [newSupAfm, setNewSupAfm] = useState('')
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setShowDropdown(false)
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside)
+    return () => document.removeEventListener("mousedown", handleClickOutside)
+  }, [])
 
   const loadFormData = useCallback(async () => {
     try {
@@ -86,29 +98,31 @@ function AddExpenseForm() {
     }
   }
 
-  const filteredSuppliers = suppliers.filter(s => 
-    s.name.toLowerCase().includes(searchTerm.toLowerCase())
-  )
+  const filteredSuppliers = useMemo(() => {
+    if (!searchTerm) return []
+    return suppliers.filter(s => 
+      s.name.toLowerCase().includes(searchTerm.toLowerCase())
+    )
+  }, [searchTerm, suppliers])
 
   async function handleQuickAddSupplier() {
     if (!newSupName) return toast.error('Δώστε όνομα προμηθευτή');
-    if (!storeId) return toast.error('Σφάλμα: Δεν βρέθηκε το ID καταστήματος');
     try {
       const { data, error } = await supabase.from('suppliers').insert([
-        { name: newSupName, phone: newSupPhone, vat_number: newSupAfm, category: 'Εμπορεύματα', store_id: storeId, is_active: true }
+        { name: newSupName, vat_number: newSupAfm, category: 'Εμπορεύματα', store_id: storeId, is_active: true }
       ]).select().single();
       if (error) throw error;
       setSuppliers([...suppliers, data].sort((a,b) => a.name.localeCompare(b.name)));
       setSelectedSup(data.id);
       setSearchTerm(data.name);
       setIsSupModalOpen(false);
-      setNewSupName(''); setNewSupPhone(''); setNewSupAfm('');
-      toast.success('Ο προμηθευτής προστέθηκε!');
-    } catch (err: any) { toast.error('Σφάλμα: ' + err.message); }
+      toast.success('Προστέθηκε!');
+    } catch (err: any) { toast.error('Σφάλμα'); }
   }
 
   async function handleSave() {
     if (!amount || Number(amount) <= 0) return alert('Συμπληρώστε το ποσό')
+    if (!selectedSup && !selectedFixed) return alert('Επιλέξτε Προμηθευτή ή Πάγιο')
     setLoading(true)
     setIsUploading(true)
 
@@ -161,9 +175,7 @@ function AddExpenseForm() {
             <div style={logoBoxStyle}>💸</div>
             <div>
               <h1 style={{ fontWeight: '800', fontSize: '22px', margin: 0 }}>{isAgainstDebt ? 'Εξόφληση' : 'Νέο Έξοδο'}</h1>
-              <p style={{ margin: 0, fontSize: '11px', color: colors.secondaryText, fontWeight: '600' }}>
-                {new Date(selectedDate).toLocaleDateString('el-GR', { day: 'numeric', month: 'long' }).toUpperCase()}
-              </p>
+              <p style={{ margin: 0, fontSize: '11px', color: colors.secondaryText, fontWeight: '600' }}>{new Date(selectedDate).toLocaleDateString('el-GR', { day: 'numeric', month: 'long' }).toUpperCase()}</p>
             </div>
           </div>
           <Link href="/" style={backBtnStyle}>✕</Link>
@@ -195,30 +207,52 @@ function AddExpenseForm() {
             </div>
           </div>
 
-          {/* ΣΥΝΔΥΑΣΜΟΣ SEARCH & SELECT */}
-          <label style={{ ...labelStyle, marginTop: '20px' }}>🏭 ΠΡΟΜΗΘΕΥΤΗΣ</label>
-          <div style={{ display: 'flex', gap: '10px', marginBottom: '8px' }}>
-            <input 
-              type="text" 
-              placeholder="🔍 Αναζήτηση..." 
-              value={searchTerm} 
-              onChange={(e) => {setSearchTerm(e.target.value); setSelectedSup('');}}
-              style={{ ...inputStyle, marginBottom: 0 }}
-            />
-            <button type="button" onClick={() => setIsSupModalOpen(true)} style={plusBtn}>+</button>
+          <label style={{ ...labelStyle, marginTop: '20px' }}>🏭 ΠΡΟΜΗΘΕΥΤΗΣ (ΑΥΤΟΜΑΤΗ ΑΝΑΖΗΤΗΣΗ)</label>
+          <div style={{ position: 'relative' }} ref={dropdownRef}>
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <input 
+                type="text" 
+                placeholder="Γράψτε τα πρώτα γράμματα..." 
+                value={searchTerm} 
+                onFocus={() => setShowDropdown(true)}
+                onChange={(e) => {
+                    setSearchTerm(e.target.value); 
+                    setShowDropdown(true); 
+                    // ✅ ΔΙΟΡΘΩΣΗ 1: Μηδενισμός επιλογής αν ο χρήστης γράφει κάτι νέο
+                    setSelectedSup('');
+                }}
+                style={{...inputStyle, border: selectedSup ? `2px solid ${colors.accentGreen}` : `1px solid ${colors.border}`}}
+              />
+              <button type="button" onClick={() => setIsSupModalOpen(true)} style={plusBtn}>+</button>
+            </div>
+            
+            {showDropdown && searchTerm && (
+              <div style={autocompleteDropdown}>
+                {filteredSuppliers.map(s => (
+                  <div 
+                    key={s.id} 
+                    style={dropdownRow} 
+                    onClick={() => { 
+                        setSelectedSup(s.id); 
+                        setSearchTerm(s.name); 
+                        // ✅ ΔΙΟΡΘΩΣΗ 2: Κλείσιμο dropdown μετά την επιλογή
+                        setShowDropdown(false); 
+                        setSelectedFixed(''); 
+                    }}
+                  >
+                    {s.name}
+                  </div>
+                ))}
+                {filteredSuppliers.length === 0 && (
+                  <div style={{...dropdownRow, color: colors.secondaryText, fontStyle: 'italic'}}>Δεν βρέθηκε προμηθευτής</div>
+                )}
+              </div>
+            )}
           </div>
-          <select 
-            value={selectedSup} 
-            onChange={e => { setSelectedSup(e.target.value); setSelectedFixed(''); }} 
-            style={inputStyle}
-          >
-            <option value="">{searchTerm ? `Αποτελέσματα για "${searchTerm}"` : 'Επιλογή από λίστα...'}</option>
-            {filteredSuppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-          </select>
 
           <label style={{ ...labelStyle, marginTop: '20px' }}>🏢 ΠΑΓΙΟ / ΛΟΓΑΡΙΑΣΜΟΣ</label>
-          <select value={selectedFixed} onChange={e => {setSelectedFixed(e.target.value); if(e.target.value) setSelectedSup('');}} style={inputStyle}>
-            <option value="">Επιλογή...</option>
+          <select value={selectedFixed} onChange={e => {setSelectedFixed(e.target.value); if(e.target.value) {setSelectedSup(''); setSearchTerm('');}}} style={inputStyle}>
+            <option value="">Επιλογή από λίστα...</option>
             {fixedAssets.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
           </select>
 
@@ -264,6 +298,16 @@ function AddExpenseForm() {
     </div>
   )
 }
+
+const autocompleteDropdown: any = {
+  position: 'absolute', top: '105%', left: 0, right: 0,
+  backgroundColor: 'white', border: `1px solid ${colors.border}`,
+  borderRadius: '14px', zIndex: 1000, 
+  maxHeight: '250px', overflowY: 'auto', 
+  boxShadow: '0 12px 24px rgba(0,0,0,0.15)',
+  padding: '8px 0'
+};
+const dropdownRow = { padding: '14px 20px', fontSize: '15px', fontWeight: '700', cursor: 'pointer', borderBottom: `1px solid ${colors.bgLight}` };
 
 const iphoneWrapper: any = { backgroundColor: colors.bgLight, minHeight: '100dvh', padding: '20px', overflowY: 'auto', position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 };
 const headerStyle = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px' };
