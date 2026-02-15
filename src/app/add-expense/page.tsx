@@ -45,7 +45,7 @@ function AddExpenseForm() {
   const [suppliers, setSuppliers] = useState<any[]>([])
   const [fixedAssets, setFixedAssets] = useState<any[]>([])
   
-  // STATS STATE ΓΙΑ ΤΟ VS
+  // STATS ΓΙΑ ΤΟ ΚΟΥΜΠΙ
   const [dayStats, setDayStats] = useState({ income: 0, expenses: 0 });
 
   const [searchTerm, setSearchTerm] = useState('')
@@ -103,13 +103,8 @@ function AddExpenseForm() {
 
   useEffect(() => { loadFormData() }, [loadFormData])
 
-  const vsAnalysis = useMemo(() => {
-    const diff = dayStats.income - dayStats.expenses;
-    const total = dayStats.income + dayStats.expenses;
-    const incPct = total > 0 ? (dayStats.income / total) * 100 : 0;
-    const expPct = total > 0 ? (dayStats.expenses / total) * 100 : 0;
-    return { diff, incPct, expPct };
-  }, [dayStats]);
+  // Υπολογισμός τελικού ταμείου
+  const currentBalance = useMemo(() => dayStats.income - dayStats.expenses, [dayStats]);
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -181,26 +176,6 @@ function AddExpenseForm() {
             </div>
           </div>
           <Link href="/" style={backBtnStyle}>✕</Link>
-        </div>
-
-        {/* SLIM VS STATUS BAR */}
-        <div style={slimStatsBar}>
-          <div style={slimStatBlock}>
-            <span style={slimLabel}>ΕΣΟΔΑ</span>
-            <span style={{...slimValue, color: colors.accentGreen}}>{dayStats.income.toFixed(0)}€</span>
-          </div>
-          <div style={slimDivider} />
-          <div style={{...slimStatBlock, flex: 1.5}}>
-            <span style={slimLabel}>ΥΠΟΛΟΙΠΟ</span>
-            <span style={{...slimValue, color: vsAnalysis.diff >= 0 ? colors.accentGreen : colors.accentRed, fontSize: '15px'}}>
-              {vsAnalysis.diff.toFixed(2)}€ ({vsAnalysis.incPct.toFixed(0)}%)
-            </span>
-          </div>
-          <div style={slimDivider} />
-          <div style={slimStatBlock}>
-            <span style={slimLabel}>ΕΞΟΔΑ</span>
-            <span style={{...slimValue, color: colors.accentRed}}>{dayStats.expenses.toFixed(0)}€</span>
-          </div>
         </div>
 
         <div style={formCard}>
@@ -302,10 +277,26 @@ function AddExpenseForm() {
             </div>
           )}
 
-          <button onClick={handleSave} disabled={loading || isUploading} style={saveBtn}>{isUploading ? 'ΑΠΟΘΗΚΕΥΣΗ...' : 'ΟΛΟΚΛΗΡΩΣΗ'}</button>
+          {/* SMART SUBMIT BUTTON ΜΕ ΠΛΗΡΟΦΟΡΙΑ ΤΑΜΕΙΟΥ */}
+          <div style={{ marginTop: '25px' }}>
+            <button onClick={handleSave} disabled={loading || isUploading} style={smartSaveBtn}>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                <span style={{ fontSize: '15px', fontWeight: '800' }}>
+                  {isUploading ? 'ΑΠΟΘΗΚΕΥΣΗ...' : 'ΟΛΟΚΛΗΡΩΣΗ ΕΞΟΔΟΥ'}
+                </span>
+                {!isUploading && (
+                  <span style={{ fontSize: '10px', opacity: 0.8, fontWeight: '600', marginTop: '2px' }}>
+                    ΥΠΟΛΟΙΠΟ ΤΑΜΕΙΟΥ: {currentBalance.toFixed(2)}€
+                  </span>
+                )}
+              </div>
+            </button>
+          </div>
+
         </div>
       </div>
       
+      {/* MODAL ΝΕΟΥ ΠΡΟΜΗΘΕΥΤΗ */}
       {isSupModalOpen && (
         <div style={modalOverlay}>
           <div style={modalCard}>
@@ -319,12 +310,18 @@ function AddExpenseForm() {
   )
 }
 
-// --- NEW STYLES ---
-const slimStatsBar: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'white', padding: '12px 16px', borderRadius: '16px', marginBottom: '20px', border: `1px solid ${colors.border}`, boxShadow: '0 2px 4px rgba(0,0,0,0.02)' };
-const slimStatBlock: any = { display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1 };
-const slimLabel: any = { fontSize: '8px', fontWeight: '800', color: colors.secondaryText, marginBottom: '2px', letterSpacing: '0.5px' };
-const slimValue: any = { fontSize: '13px', fontWeight: '800', margin: 0 };
-const slimDivider: any = { width: '1px', height: '24px', backgroundColor: colors.border };
+// STYLES
+const smartSaveBtn: any = { 
+  width: '100%', 
+  padding: '16px', 
+  backgroundColor: colors.accentRed, 
+  color: 'white', 
+  border: 'none', 
+  borderRadius: '16px', 
+  cursor: 'pointer', 
+  boxShadow: '0 4px 12px rgba(220, 38, 38, 0.2)',
+  transition: 'transform 0.1s ease'
+};
 
 const autocompleteDropdown: any = { position: 'absolute', top: '105%', left: 0, right: 0, backgroundColor: 'white', border: `1px solid ${colors.border}`, borderRadius: '14px', zIndex: 1000, maxHeight: '200px', overflowY: 'auto', boxShadow: '0 10px 20px rgba(0,0,0,0.1)' };
 const dropdownRow = { padding: '12px 15px', fontSize: '14px', fontWeight: '700', cursor: 'pointer', borderBottom: `1px solid ${colors.bgLight}` };
