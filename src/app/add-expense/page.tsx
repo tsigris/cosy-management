@@ -153,7 +153,7 @@ function AddExpenseForm() {
   }
 
   return (
-    <main style={{ backgroundColor: colors.bgLight, minHeight: '100vh', padding: '24px 16px 120px 16px' }}>
+    <main style={mainContainerStyle}>
       <Toaster position="top-center" richColors />
       
       <div style={formCardStyle}>
@@ -162,7 +162,7 @@ function AddExpenseForm() {
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <div style={{ ...logoBoxStyle, backgroundColor: '#f0fdf4' }}>🛒</div>
             <div>
-              <h1 style={titleStyle}>{isAgainstDebt ? 'Εξόφληση Χρέους' : 'Προσθήκη Δαπάνης'}</h1>
+              <h1 style={titleStyle}>{isAgainstDebt ? 'Εξόφληση' : 'Προσθήκη Δαπάνης'}</h1>
               <p style={dateSubtitle}>{new Date(selectedDate).toLocaleDateString('el-GR', { day: 'numeric', month: 'long' }).toUpperCase()}</p>
             </div>
           </div>
@@ -261,7 +261,7 @@ function AddExpenseForm() {
 
         {/* ✅ ΦΩΤΟΓΡΑΦΙΑ (ΚΑΤΩ ΜΕΡΟΣ & COMPACT) */}
         {!noInvoice && (
-          <div style={{ marginBottom: '20px' }}>
+          <div style={{ marginBottom: '30px' }}>
             <label style={labelStyle}>📸 ΦΩΤΟΓΡΑΦΙΑ ΤΙΜΟΛΟΓΙΟΥ</label>
             <div style={imageUploadContainer}>
               {imagePreview ? (
@@ -317,8 +317,26 @@ function AddExpenseForm() {
   )
 }
 
-// STYLES
-const formCardStyle = { maxWidth: '500px', margin: '0 auto', backgroundColor: colors.white, borderRadius: '28px', padding: '24px', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' };
+// ✅ ΕΝΗΜΕΡΩΜΕΝΑ STYLES ΓΙΑ REDMI/MOBILE COMPATIBILITY
+const mainContainerStyle: any = { 
+  backgroundColor: colors.bgLight, 
+  minHeight: '100dvh', // Dynamic Viewport Height
+  padding: '24px 16px 180px 16px', // Πολύ μεγάλο bottom padding για το πληκτρολόγιο
+  display: 'block',
+  overflowY: 'auto',
+  WebkitOverflowScrolling: 'touch'
+};
+
+const formCardStyle = { 
+  maxWidth: '500px', 
+  margin: '0 auto', 
+  backgroundColor: colors.white, 
+  borderRadius: '28px', 
+  padding: '24px', 
+  boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)',
+  marginBottom: '40px'
+};
+
 const headerRow = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' };
 const titleStyle = { fontWeight: '800', fontSize: '18px', margin: 0, color: colors.primaryDark };
 const dateSubtitle = { margin: 0, fontSize: '10px', color: colors.secondaryText, fontWeight: '700' };
@@ -327,15 +345,12 @@ const backBtnStyle = { textDecoration: 'none', color: colors.secondaryText, widt
 const labelStyle = { fontSize: '10px', fontWeight: '800', color: colors.secondaryText, marginBottom: '8px', display: 'block' };
 const inputStyle = { width: '100%', padding: '14px', borderRadius: '14px', border: `1px solid ${colors.border}`, fontSize: '15px', fontWeight: '700', outline: 'none', backgroundColor: colors.bgLight, boxSizing: 'border-box' as const };
 const methodBtn: any = { flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', padding: '16px', borderRadius: '18px', border: `1px solid ${colors.border}`, cursor: 'pointer', fontWeight: '700' };
-const creditPanel = { backgroundColor: colors.bgLight, padding: '16px', borderRadius: '18px', marginBottom: '20px' };
-const checkboxStyle = { width: '20px', height: '20px' };
-const checkLabel = { fontSize: '12px', fontWeight: '700', color: colors.primaryDark };
 const searchIconRight = { position: 'absolute' as const, right: '14px', top: '50%', transform: 'translateY(-50%)', fontSize: '16px', color: colors.secondaryText, pointerEvents: 'none' as const };
 const plusBtn = { width: '48px', height: '48px', backgroundColor: colors.accentBlue, color: 'white', border: 'none', borderRadius: '14px', fontSize: '24px', fontWeight: 'bold', cursor: 'pointer' };
 const saveBtn = { width: '100%', padding: '18px', color: 'white', border: 'none', borderRadius: '18px', fontWeight: '800', fontSize: '16px', backgroundColor: colors.accentRed, cursor: 'pointer' };
 const dropdownList = { position: 'absolute' as const, top: '100%', left: 0, right: 0, backgroundColor: 'white', border: `1px solid ${colors.border}`, borderRadius: '12px', marginTop: '4px', zIndex: 100, maxHeight: '200px', overflowY: 'auto' as const, boxShadow: '0 8px 20px rgba(0,0,0,0.1)' };
 const dropdownItem = { padding: '14px', borderBottom: `1px solid ${colors.border}`, fontSize: '14px', fontWeight: '700', cursor: 'pointer', color: colors.primaryDark };
-const modalOverlay: any = { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px', backdropFilter: 'blur(2px)' };
+const modalOverlay: any = { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '10px', backdropFilter: 'blur(2px)' };
 const modalCard = { backgroundColor: 'white', padding: '24px', borderRadius: '24px', width: '100%', maxWidth: '450px', boxShadow: '0 20px 40px rgba(0,0,0,0.2)', maxHeight: '90vh', overflowY: 'auto' as const };
 
 const imageUploadContainer = { width: '100%', backgroundColor: '#f1f5f9', borderRadius: '18px', border: '2px dashed #cbd5e1', overflow: 'hidden' };
