@@ -1,7 +1,7 @@
 'use client'
 export const dynamic = 'force-dynamic'
 
-import { useEffect, useState, Suspense, useCallback } from 'react'
+import { useEffect, useState, Suspense, useCallback, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
@@ -21,6 +21,7 @@ function BalancesContent() {
   const router = useRouter()
   const [data, setData] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [selectedSupplierId, setSelectedSupplierId] = useState<string>('all')
 
   const fetchBalances = useCallback(async () => {
     try {
@@ -53,7 +54,13 @@ function BalancesContent() {
 
   useEffect(() => { fetchBalances() }, [fetchBalances])
 
-  const totalDebt = data.reduce((acc, s) => acc + s.balance, 0)
+  // Φιλτράρισμα και υπολογισμός βάσει επιλογής
+  const filteredData = useMemo(() => {
+    if (selectedSupplierId === 'all') return data;
+    return data.filter(s => s.id === selectedSupplierId);
+  }, [selectedSupplierId, data]);
+
+  const totalDebtDisplay = filteredData.reduce((acc, s) => acc + s.balance, 0);
 
   return (
     <div style={iphoneWrapper}>
@@ -71,23 +78,40 @@ function BalancesContent() {
           <Link href="/" style={backBtnStyle}>✕</Link>
         </div>
 
-        {/* ΣΥΝΟΛΙΚΟ ΧΡΕΟΣ */}
+        {/* ΦΙΛΤΡΟ ΠΡΟΜΗΘΕΥΤΗ */}
+        <div style={{ marginBottom: '20px' }}>
+          <label style={labelStyle}>ΕΠΙΛΟΓΗ ΠΡΟΜΗΘΕΥΤΗ</label>
+          <select 
+            value={selectedSupplierId} 
+            onChange={(e) => setSelectedSupplierId(e.target.value)}
+            style={selectStyle}
+          >
+            <option value="all">📊 ΓΕΝΙΚΟ ΣΥΝΟΛΟ</option>
+            {data.map(s => (
+              <option key={s.id} value={s.id}>{s.name.toUpperCase()}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* ΣΥΝΟΛΙΚΟ ΧΡΕΟΣ (ΔΥΝΑΜΙΚΟ) */}
         <div style={totalCardStyle}>
-          <p style={{ margin: 0, fontSize: '11px', fontWeight: '700', color: '#fed7aa', letterSpacing: '1px' }}>ΣΥΝΟΛΙΚΟ ΑΝΟΙΧΤΟ ΥΠΟΛΟΙΠΟ</p>
+          <p style={{ margin: 0, fontSize: '11px', fontWeight: '700', color: '#fed7aa', letterSpacing: '1px' }}>
+            {selectedSupplierId === 'all' ? 'ΣΥΝΟΛΙΚΟ ΑΝΟΙΧΤΟ ΥΠΟΛΟΙΠΟ' : 'ΥΠΟΛΟΙΠΟ ΠΡΟΜΗΘΕΥΤΗ'}
+          </p>
           <p style={{ margin: '8px 0 0 0', fontSize: '38px', fontWeight: '900', color: '#ffffff' }}>
-            {totalDebt.toFixed(2)}€
+            {totalDebtDisplay.toFixed(2)}€
           </p>
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
           <p style={{ fontSize: '11px', fontWeight: '800', color: colors.secondaryText, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-            ΑΝΑΛΥΣΗ ΑΝΑ ΠΡΟΜΗΘΕΥΤΗ ({data.length})
+            ΑΝΑΛΥΣΗ ({filteredData.length})
           </p>
           
           {loading ? (
             <p style={{ textAlign: 'center', padding: '40px', color: colors.secondaryText, fontWeight: '600' }}>Υπολογισμός υπολοίπων...</p>
-          ) : data.length > 0 ? (
-            data.map(s => (
+          ) : filteredData.length > 0 ? (
+            filteredData.map(s => (
               <div key={s.id} style={supplierCardStyle}>
                 <div style={{ flex: 1 }}>
                   <p style={{ fontWeight: '700', margin: 0, fontSize: '16px', color: colors.primaryDark }}>{s.name.toUpperCase()}</p>
@@ -97,7 +121,7 @@ function BalancesContent() {
                 <div style={{ textAlign: 'right' }}>
                   <p style={{ fontWeight: '800', fontSize: '18px', color: colors.accentOrange, margin: 0 }}>{s.balance.toFixed(2)}€</p>
                   <button 
-                    onClick={() => router.push(`/add-expense?supId=${s.id}&mode=debt`)}
+                    onClick={() => router.push(`/expenses/add?supId=${s.id}&mode=debt`)}
                     style={payBtnStyle}
                   >
                     ΕΞΟΦΛΗΣΗ
@@ -109,7 +133,7 @@ function BalancesContent() {
             <div style={emptyStateStyle}>
               <p style={{ fontSize: '40px', margin: '0 0 10px 0' }}>✅</p>
               <p style={{ fontWeight: '800', color: colors.primaryDark, margin: 0 }}>Κανένα ανοιχτό υπόλοιπο</p>
-              <p style={{ fontSize: '12px', color: colors.secondaryText, marginTop: '5px' }}>Όλοι οι προμηθευτές είναι εξοφλημένοι.</p>
+              <p style={{ fontSize: '12px', color: colors.secondaryText, marginTop: '5px' }}>Όλα είναι εξοφλημένα για την επιλογή σας.</p>
             </div>
           )}
         </div>
@@ -127,6 +151,8 @@ const supplierCardStyle: any = { backgroundColor: colors.white, padding: '18px 2
 const payBtnStyle: any = { backgroundColor: colors.accentBlue, color: 'white', border: 'none', padding: '10px 16px', borderRadius: '10px', fontSize: '11px', fontWeight: '800', marginTop: '10px', cursor: 'pointer', boxShadow: '0 4px 10px rgba(37, 99, 235, 0.2)' };
 const badgeStyle: any = { fontSize: '9px', fontWeight: '800', backgroundColor: colors.bgLight, color: colors.secondaryText, padding: '4px 8px', borderRadius: '6px', marginTop: '6px', display: 'inline-block', border: `1px solid ${colors.border}` };
 const emptyStateStyle: any = { textAlign: 'center', padding: '60px 20px', background: colors.white, borderRadius: '24px', border: `1px dashed ${colors.border}` };
+const labelStyle: any = { fontSize: '10px', fontWeight: '800', color: colors.secondaryText, marginBottom: '8px', display: 'block', textTransform: 'uppercase' };
+const selectStyle: any = { width: '100%', padding: '14px', borderRadius: '14px', border: `1px solid ${colors.border}`, fontSize: '15px', fontWeight: '700', backgroundColor: colors.white, outline: 'none', appearance: 'none' };
 
 export default function SuppliersBalancePage() {
   return (<Suspense fallback={<div>Φόρτωση...</div>}><BalancesContent /></Suspense>)
