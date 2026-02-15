@@ -3,44 +3,67 @@ import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
+// --- PREMIUM PALETTE ---
+const colors = {
+  primary: '#0f172a',    
+  secondary: '#94a3b8',
+  indigo: '#6366f1',
+  background: 'rgba(255, 255, 255, 0.85)',
+  border: '#f1f5f9'
+}
+
 const navItems = [
-  { label: 'Home', icon: '🏠', path: '/' },
+  { label: 'Αρχική', icon: '🏠', path: '/' },
   { label: 'Ανάλυση', icon: '📊', path: '/analysis' },
   { label: 'Καρτέλες', icon: '🚩', path: '/suppliers-balance' },
-  { label: 'Υπάλληλοι', icon: '👥', path: '/employees' },
+  { label: 'Προσωπικό', icon: '👤', path: '/employees' },
   { label: 'Προμηθευτές', icon: '🛒', path: '/suppliers' },
 ];
 
 export default function BottomNav() {
   const pathname = usePathname();
 
-  // Λίστα σελίδων όπου η μπάρα θα είναι ΚΡΥΦΗ
+  // Κρύβουμε την μπάρα σε login και σε φόρμες προσθήκης για περισσότερο χώρο
   const hideOnPaths = ['/login', '/register', '/signup'];
-  if (hideOnPaths.includes(pathname)) return null;
+  const isFormPage = pathname.includes('/add-');
+  
+  if (hideOnPaths.includes(pathname) || isFormPage) return null;
 
   return (
     <nav style={navWrapper}>
+      {/* CSS Injection για τη γραμματοσειρά και τα transitions */}
+      <style dangerouslySetInnerHTML={{ __html: `
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@700;800&display=swap');
+        .nav-item { transition: transform 0.2s ease; }
+        .nav-item:active { transform: scale(0.9); }
+      `}} />
+
       {navItems.map((item) => {
         const isActive = pathname === item.path;
         return (
-          <Link key={item.path} href={item.path} style={navLink}>
-            <span style={{ 
-              fontSize: '22px', 
-              filter: isActive ? 'grayscale(0)' : 'grayscale(1)',
-              opacity: isActive ? 1 : 0.6,
-              transform: isActive ? 'scale(1.15)' : 'scale(1)',
-              transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
-              marginBottom: '4px'
+          <Link key={item.path} href={item.path} style={navLink} className="nav-item">
+            <div style={{
+              ...iconBox,
+              backgroundColor: isActive ? '#f1f5f9' : 'transparent',
             }}>
-              {item.icon}
-            </span>
+              <span style={{ 
+                fontSize: '22px', 
+                filter: isActive ? 'grayscale(0)' : 'grayscale(1)',
+                opacity: isActive ? 1 : 0.5,
+                transform: isActive ? 'scale(1.1)' : 'scale(1)',
+                transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+              }}>
+                {item.icon}
+              </span>
+            </div>
             <span style={{ 
               fontSize: '10px', 
-              fontWeight: '800', 
-              color: isActive ? '#1e293b' : '#94a3b8',
-              textTransform: 'uppercase'
+              fontWeight: isActive ? '800' : '600', 
+              color: isActive ? colors.primary : colors.secondary,
+              fontFamily: "'Plus Jakarta Sans', sans-serif",
+              marginTop: '4px'
             }}>
-              {item.label}
+              {item.label.toUpperCase()}
             </span>
             {isActive && <div style={activeIndicator} />}
           </Link>
@@ -50,16 +73,50 @@ export default function BottomNav() {
   );
 }
 
-// ... (τα styles παραμένουν τα ίδια)
+// --- MODERN STYLES ---
 const navWrapper: React.CSSProperties = {
   position: 'fixed',
-  bottom: 0, left: 0, right: 0, height: '80px',
-  backgroundColor: 'rgba(255, 255, 255, 0.85)',
-  backdropFilter: 'blur(15px)', WebkitBackdropFilter: 'blur(15px)',
-  borderTop: '1px solid #e2e8f0', display: 'flex',
-  justifyContent: 'space-around', alignItems: 'center',
-  paddingBottom: '20px', zIndex: 1000,
-  boxShadow: '0 -5px 25px rgba(0,0,0,0.04)',
+  bottom: 0, left: 0, right: 0, 
+  height: '85px',
+  backgroundColor: colors.background,
+  backdropFilter: 'blur(15px)', 
+  WebkitBackdropFilter: 'blur(15px)',
+  borderTop: `1px solid ${colors.border}`, 
+  display: 'flex',
+  justifyContent: 'space-around', 
+  alignItems: 'center',
+  paddingBottom: '20px', 
+  zIndex: 1000,
+  boxShadow: '0 -10px 30px rgba(0,0,0,0.03)',
 };
-const navLink: React.CSSProperties = { display: 'flex', flexDirection: 'column', alignItems: 'center', textDecoration: 'none', position: 'relative', flex: 1, height: '100%', justifyContent: 'center' };
-const activeIndicator: React.CSSProperties = { position: 'absolute', bottom: '12px', width: '5px', height: '5px', backgroundColor: '#1e293b', borderRadius: '50%' };
+
+const navLink: React.CSSProperties = { 
+  display: 'flex', 
+  flexDirection: 'column', 
+  alignItems: 'center', 
+  textDecoration: 'none', 
+  position: 'relative', 
+  flex: 1, 
+  height: '100%', 
+  justifyContent: 'center' 
+};
+
+const iconBox: React.CSSProperties = {
+  width: '40px',
+  height: '32px',
+  borderRadius: '12px',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  transition: 'background-color 0.3s ease'
+};
+
+const activeIndicator: React.CSSProperties = { 
+  position: 'absolute', 
+  bottom: '10px', 
+  width: '4px', 
+  height: '4px', 
+  backgroundColor: colors.indigo, 
+  borderRadius: '50%',
+  boxShadow: `0 0 10px ${colors.indigo}`
+};
