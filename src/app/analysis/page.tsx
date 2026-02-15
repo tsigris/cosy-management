@@ -9,6 +9,18 @@ import { format, parseISO, startOfYear, endOfYear } from 'date-fns'
 import { el } from 'date-fns/locale'
 import { toast, Toaster } from 'sonner'
 
+// --- MODERN PREMIUM PALETTE ---
+const colors = {
+  primary: '#0f172a',    
+  secondary: '#64748b',
+  success: '#10b981',   
+  danger: '#f43f5e',     
+  background: '#f8fafc',       
+  surface: '#ffffff',
+  border: '#e2e8f0',
+  indigo: '#6366f1'
+}
+
 function AnalysisContent() {
   const router = useRouter()
   const [transactions, setTransactions] = useState<any[]>([])
@@ -72,40 +84,49 @@ function AnalysisContent() {
       currentData = currentData.filter(t => t.supplier_id === selectedFilter || t.fixed_asset_id === selectedFilter)
     }
 
-    const incomeTransactions = currentData.filter(t => t.type === 'income')
-    const incomeTotal = incomeTransactions.reduce((acc, t) => acc + Number(t.amount), 0)
-
+    const incomeTotal = currentData.filter(t => t.type === 'income').reduce((acc, t) => acc + Number(t.amount), 0)
     const expenseTransactions = currentData.filter(t => t.type === 'expense' || t.category === 'pocket' || t.type === 'debt_payment')
-    const offTheBooksTotal = expenseTransactions.filter(t => t.notes?.toUpperCase().includes('ΧΩΡΙΣ ΤΙΜΟΛΟΓΙΟ')).reduce((acc, t) => acc + Number(t.amount), 0)
-    const officialTotal = expenseTransactions.filter(t => !t.notes?.toUpperCase().includes('ΧΩΡΙΣ ΤΙΜΟΛΟΓΙΟ')).reduce((acc, t) => acc + Number(t.amount), 0)
+    const expenseTotal = expenseTransactions.reduce((acc, t) => acc + Number(t.amount), 0)
     
     const finalDisplayData = currentData.filter(t => 
       view === 'income' ? t.type === 'income' : (t.type === 'expense' || t.category === 'pocket' || t.type === 'debt_payment')
     )
 
     return { 
-        currentTotal: view === 'income' ? incomeTotal : (officialTotal + offTheBooksTotal),
-        officialTotal, offTheBooksTotal, finalDisplayData
+        currentTotal: view === 'income' ? incomeTotal : expenseTotal,
+        finalDisplayData
     }
   }, [transactions, startDate, endDate, view, selectedFilter])
 
   return (
     <div style={iphoneWrapper}>
       <Toaster position="top-center" richColors />
+      <style dangerouslySetInnerHTML={{ __html: `
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap');
+        body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: ${colors.background}; }
+        .row-item { transition: all 0.2s ease; }
+        .row-item:active { transform: scale(0.98); }
+      `}} />
+
       <div style={{ maxWidth: '500px', margin: '0 auto', paddingBottom: '120px' }}>
         
+        {/* HEADER */}
         <div style={headerStyle}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <div style={logoBoxStyle}>📊</div>
             <div>
-              <h1 style={{ fontWeight: '900', fontSize: '18px', margin: 0 }}>Ανάλυση</h1>
-              <p style={subLabelStyle}>ΔΙΑΧΕΙΡΙΣΗ ΚΙΝΗΣΕΩΝ</p>
+              <h1 style={titleStyle}>Ανάλυση</h1>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                <p style={subLabelStyle}>ΔΙΑΧΕΙΡΙΣΗ ΚΙΝΗΣΕΩΝ</p>
+                <div style={statusDot} />
+              </div>
             </div>
           </div>
           <Link href="/" style={backBtnStyle}>✕</Link>
         </div>
 
-        <div style={{ marginBottom: '15px' }}>
+        {/* FILTERS CARD */}
+        <div style={filterCard}>
           <label style={dateLabel}>ΦΙΛΤΡΟ ΣΥΝΕΡΓΑΤΗ / ΠΑΓΙΟΥ</label>
           <select value={selectedFilter} onChange={e => setSelectedFilter(e.target.value)} style={selectInputStyle}>
             <option value="all">🔍 ΟΛΑ ΤΑ ΔΕΔΟΜΕΝΑ</option>
@@ -116,50 +137,61 @@ function AnalysisContent() {
               {fixedAssets.map(a => <option key={a.id} value={a.id}>{a.name.toUpperCase()}</option>)}
             </optgroup>
           </select>
+
+          <div style={tabContainer}>
+            <button onClick={() => setView('income')} style={{...tabBtn, backgroundColor: view === 'income' ? colors.success : 'transparent', color: view === 'income' ? 'white' : colors.secondary}}>ΕΣΟΔΑ</button>
+            <button onClick={() => setView('expenses')} style={{...tabBtn, backgroundColor: view === 'expenses' ? colors.danger : 'transparent', color: view === 'expenses' ? 'white' : colors.secondary}}>ΕΞΟΔΑ</button>
+          </div>
+
+          <div style={{ display: 'flex', gap: '12px' }}>
+            <div style={{ flex: 1 }}><label style={dateLabel}>ΑΠΟ</label><input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} style={dateInput} /></div>
+            <div style={{ flex: 1 }}><label style={dateLabel}>ΕΩΣ</label><input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} style={dateInput} /></div>
+          </div>
         </div>
 
-        <div style={tabContainer}>
-          <button onClick={() => setView('income')} style={{...tabBtn, backgroundColor: view === 'income' ? '#10b981' : 'transparent', color: view === 'income' ? 'white' : '#64748b'}}>ΕΣΟΔΑ</button>
-          <button onClick={() => setView('expenses')} style={{...tabBtn, backgroundColor: view === 'expenses' ? '#ef4444' : 'transparent', color: view === 'expenses' ? 'white' : '#64748b'}}>ΕΞΟΔΑ</button>
-        </div>
-
-        <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
-          <div style={{ flex: 1 }}><label style={dateLabel}>ΑΠΟ</label><input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} style={dateInput} /></div>
-          <div style={{ flex: 1 }}><label style={dateLabel}>ΕΩΣ</label><input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} style={dateInput} /></div>
-        </div>
-
-        <div style={{...heroCard, backgroundColor: view === 'income' ? '#0f172a' : '#450a0a'}}>
+        {/* HERO STATS */}
+        <div style={{...heroCard, background: view === 'income' ? 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)' : 'linear-gradient(135deg, #450a0a 0%, #7f1d1d 100%)'}}>
           <p style={labelMicro}>ΣΥΝΟΛΟ ΠΕΡΙΟΔΟΥ</p>
-          <h2 style={{ fontSize: '38px', fontWeight: '900', margin: '5px 0' }}>{stats.currentTotal.toLocaleString('el-GR')}€</h2>
+          <h2 style={heroAmount}>{stats.currentTotal.toLocaleString('el-GR')}€</h2>
+          <div style={heroDivider} />
+          <p style={{ margin: 0, fontSize: '11px', fontWeight: 700, opacity: 0.8 }}>
+            {stats.finalDisplayData.length} Κινήσεις βρέθηκαν
+          </p>
         </div>
 
-        <div style={listWrapper}>
-          <p style={listTitle}>Κινήσεις ({stats.finalDisplayData.length})</p>
-          {loading ? <p style={{textAlign:'center', padding:'20px'}}>Φόρτωση...</p> : (
-              <div style={{display: 'flex', flexDirection: 'column', gap: '12px'}}>
-                  {stats.finalDisplayData.map((item: any) => (
-                    <div key={item.id} style={rowStyle}>
-                      <div style={{ flex: 1 }}>
-                        <p style={itemTitleStyle}>
-                          {item.suppliers?.name || item.fixed_assets?.name || item.notes || item.category}
-                          {item.notes?.includes('ΧΩΡΙΣ ΤΙΜΟΛΟΓΙΟ') && <span style={blackBadge}>ΜΑΥΡΑ</span>}
-                        </p>
-                        <span style={itemSubStyle}>
-                          {format(parseISO(item.date), 'dd/MM/yyyy')} • {item.method}
-                        </span>
-                        
-                        <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
-                          <button onClick={() => router.push(`/${item.type === 'income' ? 'income' : 'expenses'}/add?editId=${item.id}`)} style={actionLinkStyle}>✎ Διόρθωση</button>
-                          <button onClick={() => handleDelete(item.id)} style={{...actionLinkStyle, color: '#ef4444'}}>🗑️ Διαγραφή</button>
-                          {item.image_url && <button onClick={() => handleViewImage(item.image_url)} style={actionLinkStyle}>🖼️ Φωτο</button>}
-                        </div>
-                      </div>
-                      <p style={{ fontWeight: '900', fontSize: '16px', color: item.type === 'income' ? '#10b981' : '#ef4444', margin: 0 }}>
-                        {item.type === 'income' ? '+' : '-'}{item.amount.toFixed(2)}€
-                      </p>
+        {/* TRANSACTIONS LIST */}
+        <div style={{ marginTop: '20px' }}>
+          <p style={listHeaderTitle}>Κινήσεις στη λίστα</p>
+          {loading ? (
+            <div style={{ textAlign: 'center', padding: '40px' }}>Φόρτωση...</div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {stats.finalDisplayData.map((item: any) => (
+                <div key={item.id} style={itemCard} className="row-item">
+                  <div style={{ flex: 1 }}>
+                    <p style={itemTitleStyle}>
+                      {item.suppliers?.name || item.fixed_assets?.name || item.notes || item.category || 'Συναλλαγή'}
+                      {item.notes?.toUpperCase().includes('ΧΩΡΙΣ ΤΙΜΟΛΟΓΙΟ') && <span style={blackBadge}>ΜΑΥΡΑ</span>}
+                    </p>
+                    <div style={itemMeta}>
+                      <span>📅 {format(parseISO(item.date), 'dd/MM/yyyy')}</span>
+                      <span>• {item.method}</span>
                     </div>
-                  ))}
-              </div>
+                    
+                    <div style={actionRow}>
+                      <button onClick={() => router.push(`/${item.type === 'income' ? 'add-income' : 'add-expense'}?editId=${item.id}`)} style={actionBtn}>✎ Διόρθωση</button>
+                      <button onClick={() => handleDelete(item.id)} style={{...actionBtn, color: colors.danger}}>🗑️ Διαγραφή</button>
+                      {item.image_url && <button onClick={() => handleViewImage(item.image_url)} style={{...actionBtn, color: colors.indigo}}>🖼️ Φωτο</button>}
+                    </div>
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <p style={{...amountText, color: item.type === 'income' ? colors.success : colors.danger}}>
+                      {item.type === 'income' ? '+' : '-'}{item.amount.toFixed(2)}€
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
           )}
         </div>
       </div>
@@ -167,26 +199,36 @@ function AnalysisContent() {
   )
 }
 
-// STYLES
-const iphoneWrapper: any = { backgroundColor: '#f8fafc', minHeight: '100dvh', padding: '20px', overflowY: 'auto', position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, WebkitOverflowScrolling: 'touch' };
-const headerStyle = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' };
-const subLabelStyle = { margin: 0, fontSize: '9px', color: '#94a3b8', fontWeight: '800', letterSpacing: '1px' };
-const logoBoxStyle: any = { width: '42px', height: '42px', backgroundColor: '#f1f5f9', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px' };
-const backBtnStyle: any = { textDecoration: 'none', color: '#94a3b8', fontSize: '18px', fontWeight: 'bold' };
-const tabContainer: any = { display: 'flex', backgroundColor: '#f1f5f9', borderRadius: '16px', padding: '4px', marginBottom: '20px' };
-const tabBtn: any = { flex: 1, border: 'none', padding: '12px', borderRadius: '12px', fontWeight: '900', fontSize: '12px', cursor: 'pointer' };
-const dateLabel: any = { fontSize: '9px', fontWeight: '900', color: '#94a3b8', marginBottom: '4px', display: 'block' };
-const dateInput: any = { width: '100%', padding: '12px', borderRadius: '12px', border: '1px solid #e2e8f0', fontSize: '13px', fontWeight: '800' };
-const selectInputStyle: any = { width: '100%', padding: '14px', borderRadius: '14px', border: '1px solid #e2e8f0', fontSize: '14px', fontWeight: '800', backgroundColor: 'white', outline: 'none' };
-const heroCard: any = { padding: '30px 20px', borderRadius: '30px', color: 'white', textAlign: 'center', marginBottom: '25px', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' };
-const labelMicro: any = { fontSize: '9px', fontWeight: '900', opacity: 0.5 };
-const listWrapper: any = { backgroundColor: 'white', padding: '20px', borderRadius: '28px', border: '1px solid #f1f5f9' };
-const listTitle: any = { fontSize: '10px', fontWeight: '900', color: '#94a3b8', marginBottom: '15px' };
-const rowStyle: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '16px 0', borderBottom: '1px solid #f8fafc' };
-const itemTitleStyle = { fontWeight: '800', fontSize: '14px', margin: 0, color: '#1e293b' };
-const itemSubStyle = { fontSize: '11px', color: '#94a3b8', fontWeight: '700' };
-const actionLinkStyle: any = { background: 'none', border: 'none', padding: 0, fontSize: '10px', fontWeight: '800', color: '#64748b', cursor: 'pointer', textDecoration: 'underline' };
-const blackBadge: any = { fontSize: '8px', backgroundColor: '#fee2e2', color: '#ef4444', padding: '2px 6px', borderRadius: '6px', fontWeight: '900', marginLeft: '8px' };
+// --- MODERN STYLES ---
+const iphoneWrapper: any = { backgroundColor: colors.background, minHeight: '100dvh', padding: '20px', position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, overflowY: 'auto' };
+const headerStyle: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px' };
+const titleStyle: any = { fontWeight: '800', fontSize: '20px', margin: 0, color: colors.primary, letterSpacing: '-0.5px' };
+const subLabelStyle: any = { margin: 0, fontSize: '10px', color: colors.secondary, fontWeight: '700', letterSpacing: '1px' };
+const statusDot: any = { width: '6px', height: '6px', backgroundColor: colors.success, borderRadius: '50%' };
+const logoBoxStyle: any = { width: '42px', height: '42px', backgroundColor: colors.surface, borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px', boxShadow: '0 4px 10px rgba(0,0,0,0.05)', border: `1px solid ${colors.border}` };
+const backBtnStyle: any = { textDecoration: 'none', color: colors.secondary, width: '36px', height: '36px', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface, borderRadius: '10px', border: `1px solid ${colors.border}`, fontWeight: 'bold' };
+
+const filterCard: any = { backgroundColor: colors.surface, padding: '20px', borderRadius: '24px', border: `1px solid ${colors.border}`, marginBottom: '20px', boxShadow: '0 4px 12px rgba(0,0,0,0.02)' };
+const selectInputStyle: any = { width: '100%', padding: '14px', borderRadius: '14px', border: `1px solid ${colors.border}`, fontSize: '14px', fontWeight: '700', backgroundColor: colors.background, color: colors.primary, marginBottom: '20px', outline: 'none' };
+const dateLabel: any = { fontSize: '10px', fontWeight: '800', color: colors.secondary, marginBottom: '6px', display: 'block', letterSpacing: '0.5px' };
+const dateInput: any = { width: '100%', padding: '12px', borderRadius: '12px', border: `1px solid ${colors.border}`, fontSize: '13px', fontWeight: '700', backgroundColor: colors.background, color: colors.primary };
+
+const tabContainer: any = { display: 'flex', backgroundColor: colors.background, borderRadius: '14px', padding: '4px', marginBottom: '20px' };
+const tabBtn: any = { flex: 1, border: 'none', padding: '12px', borderRadius: '10px', fontWeight: '800', fontSize: '12px', cursor: 'pointer', transition: 'all 0.2s' };
+
+const heroCard: any = { padding: '30px 20px', borderRadius: '28px', color: 'white', textAlign: 'center', marginBottom: '30px', boxShadow: '0 15px 30px rgba(0,0,0,0.15)' };
+const heroAmount: any = { fontSize: '38px', fontWeight: '800', margin: '5px 0', letterSpacing: '-1.5px' };
+const labelMicro: any = { fontSize: '10px', fontWeight: '700', opacity: 0.6, letterSpacing: '1px' };
+const heroDivider: any = { height: '1px', backgroundColor: 'rgba(255,255,255,0.1)', margin: '15px 40px' };
+
+const listHeaderTitle: any = { fontSize: '11px', fontWeight: '800', color: colors.secondary, marginBottom: '15px', letterSpacing: '1px', paddingLeft: '5px' };
+const itemCard: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: colors.surface, padding: '18px', borderRadius: '20px', border: `1px solid ${colors.border}`, boxShadow: '0 2px 4px rgba(0,0,0,0.01)' };
+const itemTitleStyle: any = { fontWeight: '700', fontSize: '15px', margin: 0, color: colors.primary };
+const itemMeta: any = { fontSize: '12px', color: colors.secondary, fontWeight: '600', marginTop: '4px', display: 'flex', gap: '8px' };
+const actionRow: any = { display: 'flex', gap: '15px', marginTop: '12px' };
+const actionBtn: any = { background: 'none', border: 'none', padding: 0, fontSize: '11px', fontWeight: '700', color: colors.secondary, cursor: 'pointer', textDecoration: 'underline' };
+const amountText: any = { fontWeight: '800', fontSize: '17px', margin: 0, letterSpacing: '-0.5px' };
+const blackBadge: any = { fontSize: '9px', backgroundColor: '#fff1f2', color: colors.danger, padding: '3px 8px', borderRadius: '6px', fontWeight: '800', marginLeft: '10px' };
 
 export default function AnalysisPage() {
   return <main><Suspense fallback={<div>Φόρτωση...</div>}><AnalysisContent /></Suspense></main>
