@@ -21,7 +21,7 @@ export default function DailyZPage() {
           .from('profiles')
           .select('username')
           .eq('id', user.id)
-          .maybeSingle()
+          .single()
         if (data?.username) setUsername(data.username)
       }
     }
@@ -52,7 +52,6 @@ export default function DailyZPage() {
   }
 
   return (
-    // ΔΙΟΡΘΩΣΗ: Προσθήκη overflowY και flex column για σωστό scrolling
     <main style={mainWrapperStyle}>
       <div style={cardStyle}>
         
@@ -70,16 +69,19 @@ export default function DailyZPage() {
         {/* SECTION: ΕΣΟΔΑ */}
         <div style={sectionBox}>
           <p style={sectionTitle}>💰 ΕΙΣΠΡΑΞΕΙΣ (ΑΠΟ ΤΑΜΕΙΑΚΗ & POS)</p>
+          
           <div style={fieldBox}>
-            <label style={labelStyle}>ΜΕΤΡΗΤΑ ΤΑΜΕΙΑΚΗΣ (Z)</label>
+            <label style={labelStyle}>💵 ΜΕΤΡΗΤΑ ΤΑΜΕΙΑΚΗΣ (Z)</label>
             <input type="number" inputMode="decimal" value={cashZ} onChange={e => setCashZ(e.target.value)} style={inputStyle} placeholder="0.00" />
           </div>
+
           <div style={fieldBox}>
-            <label style={labelStyle}>ΚΑΡΤΑ / POS (Z)</label>
+            <label style={labelStyle}>💳 ΚΑΡΤΑ / POS (Z)</label>
             <input type="number" inputMode="decimal" value={posZ} onChange={e => setPosZ(e.target.value)} style={inputStyle} placeholder="0.00" />
           </div>
+
           <div style={fieldBox}>
-            <label style={labelStyle}>ΧΩΡΙΣ ΑΠΟΔΕΙΞΗ / ΣΗΜΑΝΣΗ</label>
+            <label style={labelStyle}>🧾 ΧΩΡΙΣ ΑΠΟΔΕΙΞΗ / ΣΗΜΑΝΣΗ</label>
             <input type="number" inputMode="decimal" value={noTax} onChange={e => setNoTax(e.target.value)} style={inputStyle} placeholder="0.00" />
           </div>
         </div>
@@ -102,7 +104,6 @@ export default function DailyZPage() {
           {loading ? 'Γίνεται αποθήκευση...' : 'ΟΡΙΣΤΙΚΟΠΟΙΗΣΗ & ΚΛΕΙΣΙΜΟ'}
         </button>
 
-        {/* EXTRA PADDING ΓΙΑ ΤΟ SCROLL ΣΤΑ ΚΙΝΗΤΑ */}
         <div style={{ height: '60px' }} />
       </div>
     </main>
@@ -115,7 +116,7 @@ const mainWrapperStyle: any = {
   minHeight: '100vh', 
   padding: '16px', 
   fontFamily: 'sans-serif',
-  overflowY: 'auto', // Επιτρέπει το σκρολάρισμα
+  overflowY: 'auto',
   WebkitOverflowScrolling: 'touch' 
 };
 
@@ -125,7 +126,7 @@ const cardStyle: any = {
   backgroundColor: 'white', 
   borderRadius: '28px', 
   padding: '24px', 
-  paddingBottom: '100px', // Κενό στο τέλος για να μη "χάνεται" το κουμπί
+  paddingBottom: '100px',
   boxShadow: '0 10px 15px rgba(0,0,0,0.05)',
   display: 'flex',
   flexDirection: 'column'
