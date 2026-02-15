@@ -84,16 +84,23 @@ function AnalysisContent() {
       currentData = currentData.filter(t => t.supplier_id === selectedFilter || t.fixed_asset_id === selectedFilter)
     }
 
-    const incomeTotal = currentData.filter(t => t.type === 'income').reduce((acc, t) => acc + Number(t.amount), 0)
-    const expenseTransactions = currentData.filter(t => t.type === 'expense' || t.category === 'pocket' || t.type === 'debt_payment')
-    const expenseTotal = expenseTransactions.reduce((acc, t) => acc + Number(t.amount), 0)
+    // Υπολογισμός και των δύο τύπων για τη σύγκριση
+    const allIncome = currentData.filter(t => t.type === 'income').reduce((acc, t) => acc + Number(t.amount), 0)
+    const allExpenses = currentData.filter(t => t.type === 'expense' || t.category === 'pocket' || t.type === 'debt_payment').reduce((acc, t) => acc + Math.abs(Number(t.amount)), 0)
     
+    const netResult = allIncome - allExpenses
+    const profitMargin = allIncome > 0 ? (netResult / allIncome) * 100 : 0
+
     const finalDisplayData = currentData.filter(t => 
       view === 'income' ? t.type === 'income' : (t.type === 'expense' || t.category === 'pocket' || t.type === 'debt_payment')
     )
 
     return { 
-        currentTotal: view === 'income' ? incomeTotal : expenseTotal,
+        currentTotal: view === 'income' ? allIncome : allExpenses,
+        allIncome,
+        allExpenses,
+        netResult,
+        profitMargin,
         finalDisplayData
     }
   }, [transactions, startDate, endDate, view, selectedFilter])
@@ -150,11 +157,45 @@ function AnalysisContent() {
         </div>
 
         {/* HERO STATS */}
-        <div style={{...heroCard, background: view === 'income' ? 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)' : 'linear-gradient(135deg, #450a0a 0%, #7f1d1d 100%)'}}>
+        <div style={{...heroCard, background: view === 'income' ? 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)' : 'linear-gradient(135deg, #450a0a 0%, #7f1d1d 100%)', padding: '25px 20px'}}>
           <p style={labelMicro}>ΣΥΝΟΛΟ ΠΕΡΙΟΔΟΥ</p>
           <h2 style={heroAmount}>{stats.currentTotal.toLocaleString('el-GR')}€</h2>
-          <div style={heroDivider} />
-          <p style={{ margin: 0, fontSize: '11px', fontWeight: 700, opacity: 0.8 }}>
+          
+          <div style={{...heroDivider, margin: '15px 0'}} />
+          
+          {/* ΣΥΓΚΡΙΣΗ ΕΣΟΔΑ VS ΕΞΟΔΑ ΜΕΣΑ ΣΤΟ CARD */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '5px' }}>
+            <div style={{ textAlign: 'left' }}>
+              <p style={{ fontSize: '9px', fontWeight: '800', opacity: 0.6, margin: 0, letterSpacing: '0.5px' }}>ΕΣΟΔΑ</p>
+              <p style={{ fontSize: '15px', fontWeight: '800', margin: 0, color: '#10b981' }}>{stats.allIncome.toLocaleString('el-GR')}€</p>
+            </div>
+            
+            <div style={{ textAlign: 'center' }}>
+              <p style={{ fontSize: '9px', fontWeight: '800', opacity: 0.6, margin: 0, letterSpacing: '0.5px' }}>ΚΕΡΔΟΣ %</p>
+              <p style={{ fontSize: '15px', fontWeight: '800', margin: 0 }}>{stats.profitMargin.toFixed(1)}%</p>
+            </div>
+
+            <div style={{ textAlign: 'right' }}>
+              <p style={{ fontSize: '9px', fontWeight: '800', opacity: 0.6, margin: 0, letterSpacing: '0.5px' }}>ΕΞΟΔΑ</p>
+              <p style={{ fontSize: '15px', fontWeight: '800', margin: 0, color: '#f43f5e' }}>{stats.allExpenses.toLocaleString('el-GR')}€</p>
+            </div>
+          </div>
+
+          {/* ΑΠΟΤΕΛΕΣΜΑ */}
+          <div style={{ 
+            marginTop: '15px', 
+            padding: '8px', 
+            backgroundColor: 'rgba(255,255,255,0.1)', 
+            borderRadius: '12px',
+            fontSize: '12px',
+            fontWeight: '800'
+          }}>
+            ΑΠΟΤΕΛΕΣΜΑ: <span style={{ color: stats.netResult >= 0 ? '#10b981' : '#f87171' }}>
+              {stats.netResult >= 0 ? '+' : ''}{stats.netResult.toLocaleString('el-GR')}€
+            </span>
+          </div>
+
+          <p style={{ margin: '10px 0 0 0', fontSize: '10px', fontWeight: 700, opacity: 0.7 }}>
             {stats.finalDisplayData.length} Κινήσεις βρέθηκαν
           </p>
         </div>
@@ -186,7 +227,7 @@ function AnalysisContent() {
                   </div>
                   <div style={{ textAlign: 'right' }}>
                     <p style={{...amountText, color: item.type === 'income' ? colors.success : colors.danger}}>
-                      {item.type === 'income' ? '+' : '-'}{item.amount.toFixed(2)}€
+                      {item.type === 'income' ? '+' : '-'}{Math.abs(item.amount).toFixed(2)}€
                     </p>
                   </div>
                 </div>
