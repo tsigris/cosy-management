@@ -5,18 +5,20 @@ import { useEffect, useState, Suspense, useMemo, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { format, parseISO } from 'date-fns'
+import { format, parseISO, addHours, subHours } from 'date-fns'
 import { el } from 'date-fns/locale'
+
 function AnalysisContent() {
   const router = useRouter()
   const [transactions, setTransactions] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [view, setView] = useState<'income' | 'expenses'>('income') 
   
-  // Δύο ημερομηνίες με προεπιλογή το ΣΗΜΕΡΑ
-  const todayStr = format(new Date(), 'yyyy-MM-dd')
-  const [startDate, setStartDate] = useState(todayStr)
-  const [endDate, setEndDate] = useState(todayStr)
+  // Προεπιλογή: Σήμερα (αλλά με βάση τη λογική των 7 π.μ.)
+  // Αν είναι 03:00 π.μ., το subHours(7) θα μας δείξει την προηγούμενη ημερολογιακή μέρα
+  const initialDate = format(subHours(new Date(), 7), 'yyyy-MM-dd')
+  const [startDate, setStartDate] = useState(initialDate)
+  const [endDate, setEndDate] = useState(initialDate)
 
   const loadData = useCallback(async (silent = false) => {
     try {
@@ -29,7 +31,7 @@ function AnalysisContent() {
         const { data: transData } = await supabase.from('transactions')
           .select('*, suppliers(name)')
           .eq('store_id', profile.store_id)
-          .order('date', { ascending: false })
+          .order('created_at', { ascending: false })
         if (transData) setTransactions(transData)
       }
     } catch (err) { console.error(err) } finally { setLoading(false) }
@@ -38,20 +40,27 @@ function AnalysisContent() {
   useEffect(() => { loadData() }, [loadData])
 
   const stats = useMemo(() => {
-    // Φιλτράρισμα βάσει του εύρους ημερομηνιών (Από - Έως)
-    const currentData = transactions.filter(t => t.date >= startDate && t.date <= endDate)
+    // ΟΡΙΣΜΟΣ ΟΡΙΩΝ: Από τις 07:00 της startDate έως τις 06:59 της επομένης από την endDate
+    const startLimit = `${startDate}T07:00:00`
+    const nextDay = format(addHours(parseISO(endDate), 24), 'yyyy-MM-dd')
+    const endLimit = `${nextDay}T06:59:59`
+
+    const currentData = transactions.filter(t => {
+      const targetDate = t.created_at || t.date // Χρησιμοποιούμε created_at για ακρίβεια ώρας
+      return targetDate >= startLimit && targetDate <= endLimit
+    })
 
     const incomeTransactions = currentData.filter(t => t.type === 'income')
     const incomeTotal = incomeTransactions.reduce((acc, t) => acc + Number(t.amount), 0)
     const expenseTotal = currentData.filter(t => t.type === 'expense' && t.category !== 'pocket').reduce((acc, t) => acc + Number(t.amount), 0)
     
-    // ΟΜΑΔΟΠΟΙΗΣΗ Ζ
-    const listData: any[] = []
     const zGroups: any = {}
+    const listData: any[] = []
 
     currentData.forEach(t => {
         if (view === 'income' && t.type === 'income') {
             if (t.category === 'Εσοδα Ζ') {
+                // Ομαδοποίηση ανά ημερομηνία βάρδιας (date)
                 if (!zGroups[t.date]) zGroups[t.date] = { id: 'z-'+t.date, isZ: true, date: t.date, amount: 0, details: [] }
                 zGroups[t.date].amount += Number(t.amount)
                 zGroups[t.date].details.push(t)
@@ -61,7 +70,11 @@ function AnalysisContent() {
         }
     })
 
-    const finalDisplayData = [...listData, ...Object.values(zGroups)].sort((a,b) => b.date.localeCompare(a.date))
+    const finalDisplayData = [...listData, ...Object.values(zGroups)].sort((a,b) => {
+      const dateA = a.created_at || a.date
+      const dateB = b.created_at || b.date
+      return dateB.localeCompare(dateA)
+    })
 
     return { 
         currentTotal: view === 'income' ? incomeTotal : expenseTotal,
@@ -80,7 +93,7 @@ function AnalysisContent() {
           <div style={logoBoxStyle}>📊</div>
           <div>
             <h1 style={{ fontWeight: '900', fontSize: '18px', margin: 0 }}>Ανάλυση</h1>
-            <p style={{ margin: 0, fontSize: '9px', color: '#94a3b8', fontWeight: '800' }}>ΕΠΙΛΟΓΗ ΕΥΡΟΥΣ</p>
+            <p style={{ margin: 0, fontSize: '9px', color: '#94a3b8', fontWeight: '800' }}>ΒΑΡΔΙΑ: 07:00 - 06:59</p>
           </div>
         </div>
         <Link href="/" style={backBtnStyle}>✕</Link>
@@ -92,34 +105,33 @@ function AnalysisContent() {
         <button onClick={() => setView('expenses')} style={{...tabBtn, backgroundColor: view === 'expenses' ? '#ef4444' : 'transparent', color: view === 'expenses' ? 'white' : '#64748b'}}>ΕΞΟΔΑ</button>
       </div>
 
-      {/* DATE RANGE PICKER (ΑΠΟ - ΕΩΣ) */}
-      <div style={rangeContainer}>
-        <div style={dateBox}>
-          <label style={dateLabel}>ΑΠΟ</label>
+      {/* ΔΙΠΛΟ ΗΜΕΡΟΛΟΓΙΟ */}
+      <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
+        <div style={{ flex: 1 }}>
+          <label style={dateLabel}>ΑΠΟ (ΒΑΡΔΙΑ)</label>
           <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} style={dateInput} />
         </div>
-        <div style={dateBox}>
-          <label style={dateLabel}>ΕΩΣ</label>
+        <div style={{ flex: 1 }}>
+          <label style={dateLabel}>ΕΩΣ (ΒΑΡΔΙΑ)</label>
           <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} style={dateInput} />
         </div>
       </div>
 
       {/* HERO CARD */}
       <div style={{...heroCard, backgroundColor: view === 'income' ? '#0f172a' : '#450a0a'}}>
-        <p style={labelMicro}>ΣΥΝΟΛΟ ΕΠΙΛΕΓΜΕΝΗΣ ΠΕΡΙΟΔΟΥ</p>
+        <p style={labelMicro}>ΤΖΙΡΟΣ ΕΠΙΛΕΓΜΕΝΩΝ ΒΑΡΔΙΩΝ</p>
         <h2 style={{ fontSize: '38px', fontWeight: '900', margin: '5px 0' }}>{stats.currentTotal.toLocaleString('el-GR')}€</h2>
-        
         {view === 'income' && stats.currentTotal > 0 && (
             <div style={percGrid}>
                 <div style={percBox}><span style={percLabel}>ΜΕΤΡΗΤΑ</span><span style={percValue}>{stats.incomeCash.toFixed(0)}€</span></div>
-                <div style={percBox}><span style={percLabel}>CARD/POS</span><span style={percValue}>{stats.incomeCard.toFixed(0)}€</span></div>
+                <div style={percBox}><span style={percLabel}>ΚΑΡΤΑ/POS</span><span style={percValue}>{stats.incomeCard.toFixed(0)}€</span></div>
             </div>
         )}
       </div>
 
       {/* LIST */}
       <div style={listWrapper}>
-        <p style={listTitle}>Κινήσεις στο επιλεγμένο εύρος</p>
+        <p style={listTitle}>Κινήσεις Βάρδιας</p>
         {loading ? <p style={{textAlign:'center', padding:'20px'}}>Φόρτωση...</p> : (
             <div style={{display: 'flex', flexDirection: 'column', gap: '10px'}}>
                 {stats.finalDisplayData.map((item: any) => (
@@ -129,7 +141,7 @@ function AnalysisContent() {
                         {item.isZ ? '📟 ΚΛΕΙΣΙΜΟ Ζ (ΟΜΑΔΟΠΟΙΗΜΕΝΟ)' : (item.suppliers?.name || item.notes || item.category)}
                       </p>
                       <span style={{ fontSize: '11px', color: '#94a3b8', fontWeight: '700' }}>
-                        {format(parseISO(item.date), 'dd MMM')} {item.isZ ? '' : `• ${item.method}`}
+                        {format(parseISO(item.date), 'dd MMM', { locale: el })} {item.isZ ? '' : `• ${item.method}`}
                       </span>
                       {item.isZ && (
                         <div style={{fontSize: '10px', color: '#64748b', marginTop: '4px', fontWeight: '700'}}>
@@ -150,17 +162,15 @@ function AnalysisContent() {
   )
 }
 
-// --- STYLES ---
+// STYLES (Παραμένουν ίδια)
 const headerStyle: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', paddingTop: '10px' };
 const logoBoxStyle: any = { width: '42px', height: '42px', backgroundColor: '#f1f5f9', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px' };
 const backBtnStyle: any = { textDecoration: 'none', color: '#94a3b8', fontSize: '18px', fontWeight: 'bold' };
 const tabContainer: any = { display: 'flex', backgroundColor: '#f1f5f9', borderRadius: '16px', padding: '4px', marginBottom: '20px' };
 const tabBtn: any = { flex: 1, border: 'none', padding: '12px', borderRadius: '12px', fontWeight: '900', fontSize: '12px', cursor: 'pointer' };
-const rangeContainer: any = { display: 'flex', gap: '10px', marginBottom: '20px' };
-const dateBox: any = { flex: 1, display: 'flex', flexDirection: 'column', gap: '5px' };
-const dateLabel: any = { fontSize: '9px', fontWeight: '900', color: '#94a3b8', paddingLeft: '5px' };
-const dateInput: any = { width: '100%', padding: '12px', borderRadius: '12px', border: '1px solid #e2e8f0', fontSize: '13px', fontWeight: '800', backgroundColor: 'white', color: '#1e293b' };
-const heroCard: any = { padding: '30px 20px', borderRadius: '30px', color: 'white', textAlign: 'center', marginBottom: '25px', boxShadow: '0 8px 20px rgba(0,0,0,0.1)' };
+const dateLabel: any = { fontSize: '9px', fontWeight: '900', color: '#94a3b8', paddingLeft: '5px', marginBottom: '4px', display: 'block' };
+const dateInput: any = { width: '100%', padding: '12px', borderRadius: '12px', border: '1px solid #e2e8f0', fontSize: '13px', fontWeight: '800' };
+const heroCard: any = { padding: '30px 20px', borderRadius: '30px', color: 'white', textAlign: 'center', marginBottom: '25px' };
 const labelMicro: any = { fontSize: '9px', fontWeight: '900', opacity: 0.5, letterSpacing: '1px' };
 const percGrid: any = { display: 'flex', justifyContent: 'center', gap: '15px', marginTop: '20px', borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '15px' };
 const percBox: any = { display: 'flex', flexDirection: 'column', gap: '2px' };
