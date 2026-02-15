@@ -7,7 +7,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { 
   startOfMonth, endOfMonth, format, parseISO, subYears, 
-  startOfWeek, endOfWeek, isWithinInterval, startOfYear, endOfYear 
+  startOfWeek, endOfWeek, startOfYear, endOfYear, isSameDay
 } from 'date-fns'
 import { el } from 'date-fns/locale'
 
@@ -30,7 +30,7 @@ function AnalysisContent() {
         const { data: transData } = await supabase.from('transactions')
           .select('*, suppliers(name)')
           .eq('store_id', profile.store_id)
-          .order('date', { ascending: true })
+          .order('date', { ascending: false })
         if (transData) setTransactions(transData)
       }
     } catch (err) { console.error(err) } finally { setLoading(false) }
@@ -42,30 +42,32 @@ function AnalysisContent() {
     const baseDate = parseISO(selectedDate)
     const lastYearDate = subYears(baseDate, 1)
     
-    // Υπολογισμός εύρους βάσει επιλογής
-    let currentRange = { start: startOfMonth(baseDate), end: endOfMonth(baseDate) }
-    let lastYearRange = { start: startOfMonth(lastYearDate), end: endOfMonth(lastYearDate) }
+    // Καθορισμός ορίων περιόδου
+    let start: Date, end: Date;
+    let pStart: Date, pEnd: Date;
 
     if (period === 'custom_day') {
-        currentRange = { start: baseDate, end: baseDate };
-        lastYearRange = { start: lastYearDate, end: lastYearDate };
+      start = baseDate; end = baseDate;
+      pStart = lastYearDate; pEnd = lastYearDate;
     } else if (period === 'week') {
-        currentRange = { start: startOfWeek(baseDate, { weekStartsOn: 1 }), end: endOfWeek(baseDate) };
-        lastYearRange = { start: startOfWeek(lastYearDate, { weekStartsOn: 1 }), end: endOfWeek(lastYearDate) };
+      start = startOfWeek(baseDate, { weekStartsOn: 1 }); end = endOfWeek(baseDate);
+      pStart = startOfWeek(lastYearDate, { weekStartsOn: 1 }); pEnd = endOfWeek(lastYearDate);
     } else if (period === 'year') {
-        currentRange = { start: startOfYear(baseDate), end: endOfYear(baseDate) };
-        lastYearRange = { start: startOfYear(lastYearDate), end: endOfYear(lastYearDate) };
+      start = startOfYear(baseDate); end = endOfYear(baseDate);
+      pStart = startOfYear(lastYearDate); pEnd = endOfYear(lastYearDate);
+    } else {
+      start = startOfMonth(baseDate); end = endOfMonth(baseDate);
+      pStart = startOfMonth(lastYearDate); pEnd = endOfMonth(lastYearDate);
     }
 
-    const currentData = transactions.filter(t => {
-        const d = parseISO(t.date);
-        return d >= currentRange.start && d <= currentRange.end;
-    })
+    // Φιλτράρισμα με String σύγκριση (πιο αξιόπιστο για Supabase dates)
+    const sStr = format(start, 'yyyy-MM-dd');
+    const eStr = format(end, 'yyyy-MM-dd');
+    const psStr = format(pStart, 'yyyy-MM-dd');
+    const peStr = format(pEnd, 'yyyy-MM-dd');
 
-    const prevData = transactions.filter(t => {
-        const d = parseISO(t.date);
-        return d >= lastYearRange.start && d <= lastYearRange.end;
-    })
+    const currentData = transactions.filter(t => t.date >= sStr && t.date <= eStr);
+    const prevData = transactions.filter(t => t.date >= psStr && t.date <= peStr);
 
     const incomeTransactions = currentData.filter(t => t.type === 'income');
     const incomeTotal = incomeTransactions.reduce((acc, t) => acc + Number(t.amount), 0);
@@ -77,12 +79,12 @@ function AnalysisContent() {
 
     const officialIncome = incomeTransactions.filter(t => !t.notes?.toUpperCase().includes('ΧΩΡΙΣ'));
     const incomeCash = officialIncome.filter(t => t.method?.includes('Μετρητά')).reduce((acc, t) => acc + Number(t.amount), 0);
-    const incomeCard = officialIncome.filter(t => t.method?.includes('Κάρτα') || t.method?.includes('POS')).reduce((acc, t) => acc + Number(t.amount), 0);
+    const incomeCard = officialIncome.filter(t => t.method?.includes('Κάρτα') || t.method?.includes('POS') || t.method?.includes('Τράπεζα')).reduce((acc, t) => acc + Number(t.amount), 0);
 
-    const expenseTotal = currentData.filter(t => t.type === 'expense' && t.category !== 'pocket').reduce((acc, t) => acc + Number(t.amount), 0);
-    const prevExpenseTotal = prevData.filter(t => t.type === 'expense' && t.category !== 'pocket').reduce((acc, t) => acc + Number(t.amount), 0);
+    const expenseTotal = currentData.filter(t => (t.type === 'expense' || t.category === 'pocket') && t.category !== 'pocket').reduce((acc, t) => acc + Number(t.amount), 0);
+    const prevExpenseTotal = prevData.filter(t => (t.type === 'expense' || t.category === 'pocket') && t.category !== 'pocket').reduce((acc, t) => acc + Number(t.amount), 0);
 
-    // ΟΜΑΔΟΠΟΙΗΣΗ Ζ ΓΙΑ ΤΗ ΛΙΣΤΑ
+    // ΟΜΑΔΟΠΟΙΗΣΗ Ζ
     const listData: any[] = [];
     const zGroups: any = {};
 
@@ -102,38 +104,26 @@ function AnalysisContent() {
 
     const currentTarget = view === 'income' ? incomeTotal : expenseTotal;
     const prevTarget = view === 'income' ? prevIncomeTotal : prevExpenseTotal;
-    const diff = currentTarget - prevTarget;
-    const percent = prevTarget !== 0 ? (diff / prevTarget) * 100 : 0;
+    const percent = prevTarget !== 0 ? ((currentTarget - prevTarget) / prevTarget) * 100 : 0;
 
-    return { 
-        currentTotal: currentTarget, prevTotal: prevTarget, percent, 
-        incomeTotal, incomeCash, incomeCard, noReceiptAmount,
-        finalDisplayData
-    }
+    return { currentTotal: currentTarget, prevTotal: prevTarget, percent, incomeTotal, incomeCash, incomeCard, noReceiptAmount, finalDisplayData };
   }, [transactions, period, selectedDate, view])
 
   return (
     <div style={{ maxWidth: '500px', margin: '0 auto', fontFamily: 'sans-serif', paddingBottom: '100px' }}>
-      
-      {/* HEADER */}
       <div style={headerStyle}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <div style={logoBoxStyle}>📊</div>
-          <div>
-            <h1 style={{ fontWeight: '900', fontSize: '18px', margin: 0 }}>Ανάλυση</h1>
-            <p style={{ margin: 0, fontSize: '9px', color: '#94a3b8', fontWeight: '800' }}>ΣΤΑΤΙΣΤΙΚΑ ΕΠΙΧΕΙΡΗΣΗΣ</p>
-          </div>
+          <h1 style={{ fontWeight: '900', fontSize: '18px', margin: 0 }}>Ανάλυση</h1>
         </div>
         <Link href="/" style={backBtnStyle}>✕</Link>
       </div>
 
-      {/* VIEW SELECTOR */}
       <div style={tabContainer}>
         <button onClick={() => setView('income')} style={{...tabBtn, backgroundColor: view === 'income' ? '#10b981' : 'transparent', color: view === 'income' ? 'white' : '#64748b'}}>ΕΣΟΔΑ</button>
         <button onClick={() => setView('expenses')} style={{...tabBtn, backgroundColor: view === 'expenses' ? '#ef4444' : 'transparent', color: view === 'expenses' ? 'white' : '#64748b'}}>ΕΞΟΔΑ</button>
       </div>
 
-      {/* FILTER BAR */}
       <div style={filterBar}>
         <select value={period} onChange={e => setPeriod(e.target.value)} style={selectStyle}>
           <option value="month">Προβολή: Μήνας</option>
@@ -143,15 +133,13 @@ function AnalysisContent() {
         </select>
         <div style={calendarCard}>
             <input type="date" value={selectedDate} onChange={e => setSelectedDate(e.target.value)} style={dateInput} />
-            <span style={{fontSize:'12px', fontWeight:'800'}}>{format(parseISO(selectedDate), 'dd/MM')} 📅</span>
+            <span style={{fontSize:'12px', fontWeight:'900'}}>{format(parseISO(selectedDate), 'dd/MM')} 📅</span>
         </div>
       </div>
 
-      {/* HERO CARD */}
       <div style={{...heroCard, backgroundColor: view === 'income' ? '#0f172a' : '#450a0a'}}>
         <p style={labelMicro}>{view === 'income' ? 'ΚΑΘΑΡΟΣ ΤΖΙΡΟΣ ΠΕΡΙΟΔΟΥ' : 'ΣΥΝΟΛΙΚΑ ΕΞΟΔΑ'}</p>
         <h2 style={{ fontSize: '36px', fontWeight: '900', margin: '5px 0' }}>{stats.currentTotal.toLocaleString('el-GR')}€</h2>
-        
         {view === 'income' && stats.incomeTotal > 0 && (
             <div style={percGrid}>
                 <div style={percBox}><span style={percLabel}>ΜΕΤΡΗΤΑ</span><span style={percValue}>{stats.incomeCash.toFixed(0)}€</span></div>
@@ -159,16 +147,14 @@ function AnalysisContent() {
                 <div style={percBox}><span style={percLabel}>ΧΩΡΙΣ ΣΗΜ.</span><span style={percValue}>{stats.noReceiptAmount.toFixed(0)}€</span></div>
             </div>
         )}
-
         <div style={{ marginTop: '15px', fontSize: '11px', fontWeight: '700', color: stats.percent >= 0 ? '#4ade80' : '#f87171' }}>
             {stats.percent >= 0 ? '↑' : '↓'} {Math.abs(stats.percent).toFixed(1)}% <span style={{opacity:0.6, color:'white', marginLeft: '5px'}}>vs Πέρυσι ({stats.prevTotal.toFixed(0)}€)</span>
         </div>
       </div>
 
-      {/* LIST OF TRANSACTIONS */}
       <div style={listWrapper}>
         <p style={listTitle}>Αναλυτικές Κινήσεις</p>
-        {loading ? <p style={{textAlign:'center', padding:'20px'}}>Συγχρονισμός...</p> : (
+        {loading ? <p style={{textAlign:'center', padding:'20px'}}>Φόρτωση...</p> : (
             <>
                 {stats.finalDisplayData.map((item: any) => (
                   <div key={item.id} style={item.isZ ? zRowStyle : rowStyle}>
@@ -180,7 +166,7 @@ function AnalysisContent() {
                         {format(parseISO(item.date), 'dd MMM', { locale: el })} {item.isZ ? '' : `• ${item.method}`}
                       </span>
                       {item.isZ && (
-                        <div style={{fontSize: '10px', color: '#64748b', marginTop: '4px', fontWeight: '600'}}>
+                        <div style={{fontSize: '10px', color: '#64748b', marginTop: '4px', fontWeight: '700'}}>
                            {item.details.map((d:any) => `${d.method.replace(' (Ζ)','')}: ${d.amount}€`).join(' | ')}
                         </div>
                       )}
@@ -198,14 +184,13 @@ function AnalysisContent() {
   )
 }
 
-// --- STYLES ---
 const headerStyle: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', paddingTop: '10px' };
 const logoBoxStyle: any = { width: '42px', height: '42px', backgroundColor: '#f1f5f9', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px' };
 const backBtnStyle: any = { textDecoration: 'none', color: '#94a3b8', fontSize: '18px', fontWeight: 'bold' };
 const tabContainer: any = { display: 'flex', backgroundColor: '#f1f5f9', borderRadius: '16px', padding: '4px', marginBottom: '15px' };
 const tabBtn: any = { flex: 1, border: 'none', padding: '12px', borderRadius: '12px', fontWeight: '900', fontSize: '12px', cursor: 'pointer' };
 const filterBar: any = { display: 'flex', gap: '10px', marginBottom: '15px' };
-const selectStyle: any = { flex: 1.5, padding: '12px', borderRadius: '14px', border: '1px solid #e2e8f0', fontWeight: '800', outline: 'none', backgroundColor: 'white', fontSize: '12px' };
+const selectStyle: any = { flex: 1.5, padding: '12px', borderRadius: '14px', border: '1px solid #e2e8f0', fontWeight: '800', backgroundColor: 'white', fontSize: '12px' };
 const calendarCard: any = { flex: 1, position: 'relative', backgroundColor: 'white', borderRadius: '14px', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center' };
 const dateInput: any = { position: 'absolute', opacity: 0, width: '100%', height: '100%', cursor: 'pointer' };
 const heroCard: any = { padding: '30px 20px', borderRadius: '30px', color: 'white', textAlign: 'center', marginBottom: '20px' };
