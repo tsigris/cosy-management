@@ -41,7 +41,7 @@ function DashboardContent() {
   const [storeName, setStoreName] = useState('Φορτώνει...')
   const [transactions, setTransactions] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [expandedTx, setExpandedTx] = useState<string | null>(null) // State για το ποια κίνηση δείχνει τα κουμπιά
+  const [expandedTx, setExpandedTx] = useState<string | null>(null) 
 
   // 3. LOAD DATA
   const loadDashboard = useCallback(async () => {
@@ -90,7 +90,6 @@ function DashboardContent() {
 
       if (error) throw error
       
-      // Ενημέρωση του UI χωρίς reload
       setTransactions(prev => prev.filter(t => t.id !== id))
       setExpandedTx(null)
     } catch (err) {
@@ -99,14 +98,15 @@ function DashboardContent() {
     }
   }
 
-  // 5. CALCULATIONS
+  // 5. CALCULATIONS - ΕΔΩ ΕΓΙΝΕ Η ΔΙΟΡΘΩΣΗ ΓΙΑ ΤΗΝ ΠΙΣΤΩΣΗ
   const totals = useMemo(() => {
     const income = transactions
       .filter(t => t.type === 'income')
       .reduce((acc, t) => acc + Number(t.amount), 0)
     
+    // Φιλτράρουμε ώστε να ΜΗΝ συμπεριλαμβάνονται οι πιστώσεις (is_credit: true)
     const expense = transactions
-      .filter(t => t.type === 'expense' || t.category === 'Προσωπικό' || t.category === 'Εξόφληση Χρέους')
+      .filter(t => (t.type === 'expense' || t.category === 'Προσωπικό' || t.category === 'Εξόφληση Χρέους') && t.is_credit !== true)
       .reduce((acc, t) => acc + Math.abs(Number(t.amount)), 0)
 
     return { income, expense, balance: income - expense }
@@ -218,7 +218,10 @@ function DashboardContent() {
                     {t.type === 'income' ? '↙' : '↗'}
                   </div>
                   <div style={{ flex: 1, marginLeft: '12px' }}>
-                    <p style={txTitle}>{t.suppliers?.name || t.fixed_assets?.name || t.category || 'Συναλλαγή'}</p>
+                    <p style={txTitle}>
+                      {t.suppliers?.name || t.fixed_assets?.name || t.category || 'Συναλλαγή'}
+                      {t.is_credit && <span style={{fontSize: '9px', marginLeft: '5px', color: colors.accentBlue, fontWeight: '800'}}>(ΠΙΣΤΩΣΗ)</span>}
+                    </p>
                     <p style={txMeta}>{t.method} • {format(parseISO(t.created_at), 'HH:mm')}</p>
                   </div>
                   <p style={{ ...txAmount, color: t.type === 'income' ? colors.accentGreen : colors.accentRed }}>
@@ -252,7 +255,7 @@ function DashboardContent() {
   )
 }
 
-// --- STYLES ---
+// --- STYLES (Παραμένουν ίδια) ---
 const iphoneWrapper: any = { minHeight: '100dvh', padding: '20px', paddingBottom: '100px' };
 const headerStyle: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px' };
 const brandArea = { display: 'flex', alignItems: 'center', gap: '12px' };
@@ -290,7 +293,7 @@ const txRow: any = { display: 'flex', justifyContent: 'space-between', alignItem
 const txIconContainer = (isInc: boolean): any => ({ width: '40px', height: '40px', borderRadius: '12px', background: isInc ? '#ecfdf5' : '#fff1f2', color: isInc ? colors.accentGreen : colors.accentRed, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: '16px' });
 const txTitle = { fontWeight: '700', fontSize: '14px', margin: 0, color: colors.primaryDark };
 const txMeta = { fontSize: '11px', color: colors.secondaryText, margin: 0, fontWeight: '600' };
-const txAmount = { fontWeight: '800', fontSize: '16px' };
+const txAmount = { fontWeight: '800', fontSize: '15px' };
 
 const actionPanel: any = { display: 'flex', gap: '8px', padding: '12px', backgroundColor: 'white', border: `1px solid ${colors.border}`, borderTop: 'none', borderRadius: '0 0 20px 20px' };
 const editRowBtn: any = { flex: 1, padding: '10px', backgroundColor: colors.warning, color: colors.warningText, border: 'none', borderRadius: '12px', fontWeight: '700', fontSize: '12px', cursor: 'pointer' };
