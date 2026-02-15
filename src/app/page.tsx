@@ -17,7 +17,9 @@ const colors = {
   accentGreen: '#10b981',
   bgLight: '#f8fafc',     
   border: '#e2e8f0',      
-  white: '#ffffff'
+  white: '#ffffff',
+  warning: '#fffbeb',
+  warningText: '#92400e'
 };
 
 function DashboardContent() {
@@ -39,15 +41,15 @@ function DashboardContent() {
   const [storeName, setStoreName] = useState('Φορτώνει...')
   const [transactions, setTransactions] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [expandedTx, setExpandedTx] = useState<string | null>(null) // State για το ποια κίνηση δείχνει τα κουμπιά
 
-  // 3. LOAD DATA - ΕΠΑΝΑΦΟΡΑ ΣΩΣΤΗΣ ΛΟΓΙΚΗΣ
+  // 3. LOAD DATA
   const loadDashboard = useCallback(async () => {
     try {
       setLoading(true)
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) return router.push('/login')
 
-      // Παίρνουμε το profile και το store_name
       const { data: profile } = await supabase
         .from('profiles')
         .select('*')
@@ -58,7 +60,6 @@ function DashboardContent() {
         setIsAdmin(profile.role === 'admin' || profile.role === 'superadmin')
         setStoreName(profile.store_name || 'Το Κατάστημά μου')
 
-        // Παίρνουμε τις κινήσεις
         const { data: tx } = await supabase
           .from('transactions')
           .select('*, suppliers(name), fixed_assets(name)')
@@ -77,7 +78,28 @@ function DashboardContent() {
 
   useEffect(() => { loadDashboard() }, [loadDashboard])
 
-  // 4. CALCULATIONS - ΔΙΟΡΘΩΣΗ ΛΟΓΙΚΗΣ ΕΣΟΔΩΝ/ΕΞΟΔΩΝ
+  // 4. DELETE LOGIC
+  const handleDelete = async (id: string) => {
+    if (!confirm('Οριστική διαγραφή αυτής της κίνησης;')) return
+
+    try {
+      const { error } = await supabase
+        .from('transactions')
+        .delete()
+        .eq('id', id)
+
+      if (error) throw error
+      
+      // Ενημέρωση του UI χωρίς reload
+      setTransactions(prev => prev.filter(t => t.id !== id))
+      setExpandedTx(null)
+    } catch (err) {
+      alert('Σφάλμα κατά τη διαγραφή')
+      console.error(err)
+    }
+  }
+
+  // 5. CALCULATIONS
   const totals = useMemo(() => {
     const income = transactions
       .filter(t => t.type === 'income')
@@ -94,6 +116,7 @@ function DashboardContent() {
     const current = parseISO(selectedDate)
     const next = days > 0 ? addDays(current, 1) : subDays(current, 1)
     router.push(`/?date=${format(next, 'yyyy-MM-dd')}`)
+    setExpandedTx(null)
   }
 
   return (
@@ -122,7 +145,6 @@ function DashboardContent() {
             <div style={{ ...hamburgerLine, width: '12px', marginBottom: 0 }} />
           </button>
 
-          {/* DROPDOWN MENU - ΕΠΑΝΑΦΟΡΑ ΟΛΩΝ ΤΩΝ ΕΠΙΛΟΓΩΝ */}
           {isMenuOpen && (
             <div style={dropdownStyle}>
               <p style={menuSectionLabel}>ΔΙΑΧΕΙΡΙΣΗ</p>
@@ -131,9 +153,7 @@ function DashboardContent() {
               <Link href="/employees" style={menuItem} onClick={() => setIsMenuOpen(false)}>👥 Υπάλληλοι</Link>
               <Link href="/suppliers-balance" style={menuItem} onClick={() => setIsMenuOpen(false)}>🚩 Καρτέλες (Χρέη)</Link>
               <Link href="/analysis" style={menuItem} onClick={() => setIsMenuOpen(false)}>📊 Ανάλυση</Link>
-              
               <div style={menuDivider} />
-              
               <p style={menuSectionLabel}>ΕΦΑΡΜΟΓΗ</p>
               <Link href="/help" style={menuItem} onClick={() => setIsMenuOpen(false)}>❓ Οδηγίες Χρήσης</Link>
               <Link href="/settings" style={menuItem} onClick={() => setIsMenuOpen(false)}>⚙️ Ρυθμίσεις</Link>
@@ -152,7 +172,7 @@ function DashboardContent() {
         <button onClick={() => changeDate(1)} style={dateNavBtn}>›</button>
       </div>
 
-      {/* HERO SECTION - ΠΙΟ ΕΠΑΓΓΕΛΜΑΤΙΚΟ BALANCE */}
+      {/* HERO SECTION */}
       <div style={heroCardStyle}>
           <p style={heroLabel}>ΔΙΑΘΕΣΙΜΟ ΥΠΟΛΟΙΠΟ ΗΜΕΡΑΣ</p>
           <h2 style={heroAmountText}>{totals.balance.toFixed(2)}€</h2>
@@ -168,7 +188,7 @@ function DashboardContent() {
           </div>
       </div>
 
-      {/* ACTIONS - ΣΩΣΤΑ LINKS */}
+      {/* ACTIONS */}
       <div style={actionGrid}>
         <Link href={`/add-income?date=${selectedDate}`} style={{ ...actionBtn, backgroundColor: colors.accentGreen }}>+ Έσοδο</Link>
         <Link href={`/add-expense?date=${selectedDate}`} style={{ ...actionBtn, backgroundColor: colors.accentRed }}>- Έξοδο</Link>
@@ -185,17 +205,44 @@ function DashboardContent() {
             <p style={{textAlign:'center', padding:'30px', color: colors.secondaryText, fontSize:'14px'}}>Δεν υπάρχουν κινήσεις</p>
           ) : (
             transactions.map(t => (
-              <div key={t.id} style={txRow} onClick={() => router.push(`/${t.type === 'income' ? 'add-income' : 'add-expense'}?editId=${t.id}`)}>
-                <div style={txIconContainer(t.type === 'income')}>
-                  {t.type === 'income' ? '↙' : '↗'}
+              <div key={t.id} style={{ marginBottom: '12px' }}>
+                <div 
+                  style={{
+                    ...txRow,
+                    borderBottom: expandedTx === t.id ? `1px dashed ${colors.border}` : `1px solid ${colors.bgLight}`,
+                    borderRadius: expandedTx === t.id ? '20px 20px 0 0' : '20px'
+                  }} 
+                  onClick={() => setExpandedTx(expandedTx === t.id ? null : t.id)}
+                >
+                  <div style={txIconContainer(t.type === 'income')}>
+                    {t.type === 'income' ? '↙' : '↗'}
+                  </div>
+                  <div style={{ flex: 1, marginLeft: '12px' }}>
+                    <p style={txTitle}>{t.suppliers?.name || t.fixed_assets?.name || t.category || 'Συναλλαγή'}</p>
+                    <p style={txMeta}>{t.method} • {format(parseISO(t.created_at), 'HH:mm')}</p>
+                  </div>
+                  <p style={{ ...txAmount, color: t.type === 'income' ? colors.accentGreen : colors.accentRed }}>
+                    {t.type === 'income' ? '+' : '-'}{Math.abs(t.amount).toFixed(2)}€
+                  </p>
                 </div>
-                <div style={{ flex: 1, marginLeft: '12px' }}>
-                  <p style={txTitle}>{t.suppliers?.name || t.fixed_assets?.name || t.category || 'Συναλλαγή'}</p>
-                  <p style={txMeta}>{t.method} • {format(parseISO(t.created_at), 'HH:mm')}</p>
-                </div>
-                <p style={{ ...txAmount, color: t.type === 'income' ? colors.accentGreen : colors.accentRed }}>
-                  {t.type === 'income' ? '+' : '-'}{Math.abs(t.amount).toFixed(2)}€
-                </p>
+
+                {/* ΕΜΦΑΝΙΣΗ ΚΟΥΜΠΙΩΝ ΔΙΑΓΡΑΦΗΣ/ΕΠΕΞΕΡΓΑΣΙΑΣ ΜΟΝΟ ΑΝ ΕΙΝΑΙ ΕΠΙΛΕΓΜΕΝΟ */}
+                {expandedTx === t.id && (
+                  <div style={actionPanel}>
+                    <button 
+                      onClick={() => router.push(`/${t.type === 'income' ? 'add-income' : 'add-expense'}?editId=${t.id}`)}
+                      style={editRowBtn}
+                    >
+                      ✎ Επεξεργασία
+                    </button>
+                    <button 
+                      onClick={() => handleDelete(t.id)}
+                      style={deleteRowBtn}
+                    >
+                      🗑 Διαγραφή
+                    </button>
+                  </div>
+                )}
               </div>
             ))
           )
@@ -237,13 +284,17 @@ const statCircle = (bg: string): any => ({ width: '22px', height: '22px', border
 const actionGrid = { display: 'flex', gap: '10px', marginBottom: '30px' };
 const actionBtn: any = { flex: 1, padding: '16px', borderRadius: '16px', color: 'white', textDecoration: 'none', textAlign: 'center', fontWeight: '800', fontSize: '14px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' };
 
-const listContainer = { backgroundColor: 'white', borderRadius: '24px', padding: '20px', border: `1px solid ${colors.border}` };
+const listContainer = { backgroundColor: 'transparent', padding: '0' };
 const listHeader = { fontSize: '11px', fontWeight: '800', color: colors.secondaryText, marginBottom: '16px', letterSpacing: '0.5px' };
-const txRow: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 0', borderBottom: `1px solid ${colors.bgLight}`, cursor: 'pointer' };
+const txRow: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px', backgroundColor: 'white', cursor: 'pointer', border: `1px solid ${colors.border}`, borderBottom: 'none' };
 const txIconContainer = (isInc: boolean): any => ({ width: '40px', height: '40px', borderRadius: '12px', background: isInc ? '#ecfdf5' : '#fff1f2', color: isInc ? colors.accentGreen : colors.accentRed, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: '16px' });
 const txTitle = { fontWeight: '700', fontSize: '14px', margin: 0, color: colors.primaryDark };
 const txMeta = { fontSize: '11px', color: colors.secondaryText, margin: 0, fontWeight: '600' };
 const txAmount = { fontWeight: '800', fontSize: '16px' };
+
+const actionPanel: any = { display: 'flex', gap: '8px', padding: '12px', backgroundColor: 'white', border: `1px solid ${colors.border}`, borderTop: 'none', borderRadius: '0 0 20px 20px' };
+const editRowBtn: any = { flex: 1, padding: '10px', backgroundColor: colors.warning, color: colors.warningText, border: 'none', borderRadius: '12px', fontWeight: '700', fontSize: '12px', cursor: 'pointer' };
+const deleteRowBtn: any = { flex: 1, padding: '10px', backgroundColor: '#fee2e2', color: colors.accentRed, border: 'none', borderRadius: '12px', fontWeight: '700', fontSize: '12px', cursor: 'pointer' };
 
 export default function DashboardPage() {
   return <Suspense fallback={null}><DashboardContent /></Suspense>
