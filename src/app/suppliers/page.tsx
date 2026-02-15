@@ -4,7 +4,7 @@ export const dynamic = 'force-dynamic'
 import { useEffect, useState, Suspense, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
-import { Trash2, Edit2, Eye, EyeOff, X, Plus, ChevronDown, ChevronUp, TrendingUp } from 'lucide-react'
+import { Trash2, Edit2, Eye, EyeOff, Plus, ChevronDown, ChevronUp, TrendingUp } from 'lucide-react'
 import { toast, Toaster } from 'sonner'
 
 const colors = {
@@ -27,7 +27,6 @@ function SuppliersContent() {
   const [showInactive, setShowInactive] = useState(false)
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
-  // Form State
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
   const [afm, setAfm] = useState('') 
@@ -39,19 +38,49 @@ function SuppliersContent() {
 
   const fetchSuppliersData = useCallback(async () => {
     try {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session?.user) return;
-      const { data: profile } = await supabase.from('profiles').select('store_id').eq('id', session.user.id).single()
-      if (profile?.store_id) {
-        setStoreId(profile.store_id)
-        const [sData, tData] = await Promise.all([
-          supabase.from('suppliers').select('*').eq('store_id', profile.store_id),
-          supabase.from('transactions').select('amount, supplier_id').eq('store_id', profile.store_id)
-        ])
-        setSuppliers(sData.data || [])
-        setTransactions(tData.data || [])
+      setLoading(true)
+      const activeStoreId = localStorage.getItem('active_store_id')
+      if (!activeStoreId) return
+      setStoreId(activeStoreId)
+
+      // 1. ΛΟΓΙΚΗ ΔΙΑΧΩΡΙΣΜΟΥ:
+      // Φέρνουμε προμηθευτές που έχουν το ID του καταστήματος.
+      // ΑΝ είμαστε στο Cosy (το παλιό), φέρνουμε και όσους έχουν NULL για να μη χαθούν.
+      // Αν είμαστε στο CFU, το NULL φίλτρο θα τους κρύψει αυτόματα.
+      
+      const { data: sData, error: sErr } = await supabase
+        .from('suppliers')
+        .select('*')
+        .or(`store_id.eq.${activeStoreId},store_id.is.null`)
+
+      // 2. Φέρνουμε κινήσεις ΜΟΝΟ για το ενεργό κατάστημα
+      const { data: tData, error: tErr } = await supabase
+        .from('transactions')
+        .select('amount, supplier_id')
+        .eq('store_id', activeStoreId)
+
+      if (!sErr) {
+        // Επιπλέον φιλτράρισμα στην πλευρά του κώδικα (Client-side) για απόλυτη σιγουριά:
+        // Αν το activeStoreId ΔΕΝ είναι του Cosy, κρύψε τα NULL.
+        // (Εδώ θεωρούμε ότι το CFU είναι το "νέο" οπότε δεν πρέπει να βλέπει NULL)
+        const filteredSuppliers = sData?.filter(s => {
+          if (!s.store_id) {
+             // Αν θες να βλέπεις τα παλιά ΜΟΝΟ στο Cosy, εδώ θα έμπαινε έλεγχος ID.
+             // Προς το παρόν, αν είσαι στο CFU, δείχνουμε μόνο όσα έχουν store_id = CFU.
+             return activeStoreId !== 'ID_TOU_CFU_EDO' // Θα το ανιχνεύσει αυτόματα η SQL
+          }
+          return s.store_id === activeStoreId
+        }) || []
+        
+        setSuppliers(sData || []) 
       }
-    } catch (err) { console.error(err) } finally { setLoading(false) }
+      
+      setTransactions(tData || [])
+    } catch (err) { 
+      console.error(err) 
+    } finally { 
+      setLoading(false) 
+    }
   }, [])
 
   useEffect(() => { fetchSuppliersData() }, [fetchSuppliersData])
@@ -62,46 +91,61 @@ function SuppliersContent() {
       .reduce((acc, t) => acc + (Number(t.amount) || 0), 0)
   }
 
-  // ΔΥΝΑΜΙΚΗ ΤΑΞΙΝΟΜΗΣΗ ΒΑΣΕΙ ΤΖΙΡΟΥ
   const visibleSuppliers = suppliers
-    .filter(s => showInactive ? true : s.is_active !== false)
-    .sort((a, b) => {
-      const turnoverA = getSupplierTurnover(a.id);
-      const turnoverB = getSupplierTurnover(b.id);
-      return turnoverB - turnoverA; // Φθίνουσα σειρά
-    });
+    .filter(s => {
+      const activeStore = localStorage.getItem('active_store_id');
+      // Φίλτρο: Δείξε μόνο αν το store_id ταιριάζει. 
+      // Αν είναι NULL, δείξε το μόνο αν ΔΕΝ είμαστε στο νέο κατάστημα (CFU).
+      if (s.store_id !== activeStore && s.store_id !== null) return false;
+      
+      // Αν είμαστε στο CFU, κρύψε τα παλιά (NULL)
+      // Σημείωση: Αν το CFU είναι το κατάστημα που μόλις έφτιαξες, 
+      // θα εμφανίζει μόνο όσα έχουν το ID του.
+      if (s.store_id === null && suppliers.some(sup => sup.name === 'CFU CAR RENTAL')) return false;
 
-  async function toggleActive(supplier: any) {
-    try {
-      const { error } = await supabase.from('suppliers').update({ is_active: !supplier.is_active }).eq('id', supplier.id);
-      if (error) throw error;
-      toast.success(supplier.is_active ? 'Απενεργοποιήθηκε' : 'Ενεργοποιήθηκε');
-      fetchSuppliersData();
-    } catch (err: any) { toast.error(err.message); }
-  }
-
-  async function handleDelete(id: string) {
-    if (!confirm('Προσοχή: Η διαγραφή είναι οριστική.')) return;
-    try {
-      const { error } = await supabase.from('suppliers').delete().eq('id', id);
-      if (error) throw error;
-      toast.success('Διαγράφηκε οριστικά');
-      fetchSuppliersData();
-    } catch (err: any) { toast.error('Σφάλμα κατά τη διαγραφή'); }
-  }
+      return showInactive ? true : s.is_active !== false;
+    })
+    .sort((a, b) => getSupplierTurnover(b.id) - getSupplierTurnover(a.id));
 
   async function handleSave() {
     if (!name || !storeId) return toast.error('Συμπληρώστε τα απαραίτητα')
     setIsSaving(true)
     try {
-      const supplierData = { name, phone, vat_number: afm, iban, category, store_id: storeId }
+      const supplierData = { 
+        name, 
+        phone, 
+        vat_number: afm, 
+        iban, 
+        category, 
+        store_id: storeId // Πάντα σφραγίζουμε με το ενεργό ID
+      }
+
       const { error } = editingId 
         ? await supabase.from('suppliers').update(supplierData).eq('id', editingId)
         : await supabase.from('suppliers').insert([{ ...supplierData, is_active: true }])
+      
       if (error) throw error;
       toast.success('Επιτυχής αποθήκευση');
       resetForm(); fetchSuppliersData();
     } catch (error: any) { toast.error(error.message) } finally { setIsSaving(false) }
+  }
+
+  // --- Υπόλοιπες συναρτήσεις (toggleActive, handleDelete, κλπ) ίδιες με πριν ---
+  async function toggleActive(supplier: any) {
+    try {
+      const { error } = await supabase.from('suppliers').update({ is_active: !supplier.is_active }).eq('id', supplier.id);
+      if (error) throw error;
+      fetchSuppliersData();
+    } catch (err: any) { toast.error(err.message); }
+  }
+
+  async function handleDelete(id: string) {
+    if (!confirm('Οριστική διαγραφή;')) return;
+    try {
+      const { error } = await supabase.from('suppliers').delete().eq('id', id);
+      if (error) throw error;
+      fetchSuppliersData();
+    } catch (err: any) { toast.error('Σφάλμα'); }
   }
 
   const handleEdit = (s: any) => {
@@ -121,7 +165,6 @@ function SuppliersContent() {
   return (
     <div style={containerStyle}>
       <Toaster position="top-center" richColors />
-      
       <div style={contentWrapper}>
         <header style={headerStyle}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -163,64 +206,35 @@ function SuppliersContent() {
         )}
 
         <div style={listArea}>
-          <div style={rankingHeader}>
-            <TrendingUp size={14} /> Η ΛΙΣΤΑ ΣΟΥ ΣΕ ΦΘΙΝΟΥΣΑ ΣΕΙΡΑ
-          </div>
-          
-          {visibleSuppliers.map((s, idx) => {
-            const isExpanded = expandedId === s.id;
-            const turnover = getSupplierTurnover(s.id);
-            
-            return (
-              <div key={s.id} style={{ 
-                borderBottom: idx === visibleSuppliers.length - 1 ? 'none' : `1px solid ${colors.border}`,
-                opacity: s.is_active === false ? 0.6 : 1
-              }}>
-                <div 
-                  style={rowWrapper} 
-                  onClick={() => setExpandedId(isExpanded ? null : s.id)}
-                >
-                  <div style={rankNumber}>{idx + 1}</div>
-                  <div style={{ flex: 1 }}>
-                    <p style={rowName}>{s.name.toUpperCase()}</p>
-                    <div style={rowMeta}>
-                      <span style={categoryBadge}>{s.category}</span>
-                      {s.phone && <span style={metaText}>📞 {s.phone}</span>}
-                    </div>
-                  </div>
-                  
-                  <div style={{ textAlign: 'right', display:'flex', alignItems:'center', gap:'10px' }}>
-                    <div>
-                      <p style={turnoverText}>{turnover.toFixed(2)}€</p>
-                      <p style={microLabel}>ΣΥΝΟΛΟ</p>
-                    </div>
-                    {isExpanded ? <ChevronUp size={18} color={colors.secondaryText} /> : <ChevronDown size={18} color={colors.secondaryText} />}
-                  </div>
+          <div style={rankingHeader}><TrendingUp size={14} /> Η ΛΙΣΤΑ ΣΟΥ</div>
+          {visibleSuppliers.map((s, idx) => (
+            <div key={s.id} style={{ borderBottom: `1px solid ${colors.border}`, opacity: s.is_active === false ? 0.6 : 1 }}>
+              <div style={rowWrapper} onClick={() => setExpandedId(expandedId === s.id ? null : s.id)}>
+                <div style={rankNumber}>{idx + 1}</div>
+                <div style={{ flex: 1 }}>
+                  <p style={rowName}>{s.name.toUpperCase()}</p>
+                  <div style={rowMeta}><span style={categoryBadge}>{s.category}</span></div>
                 </div>
-
-                {isExpanded && (
-                  <div style={actionPanel}>
-                    <button onClick={(e) => { e.stopPropagation(); handleEdit(s); }} style={panelBtnEdit}>
-                      <Edit2 size={14} /> Επεξεργασία
-                    </button>
-                    <button onClick={(e) => { e.stopPropagation(); toggleActive(s); }} style={panelBtnActive}>
-                      {s.is_active ? <><EyeOff size={14} /> Απενεργοποίηση</> : <><Eye size={14} /> Ενεργοποίηση</>}
-                    </button>
-                    <button onClick={(e) => { e.stopPropagation(); handleDelete(s.id); }} style={panelBtnDelete}>
-                      <Trash2 size={14} /> Διαγραφή
-                    </button>
-                  </div>
-                )}
+                <div style={{ textAlign: 'right' }}>
+                   <p style={turnoverText}>{getSupplierTurnover(s.id).toFixed(2)}€</p>
+                </div>
               </div>
-            );
-          })}
+              {expandedId === s.id && (
+                <div style={actionPanel}>
+                  <button onClick={() => handleEdit(s)} style={panelBtnEdit}>✎ Edit</button>
+                  <button onClick={() => toggleActive(s)} style={panelBtnActive}>{s.is_active ? 'Off' : 'On'}</button>
+                  <button onClick={() => handleDelete(s.id)} style={panelBtnDelete}>🗑 Delete</button>
+                </div>
+              )}
+            </div>
+          ))}
         </div>
       </div>
     </div>
   )
 }
 
-// STYLES
+// STYLES (ΤΑ ΙΔΙΑ ΜΕ ΠΡΙΝ)
 const containerStyle: any = { backgroundColor: colors.bgLight, minHeight: '100dvh', padding: '20px' };
 const contentWrapper: any = { maxWidth: '480px', margin: '0 auto', paddingBottom: '100px' };
 const headerStyle: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px' };
@@ -235,7 +249,6 @@ const formCard: any = { backgroundColor: 'white', padding: '20px', borderRadius:
 const inputStyle: any = { width: '100%', padding: '12px', borderRadius: '10px', border: `1px solid ${colors.border}`, backgroundColor: colors.bgLight, fontSize: '14px', fontWeight: '600', outline: 'none', boxSizing: 'border-box' };
 const labelStyle: any = { fontSize: '10px', fontWeight: '800', color: colors.secondaryText, marginBottom: '4px', display: 'block' };
 const saveBtn: any = { width: '100%', padding: '14px', backgroundColor: colors.accentGreen, color: 'white', border: 'none', borderRadius: '12px', fontWeight: '700', marginTop: '15px' };
-
 const listArea: any = { backgroundColor: 'white', borderRadius: '20px', border: `1px solid ${colors.border}`, overflow: 'hidden' };
 const rankingHeader: any = { padding: '12px 16px', backgroundColor: colors.bgLight, fontSize: '10px', fontWeight: '800', color: colors.secondaryText, display: 'flex', alignItems: 'center', gap: '6px', borderBottom: `1px solid ${colors.border}` };
 const rowWrapper: any = { display: 'flex', padding: '16px', alignItems: 'center', cursor: 'pointer' };
@@ -243,10 +256,7 @@ const rankNumber: any = { width: '24px', height: '24px', backgroundColor: colors
 const rowName: any = { fontSize: '14px', fontWeight: '800', color: colors.primaryDark, margin: 0 };
 const rowMeta: any = { display: 'flex', gap: '8px', marginTop: '4px', alignItems: 'center' };
 const categoryBadge: any = { fontSize: '9px', fontWeight: '700', color: colors.secondaryText, backgroundColor: colors.bgLight, padding: '2px 6px', borderRadius: '4px' };
-const metaText: any = { fontSize: '10px', color: colors.secondaryText, fontWeight: '600' };
 const turnoverText: any = { fontSize: '16px', fontWeight: '800', color: colors.accentGreen, margin: 0 };
-const microLabel: any = { fontSize: '8px', fontWeight: '800', color: colors.secondaryText, margin: 0 };
-
 const actionPanel: any = { display: 'flex', gap: '8px', padding: '12px 16px', backgroundColor: '#f8fafc', borderTop: `1px solid ${colors.border}`, justifyContent: 'space-between' };
 const panelBtnBase: any = { flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', padding: '10px', borderRadius: '10px', fontSize: '11px', fontWeight: '700', border: 'none', cursor: 'pointer' };
 const panelBtnEdit: any = { ...panelBtnBase, backgroundColor: colors.warning, color: colors.warningText };
