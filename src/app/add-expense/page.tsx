@@ -153,24 +153,27 @@ function AddExpenseForm() {
   }
 
   return (
-    <main style={mainContainerStyle}>
+    <div style={iphoneWrapper}>
       <Toaster position="top-center" richColors />
-      
-      <div style={formCardStyle}>
+      <div style={{ maxWidth: '500px', margin: '0 auto', paddingBottom: '120px' }}>
         
-        <div style={headerRow}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div style={{ ...logoBoxStyle, backgroundColor: '#f0fdf4' }}>🛒</div>
+        <div style={headerStyle}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+            <div style={logoBoxStyle}>💸</div>
             <div>
-              <h1 style={titleStyle}>{isAgainstDebt ? 'Εξόφληση' : 'Προσθήκη Δαπάνης'}</h1>
-              <p style={dateSubtitle}>{new Date(selectedDate).toLocaleDateString('el-GR', { day: 'numeric', month: 'long' }).toUpperCase()}</p>
+              <h1 style={{ fontWeight: '800', fontSize: '22px', margin: 0, color: colors.primaryDark }}>
+                {isAgainstDebt ? 'Εξόφληση' : 'Νέο Έξοδο'}
+              </h1>
+              <p style={{ margin: 0, fontSize: '11px', color: colors.secondaryText, fontWeight: '600' }}>
+                {new Date(selectedDate).toLocaleDateString('el-GR', { day: 'numeric', month: 'long' }).toUpperCase()}
+              </p>
             </div>
           </div>
           <Link href="/" style={backBtnStyle}>✕</Link>
         </div>
 
-        {/* ΠΟΣΟ & TOGGLE */}
-        <div style={{ marginBottom: '20px' }}>
+        <div style={formCard}>
+          {/* ΠΟΣΟ */}
           <label style={labelStyle}>ΠΟΣΟ (€)</label>
           <input 
             type="number" inputMode="decimal" autoFocus
@@ -178,19 +181,20 @@ function AddExpenseForm() {
             style={inputStyle} placeholder="0.00" 
           />
 
+          {/* TOGGLE NO INVOICE */}
           <div 
             onClick={() => setNoInvoice(!noInvoice)} 
             style={{ 
               display: 'flex', alignItems: 'center', gap: '10px', marginTop: '15px', 
               padding: '12px', borderRadius: '12px', 
-              backgroundColor: noInvoice ? '#fee2e2' : '#f1f5f9',
-              cursor: 'pointer', border: noInvoice ? `1px solid ${colors.accentRed}` : '1px solid transparent'
+              backgroundColor: noInvoice ? '#fee2e2' : colors.bgLight,
+              cursor: 'pointer', border: `1px solid ${noInvoice ? colors.accentRed : colors.border}`
             }}
           >
             <div style={{ 
               width: '20px', height: '20px', borderRadius: '6px', 
-              border: `2px solid ${noInvoice ? colors.accentRed : colors.secondaryText}`,
               backgroundColor: noInvoice ? colors.accentRed : 'white',
+              border: `2px solid ${noInvoice ? colors.accentRed : colors.secondaryText}`,
               display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '12px'
             }}>
               {noInvoice && '✓'}
@@ -199,104 +203,72 @@ function AddExpenseForm() {
               ΧΩΡΙΣ ΤΙΜΟΛΟΓΙΟ (Μαύρα)
             </span>
           </div>
-        </div>
 
-        {/* ΜΕΘΟΔΟΣ ΠΛΗΡΩΜΗΣ */}
-        <div style={{ marginBottom: '24px' }}>
-          <label style={labelStyle}>ΜΕΘΟΔΟΣ ΠΛΗΡΩΜΗΣ</label>
+          {/* ΜΕΘΟΔΟΣ */}
+          <label style={{ ...labelStyle, marginTop: '20px' }}>ΜΕΘΟΔΟΣ ΠΛΗΡΩΜΗΣ</label>
           <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
-            <button type="button" onClick={() => {setMethod('Μετρητά'); setIsCredit(false);}} style={{ ...methodBtn, backgroundColor: method === 'Μετρητά' && !isCredit ? colors.primaryDark : colors.white, color: method === 'Μετρητά' && !isCredit ? 'white' : colors.secondaryText }}>
-              <span style={{fontSize: '20px'}}>💵</span><span>Μετρητά</span>
-            </button>
-            <button type="button" onClick={() => {setMethod('Τράπεζα'); setIsCredit(false);}} style={{ ...methodBtn, backgroundColor: method === 'Τράπεζα' && !isCredit ? colors.primaryDark : colors.white, color: method === 'Τράπεζα' && !isCredit ? 'white' : colors.secondaryText }}>
-              <span style={{fontSize: '20px'}}>🏛️</span><span>Τράπεζα</span>
-            </button>
+            <button type="button" onClick={() => {setMethod('Μετρητά'); setIsCredit(false);}} style={{ ...methodBtn, backgroundColor: method === 'Μετρητά' && !isCredit ? colors.primaryDark : colors.white, color: method === 'Μετρητά' && !isCredit ? 'white' : colors.secondaryText }}>💵 Μετρητά</button>
+            <button type="button" onClick={() => {setMethod('Τράπεζα'); setIsCredit(false);}} style={{ ...methodBtn, backgroundColor: method === 'Τράπεζα' && !isCredit ? colors.primaryDark : colors.white, color: method === 'Τράπεζα' && !isCredit ? 'white' : colors.secondaryText }}>🏛️ Τράπεζα</button>
           </div>
-        </div>
 
-        {/* ΠΙΣΤΩΣΗ & ΕΝΑΝΤΙ ΧΡΕΟΥΣ */}
-        <div style={creditPanelStyle}>
-          <div style={{ marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <input type="checkbox" checked={isCredit} onChange={e => {setIsCredit(e.target.checked); if(e.target.checked) setIsAgainstDebt(false)}} id="credit" style={checkboxStyle} />
-            <label htmlFor="credit" style={checkLabelStyle}>ΕΠΙ ΠΙΣΤΩΣΕΙ (ΝΕΟ ΧΡΕΟΣ)</label>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <input type="checkbox" checked={isAgainstDebt} onChange={e => {setIsAgainstDebt(e.target.checked); if(e.target.checked) setIsCredit(false)}} id="against" style={checkboxStyle} />
-            <label htmlFor="against" style={{...checkLabelStyle, color: isAgainstDebt ? colors.accentBlue : colors.primaryDark }}>ΕΝΑΝΤΙ ΠΑΛΑΙΟΥ ΧΡΕΟΥ</label>
-          </div>
-        </div>
-
-        {/* ΠΡΟΜΗΘΕΥΤΗΣ */}
-        <div style={{ marginBottom: '20px' }}>
-          <label style={labelStyle}>🏭 ΑΝΑΖΗΤΗΣΗ ΠΡΟΜΗΘΕΥΤΗ</label>
-          <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '12px' }}>
-            <div style={{ position: 'relative', flex: 1 }}>
-              <input 
-                type="text" placeholder="Αναζήτηση..." value={searchTerm} 
-                onFocus={() => setShowDropdown(true)}
-                onChange={(e) => {setSearchTerm(e.target.value); setShowDropdown(true);}}
-                style={{ ...inputStyle, paddingRight: '45px' }} 
-              />
-              <span style={searchIconRight}>🔍</span>
-              {showDropdown && searchTerm && (
-                <div style={dropdownList}>
-                  {filteredSuppliers.map(s => (
-                    <div key={s.id} onClick={() => { setSelectedSup(s.id); setSearchTerm(s.name); setShowDropdown(false); }} style={dropdownItem}>{s.name}</div>
-                  ))}
-                </div>
-              )}
+          {/* ΧΡΕΟΣ / ΠΙΣΤΩΣΗ */}
+          <div style={creditPanel}>
+            <div style={{ marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <input type="checkbox" checked={isCredit} onChange={e => {setIsCredit(e.target.checked); if(e.target.checked) setIsAgainstDebt(false)}} id="credit" style={checkboxStyle} />
+              <label htmlFor="credit" style={checkLabel}>ΕΠΙ ΠΙΣΤΩΣΕΙ (ΝΕΟ ΧΡΕΟΣ)</label>
             </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <input type="checkbox" checked={isAgainstDebt} onChange={e => {setIsAgainstDebt(e.target.checked); if(e.target.checked) setIsCredit(false)}} id="against" style={checkboxStyle} />
+              <label htmlFor="against" style={{...checkLabel, color: isAgainstDebt ? colors.accentBlue : colors.primaryDark }}>ΕΝΑΝΤΙ ΠΑΛΑΙΟΥ ΧΡΕΟΥ</label>
+            </div>
+          </div>
+
+          {/* ΠΡΟΜΗΘΕΥΤΗΣ */}
+          <label style={{ ...labelStyle, marginTop: '20px' }}>🏭 ΠΡΟΜΗΘΕΥΤΗΣ</label>
+          <div style={{ display: 'flex', gap: '10px', marginBottom: '12px' }}>
+            <select value={selectedSup} onChange={e => setSelectedSup(e.target.value)} style={inputStyle}>
+              <option value="">Επιλογή...</option>
+              {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
             <button type="button" onClick={() => setIsSupModalOpen(true)} style={plusBtn}>+</button>
           </div>
 
-          <label style={labelStyle}>🏭 ΛΙΣΤΑ ΠΡΟΜΗΘΕΥΤΩΝ</label>
-          <select value={selectedSup} onChange={e => { setSelectedSup(e.target.value); setSelectedFixed(''); setSearchTerm(suppliers.find(s=>s.id===e.target.value)?.name || ''); }} style={inputStyle}>
-            <option value="">— Επιλογή —</option>
-            {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-          </select>
-        </div>
-
-        {/* ΠΑΓΙΟ */}
-        <div style={{ marginBottom: '20px' }}>
-          <label style={labelStyle}>🏢 ΠΑΓΙΟ / ΛΟΓΑΡΙΑΣΜΟΣ</label>
-          <select value={selectedFixed} onChange={e => {setSelectedFixed(e.target.value); setSelectedSup(''); setSearchTerm('');}} style={inputStyle}>
-            <option value="">— Επιλογή —</option>
+          {/* ΠΑΓΙΟ */}
+          <label style={{ ...labelStyle, marginTop: '20px' }}>🏢 ΠΑΓΙΟ / ΛΟΓΑΡΙΑΣΜΟΣ</label>
+          <select value={selectedFixed} onChange={e => setSelectedFixed(e.target.value)} style={inputStyle}>
+            <option value="">Επιλογή...</option>
             {fixedAssets.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
           </select>
-        </div>
 
-        {/* ΣΗΜΕΙΩΣΕΙΣ */}
-        <div style={{ marginBottom: '25px' }}>
-          <label style={labelStyle}>ΣΗΜΕΙΩΣΕΙΣ</label>
-          <textarea value={notes} onChange={e => setNotes(e.target.value)} style={{ ...inputStyle, height: '60px' }} placeholder="..." />
-        </div>
+          {/* ΣΗΜΕΙΩΣΕΙΣ */}
+          <label style={{ ...labelStyle, marginTop: '20px' }}>ΣΗΜΕΙΩΣΕΙΣ</label>
+          <textarea value={notes} onChange={e => setNotes(e.target.value)} style={{ ...inputStyle, height: '70px' }} placeholder="..." />
 
-        {/* ΦΩΤΟΓΡΑΦΙΑ */}
-        {!noInvoice && (
-          <div style={{ marginBottom: '30px' }}>
-            <label style={labelStyle}>📸 ΦΩΤΟΓΡΑΦΙΑ ΤΙΜΟΛΟΓΙΟΥ</label>
-            <div style={imageUploadContainer}>
-              {imagePreview ? (
-                <div style={{ position: 'relative', width: '100%', height: '120px' }}>
-                  <img src={imagePreview} alt="Preview" style={imagePreviewStyle} />
-                  <button onClick={() => {setImageFile(null); setImagePreview(null);}} style={removeImageBtn}>✕</button>
-                </div>
-              ) : (
-                <label style={uploadPlaceholder}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <span style={{ fontSize: '20px' }}>📷</span>
-                    <span style={{ fontSize: '11px', fontWeight: '800' }}>ΛΗΨΗ Η ΕΠΙΛΟΓΗ</span>
+          {/* ΦΩΤΟΓΡΑΦΙΑ (Compact) */}
+          {!noInvoice && (
+            <div style={{ marginTop: '20px' }}>
+              <label style={labelStyle}>📸 ΦΩΤΟΓΡΑΦΙΑ ΤΙΜΟΛΟΓΙΟΥ</label>
+              <div style={imageUploadContainer}>
+                {imagePreview ? (
+                  <div style={{ position: 'relative', width: '100%', height: '120px' }}>
+                    <img src={imagePreview} alt="Preview" style={imagePreviewStyle} />
+                    <button onClick={() => {setImageFile(null); setImagePreview(null);}} style={removeImageBtn}>✕</button>
                   </div>
-                  <input type="file" accept="image/*" capture="environment" onChange={handleImageChange} style={{ display: 'none' }} />
-                </label>
-              )}
+                ) : (
+                  <label style={uploadPlaceholder}>
+                    <span style={{ fontSize: '20px' }}>📷</span>
+                    <span style={{ fontSize: '11px', fontWeight: '800' }}>ΛΗΨΗ ΦΩΤΟΓΡΑΦΙΑΣ</span>
+                    <input type="file" accept="image/*" capture="environment" onChange={handleImageChange} style={{ display: 'none' }} />
+                  </label>
+                )}
+              </div>
             </div>
-          </div>
-        )}
+          )}
 
-        <button onClick={handleSave} disabled={loading || isUploading} style={saveBtn}>
-          {isUploading ? 'ΓΙΝΕΤΑΙ ΑΝΕΒΑΣΜΑ...' : 'ΟΛΟΚΛΗΡΩΣΗ'}
-        </button>
+          <button onClick={handleSave} disabled={loading || isUploading} style={saveBtn}>
+            {isUploading ? 'ΑΠΟΘΗΚΕΥΣΗ...' : 'ΟΛΟΚΛΗΡΩΣΗ'}
+          </button>
+        </div>
       </div>
 
       {/* MODAL ΝΕΟΥ ΠΡΟΜΗΘΕΥΤΗ */}
@@ -304,78 +276,49 @@ function AddExpenseForm() {
         <div style={modalOverlay}>
           <div style={modalCard}>
             <h2 style={{margin: '0 0 20px', fontSize: '18px', fontWeight: '800'}}>Νέος Προμηθευτής</h2>
-            <div style={{ marginBottom: '15px' }}>
-              <label style={labelStyle}>ΕΠΩΝΥΜΙΑ</label>
-              <input value={newSupName} onChange={e => setNewSupName(e.target.value)} style={inputStyle} placeholder="Όνομα προμηθευτή" />
-            </div>
-            <div style={{ display: 'flex', gap: '10px', marginBottom: '15px' }}>
-              <div style={{ flex: 1 }}>
-                <label style={labelStyle}>ΤΗΛΕΦΩΝΟ</label>
-                <input value={newSupPhone} onChange={e => setNewSupPhone(e.target.value)} style={inputStyle} />
-              </div>
-              <div style={{ flex: 1 }}>
-                <label style={labelStyle}>Α.Φ.Μ.</label>
-                <input value={newSupAfm} onChange={e => setNewSupAfm(e.target.value)} style={inputStyle} />
-              </div>
-            </div>
-            <div style={{display: 'flex', gap: '10px', marginTop: '25px'}}>
-              <button onClick={() => setIsSupModalOpen(false)} style={{...saveBtn, backgroundColor: colors.secondaryText, flex: 1, padding: '14px'}}>ΑΚΥΡΟ</button>
-              <button onClick={handleQuickAddSupplier} style={{...saveBtn, backgroundColor: colors.accentGreen, flex: 2, padding: '14px'}}>ΔΗΜΙΟΥΡΓΙΑ</button>
+            <input value={newSupName} onChange={e => setNewSupName(e.target.value)} style={{...inputStyle, marginBottom:'15px'}} placeholder="Όνομα" />
+            <div style={{display: 'flex', gap: '10px'}}>
+              <button onClick={() => setIsSupModalOpen(false)} style={{...saveBtn, backgroundColor: colors.secondaryText, marginTop:0}}>ΑΚΥΡΟ</button>
+              <button onClick={handleQuickAddSupplier} style={{...saveBtn, backgroundColor: colors.accentGreen, marginTop:0}}>ΠΡΟΣΘΗΚΗ</button>
             </div>
           </div>
         </div>
       )}
-    </main>
+    </div>
   )
 }
 
-// ✅ ΣΤΥΛ - ΔΙΟΡΘΩΣΗ ΓΙΑ REDMI (ΑΦΑΙΡΕΣΗ OVERFLOW AUTO ΑΠΟ ΤΟ MAIN ΚΑΙ ΧΡΗΣΗ 101VH)
-const mainContainerStyle: any = { 
+// ✅ ΣΤΥΛ - ΜΕ ΤΗ ΛΟΓΙΚΗ ΤΩΝ ΠΡΟΜΗΘΕΥΤΩΝ (Redmi Scroll Fix)
+const iphoneWrapper: any = { 
   backgroundColor: colors.bgLight, 
-  minHeight: '101vh', // Αναγκάζει το browser να επιτρέψει το scroll
-  padding: '24px 16px 200px 16px', 
-  margin: 0,
-  position: 'relative' as const,
-  display: 'flex',
-  flexDirection: 'column' as const,
-  WebkitOverflowScrolling: 'touch'
+  minHeight: '100dvh', 
+  padding: '20px', 
+  overflowY: 'auto', 
+  position: 'absolute', 
+  top: 0, 
+  left: 0, 
+  right: 0, 
+  bottom: 0 
 };
-
-const formCardStyle = { 
-  maxWidth: '500px', 
-  width: '100%',
-  margin: '0 auto', 
-  backgroundColor: colors.white, 
-  borderRadius: '28px', 
-  padding: '24px', 
-  boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)',
-  marginBottom: '40px',
-  pointerEvents: 'auto' as const 
-};
-
-const headerRow = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' };
-const titleStyle = { fontWeight: '800', fontSize: '18px', margin: 0, color: colors.primaryDark };
-const dateSubtitle = { margin: 0, fontSize: '10px', color: colors.secondaryText, fontWeight: '700' };
-const logoBoxStyle = { width: '45px', height: '45px', borderRadius: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '22px' };
-const backBtnStyle = { textDecoration: 'none', color: colors.secondaryText, width: '35px', height: '35px', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bgLight, borderRadius: '12px' };
-const labelStyle = { fontSize: '10px', fontWeight: '800', color: colors.secondaryText, marginBottom: '8px', display: 'block' };
-const inputStyle = { width: '100%', padding: '14px', borderRadius: '14px', border: `1px solid ${colors.border}`, fontSize: '15px', fontWeight: '700', outline: 'none', backgroundColor: colors.bgLight, boxSizing: 'border-box' as const };
-const methodBtn: any = { flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', padding: '16px', borderRadius: '18px', border: `1px solid ${colors.border}`, cursor: 'pointer', fontWeight: '700' };
-const searchIconRight = { position: 'absolute' as const, right: '14px', top: '50%', transform: 'translateY(-50%)', fontSize: '16px', color: colors.secondaryText, pointerEvents: 'none' as const };
-const plusBtn = { width: '48px', height: '48px', backgroundColor: colors.accentBlue, color: 'white', border: 'none', borderRadius: '14px', fontSize: '24px', fontWeight: 'bold', cursor: 'pointer' };
-const saveBtn = { width: '100%', padding: '18px', color: 'white', border: 'none', borderRadius: '18px', fontWeight: '800', fontSize: '16px', backgroundColor: colors.accentRed, cursor: 'pointer' };
-const dropdownList = { position: 'absolute' as const, top: '100%', left: 0, right: 0, backgroundColor: 'white', border: `1px solid ${colors.border}`, borderRadius: '12px', marginTop: '4px', zIndex: 100, maxHeight: '200px', overflowY: 'auto' as const, boxShadow: '0 8px 20px rgba(0,0,0,0.1)' };
-const dropdownItem = { padding: '14px', borderBottom: `1px solid ${colors.border}`, fontSize: '14px', fontWeight: '700', cursor: 'pointer', color: colors.primaryDark };
-const modalOverlay: any = { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '10px', backdropFilter: 'blur(2px)' };
-const modalCard = { backgroundColor: 'white', padding: '24px', borderRadius: '24px', width: '100%', maxWidth: '450px', boxShadow: '0 20px 40px rgba(0,0,0,0.2)', maxHeight: '90vh', overflowY: 'auto' as const };
-
-const imageUploadContainer = { width: '100%', backgroundColor: '#f1f5f9', borderRadius: '18px', border: '2px dashed #cbd5e1', overflow: 'hidden' };
-const uploadPlaceholder = { display: 'flex', flexDirection: 'column' as const, alignItems: 'center', justifyContent: 'center', padding: '15px', cursor: 'pointer', gap: '5px', color: '#64748b' };
+const headerStyle = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px' };
+const logoBoxStyle: any = { width: '48px', height: '48px', backgroundColor: colors.primaryDark, borderRadius: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '22px' };
+const backBtnStyle: any = { textDecoration: 'none', color: colors.secondaryText, fontSize: '18px', width: '38px', height: '38px', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: colors.white, borderRadius: '12px', border: `1px solid ${colors.border}` };
+const formCard: any = { backgroundColor: colors.white, padding: '24px', borderRadius: '24px', border: `1px solid ${colors.border}`, marginBottom: '25px' };
+const labelStyle: any = { fontSize: '10px', fontWeight: '800', color: colors.secondaryText, marginBottom: '6px', display: 'block' };
+const inputStyle: any = { width: '100%', padding: '14px', borderRadius: '12px', border: `1px solid ${colors.border}`, fontSize: '15px', fontWeight: '600', backgroundColor: colors.bgLight, boxSizing: 'border-box' };
+const methodBtn: any = { flex: 1, padding: '14px', borderRadius: '12px', border: `1px solid ${colors.border}`, cursor: 'pointer', fontWeight: '700', fontSize: '13px' };
+const creditPanel = { backgroundColor: colors.bgLight, padding: '16px', borderRadius: '14px', border: `1px solid ${colors.border}`, marginTop: '20px' };
+const checkboxStyle = { width: '18px', height: '18px' };
+const checkLabel = { fontSize: '11px', fontWeight: '700', color: colors.primaryDark };
+const plusBtn = { width: '48px', height: '48px', backgroundColor: colors.primaryDark, color: 'white', border: 'none', borderRadius: '12px', fontSize: '20px', fontWeight: 'bold' };
+const saveBtn: any = { width: '100%', padding: '16px', backgroundColor: colors.accentRed, color: 'white', border: 'none', borderRadius: '14px', fontWeight: '700', fontSize: '15px', marginTop: '25px' };
+const imageUploadContainer = { width: '100%', backgroundColor: colors.bgLight, borderRadius: '14px', border: `2px dashed ${colors.border}`, overflow: 'hidden' };
+const uploadPlaceholder = { display: 'flex', flexDirection: 'column' as const, alignItems: 'center', justifyContent: 'center', padding: '20px', cursor: 'pointer', gap: '5px', color: colors.secondaryText };
 const imagePreviewStyle = { width: '100%', height: '120px', objectFit: 'cover' as const };
-const removeImageBtn: any = { position: 'absolute', top: '5px', right: '5px', backgroundColor: 'rgba(0,0,0,0.5)', color: 'white', border: 'none', borderRadius: '50%', width: '24px', height: '24px', cursor: 'pointer', fontWeight: 'bold' };
+const removeImageBtn: any = { position: 'absolute', top: '5px', right: '5px', backgroundColor: 'rgba(0,0,0,0.5)', color: 'white', border: 'none', borderRadius: '50%', width: '24px', height: '24px' };
+const modalOverlay: any = { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px' };
+const modalCard = { backgroundColor: 'white', padding: '24px', borderRadius: '24px', width: '100%', maxWidth: '400px' };
 
-const creditPanelStyle = { backgroundColor: colors.bgLight, padding: '16px', borderRadius: '18px', marginBottom: '20px' };
-const checkboxStyle = { width: '20px', height: '20px' };
-const checkLabelStyle = { fontSize: '12px', fontWeight: '700', color: colors.primaryDark };
-
-export default function AddExpensePage() { return <Suspense><AddExpenseForm /></Suspense> }
+export default function AddExpensePage() {
+  return <main><Suspense fallback={<div>Φόρτωση...</div>}><AddExpenseForm /></Suspense></main>
+}
