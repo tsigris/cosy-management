@@ -21,17 +21,18 @@ export default function DailyZPage() {
   const [username, setUsername] = useState('Admin')
 
   // Έλεγχος αν υπάρχει ήδη Ζ
+  async function checkExistingZ() {
+    const { data } = await supabase
+      .from('transactions')
+      .select('id')
+      .eq('category', 'Εσοδα Ζ')
+      .eq('date', date)
+      .limit(1)
+    
+    setIsAlreadyClosed(data && data.length > 0 ? true : false)
+  }
+
   useEffect(() => {
-    async function checkExistingZ() {
-      const { data } = await supabase
-        .from('transactions')
-        .select('id')
-        .eq('category', 'Εσοδα Ζ')
-        .eq('date', date)
-        .limit(1)
-      
-      setIsAlreadyClosed(data && data.length > 0 ? true : false)
-    }
     checkExistingZ()
   }, [date])
 
@@ -45,6 +46,30 @@ export default function DailyZPage() {
     }
     fetchUser()
   }, [])
+
+  // Λειτουργία Ξεκλειδώματος (Διαγραφή παλιών Ζ για επαναφορά)
+  async function handleUnlock() {
+    const confirmUnlock = confirm("ΠΡΟΣΟΧΗ!\nΑυτό θα διαγράψει το τρέχον κλείσιμο Ζ για να εισάγετε νέα ποσά. Θέλετε να συνεχίσετε;");
+    if (!confirmUnlock) return;
+
+    setLoading(true);
+    const { error } = await supabase
+      .from('transactions')
+      .delete()
+      .eq('category', 'Εσοδα Ζ')
+      .eq('date', date);
+
+    if (!error) {
+      setIsAlreadyClosed(false);
+      setCashZ('');
+      setPosZ('');
+      setNoTax('');
+      alert("Η ημέρα ξεκλειδώθηκε. Μπορείτε να εισάγετε τα νέα ποσά.");
+    } else {
+      alert("Σφάλμα κατά το ξεκλείδωμα: " + error.message);
+    }
+    setLoading(false);
+  }
 
   const totalSales = Number(cashZ) + Number(posZ) + Number(noTax)
 
@@ -81,12 +106,10 @@ export default function DailyZPage() {
         {isAlreadyClosed && (
           <div style={warningBox}>
             <p style={{margin: '0 0 10px 0'}}>⚠️ Το ταμείο έχει ήδη κλείσει για αυτή την ημερομηνία.</p>
-            <button 
-              onClick={() => router.push(`/analysis?date=${date}`)} 
-              style={viewBtn}
-            >
-              🔎 ΠΡΟΒΟΛΗ ΚΛΕΙΣΙΜΑΤΟΣ
-            </button>
+            <div style={{display: 'flex', gap: '8px', justifyContent: 'center'}}>
+              <button onClick={() => router.push(`/analysis?date=${date}`)} style={viewBtn}>🔎 ΠΡΟΒΟΛΗ</button>
+              <button onClick={handleUnlock} style={unlockBtn} disabled={loading}>🔓 ΞΕΚΛΕΙΔΩΜΑ</button>
+            </div>
           </div>
         )}
 
@@ -125,7 +148,7 @@ export default function DailyZPage() {
           disabled={loading || isAlreadyClosed} 
           style={{...saveBtn, backgroundColor: isAlreadyClosed ? '#cbd5e1' : '#0f172a', cursor: isAlreadyClosed ? 'not-allowed' : 'pointer'}}
         >
-          {loading ? 'Αποθήκευση...' : isAlreadyClosed ? 'ΗΜΕΡΑ ΚΛΕΙΣΜΕΝΗ' : 'ΟΡΙΣΤΙΚΟΠΟΙΗΣΗ & ΚΛΕΙΣΙΜΟ'}
+          {loading ? 'Επεξεργασία...' : isAlreadyClosed ? 'ΗΜΕΡΑ ΚΛΕΙΣΜΕΝΗ' : 'ΟΡΙΣΤΙΚΟΠΟΙΗΣΗ & ΚΛΕΙΣΙΜΟ'}
         </button>
 
         <div style={{ height: '60px' }} />
@@ -138,7 +161,8 @@ export default function DailyZPage() {
 const mainWrapperStyle: any = { backgroundColor: '#f8fafc', minHeight: '100vh', padding: '16px', fontFamily: 'sans-serif' };
 const cardStyle: any = { maxWidth: '500px', margin: '0 auto', backgroundColor: 'white', borderRadius: '28px', padding: '24px', paddingBottom: '100px', boxShadow: '0 10px 15px rgba(0,0,0,0.05)' };
 const warningBox = { backgroundColor: '#fff1f2', color: '#be123c', padding: '15px', borderRadius: '18px', fontSize: '13px', fontWeight: '800', marginBottom: '20px', border: '1px solid #fecaca', textAlign: 'center' as const };
-const viewBtn = { backgroundColor: '#be123c', color: 'white', border: 'none', padding: '8px 15px', borderRadius: '10px', fontSize: '11px', fontWeight: '900', cursor: 'pointer' };
+const viewBtn = { backgroundColor: '#1e293b', color: 'white', border: 'none', padding: '10px 15px', borderRadius: '10px', fontSize: '10px', fontWeight: '900', cursor: 'pointer' };
+const unlockBtn = { backgroundColor: '#be123c', color: 'white', border: 'none', padding: '10px 15px', borderRadius: '10px', fontSize: '10px', fontWeight: '900', cursor: 'pointer' };
 const userLabelStyle = { marginBottom: '20px', padding: '10px', backgroundColor: '#f1f5f9', borderRadius: '12px', textAlign: 'center' as const };
 const sectionBox = { marginBottom: '20px', padding: '18px', borderRadius: '22px', border: '1px solid #e2e8f0' };
 const sectionTitle = { fontSize: '10px', fontWeight: '900', color: '#64748b', marginBottom: '15px', letterSpacing: '0.5px' };
@@ -147,5 +171,5 @@ const labelStyle = { fontSize: '10px', fontWeight: '900', color: '#94a3b8', marg
 const inputStyle: any = { width: '100%', border: 'none', background: 'transparent', fontSize: '22px', fontWeight: 'bold', color: '#1e293b', outline: 'none', borderBottom: '2px solid #f1f5f9', padding: '8px 0' };
 const dateInputStyle = { width: '100%', padding: '12px', borderRadius: '12px', border: '1px solid #e2e8f0', fontSize: '16px', fontWeight: 'bold' as const };
 const totalDisplay = { textAlign: 'center' as const, padding: '20px', marginBottom: '25px', backgroundColor: '#f8fafc', borderRadius: '20px', border: '1px solid #e2e8f0' };
-const saveBtn: any = { width: '100%', padding: '20px', color: 'white', borderRadius: '18px', border: 'none', fontWeight: '900', fontSize: '16px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' };
+const saveBtn: any = { width: '100%', padding: '20px', color: 'white', borderRadius: '18px', border: 'none', fontWeight: '900', fontSize: '16px' };
 const backBtnStyle: any = { display: 'flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none', background: '#f1f5f9', width: '40px', height: '40px', borderRadius: '12px', fontSize: '20px', color: '#64748b' };
