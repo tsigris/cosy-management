@@ -44,7 +44,6 @@ function AddExpenseForm() {
   const [suppliers, setSuppliers] = useState<any[]>([])
   const [fixedAssets, setFixedAssets] = useState<any[]>([])
   const [searchTerm, setSearchTerm] = useState('')
-  const [showDropdown, setShowDropdown] = useState(false)
   const [selectedSup, setSelectedSup] = useState(urlSupId || '')
   const [selectedFixed, setSelectedFixed] = useState(urlAssetId || '')
 
@@ -52,7 +51,6 @@ function AddExpenseForm() {
   const [newSupName, setNewSupName] = useState('')
   const [newSupPhone, setNewSupPhone] = useState('')
   const [newSupAfm, setNewSupAfm] = useState('')
-  const [newSupIban, setNewSupIban] = useState('')
 
   const loadFormData = useCallback(async () => {
     try {
@@ -69,9 +67,14 @@ function AddExpenseForm() {
         ])
         if (sRes.data) setSuppliers(sRes.data)
         if (fRes.data) setFixedAssets(fRes.data)
+
+        if (urlSupId && sRes.data) {
+          const found = sRes.data.find((s: any) => s.id === urlSupId)
+          if (found) setSearchTerm(found.name)
+        }
       }
     } catch (error) { console.error(error) } finally { setLoading(false) }
-  }, [])
+  }, [urlSupId])
 
   useEffect(() => { loadFormData() }, [loadFormData])
 
@@ -92,14 +95,14 @@ function AddExpenseForm() {
     if (!storeId) return toast.error('Σφάλμα: Δεν βρέθηκε το ID καταστήματος');
     try {
       const { data, error } = await supabase.from('suppliers').insert([
-        { name: newSupName, phone: newSupPhone, vat_number: newSupAfm, iban: newSupIban, category: 'Εμπορεύματα', store_id: storeId, is_active: true }
+        { name: newSupName, phone: newSupPhone, vat_number: newSupAfm, category: 'Εμπορεύματα', store_id: storeId, is_active: true }
       ]).select().single();
       if (error) throw error;
       setSuppliers([...suppliers, data].sort((a,b) => a.name.localeCompare(b.name)));
       setSelectedSup(data.id);
       setSearchTerm(data.name);
       setIsSupModalOpen(false);
-      setNewSupName(''); setNewSupPhone(''); setNewSupAfm(''); setNewSupIban('');
+      setNewSupName(''); setNewSupPhone(''); setNewSupAfm('');
       toast.success('Ο προμηθευτής προστέθηκε!');
     } catch (err: any) { toast.error('Σφάλμα: ' + err.message); }
   }
@@ -114,9 +117,7 @@ function AddExpenseForm() {
       if (imageFile && storeId && !noInvoice) {
         const fileExt = imageFile.name.split('.').pop()
         const fileName = `${storeId}/${Date.now()}.${fileExt}`
-        const { error: uploadError } = await supabase.storage
-          .from('invoices')
-          .upload(fileName, imageFile)
+        const { error: uploadError } = await supabase.storage.from('invoices').upload(fileName, imageFile)
         if (uploadError) throw uploadError
         const { data: urlData } = supabase.storage.from('invoices').getPublicUrl(fileName)
         imageUrl = urlData.publicUrl
@@ -146,9 +147,7 @@ function AddExpenseForm() {
       router.push(`/?date=${selectedDate}`)
       router.refresh()
     } catch (error: any) { 
-      alert(error.message); 
-      setLoading(false); 
-      setIsUploading(false);
+      alert(error.message); setLoading(false); setIsUploading(false);
     }
   }
 
@@ -161,9 +160,7 @@ function AddExpenseForm() {
           <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
             <div style={logoBoxStyle}>💸</div>
             <div>
-              <h1 style={{ fontWeight: '800', fontSize: '22px', margin: 0, color: colors.primaryDark }}>
-                {isAgainstDebt ? 'Εξόφληση' : 'Νέο Έξοδο'}
-              </h1>
+              <h1 style={{ fontWeight: '800', fontSize: '22px', margin: 0 }}>{isAgainstDebt ? 'Εξόφληση' : 'Νέο Έξοδο'}</h1>
               <p style={{ margin: 0, fontSize: '11px', color: colors.secondaryText, fontWeight: '600' }}>
                 {new Date(selectedDate).toLocaleDateString('el-GR', { day: 'numeric', month: 'long' }).toUpperCase()}
               </p>
@@ -173,45 +170,20 @@ function AddExpenseForm() {
         </div>
 
         <div style={formCard}>
-          {/* ΠΟΣΟ */}
           <label style={labelStyle}>ΠΟΣΟ (€)</label>
-          <input 
-            type="number" inputMode="decimal" autoFocus
-            value={amount} onChange={e => setAmount(e.target.value)} 
-            style={inputStyle} placeholder="0.00" 
-          />
+          <input type="number" inputMode="decimal" autoFocus value={amount} onChange={e => setAmount(e.target.value)} style={inputStyle} placeholder="0.00" />
 
-          {/* TOGGLE NO INVOICE */}
-          <div 
-            onClick={() => setNoInvoice(!noInvoice)} 
-            style={{ 
-              display: 'flex', alignItems: 'center', gap: '10px', marginTop: '15px', 
-              padding: '12px', borderRadius: '12px', 
-              backgroundColor: noInvoice ? '#fee2e2' : colors.bgLight,
-              cursor: 'pointer', border: `1px solid ${noInvoice ? colors.accentRed : colors.border}`
-            }}
-          >
-            <div style={{ 
-              width: '20px', height: '20px', borderRadius: '6px', 
-              backgroundColor: noInvoice ? colors.accentRed : 'white',
-              border: `2px solid ${noInvoice ? colors.accentRed : colors.secondaryText}`,
-              display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '12px'
-            }}>
-              {noInvoice && '✓'}
-            </div>
-            <span style={{ fontSize: '13px', fontWeight: '800', color: noInvoice ? colors.accentRed : colors.primaryDark }}>
-              ΧΩΡΙΣ ΤΙΜΟΛΟΓΙΟ (Μαύρα)
-            </span>
+          <div onClick={() => setNoInvoice(!noInvoice)} style={{ ...noInvoiceToggle, backgroundColor: noInvoice ? '#fee2e2' : colors.bgLight, border: `1px solid ${noInvoice ? colors.accentRed : colors.border}` }}>
+            <div style={{ ...checkboxBox, backgroundColor: noInvoice ? colors.accentRed : 'white', border: `2px solid ${noInvoice ? colors.accentRed : colors.secondaryText}` }}>{noInvoice && '✓'}</div>
+            <span style={{ fontSize: '13px', fontWeight: '800', color: noInvoice ? colors.accentRed : colors.primaryDark }}>ΧΩΡΙΣ ΤΙΜΟΛΟΓΙΟ (Μαύρα)</span>
           </div>
 
-          {/* ΜΕΘΟΔΟΣ */}
           <label style={{ ...labelStyle, marginTop: '20px' }}>ΜΕΘΟΔΟΣ ΠΛΗΡΩΜΗΣ</label>
           <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
             <button type="button" onClick={() => {setMethod('Μετρητά'); setIsCredit(false);}} style={{ ...methodBtn, backgroundColor: method === 'Μετρητά' && !isCredit ? colors.primaryDark : colors.white, color: method === 'Μετρητά' && !isCredit ? 'white' : colors.secondaryText }}>💵 Μετρητά</button>
             <button type="button" onClick={() => {setMethod('Τράπεζα'); setIsCredit(false);}} style={{ ...methodBtn, backgroundColor: method === 'Τράπεζα' && !isCredit ? colors.primaryDark : colors.white, color: method === 'Τράπεζα' && !isCredit ? 'white' : colors.secondaryText }}>🏛️ Τράπεζα</button>
           </div>
 
-          {/* ΧΡΕΟΣ / ΠΙΣΤΩΣΗ */}
           <div style={creditPanel}>
             <div style={{ marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '10px' }}>
               <input type="checkbox" checked={isCredit} onChange={e => {setIsCredit(e.target.checked); if(e.target.checked) setIsAgainstDebt(false)}} id="credit" style={checkboxStyle} />
@@ -223,28 +195,36 @@ function AddExpenseForm() {
             </div>
           </div>
 
-          {/* ΠΡΟΜΗΘΕΥΤΗΣ */}
+          {/* ΣΥΝΔΥΑΣΜΟΣ SEARCH & SELECT */}
           <label style={{ ...labelStyle, marginTop: '20px' }}>🏭 ΠΡΟΜΗΘΕΥΤΗΣ</label>
-          <div style={{ display: 'flex', gap: '10px', marginBottom: '12px' }}>
-            <select value={selectedSup} onChange={e => setSelectedSup(e.target.value)} style={inputStyle}>
-              <option value="">Επιλογή...</option>
-              {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-            </select>
+          <div style={{ display: 'flex', gap: '10px', marginBottom: '8px' }}>
+            <input 
+              type="text" 
+              placeholder="🔍 Αναζήτηση..." 
+              value={searchTerm} 
+              onChange={(e) => {setSearchTerm(e.target.value); setSelectedSup('');}}
+              style={{ ...inputStyle, marginBottom: 0 }}
+            />
             <button type="button" onClick={() => setIsSupModalOpen(true)} style={plusBtn}>+</button>
           </div>
+          <select 
+            value={selectedSup} 
+            onChange={e => { setSelectedSup(e.target.value); setSelectedFixed(''); }} 
+            style={inputStyle}
+          >
+            <option value="">{searchTerm ? `Αποτελέσματα για "${searchTerm}"` : 'Επιλογή από λίστα...'}</option>
+            {filteredSuppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </select>
 
-          {/* ΠΑΓΙΟ */}
           <label style={{ ...labelStyle, marginTop: '20px' }}>🏢 ΠΑΓΙΟ / ΛΟΓΑΡΙΑΣΜΟΣ</label>
-          <select value={selectedFixed} onChange={e => setSelectedFixed(e.target.value)} style={inputStyle}>
+          <select value={selectedFixed} onChange={e => {setSelectedFixed(e.target.value); if(e.target.value) setSelectedSup('');}} style={inputStyle}>
             <option value="">Επιλογή...</option>
             {fixedAssets.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
           </select>
 
-          {/* ΣΗΜΕΙΩΣΕΙΣ */}
           <label style={{ ...labelStyle, marginTop: '20px' }}>ΣΗΜΕΙΩΣΕΙΣ</label>
           <textarea value={notes} onChange={e => setNotes(e.target.value)} style={{ ...inputStyle, height: '70px' }} placeholder="..." />
 
-          {/* ΦΩΤΟΓΡΑΦΙΑ (Compact) */}
           {!noInvoice && (
             <div style={{ marginTop: '20px' }}>
               <label style={labelStyle}>📸 ΦΩΤΟΓΡΑΦΙΑ ΤΙΜΟΛΟΓΙΟΥ</label>
@@ -265,13 +245,10 @@ function AddExpenseForm() {
             </div>
           )}
 
-          <button onClick={handleSave} disabled={loading || isUploading} style={saveBtn}>
-            {isUploading ? 'ΑΠΟΘΗΚΕΥΣΗ...' : 'ΟΛΟΚΛΗΡΩΣΗ'}
-          </button>
+          <button onClick={handleSave} disabled={loading || isUploading} style={saveBtn}>{isUploading ? 'ΑΠΟΘΗΚΕΥΣΗ...' : 'ΟΛΟΚΛΗΡΩΣΗ'}</button>
         </div>
       </div>
 
-      {/* MODAL ΝΕΟΥ ΠΡΟΜΗΘΕΥΤΗ */}
       {isSupModalOpen && (
         <div style={modalOverlay}>
           <div style={modalCard}>
@@ -288,18 +265,7 @@ function AddExpenseForm() {
   )
 }
 
-// ✅ ΣΤΥΛ - ΜΕ ΤΗ ΛΟΓΙΚΗ ΤΩΝ ΠΡΟΜΗΘΕΥΤΩΝ (Redmi Scroll Fix)
-const iphoneWrapper: any = { 
-  backgroundColor: colors.bgLight, 
-  minHeight: '100dvh', 
-  padding: '20px', 
-  overflowY: 'auto', 
-  position: 'absolute', 
-  top: 0, 
-  left: 0, 
-  right: 0, 
-  bottom: 0 
-};
+const iphoneWrapper: any = { backgroundColor: colors.bgLight, minHeight: '100dvh', padding: '20px', overflowY: 'auto', position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 };
 const headerStyle = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px' };
 const logoBoxStyle: any = { width: '48px', height: '48px', backgroundColor: colors.primaryDark, borderRadius: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '22px' };
 const backBtnStyle: any = { textDecoration: 'none', color: colors.secondaryText, fontSize: '18px', width: '38px', height: '38px', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: colors.white, borderRadius: '12px', border: `1px solid ${colors.border}` };
@@ -307,6 +273,8 @@ const formCard: any = { backgroundColor: colors.white, padding: '24px', borderRa
 const labelStyle: any = { fontSize: '10px', fontWeight: '800', color: colors.secondaryText, marginBottom: '6px', display: 'block' };
 const inputStyle: any = { width: '100%', padding: '14px', borderRadius: '12px', border: `1px solid ${colors.border}`, fontSize: '15px', fontWeight: '600', backgroundColor: colors.bgLight, boxSizing: 'border-box' };
 const methodBtn: any = { flex: 1, padding: '14px', borderRadius: '12px', border: `1px solid ${colors.border}`, cursor: 'pointer', fontWeight: '700', fontSize: '13px' };
+const noInvoiceToggle = { display: 'flex', alignItems: 'center', gap: '10px', marginTop: '12px', padding: '12px', borderRadius: '12px', cursor: 'pointer' };
+const checkboxBox = { width: '20px', height: '20px', borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '12px' };
 const creditPanel = { backgroundColor: colors.bgLight, padding: '16px', borderRadius: '14px', border: `1px solid ${colors.border}`, marginTop: '20px' };
 const checkboxStyle = { width: '18px', height: '18px' };
 const checkLabel = { fontSize: '11px', fontWeight: '700', color: colors.primaryDark };
@@ -319,6 +287,4 @@ const removeImageBtn: any = { position: 'absolute', top: '5px', right: '5px', ba
 const modalOverlay: any = { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px' };
 const modalCard = { backgroundColor: 'white', padding: '24px', borderRadius: '24px', width: '100%', maxWidth: '400px' };
 
-export default function AddExpensePage() {
-  return <main><Suspense fallback={<div>Φόρτωση...</div>}><AddExpenseForm /></Suspense></main>
-}
+export default function AddExpensePage() { return <Suspense fallback={<div>Φόρτωση...</div>}><AddExpenseForm /></Suspense> }
