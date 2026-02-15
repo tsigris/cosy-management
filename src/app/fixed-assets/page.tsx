@@ -12,6 +12,16 @@ const DEFAULT_ASSETS = [
   'Τηλεφωνία / Internet', 'Εφορία', 'ΕΦΚΑ', 'ΕΦΚΑ Υπαλλήλων'
 ]
 
+const colors = {
+  primaryDark: '#1e293b',
+  secondaryText: '#64748b',
+  accentGreen: '#059669',
+  accentRed: '#dc2626',
+  bgLight: '#f8fafc',
+  border: '#e2e8f0',
+  white: '#ffffff'
+};
+
 function FixedAssetsContent() {
   const router = useRouter()
   const [assets, setAssets] = useState<any[]>([])
@@ -95,119 +105,127 @@ function FixedAssetsContent() {
   }
 
   return (
-    <div style={{ maxWidth: '500px', margin: '0 auto', fontFamily: 'sans-serif' }}>
+    <div style={iphoneWrapper}>
       <Toaster position="top-center" richColors />
-      
-      <div style={headerWrapper}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <div style={logoBoxStyle}>🔌</div>
-          <div>
-            <h1 style={{ fontWeight: '900', fontSize: '22px', margin: 0, color: '#0f172a' }}>Πάγια</h1>
-            <p style={subHeaderStyle}>ΔΙΑΧΕΙΡΙΣΗ ΛΟΓΑΡΙΑΣΜΩΝ</p>
+      <div style={{ maxWidth: '500px', margin: '0 auto', paddingBottom: '120px' }}>
+        
+        <div style={headerWrapper}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+            <div style={logoBoxStyle}>🔌</div>
+            <div>
+              <h1 style={{ fontWeight: '800', fontSize: '24px', margin: 0, color: colors.primaryDark }}>Πάγια</h1>
+              <p style={subHeaderStyle}>ΔΙΑΧΕΙΡΙΣΗ ΛΟΓΑΡΙΑΣΜΩΝ</p>
+            </div>
           </div>
+          <Link href="/" style={backBtnStyle}>✕</Link>
         </div>
-        <Link href="/" style={backBtnStyle}>✕</Link>
-      </div>
 
-      <button onClick={() => { setIsAdding(!isAdding); setEditingId(null); setNewName(''); setNewRf('') }} style={isAdding ? cancelBtn : addBtn}>
-        {isAdding ? 'ΑΚΥΡΩΣΗ' : '+ ΝΕΟ ΠΑΓΙΟ / ΛΟΓΑΡΙΑΣΜΟΣ'}
-      </button>
+        <button onClick={() => { setIsAdding(!isAdding); setEditingId(null); setNewName(''); setNewRf('') }} style={isAdding ? cancelBtn : addBtn}>
+          {isAdding ? 'ΑΚΥΡΩΣΗ' : '+ ΝΕΟ ΠΑΓΙΟ / ΛΟΓΑΡΙΑΣΜΟΣ'}
+        </button>
 
-      {isAdding && (
-        <div style={{...formCard, borderColor: editingId ? '#f59e0b' : '#0f172a'}}>
-          <p style={labelStyle}>ΟΝΟΜΑ ΠΑΓΙΟΥ</p>
-          <input 
-            value={newName} 
-            onChange={e => setNewName(e.target.value)} 
-            placeholder="π.χ. ΔΕΗ, Ενοίκιο..." 
-            style={inputStyle} 
-          />
-          
-          <p style={labelStyle}>ΚΩΔΙΚΟΣ ΠΛΗΡΩΜΗΣ (RF)</p>
-          <input 
-            value={newRf} 
-            onChange={e => setNewRf(e.target.value)} 
-            placeholder="RF00 0000..." 
-            style={inputStyle} 
-          />
-          
-          <button onClick={handleSave} style={{...saveBtn, backgroundColor: editingId ? '#f59e0b' : '#0f172a'}}>
-             {editingId ? 'ΕΝΗΜΕΡΩΣΗ ΑΛΛΑΓΩΝ' : 'ΠΡΟΣΘΗΚΗ ΣΤΗ ΛΙΣΤΑ'}
-          </button>
-        </div>
-      )}
+        {isAdding && (
+          <div style={{...formCard, borderColor: editingId ? '#f59e0b' : colors.primaryDark}}>
+            <p style={labelStyle}>ΟΝΟΜΑ ΠΑΓΙΟΥ</p>
+            <input 
+              value={newName} 
+              onChange={e => setNewName(e.target.value)} 
+              placeholder="π.χ. ΔΕΗ, Ενοίκιο..." 
+              style={inputStyle} 
+            />
+            
+            <p style={labelStyle}>ΚΩΔΙΚΟΣ ΠΛΗΡΩΜΗΣ (RF)</p>
+            <input 
+              value={newRf} 
+              onChange={e => setNewRf(e.target.value)} 
+              placeholder="RF00 0000..." 
+              style={inputStyle} 
+            />
+            
+            <button onClick={handleSave} style={{...saveBtn, backgroundColor: editingId ? '#f59e0b' : colors.primaryDark}}>
+               {editingId ? 'ΕΝΗΜΕΡΩΣΗ ΑΛΛΑΓΩΝ' : 'ΠΡΟΣΘΗΚΗ ΣΤΗ ΛΙΣΤΑ'}
+            </button>
+          </div>
+        )}
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '10px' }}>
-        {loading ? (
-           <div style={{ textAlign: 'center', padding: '40px', color: '#94a3b8' }}>Φόρτωση...</div>
-        ) : assets.map(asset => (
-          <div key={asset.id} style={assetCard}>
-            <div style={{ flex: 1 }}>
-              <div 
-                onClick={() => router.push(`/fixed-assets/history?id=${asset.id}&name=${asset.name}`)}
-                style={{ cursor: 'pointer' }}
-              >
-                <div style={{ fontWeight: '800', color: '#1e293b', fontSize: '15px' }}>{asset.name.toUpperCase()}</div>
-                <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginTop: '4px' }}>
-                   <span style={badgeStyle}>ΣΥΝΟΛΟ ΕΞΟΔΩΝ</span>
-                   <span style={{ fontSize: '14px', color: '#dc2626', fontWeight: '900' }}>
-                     -{asset.total.toFixed(2)}€
-                   </span>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '10px' }}>
+          {loading ? (
+             <div style={{ textAlign: 'center', padding: '40px', color: '#94a3b8' }}>Φόρτωση...</div>
+          ) : assets.map(asset => (
+            <div key={asset.id} style={assetCard}>
+              <div style={{ flex: 1 }}>
+                <div 
+                  onClick={() => router.push(`/fixed-assets/history?id=${asset.id}&name=${asset.name}`)}
+                  style={{ cursor: 'pointer' }}
+                >
+                  <div style={{ fontWeight: '800', color: colors.primaryDark, fontSize: '15px' }}>{asset.name.toUpperCase()}</div>
+                  <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginTop: '4px' }}>
+                     <span style={badgeStyle}>ΣΥΝΟΛΟ ΕΞΟΔΩΝ</span>
+                     <span style={{ fontSize: '14px', color: colors.accentRed, fontWeight: '900' }}>
+                       -{asset.total.toFixed(2)}€
+                     </span>
+                  </div>
                 </div>
+
+                {asset.rf_code && asset.rf_code.trim() !== '' && (
+                  <div 
+                    onClick={(e) => handleCopy(e, asset.rf_code)}
+                    style={rfBadgeStyle}
+                  >
+                    <span style={{ fontSize: '10px', fontWeight: '900' }}>RF: {asset.rf_code}</span>
+                    <span style={{ marginLeft: '6px' }}>📋</span>
+                  </div>
+                )}
+
+                <button 
+                  onClick={() => router.push(`/expenses/add?assetId=${asset.id}`)}
+                  style={payBtnStyle}
+                >
+                  ΚΑΤΑΧΩΡΗΣΗ ΠΛΗΡΩΜΗΣ →
+                </button>
               </div>
 
-              {asset.rf_code && asset.rf_code.trim() !== '' && (
-                <div 
-                  onClick={(e) => handleCopy(e, asset.rf_code)}
-                  style={rfBadgeStyle}
-                >
-                  <span style={{ fontSize: '10px', fontWeight: '900' }}>RF: {asset.rf_code}</span>
-                  <span style={{ marginLeft: '6px' }}>📋</span>
-                </div>
-              )}
-
-              {/* ΚΟΥΜΠΙ ΓΙΑ ΜΕΤΑΒΑΣΗ ΣΤΗΝ ΠΛΗΡΩΜΗ */}
-              <button 
-                onClick={() => router.push(`/add-expense?assetId=${asset.id}`)}
-                style={payBtnStyle}
-              >
-                ΚΑΤΑΧΩΡΗΣΗ ΠΛΗΡΩΜΗΣ →
-              </button>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginLeft: '10px' }}>
+                <button onClick={() => { setEditingId(asset.id); setNewName(asset.name); setNewRf(asset.rf_code || ''); setIsAdding(true); }} style={editBtnSmall}>✎</button>
+                <button onClick={() => handleDelete(asset.id)} style={delBtnSmall}>🗑️</button>
+              </div>
             </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginLeft: '10px' }}>
-              <button onClick={() => { setEditingId(asset.id); setNewName(asset.name); setNewRf(asset.rf_code || ''); setIsAdding(true); window.scrollTo(0,0); }} style={editBtnSmall}>✎</button>
-              <button onClick={() => handleDelete(asset.id)} style={delBtnSmall}>🗑️</button>
-            </div>
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
     </div>
   )
 }
 
-// STYLES
+// STYLES - ΠΡΟΣΑΡΜΟΣΜΕΝΑ ΣΤΗ ΛΟΓΙΚΗ ΤΟΥ REDMI SCROLL FIX
+const iphoneWrapper: any = { 
+  backgroundColor: colors.bgLight, 
+  minHeight: '100dvh', 
+  padding: '20px', 
+  overflowY: 'auto', 
+  position: 'absolute', 
+  top: 0, 
+  left: 0, 
+  right: 0, 
+  bottom: 0 
+};
 const headerWrapper: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '25px', paddingTop: '15px' };
-const subHeaderStyle: any = { margin: '2px 0 0', fontSize: '10px', color: '#64748b', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '1px' };
-const logoBoxStyle: any = { width: '42px', height: '42px', backgroundColor: '#f1f5f9', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px' };
-const backBtnStyle: any = { textDecoration: 'none', color: '#94a3b8', fontSize: '18px', fontWeight: 'bold', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#fff', borderRadius: '10px', border: '1px solid #e2e8f0' };
-const assetCard: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '18px', backgroundColor: 'white', borderRadius: '22px', border: '1px solid #f1f5f9' };
-const addBtn: any = { width: '100%', padding: '16px', backgroundColor: '#0f172a', color: 'white', border: 'none', borderRadius: '16px', fontWeight: '900', fontSize: '13px', cursor: 'pointer', marginBottom: '20px' };
-const cancelBtn: any = { ...addBtn, backgroundColor: '#f1f5f9', color: '#64748b' };
+const subHeaderStyle: any = { margin: '2px 0 0', fontSize: '10px', color: colors.secondaryText, fontWeight: '800', textTransform: 'uppercase', letterSpacing: '1px' };
+const logoBoxStyle: any = { width: '48px', height: '48px', backgroundColor: colors.primaryDark, borderRadius: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '22px' };
+const backBtnStyle: any = { textDecoration: 'none', color: colors.secondaryText, fontSize: '18px', width: '38px', height: '38px', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: colors.white, borderRadius: '12px', border: `1px solid ${colors.border}` };
+const assetCard: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '18px', backgroundColor: 'white', borderRadius: '22px', border: `1px solid ${colors.border}` };
+const addBtn: any = { width: '100%', padding: '16px', backgroundColor: colors.primaryDark, color: 'white', border: 'none', borderRadius: '16px', fontWeight: '900', fontSize: '13px', cursor: 'pointer', marginBottom: '20px' };
+const cancelBtn: any = { ...addBtn, backgroundColor: colors.white, color: colors.secondaryText, border: `1px solid ${colors.border}` };
 const formCard: any = { backgroundColor: 'white', padding: '20px', borderRadius: '24px', border: '2px solid', marginBottom: '20px' };
-const labelStyle: any = { fontSize: '10px', fontWeight: '900', color: '#94a3b8', marginBottom: '8px', textTransform: 'uppercase' };
-const inputStyle: any = { width: '100%', padding: '14px', borderRadius: '14px', border: '1px solid #e2e8f0', marginBottom: '15px', boxSizing: 'border-box', fontWeight: 'bold', fontSize: '16px', backgroundColor: '#f8fafc', outline: 'none' };
+const labelStyle: any = { fontSize: '10px', fontWeight: '900', color: colors.secondaryText, marginBottom: '8px', textTransform: 'uppercase' };
+const inputStyle: any = { width: '100%', padding: '14px', borderRadius: '14px', border: `1px solid ${colors.border}`, marginBottom: '15px', boxSizing: 'border-box', fontWeight: 'bold', fontSize: '16px', backgroundColor: colors.bgLight, outline: 'none' };
 const saveBtn: any = { width: '100%', padding: '16px', color: 'white', border: 'none', borderRadius: '14px', fontWeight: '900', fontSize: '15px', cursor: 'pointer' };
-const badgeStyle: any = { fontSize: '9px', fontWeight: '800', backgroundColor: '#f1f5f9', padding: '4px 8px', borderRadius: '6px', color: '#64748b' };
+const badgeStyle: any = { fontSize: '9px', fontWeight: '800', backgroundColor: colors.bgLight, padding: '4px 8px', borderRadius: '6px', color: colors.secondaryText };
 const rfBadgeStyle: any = { display: 'inline-flex', alignItems: 'center', padding: '6px 10px', backgroundColor: '#eff6ff', borderRadius: '8px', color: '#2563eb', border: '1px solid #dbeafe', marginTop: '6px', cursor: 'pointer' };
-const payBtnStyle: any = { display: 'inline-block', marginTop: '12px', fontSize: '10px', fontWeight: '900', color: '#059669', textDecoration: 'none', backgroundColor: '#f0fdf4', padding: '8px 12px', borderRadius: '10px', border: '1px solid #bbf7d0', cursor: 'pointer' };
+const payBtnStyle: any = { display: 'inline-block', marginTop: '12px', fontSize: '10px', fontWeight: '900', color: colors.accentGreen, textDecoration: 'none', backgroundColor: '#f0fdf4', padding: '8px 12px', borderRadius: '10px', border: '1px solid #bbf7d0', cursor: 'pointer' };
 const editBtnSmall: any = { backgroundColor: '#fef3c7', color: '#d97706', border: 'none', padding: '10px', borderRadius: '12px', cursor: 'pointer', fontSize: '16px' };
-const delBtnSmall: any = { backgroundColor: '#fee2e2', color: '#ef4444', border: 'none', padding: '10px', borderRadius: '12px', cursor: 'pointer', fontSize: '16px' };
+const delBtnSmall: any = { backgroundColor: '#fee2e2', color: colors.accentRed, border: 'none', padding: '10px', borderRadius: '12px', cursor: 'pointer', fontSize: '16px' };
 
 export default function FixedAssetsPage() {
-  return (
-    <main style={{ backgroundColor: '#f8fafc', minHeight: '100vh', padding: '15px' }}>
-      <Suspense fallback={<div>Φόρτωση...</div>}><FixedAssetsContent /></Suspense>
-    </main>
-  )
+  return <main><Suspense fallback={<div>Φόρτωση...</div>}><FixedAssetsContent /></Suspense></main>
 }
