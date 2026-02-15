@@ -26,7 +26,6 @@ function DashboardContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   
-  // 1. DATE LOGIC
   const getBusinessDate = () => {
     const now = new Date()
     if (now.getHours() < 7) now.setDate(now.getDate() - 1)
@@ -35,7 +34,6 @@ function DashboardContent() {
 
   const selectedDate = searchParams.get('date') || getBusinessDate()
   
-  // 2. STATE
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [isAdmin, setIsAdmin] = useState(false)
   const [storeName, setStoreName] = useState('Φορτώνει...')
@@ -43,12 +41,14 @@ function DashboardContent() {
   const [loading, setLoading] = useState(true)
   const [expandedTx, setExpandedTx] = useState<string | null>(null) 
 
-  // 3. LOAD DATA
   const loadDashboard = useCallback(async () => {
     try {
       setLoading(true)
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) return router.push('/login')
+
+      // Παίρνουμε το ενεργό ID από το localStorage
+      const activeStoreId = localStorage.getItem('active_store_id')
 
       const { data: profile } = await supabase
         .from('profiles')
@@ -58,12 +58,21 @@ function DashboardContent() {
       
       if (profile) {
         setIsAdmin(profile.role === 'admin' || profile.role === 'superadmin')
-        setStoreName(profile.store_name || 'Το Κατάστημά μου')
+        
+        // Φέρνουμε το όνομα του καταστήματος από τον πίνακα stores
+        if (activeStoreId) {
+            const { data: storeData } = await supabase
+                .from('stores')
+                .select('name')
+                .eq('id', activeStoreId)
+                .single()
+            setStoreName(storeData?.name || profile.store_name || 'Κατάστημα')
+        }
 
         const { data: tx } = await supabase
           .from('transactions')
           .select('*, suppliers(name), fixed_assets(name)')
-          .eq('store_id', profile.store_id)
+          .eq('store_id', activeStoreId || profile.store_id) // Χρήση του ενεργού ID
           .eq('date', selectedDate)
           .order('created_at', { ascending: false })
 
@@ -78,36 +87,21 @@ function DashboardContent() {
 
   useEffect(() => { loadDashboard() }, [loadDashboard])
 
-  // 4. DELETE LOGIC
   const handleDelete = async (id: string) => {
     if (!confirm('Οριστική διαγραφή αυτής της κίνησης;')) return
-
     try {
-      const { error } = await supabase
-        .from('transactions')
-        .delete()
-        .eq('id', id)
-
+      const { error } = await supabase.from('transactions').delete().eq('id', id)
       if (error) throw error
-      
       setTransactions(prev => prev.filter(t => t.id !== id))
       setExpandedTx(null)
     } catch (err) {
       alert('Σφάλμα κατά τη διαγραφή')
-      console.error(err)
     }
   }
 
-  // 5. CALCULATIONS
   const totals = useMemo(() => {
-    const income = transactions
-      .filter(t => t.type === 'income')
-      .reduce((acc, t) => acc + Number(t.amount), 0)
-    
-    const expense = transactions
-      .filter(t => (t.type === 'expense' || t.category === 'Προσωπικό' || t.category === 'Εξόφληση Χρέους') && t.is_credit !== true)
-      .reduce((acc, t) => acc + Math.abs(Number(t.amount)), 0)
-
+    const income = transactions.filter(t => t.type === 'income').reduce((acc, t) => acc + Number(t.amount), 0)
+    const expense = transactions.filter(t => (t.type === 'expense' || t.category === 'Προσωπικό' || t.category === 'Εξόφληση Χρέους') && t.is_credit !== true).reduce((acc, t) => acc + Math.abs(Number(t.amount)), 0)
     return { income, expense, balance: income - expense }
   }, [transactions])
 
@@ -116,6 +110,12 @@ function DashboardContent() {
     const next = days > 0 ? addDays(current, 1) : subDays(current, 1)
     router.push(`/?date=${format(next, 'yyyy-MM-dd')}`)
     setExpandedTx(null)
+  }
+
+  // Λογική αλλαγής καταστήματος
+  const handleSwitchStore = () => {
+      localStorage.removeItem('active_store_id')
+      router.push('/select-store')
   }
 
   return (
@@ -130,7 +130,10 @@ function DashboardContent() {
         <div style={brandArea}>
           <div style={logoBox}>C</div>
           <div>
-            <h1 style={storeTitleText}>{storeName}</h1>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <h1 style={storeTitleText}>{storeName}</h1>
+                <button onClick={handleSwitchStore} style={switchBtnStyle}>ΑΛΛΑΓΗ</button>
+            </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
               <span style={dashboardSub}>BUSINESS DASHBOARD</span>
               <div style={statusDot} />
@@ -147,10 +150,14 @@ function DashboardContent() {
           {isMenuOpen && (
             <div style={dropdownStyle}>
               <p style={menuSectionLabel}>ΔΙΑΧΕΙΡΙΣΗ</p>
-              <Link href="/suppliers" style={menuItem} onClick={() => setIsMenuOpen(false)}>🛒 Προμηθευτές</Link>
-              <Link href="/fixed-assets" style={menuItem} onClick={() => setIsMenuOpen(false)}>🔌 Πάγια</Link>
-              <Link href="/employees" style={menuItem} onClick={() => setIsMenuOpen(false)}>👥 Υπάλληλοι</Link>
-              <Link href="/suppliers-balance" style={menuItem} onClick={() => setIsMenuOpen(false)}>🚩 Καρτέλες (Χρέη)</Link>
+              {isAdmin && (
+                  <>
+                    <Link href="/suppliers" style={menuItem} onClick={() => setIsMenuOpen(false)}>🛒 Προμηθευτές</Link>
+                    <Link href="/fixed-assets" style={menuItem} onClick={() => setIsMenuOpen(false)}>🔌 Πάγια</Link>
+                    <Link href="/employees" style={menuItem} onClick={() => setIsMenuOpen(false)}>👥 Υπάλληλοι</Link>
+                    <Link href="/suppliers-balance" style={menuItem} onClick={() => setIsMenuOpen(false)}>🚩 Καρτέλες (Χρέη)</Link>
+                  </>
+              )}
               <Link href="/analysis" style={menuItem} onClick={() => setIsMenuOpen(false)}>📊 Ανάλυση</Link>
               <div style={menuDivider} />
               <p style={menuSectionLabel}>ΕΦΑΡΜΟΓΗ</p>
@@ -171,7 +178,7 @@ function DashboardContent() {
         <button onClick={() => changeDate(1)} style={dateNavBtn}>›</button>
       </div>
 
-      {/* HERO SECTION - ΔΙΟΡΘΩΜΕΝΗ ΓΙΑ ΚΕΝΤΡΑΡΙΣΜΑ ΣΤΟΝ ΥΠΟΛΟΓΙΣΤΗ */}
+      {/* HERO SECTION */}
       <div style={heroCardStyle}>
           <p style={heroLabel}>ΔΙΑΘΕΣΙΜΟ ΥΠΟΛΟΙΠΟ ΗΜΕΡΑΣ</p>
           <h2 style={heroAmountText}>{totals.balance.toFixed(2)}€</h2>
@@ -259,62 +266,28 @@ const headerStyle: any = { display: 'flex', justifyContent: 'space-between', ali
 const brandArea = { display: 'flex', alignItems: 'center', gap: '12px' };
 const logoBox = { width: '40px', height: '40px', backgroundColor: colors.primaryDark, borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', color:'white', fontSize: '18px', fontWeight:'800' };
 const storeTitleText = { fontSize: '18px', fontWeight: '800', margin: 0, color: colors.primaryDark };
+const switchBtnStyle: any = { fontSize: '9px', fontWeight: '800', color: colors.accentBlue, backgroundColor: '#eef2ff', border: 'none', padding: '4px 8px', borderRadius: '6px', cursor: 'pointer' };
 const dashboardSub = { fontSize: '9px', fontWeight: '800', color: colors.secondaryText, letterSpacing: '1px' };
 const statusDot = { width: '6px', height: '6px', backgroundColor: colors.accentGreen, borderRadius: '50%' };
 const menuToggle: any = { background: 'white', border: `1px solid ${colors.border}`, borderRadius: '10px', padding: '8px', cursor: 'pointer' };
 const hamburgerLine = { width: '18px', height: '2px', backgroundColor: colors.primaryDark, marginBottom: '4px', borderRadius: '2px' };
-
 const dropdownStyle: any = { position: 'absolute', top: '50px', right: 0, background: 'white', minWidth: '220px', borderRadius: '16px', boxShadow: '0 10px 30px rgba(0,0,0,0.12)', padding: '8px', zIndex: 2000, border: `1px solid ${colors.border}` };
 const menuItem: any = { display: 'block', padding: '12px 14px', textDecoration: 'none', color: colors.primaryDark, fontWeight: '700', fontSize: '14px', borderRadius: '10px' };
 const menuSectionLabel = { fontSize: '10px', fontWeight: '800', color: colors.secondaryText, padding: '8px 14px 4px', letterSpacing: '0.5px' };
 const menuDivider = { height: '1px', backgroundColor: colors.border, margin: '6px 0' };
 const logoutBtnStyle: any = { ...menuItem, width: '100%', textAlign: 'left', background: '#fff1f2', color: colors.accentRed, border: 'none', marginTop: '8px', cursor: 'pointer' };
-
 const dateCard: any = { backgroundColor: 'white', padding: '12px', borderRadius: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px', border: `1px solid ${colors.border}` };
 const dateText = { fontSize: '13px', fontWeight: '800', color: colors.primaryDark, margin: 0 };
 const dateNavBtn = { background: 'none', border: 'none', fontSize: '22px', color: colors.secondaryText, cursor: 'pointer', fontWeight:'bold' };
-
-// ΔΙΟΡΘΩΣΗ ΓΙΑ ΚΕΝΤΡΑΡΙΣΜΑ (Center Alignment)
-const heroCardStyle: any = { 
-  background: colors.primaryDark, 
-  padding: '28px', 
-  borderRadius: '24px', 
-  color: 'white', 
-  boxShadow: '0 15px 35px rgba(15, 23, 42, 0.25)', 
-  marginBottom: '25px',
-  display: 'flex',
-  flexDirection: 'column',
-  alignItems: 'center', // Κεντράρει τα στοιχεία οριζόντια
-  textAlign: 'center'   // Κεντράρει το κείμενο
-};
-
+const heroCardStyle: any = { background: colors.primaryDark, padding: '28px', borderRadius: '24px', color: 'white', boxShadow: '0 15px 35px rgba(15, 23, 42, 0.25)', marginBottom: '25px', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center' };
 const heroLabel: any = { fontSize: '10px', fontWeight: '700', opacity: 0.6, letterSpacing: '1px', marginBottom: '8px' };
-
-const heroAmountText: any = { 
-  fontSize: '34px', 
-  fontWeight: '800', 
-  margin: 0, 
-  letterSpacing: '-1px',
-  textAlign: 'center' 
-};
-
-const heroStatsRow: any = { 
-  display: 'flex', 
-  gap: '16px', 
-  marginTop: '20px', 
-  paddingTop: '16px', 
-  borderTop: '1px solid rgba(255,255,255,0.1)',
-  justifyContent: 'center', // Κεντράρει τα έσοδα/έξοδα στη σειρά
-  width: '100%' 
-};
-
+const heroAmountText: any = { fontSize: '34px', fontWeight: '800', margin: 0, letterSpacing: '-1px' };
+const heroStatsRow: any = { display: 'flex', gap: '16px', marginTop: '20px', paddingTop: '16px', borderTop: '1px solid rgba(255,255,255,0.1)', justifyContent: 'center', width: '100%' };
 const heroStatItem: any = { display: 'flex', alignItems: 'center', gap: '8px' };
 const heroStatValue = { fontSize: '14px', fontWeight: '700' };
 const statCircle = (bg: string): any => ({ width: '22px', height: '22px', borderRadius: '50%', background: bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight:'bold' });
-
 const actionGrid = { display: 'flex', gap: '10px', marginBottom: '30px' };
 const actionBtn: any = { flex: 1, padding: '16px', borderRadius: '16px', color: 'white', textDecoration: 'none', textAlign: 'center', fontWeight: '800', fontSize: '14px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' };
-
 const listContainer = { backgroundColor: 'transparent', padding: '0' };
 const listHeader = { fontSize: '11px', fontWeight: '800', color: colors.secondaryText, marginBottom: '16px', letterSpacing: '0.5px' };
 const txRow: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px', backgroundColor: 'white', cursor: 'pointer', border: `1px solid ${colors.border}`, borderBottom: 'none' };
@@ -322,7 +295,6 @@ const txIconContainer = (isInc: boolean): any => ({ width: '40px', height: '40px
 const txTitle = { fontWeight: '700', fontSize: '14px', margin: 0, color: colors.primaryDark };
 const txMeta = { fontSize: '11px', color: colors.secondaryText, margin: 0, fontWeight: '600' };
 const txAmount = { fontWeight: '800', fontSize: '15px' };
-
 const actionPanel: any = { display: 'flex', gap: '8px', padding: '12px', backgroundColor: 'white', border: `1px solid ${colors.border}`, borderTop: 'none', borderRadius: '0 0 20px 20px' };
 const editRowBtn: any = { flex: 1, padding: '10px', backgroundColor: colors.warning, color: colors.warningText, border: 'none', borderRadius: '12px', fontWeight: '700', fontSize: '12px', cursor: 'pointer' };
 const deleteRowBtn: any = { flex: 1, padding: '10px', backgroundColor: '#fee2e2', color: colors.accentRed, border: 'none', borderRadius: '12px', fontWeight: '700', fontSize: '12px', cursor: 'pointer' };
