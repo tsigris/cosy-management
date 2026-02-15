@@ -31,6 +31,10 @@ function AddExpenseForm() {
   const [notes, setNotes] = useState('')
   const [isCredit, setIsCredit] = useState(false) 
   const [isAgainstDebt, setIsAgainstDebt] = useState(searchParams.get('mode') === 'debt')
+  
+  // ✅ ΝΕΑ ΑΛΛΑΓΗ: STATE ΓΙΑ ΧΩΡΙΣ ΤΙΜΟΛΟΓΙΟ
+  const [noInvoice, setNoInvoice] = useState(false)
+
   const [currentUsername, setCurrentUsername] = useState('Χρήστης')
   const [loading, setLoading] = useState(true)
   const [storeId, setStoreId] = useState<string | null>(null)
@@ -42,7 +46,6 @@ function AddExpenseForm() {
   const [selectedSup, setSelectedSup] = useState(urlSupId || '')
   const [selectedFixed, setSelectedFixed] = useState(urlAssetId || '')
 
-  // States για το Modal Νέου Προμηθευτή
   const [isSupModalOpen, setIsSupModalOpen] = useState(false)
   const [newSupName, setNewSupName] = useState('')
   const [newSupPhone, setNewSupPhone] = useState('')
@@ -59,7 +62,6 @@ function AddExpenseForm() {
         setStoreId(profile.store_id)
         
         const [sRes, fRes] = await Promise.all([
-          // ΔΙΟΡΘΩΣΗ: Φιλτράρουμε μόνο τους ενεργούς (is_active !== false)
           supabase.from('suppliers')
             .select('*')
             .eq('store_id', profile.store_id)
@@ -79,7 +81,6 @@ function AddExpenseForm() {
     s.name.toLowerCase().includes(searchTerm.toLowerCase())
   )
 
-  // ΛΕΙΤΟΥΡΓΙΑ ΓΡΗΓΟΡΗΣ ΠΡΟΣΘΗΚΗΣ ΠΡΟΜΗΘΕΥΤΗ
   async function handleQuickAddSupplier() {
     if (!newSupName) return toast.error('Δώστε όνομα προμηθευτή');
     if (!storeId) return toast.error('Σφάλμα: Δεν βρέθηκε το ID καταστήματος');
@@ -87,28 +88,19 @@ function AddExpenseForm() {
     try {
       const { data, error } = await supabase.from('suppliers').insert([
         { 
-          name: newSupName, 
-          phone: newSupPhone, 
-          vat_number: newSupAfm, 
-          iban: newSupIban,
-          category: 'Εμπορεύματα',
-          store_id: storeId,
-          is_active: true // Πάντα ενεργός κατά τη δημιουργία
+          name: newSupName, phone: newSupPhone, vat_number: newSupAfm, iban: newSupIban,
+          category: 'Εμπορεύματα', store_id: storeId, is_active: true 
         }
       ]).select().single();
 
       if (error) throw error;
-
       setSuppliers([...suppliers, data].sort((a,b) => a.name.localeCompare(b.name)));
       setSelectedSup(data.id);
       setSearchTerm(data.name);
       setIsSupModalOpen(false);
       setNewSupName(''); setNewSupPhone(''); setNewSupAfm(''); setNewSupIban('');
-      
       toast.success('Ο προμηθευτής προστέθηκε!');
-    } catch (err: any) { 
-        toast.error('Σφάλμα: ' + err.message); 
-    }
+    } catch (err: any) { toast.error('Σφάλμα: ' + err.message); }
   }
 
   async function handleSave() {
@@ -116,6 +108,12 @@ function AddExpenseForm() {
     setLoading(true)
     try {
       const { data: { session } } = await supabase.auth.getSession()
+
+      // ✅ ΝΕΑ ΑΛΛΑΓΗ: ΣΥΝΔΕΣΗ ΜΕ ΤΗΝ ΑΝΑΛΥΣΗ ΜΕΣΩ NOTES
+      const finalNotes = noInvoice 
+        ? (notes ? `${notes} (ΧΩΡΙΣ ΤΙΜΟΛΟΓΙΟ)` : 'ΧΩΡΙΣ ΤΙΜΟΛΟΓΙΟ') 
+        : notes;
+
       const payload = {
         amount: Number(amount),
         method: isCredit ? 'Πίστωση' : method,
@@ -128,7 +126,7 @@ function AddExpenseForm() {
         fixed_asset_id: selectedFixed || null,
         category: isAgainstDebt ? 'Εξόφληση Χρέους' : (selectedSup ? 'Εμπορεύματα' : (selectedFixed ? 'Πάγια' : 'Λοιπά')),
         created_by_name: currentUsername,
-        notes
+        notes: finalNotes
       }
       const { error } = await supabase.from('transactions').insert([payload])
       if (error) throw error
@@ -154,6 +152,43 @@ function AddExpenseForm() {
           <Link href="/" style={backBtnStyle}>✕</Link>
         </div>
 
+        {/* ✅ ΝΕΑ ΑΛΛΑΓΗ: ΠΟΣΟ ΜΕ AUTO-FOCUS & TOGGLE */}
+        <div style={{ marginBottom: '20px' }}>
+          <label style={labelStyle}>ΠΟΣΟ (€)</label>
+          <input 
+            type="number" 
+            inputMode="decimal" 
+            autoFocus // ✅ ΕΣΤΙΑΣΗ ΜΕ ΤΟ ΜΠΑΙΝΕΙΣ
+            value={amount} 
+            onChange={e => setAmount(e.target.value)} 
+            style={inputStyle} 
+            placeholder="0.00" 
+          />
+
+          <div 
+            onClick={() => setNoInvoice(!noInvoice)} 
+            style={{ 
+              display: 'flex', alignItems: 'center', gap: '10px', marginTop: '15px', 
+              padding: '12px', borderRadius: '12px', 
+              backgroundColor: noInvoice ? '#fee2e2' : '#f1f5f9',
+              cursor: 'pointer', border: noInvoice ? `1px solid ${colors.accentRed}` : '1px solid transparent'
+            }}
+          >
+            <div style={{ 
+              width: '20px', height: '20px', borderRadius: '6px', 
+              border: `2px solid ${noInvoice ? colors.accentRed : colors.secondaryText}`,
+              backgroundColor: noInvoice ? colors.accentRed : 'white',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '12px'
+            }}>
+              {noInvoice && '✓'}
+            </div>
+            <span style={{ fontSize: '13px', fontWeight: '800', color: noInvoice ? colors.accentRed : colors.primaryDark }}>
+              ΧΩΡΙΣ ΤΙΜΟΛΟΓΙΟ (Μαύρα)
+            </span>
+          </div>
+        </div>
+
+        {/* ΜΕΘΟΔΟΣ ΠΛΗΡΩΜΗΣ */}
         <div style={{ marginBottom: '24px' }}>
           <label style={labelStyle}>ΜΕΘΟΔΟΣ ΠΛΗΡΩΜΗΣ</label>
           <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
@@ -164,11 +199,6 @@ function AddExpenseForm() {
               <span style={{fontSize: '20px'}}>🏛️</span><span>Τράπεζα</span>
             </button>
           </div>
-        </div>
-
-        <div style={{ marginBottom: '20px' }}>
-          <label style={labelStyle}>ΠΟΣΟ (€)</label>
-          <input type="number" inputMode="decimal" value={amount} onChange={e => setAmount(e.target.value)} style={inputStyle} placeholder="0.00" />
         </div>
 
         <div style={creditPanel}>
@@ -234,31 +264,23 @@ function AddExpenseForm() {
         <div style={modalOverlay}>
           <div style={modalCard}>
             <h2 style={{margin: '0 0 20px', fontSize: '18px', fontWeight: '800'}}>Νέος Προμηθευτής</h2>
-            
             <div style={{ marginBottom: '15px' }}>
               <label style={labelStyle}>ΕΠΩΝΥΜΙΑ</label>
               <input value={newSupName} onChange={e => setNewSupName(e.target.value)} style={inputStyle} placeholder="Όνομα προμηθευτή" />
             </div>
-
             <div style={{ display: 'flex', gap: '10px', marginBottom: '15px' }}>
               <div style={{ flex: 1 }}>
                 <label style={labelStyle}>ΤΗΛΕΦΩΝΟ</label>
-                <input value={newSupPhone} onChange={e => setNewSupPhone(e.target.value)} style={inputStyle} placeholder="..." />
+                <input value={newSupPhone} onChange={e => setNewSupPhone(e.target.value)} style={inputStyle} />
               </div>
               <div style={{ flex: 1 }}>
                 <label style={labelStyle}>Α.Φ.Μ.</label>
-                <input value={newSupAfm} onChange={e => setNewSupAfm(e.target.value)} style={inputStyle} placeholder="..." />
+                <input value={newSupAfm} onChange={e => setNewSupAfm(e.target.value)} style={inputStyle} />
               </div>
             </div>
-
-            <div style={{ marginBottom: '15px' }}>
-              <label style={labelStyle}>IBAN ΠΡΟΜΗΘΕΥΤΗ</label>
-              <input value={newSupIban} onChange={e => setNewSupIban(e.target.value)} style={inputStyle} placeholder="GR00 0000 0000..." />
-            </div>
-
             <div style={{display: 'flex', gap: '10px', marginTop: '25px'}}>
               <button onClick={() => setIsSupModalOpen(false)} style={{...saveBtn, backgroundColor: colors.secondaryText, flex: 1, padding: '14px'}}>ΑΚΥΡΟ</button>
-              <button onClick={handleQuickAddSupplier} style={{...saveBtn, backgroundColor: colors.accentGreen, flex: 2, padding: '14px'}}>ΔΗΜΙΟΥΡΓΙΑ ΠΡΟΜΗΘΕΥΤΗ</button>
+              <button onClick={handleQuickAddSupplier} style={{...saveBtn, backgroundColor: colors.accentGreen, flex: 2, padding: '14px'}}>ΔΗΜΙΟΥΡΓΙΑ</button>
             </div>
           </div>
         </div>
