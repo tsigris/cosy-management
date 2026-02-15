@@ -4,7 +4,7 @@ export const dynamic = 'force-dynamic'
 import { useEffect, useState, Suspense, useCallback, useMemo } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import Link from 'next/link'
+import NextLink from 'next/link'
 import { format, addDays, subDays, parseISO } from 'date-fns'
 import { el } from 'date-fns/locale'
 
@@ -47,7 +47,6 @@ function DashboardContent() {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) return router.push('/login')
 
-      // Παίρνουμε το ενεργό ID από το localStorage
       const activeStoreId = localStorage.getItem('active_store_id')
 
       const { data: profile } = await supabase
@@ -59,7 +58,6 @@ function DashboardContent() {
       if (profile) {
         setIsAdmin(profile.role === 'admin' || profile.role === 'superadmin')
         
-        // Φέρνουμε το όνομα του καταστήματος από τον πίνακα stores
         if (activeStoreId) {
             const { data: storeData } = await supabase
                 .from('stores')
@@ -72,7 +70,7 @@ function DashboardContent() {
         const { data: tx } = await supabase
           .from('transactions')
           .select('*, suppliers(name), fixed_assets(name)')
-          .eq('store_id', activeStoreId || profile.store_id) // Χρήση του ενεργού ID
+          .eq('store_id', activeStoreId || profile.store_id)
           .eq('date', selectedDate)
           .order('created_at', { ascending: false })
 
@@ -112,7 +110,6 @@ function DashboardContent() {
     setExpandedTx(null)
   }
 
-  // Λογική αλλαγής καταστήματος
   const handleSwitchStore = () => {
       localStorage.removeItem('active_store_id')
       router.push('/select-store')
@@ -125,13 +122,12 @@ function DashboardContent() {
         body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: ${colors.bgLight}; }
       `}} />
 
-      {/* MODERN TOP BAR */}
       <header style={headerStyle}>
         <div style={brandArea}>
           <div style={logoBox}>C</div>
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <h1 style={storeTitleText}>{storeName}</h1>
+                <h1 style={storeTitleText}>{storeName.toUpperCase()}</h1>
                 <button onClick={handleSwitchStore} style={switchBtnStyle}>ΑΛΛΑΓΗ</button>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -152,24 +148,31 @@ function DashboardContent() {
               <p style={menuSectionLabel}>ΔΙΑΧΕΙΡΙΣΗ</p>
               {isAdmin && (
                   <>
-                    <Link href="/suppliers" style={menuItem} onClick={() => setIsMenuOpen(false)}>🛒 Προμηθευτές</Link>
-                    <Link href="/fixed-assets" style={menuItem} onClick={() => setIsMenuOpen(false)}>🔌 Πάγια</Link>
-                    <Link href="/employees" style={menuItem} onClick={() => setIsMenuOpen(false)}>👥 Υπάλληλοι</Link>
-                    <Link href="/suppliers-balance" style={menuItem} onClick={() => setIsMenuOpen(false)}>🚩 Καρτέλες (Χρέη)</Link>
+                    <NextLink href="/suppliers" style={menuItem} onClick={() => setIsMenuOpen(false)}>🛒 Προμηθευτές</NextLink>
+                    <NextLink href="/fixed-assets" style={menuItem} onClick={() => setIsMenuOpen(false)}>🔌 Πάγια</NextLink>
+                    <NextLink href="/employees" style={menuItem} onClick={() => setIsMenuOpen(false)}>👥 Υπάλληλοι</NextLink>
+                    <NextLink href="/suppliers-balance" style={menuItem} onClick={() => setIsMenuOpen(false)}>🚩 Καρτέλες (Χρέη)</NextLink>
                   </>
               )}
-              <Link href="/analysis" style={menuItem} onClick={() => setIsMenuOpen(false)}>📊 Ανάλυση</Link>
+              <NextLink href="/analysis" style={menuItem} onClick={() => setIsMenuOpen(false)}>📊 Ανάλυση</NextLink>
+              
               <div style={menuDivider} />
               <p style={menuSectionLabel}>ΕΦΑΡΜΟΓΗ</p>
-              <Link href="/help" style={menuItem} onClick={() => setIsMenuOpen(false)}>❓ Οδηγίες Χρήσης</Link>
-              <Link href="/settings" style={menuItem} onClick={() => setIsMenuOpen(false)}>⚙️ Ρυθμίσεις</Link>
+              <NextLink href="/help" style={menuItem} onClick={() => setIsMenuOpen(false)}>❓ Οδηγίες Χρήσης</NextLink>
+              <NextLink href="/settings" style={menuItem} onClick={() => setIsMenuOpen(false)}>⚙️ Ρυθμίσεις</NextLink>
+              
+              {/* Η ΕΠΙΛΟΓΗ ΔΙΚΑΙΩΜΑΤΑ ΠΟΥ ΕΛΕΙΠΕ */}
+              {isAdmin && (
+                <NextLink href="/permissions" style={{...menuItem, color: colors.accentBlue}} onClick={() => setIsMenuOpen(false)}>🔑 Δικαιώματα (Admin)</NextLink>
+              )}
+              
               <button onClick={() => supabase.auth.signOut()} style={logoutBtnStyle}>ΑΠΟΣΥΝΔΕΣΗ 🚪</button>
             </div>
           )}
         </div>
       </header>
 
-      {/* DATE SELECTOR */}
+      {/* ΥΠΟΛΟΙΠΟ ΤΟΥ ΚΩΔΙΚΑ ΣΟΥ (DATE SELECTOR, HERO, ACTIONS, LIST) ΠΑΡΑΜΕΝΕΙ ΩΣ ΕΧΕΙ */}
       <div style={dateCard}>
         <button onClick={() => changeDate(-1)} style={dateNavBtn}>‹</button>
         <div style={{ textAlign: 'center' }}>
@@ -178,7 +181,6 @@ function DashboardContent() {
         <button onClick={() => changeDate(1)} style={dateNavBtn}>›</button>
       </div>
 
-      {/* HERO SECTION */}
       <div style={heroCardStyle}>
           <p style={heroLabel}>ΔΙΑΘΕΣΙΜΟ ΥΠΟΛΟΙΠΟ ΗΜΕΡΑΣ</p>
           <h2 style={heroAmountText}>{totals.balance.toFixed(2)}€</h2>
@@ -194,14 +196,12 @@ function DashboardContent() {
           </div>
       </div>
 
-      {/* ACTIONS */}
       <div style={actionGrid}>
-        <Link href={`/add-income?date=${selectedDate}`} style={{ ...actionBtn, backgroundColor: colors.accentGreen }}>+ Έσοδο</Link>
-        <Link href={`/add-expense?date=${selectedDate}`} style={{ ...actionBtn, backgroundColor: colors.accentRed }}>- Έξοδο</Link>
-        <Link href="/daily-z" style={{ ...actionBtn, backgroundColor: colors.primaryDark }}>📟 Z</Link>
+        <NextLink href={`/add-income?date=${selectedDate}`} style={{ ...actionBtn, backgroundColor: colors.accentGreen }}>+ Έσοδο</NextLink>
+        <NextLink href={`/add-expense?date=${selectedDate}`} style={{ ...actionBtn, backgroundColor: colors.accentRed }}>- Έξοδο</NextLink>
+        <NextLink href="/daily-z" style={{ ...actionBtn, backgroundColor: colors.primaryDark }}>📟 Z</NextLink>
       </div>
 
-      {/* TRANSACTIONS LIST */}
       <div style={listContainer}>
         <p style={listHeader}>ΚΙΝΗΣΕΙΣ ΗΜΕΡΑΣ</p>
         {loading ? (
@@ -260,13 +260,13 @@ function DashboardContent() {
   )
 }
 
-// --- STYLES ---
+// STYLES (ΤΑ ΙΔΙΑ ΠΟΥ ΕΙΧΕΣ)
 const iphoneWrapper: any = { minHeight: '100dvh', padding: '20px', paddingBottom: '100px' };
 const headerStyle: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px' };
 const brandArea = { display: 'flex', alignItems: 'center', gap: '12px' };
 const logoBox = { width: '40px', height: '40px', backgroundColor: colors.primaryDark, borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', color:'white', fontSize: '18px', fontWeight:'800' };
-const storeTitleText = { fontSize: '18px', fontWeight: '800', margin: 0, color: colors.primaryDark };
-const switchBtnStyle: any = { fontSize: '9px', fontWeight: '800', color: colors.accentBlue, backgroundColor: '#eef2ff', border: 'none', padding: '4px 8px', borderRadius: '6px', cursor: 'pointer' };
+const storeTitleText = { fontSize: '16px', fontWeight: '800', margin: 0, color: colors.primaryDark };
+const switchBtnStyle: any = { fontSize: '8px', fontWeight: '800', color: colors.accentBlue, backgroundColor: '#eef2ff', border: 'none', padding: '4px 6px', borderRadius: '6px', cursor: 'pointer' };
 const dashboardSub = { fontSize: '9px', fontWeight: '800', color: colors.secondaryText, letterSpacing: '1px' };
 const statusDot = { width: '6px', height: '6px', backgroundColor: colors.accentGreen, borderRadius: '50%' };
 const menuToggle: any = { background: 'white', border: `1px solid ${colors.border}`, borderRadius: '10px', padding: '8px', cursor: 'pointer' };
