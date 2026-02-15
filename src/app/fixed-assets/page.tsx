@@ -57,7 +57,6 @@ function FixedAssetsContent() {
         const { data: transData } = await supabase.from('transactions')
             .select('amount, fixed_asset_id')
             .eq('store_id', sId)
-            .eq('category', 'Πάγια')
 
         if (assetsData) {
           const enriched = assetsData.map(asset => {
@@ -177,8 +176,9 @@ function FixedAssetsContent() {
                   </div>
                 )}
 
+                {/* ΔΙΟΡΘΩΣΗ: ΑΛΛΑΓΗ ΑΠΟ /expenses/add ΣΕ /add-expense */}
                 <button 
-                  onClick={() => router.push(`/expenses/add?assetId=${asset.id}`)}
+                  onClick={() => router.push(`/add-expense?assetId=${asset.id}`)}
                   style={payBtnStyle}
                 >
                   ΚΑΤΑΧΩΡΗΣΗ ΠΛΗΡΩΜΗΣ →
@@ -197,7 +197,7 @@ function FixedAssetsContent() {
   )
 }
 
-// STYLES - ΠΡΟΣΑΡΜΟΣΜΕΝΑ ΣΤΗ ΛΟΓΙΚΗ ΤΟΥ REDMI SCROLL FIX
+// STYLES
 const iphoneWrapper: any = { 
   backgroundColor: colors.bgLight, 
   minHeight: '100dvh', 
