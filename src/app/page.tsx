@@ -138,6 +138,7 @@ function DashboardContent() {
     const m = method?.toLowerCase() || ''
     if (m.includes('μετρητά')) return '💵'
     if (m.includes('κάρτα') || m.includes('pos')) return '💳'
+    if (m.includes('πίστωση')) return '🚩'
     return '📝'
   }
 
@@ -145,10 +146,28 @@ function DashboardContent() {
     const d = new Date(selectedDate)
     d.setDate(d.getDate() + days)
     router.push(`/?date=${d.toISOString().split('T')[0]}`)
+    setExpandedTx(null)
+    setIsZExpanded(false)
+    setExpandedEmpId(null)
   }
 
+  // --- LOGIC ΥΠΟΛΟΓΙΣΜΩΝ ---
   const zEntries = useMemo(() => transactions.filter((t) => t.category === 'Εσοδα Ζ'), [transactions])
   const zTotal = useMemo(() => zEntries.reduce((acc, t) => acc + Number(t.amount), 0), [zEntries])
+
+  const salaryEntries = useMemo(() => transactions.filter((t) => t.category === 'Προσωπικό'), [transactions])
+  const groupedSalaries = useMemo(() => {
+    return salaryEntries.reduce((acc: any, t: any) => {
+      const empId = t.employee_id || 'unknown'
+      if (!acc[empId]) {
+        acc[empId] = { name: t.employees?.full_name || 'Προσωπικό', total: 0, items: [] }
+      }
+      acc[empId].total += Math.abs(Number(t.amount))
+      acc[empId].items.push(t)
+      return acc
+    }, {})
+  }, [salaryEntries])
+
   const regularEntries = useMemo(() => 
     transactions.filter((t) => !['Εσοδα Ζ', 'Προσωπικό', 'pocket'].includes(t.category)), 
   [transactions])
@@ -188,9 +207,17 @@ function DashboardContent() {
               <div style={dropdownStyle}>
                  <p style={menuSectionLabel}>ΔΙΑΧΕΙΡΙΣΗ</p>
                  <Link href="/suppliers" style={menuItem}>🛒 Προμηθευτές</Link>
-                 {isAdmin && <Link href="/employees" style={menuItem}>👥 Υπάλληλοι</Link>}
+                 <Link href="/fixed-assets" style={menuItem}>🔌 Πάγια</Link>
+                 {isAdmin && (
+                   <>
+                     <Link href="/employees" style={menuItem}>👥 Υπάλληλοι</Link>
+                     <Link href="/suppliers-balance" style={menuItem}>🚩 Καρτέλες (Χρέη)</Link>
+                   </>
+                 )}
                  <Link href="/analysis" style={menuItem}>📊 Ανάλυση</Link>
                  <div style={divider} />
+                 <p style={menuSectionLabel}>ΕΦΑΡΜΟΓΗ</p>
+                 <Link href="/settings" style={menuItem}>⚙️ Ρυθμίσεις</Link>
                  <button onClick={() => supabase.auth.signOut()} style={logoutBtnStyle}>ΑΠΟΣΥΝΔΕΣΗ 🚪</button>
               </div>
             )}
@@ -231,6 +258,7 @@ function DashboardContent() {
         <div style={{ marginTop: '32px' }}>
           <p style={listHeaderStyle}>ΚΙΝΗΣΕΙΣ ΗΜΕΡΑΣ</p>
 
+          {/* 1. ΟΜΑΔΟΠΟΙΗΜΕΝΟ Ζ */}
           {zEntries.length > 0 && (
             <div style={{ marginBottom: '12px' }}>
               <div onClick={() => setIsZExpanded(!isZExpanded)} style={zItemHeader}>
@@ -241,11 +269,14 @@ function DashboardContent() {
                 <div style={breakdownPanel}>
                   {zEntries.map(z => (
                     <div key={z.id} style={subItemStyle}>
-                      <div>
+                      <div style={{ flex: 1 }}>
                         <p style={subItemTitle}>{getPaymentIcon(z.method)} {z.method.toUpperCase()}</p>
                         <span style={timeBadge}>🕒 {formatTime(z.created_at)}</span>
                       </div>
-                      <p style={{ fontWeight: '700' }}>{Number(z.amount).toFixed(2)}€</p>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <p style={{ fontWeight: '700', margin: 0 }}>{Number(z.amount).toFixed(2)}€</p>
+                        {isAdmin && <button onClick={() => handleDelete(z.id)} style={deleteIconBtn}>🗑️</button>}
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -253,24 +284,66 @@ function DashboardContent() {
             </div>
           )}
 
-          {regularEntries.map((t) => (
-            <div key={t.id} style={itemCard} onClick={() => isAdmin && setExpandedTx(expandedTx === t.id ? null : t.id)}>
-              <div style={{ flex: 1 }}>
-                <p style={itemTitleStyle}>{t.suppliers?.name || t.category?.toUpperCase()}</p>
-                <div style={{ display: 'flex', gap: '8px', marginTop: '6px' }}>
-                  <span style={methodBadge}>{getPaymentIcon(t.method)} {t.method.toUpperCase()}</span>
-                  <span style={timeBadge}>🕒 {formatTime(t.created_at)}</span>
+          {/* 2. ΟΜΑΔΟΠΟΙΗΜΕΝΟΙ ΥΠΑΛΛΗΛΟΙ */}
+          {Object.keys(groupedSalaries).map((empId) => {
+            const group = groupedSalaries[empId]
+            const isExpanded = expandedEmpId === empId
+            return (
+              <div key={empId} style={{ marginBottom: '12px' }}>
+                <div onClick={() => isAdmin && setExpandedEmpId(isExpanded ? null : empId)} style={salaryItemHeader}>
+                  <span style={{ fontWeight: '700', color: '#1e40af' }}>👤 {group.name.toUpperCase()}</span>
+                  <span style={{ fontWeight: '800', fontSize: '18px', color: colors.accentRed }}>-{group.total.toFixed(2)}€</span>
                 </div>
+                {isExpanded && (
+                  <div style={{ ...breakdownPanel, borderLeft: '4px solid #bfdbfe' }}>
+                    {group.items.map((t: any) => (
+                      <div key={t.id} style={subItemStyle}>
+                        <div style={{ flex: 1 }}>
+                          <p style={subItemTitle}>{getPaymentIcon(t.method)} {t.method.toUpperCase()}</p>
+                          <span style={timeBadge}>🕒 {formatTime(t.created_at)}</span>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <p style={{ fontWeight: '700', margin: 0 }}>{Math.abs(Number(t.amount)).toFixed(2)}€</p>
+                          <button onClick={() => handleDelete(t.id)} style={deleteIconBtn}>🗑️</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
-              <p style={{ ...itemAmountStyle, color: t.type === 'income' ? colors.accentGreen : colors.accentRed }}>
-                {t.type === 'income' ? '+' : '-'}{Math.abs(Number(t.amount)).toFixed(2)}€
-              </p>
+            )
+          })}
+
+          {/* 3. ΛΟΙΠΕΣ ΚΙΝΗΣΕΙΣ */}
+          {regularEntries.map((t) => (
+            <div key={t.id} style={{ marginBottom: '12px' }}>
+              <div onClick={() => isAdmin && setExpandedTx(expandedTx === t.id ? null : t.id)} style={itemCard}>
+                <div style={{ flex: 1 }}>
+                  <p style={itemTitleStyle}>{t.suppliers?.name || t.category?.toUpperCase()}</p>
+                  <div style={{ display: 'flex', gap: '8px', marginTop: '6px', flexWrap: 'wrap' }}>
+                    <span style={methodBadge}>{getPaymentIcon(t.method)} {t.method.toUpperCase()}</span>
+                    <span style={userBadge}>👤 {String(t.created_by_name || '').split(' ')[0]?.toUpperCase()}</span>
+                    <span style={timeBadge}>🕒 {formatTime(t.created_at)}</span>
+                  </div>
+                </div>
+                <p style={{ ...itemAmountStyle, color: t.type === 'income' ? colors.accentGreen : colors.accentRed }}>
+                  {t.type === 'income' ? '+' : '-'}{Math.abs(Number(t.amount)).toFixed(2)}€
+                </p>
+              </div>
+              
+              {/* ACTION PANEL ΓΙΑ EDIT/DELETE */}
+              {isAdmin && expandedTx === t.id && (
+                <div style={actionPanel}>
+                  <button onClick={() => router.push(`/${t.type === 'income' ? 'add-income' : 'add-expense'}?editId=${t.id}`)} style={editBtn}>ΕΠΕΞΕΡΓΑΣΙΑ ✎</button>
+                  <button onClick={() => handleDelete(t.id)} style={deleteBtn}>ΔΙΑΓΡΑΦΗ 🗑️</button>
+                </div>
+              )}
             </div>
           ))}
 
           {transactions.length === 0 && !loading && (
-             <p style={{ textAlign: 'center', padding: '60px 0', color: colors.secondaryText, fontWeight: '600', fontSize: '14px' }}>
-               Δεν υπάρχουν κινήσεις για αυτή την ημέρα.
+             <p style={{ textAlign: 'center', padding: '60px 0', color: colors.secondaryText, fontWeight: '600' }}>
+               Καμία κίνηση για σήμερα.
              </p>
           )}
         </div>
@@ -284,46 +357,27 @@ export default function HomePage() {
 }
 
 // --- STYLES ---
-const iphoneWrapper: any = {
-  backgroundColor: colors.bgLight,
-  minHeight: '100dvh',
-  padding: '20px',
-}
-
+const iphoneWrapper: any = { backgroundColor: colors.bgLight, minHeight: '100dvh', padding: '20px' }
 const headerStyle: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px' }
 const titleStyle: any = { fontWeight: '800', fontSize: '22px', margin: 0, color: colors.primaryDark, letterSpacing: '-0.5px' }
 const subtitleStyle: any = { margin: 0, fontSize: '10px', color: colors.secondaryText, fontWeight: '700', letterSpacing: '1px' }
 const onlineDot: any = { width: '6px', height: '6px', backgroundColor: colors.accentGreen, borderRadius: '50%' }
+const logoBoxStyle: any = { width: '44px', height: '44px', backgroundColor: colors.primaryDark, borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px', boxShadow: '0 4px 12px rgba(15, 23, 42, 0.2)' }
 
-const logoBoxStyle: any = {
-  width: '44px', height: '44px', backgroundColor: colors.primaryDark, borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px', boxShadow: '0 4px 12px rgba(15, 23, 42, 0.2)'
-}
-
-const cardStyle: any = {
-  flex: 1, background: colors.cardBg, padding: '24px 16px', borderRadius: '24px', textAlign: 'center', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.05)', border: `1px solid ${colors.border}`
-}
-
+const cardStyle: any = { flex: 1, background: colors.cardBg, padding: '24px 16px', borderRadius: '24px', textAlign: 'center', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.05)', border: `1px solid ${colors.border}` }
 const amountStyle: any = { fontSize: '26px', fontWeight: '800', margin: 0, letterSpacing: '-1px' }
 const cardLabel: any = { fontSize: '11px', fontWeight: '700', color: colors.secondaryText, marginBottom: '6px' }
 
-const dateBarStyle: any = {
-  display: 'flex', alignItems: 'center', background: colors.cardBg, padding: '12px', borderRadius: '16px', marginBottom: '20px', border: `1px solid ${colors.border}`, boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
-}
-
+const dateBarStyle: any = { display: 'flex', alignItems: 'center', background: colors.cardBg, padding: '12px', borderRadius: '16px', marginBottom: '20px', border: `1px solid ${colors.border}` }
 const dateTextStyle: any = { flex: 1, textAlign: 'center', fontWeight: '800', color: colors.primaryDark, fontSize: '14px' }
 const arrowStyle: any = { background: 'none', border: 'none', fontSize: '18px', fontWeight: '800', cursor: 'pointer', padding: '0 10px' }
 
-const actionBtn: any = {
-  flex: 1, padding: '16px', borderRadius: '16px', color: 'white', textDecoration: 'none', textAlign: 'center', fontWeight: '800', fontSize: '14px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
-}
+const actionBtn: any = { flex: 1, padding: '16px', borderRadius: '16px', color: 'white', textDecoration: 'none', textAlign: 'center', fontWeight: '800', fontSize: '14px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }
+const zBtnStyle: any = { display: 'block', padding: '16px', borderRadius: '16px', backgroundColor: colors.primaryDark, color: 'white', textDecoration: 'none', textAlign: 'center', fontWeight: '700', fontSize: '13px', marginTop: '12px' }
 
-const zBtnStyle: any = {
-  display: 'block', padding: '16px', borderRadius: '16px', backgroundColor: colors.primaryDark, color: 'white', textDecoration: 'none', textAlign: 'center', fontWeight: '700', fontSize: '13px', marginTop: '12px', boxShadow: '0 4px 12px rgba(15, 23, 42, 0.2)'
-}
-
-const itemCard: any = {
-  display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: colors.cardBg, padding: '18px 20px', borderRadius: '20px', border: `1px solid ${colors.border}`, marginBottom: '12px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
-}
+const itemCard: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: colors.cardBg, padding: '18px 20px', borderRadius: '20px', border: `1px solid ${colors.border}`, cursor: 'pointer' }
+const zItemHeader: any = { ...itemCard, background: colors.primaryDark, color: 'white', border: 'none', marginBottom: '0' }
+const salaryItemHeader: any = { ...itemCard, background: '#eff6ff', border: '1px solid #bfdbfe' }
 
 const itemTitleStyle: any = { fontWeight: '700', margin: 0, fontSize: '15px', color: colors.primaryDark }
 const itemAmountStyle: any = { fontWeight: '800', fontSize: '17px', margin: 0 }
@@ -331,17 +385,21 @@ const listHeaderStyle: any = { fontSize: '11px', fontWeight: '800', color: color
 
 const timeBadge: any = { fontSize: '10px', backgroundColor: '#f1f5f9', color: '#475569', padding: '4px 8px', borderRadius: '6px', fontWeight: '700' }
 const methodBadge: any = { fontSize: '10px', fontWeight: '700', color: colors.secondaryText }
+const userBadge: any = { fontSize: '10px', backgroundColor: '#f8fafc', color: colors.secondaryText, padding: '3px 8px', borderRadius: '6px', border: `1px solid ${colors.border}` }
+
+const breakdownPanel: any = { background: 'white', padding: '15px', borderRadius: '0 0 20px 20px', border: `1px solid ${colors.border}`, borderTop: 'none', marginTop: '-10px', marginBottom: '10px' }
+const subItemStyle: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: `1px solid ${colors.border}` }
+const subItemTitle: any = { margin: 0, fontSize: '13px', fontWeight: '600' }
+
+const actionPanel: any = { backgroundColor: 'white', padding: '12px 20px 20px', borderRadius: '0 0 20px 20px', border: `1px solid ${colors.border}`, borderTop: 'none', display: 'flex', gap: '10px', marginTop: '-10px' }
+const editBtn: any = { flex: 1, background: '#fffbeb', color: '#b45309', border: '1px solid #fcd34d', padding: '10px', borderRadius: '10px', fontWeight: '700', fontSize: '12px', cursor: 'pointer' }
+const deleteBtn: any = { flex: 1, background: '#fef2f2', color: colors.accentRed, border: '1px solid #fecaca', padding: '10px', borderRadius: '10px', fontWeight: '700', fontSize: '12px', cursor: 'pointer' }
+const deleteIconBtn: any = { background: 'none', border: 'none', cursor: 'pointer', fontSize: '14px' }
 
 const loaderStyle: any = { height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: colors.secondaryText, fontWeight: '700', backgroundColor: colors.bgLight }
-
 const menuBtnStyle: any = { width: '40px', height: '40px', borderRadius: '10px', border: `1px solid ${colors.border}`, background: 'white', fontSize: '20px', cursor: 'pointer' }
-const dropdownStyle: any = { position: 'absolute' as any, top: '50px', right: 0, background: 'white', minWidth: '200px', borderRadius: '12px', boxShadow: '0 10px 25px rgba(0,0,0,0.1)', padding: '8px', zIndex: 1100, border: `1px solid ${colors.border}` }
+const dropdownStyle: any = { position: 'absolute' as any, top: '50px', right: 0, background: 'white', minWidth: '220px', borderRadius: '12px', boxShadow: '0 10px 25px rgba(0,0,0,0.1)', padding: '8px', zIndex: 1100, border: `1px solid ${colors.border}` }
 const menuItem: any = { display: 'block', padding: '12px', textDecoration: 'none', color: colors.primaryDark, fontWeight: '600', fontSize: '14px' }
 const menuSectionLabel: any = { fontSize: '9px', fontWeight: '800', color: colors.secondaryText, padding: '4px 12px' }
 const divider: any = { height: '1px', backgroundColor: colors.border, margin: '4px 0' }
 const logoutBtnStyle: any = { ...menuItem, width: '100%', textAlign: 'left', background: '#fff1f2', color: colors.accentRed, border: 'none', borderRadius: '8px', cursor: 'pointer' }
-
-const zItemHeader: any = { ...itemCard, background: colors.primaryDark, color: 'white', border: 'none', cursor: 'pointer' }
-const breakdownPanel: any = { background: 'white', padding: '15px', borderRadius: '0 0 20px 20px', border: `1px solid ${colors.border}`, borderTop: 'none', marginTop: '-15px', marginBottom: '15px' }
-const subItemStyle: any = { display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: `1px solid ${colors.border}` }
-const subItemTitle: any = { margin: 0, fontSize: '13px', fontWeight: '600' }
