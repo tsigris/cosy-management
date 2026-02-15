@@ -37,7 +37,7 @@ function EmployeesContent() {
   // Active / Inactive
   const [showInactive, setShowInactive] = useState(false)
 
-  // Modal υπερωρίας
+  // States για overtime modal
   const [otModal, setOtModal] = useState<{ empId: string; name: string } | null>(null)
   const [otHours, setOtHours] = useState('')
 
@@ -49,7 +49,13 @@ function EmployeesContent() {
   const [tipEditModal, setTipEditModal] = useState<{ id: string; name: string; amount: number } | null>(null)
   const [tipEditAmount, setTipEditAmount] = useState('')
 
-  // Tips Analysis (μόνο monthly + list)
+  // ✅ Επιλογή μήνα για Month Tips (default: τρέχων μήνας)
+  const [tipsMonth, setTipsMonth] = useState<{ year: number; month: number }>(() => {
+    const d = new Date()
+    return { year: d.getFullYear(), month: d.getMonth() } // month: 0-11
+  })
+
+  // Tips Analysis (month + list)
   const [tipsStats, setTipsStats] = useState({
     monthlyTips: 0,
     lastTips: [] as Array<{ id: string; name: string; date: string; amount: number }>
@@ -58,6 +64,18 @@ function EmployeesContent() {
 
   const availableYears: number[] = []
   for (let y = 2024; y <= new Date().getFullYear(); y++) availableYears.push(y)
+
+  // ✅ Επιλογές μηνών (τελευταίοι 12 μήνες)
+  const monthOptions = Array.from({ length: 12 }, (_, i) => {
+    const d = new Date()
+    d.setMonth(d.getMonth() - i)
+    return {
+      year: d.getFullYear(),
+      month: d.getMonth(),
+      value: `${d.getFullYear()}-${d.getMonth()}`,
+      label: d.toLocaleString('el-GR', { month: 'long', year: 'numeric' })
+    }
+  })
 
   const [formData, setFormData] = useState({
     full_name: '',
@@ -70,7 +88,7 @@ function EmployeesContent() {
     start_date: new Date().toISOString().split('T')[0]
   })
 
-  // ✅ Tips stats fetcher (monthly + last 5)
+  // ✅ Tips stats fetcher (month + last 5 of selected month)
   const getTipsStats = useCallback(async () => {
     try {
       if (!storeId) return
@@ -81,51 +99,57 @@ function EmployeesContent() {
         .eq('store_id', storeId)
         .ilike('notes', '%tips%')
         .order('date', { ascending: false })
-        .limit(500)
+        .limit(800)
 
       if (error) {
         console.error(error)
         return
       }
 
-      const now = new Date()
-      const currentMonth = now.getMonth()
-      const currentYear = now.getFullYear()
-
       let monthlyTips = 0
 
-      const mapped = (data || []).map((t: any) => {
-        const note = String(t.notes || '')
-        const isTip = /tips/i.test(note)
+      const tipsThisSelectedMonth = (data || [])
+        .map((t: any) => {
+          const note = String(t.notes || '')
+          const isTip = /tips/i.test(note)
 
-        // ✅ ΠΡΟΤΕΡΑΙΟΤΗΤΑ: amount από DB (για να δείχνει σωστά στο ιστορικό)
-        // backup: αν παλιά tips έχουν amount=0, τότε παίρνουμε από το note
-        let amount = Number(t.amount) || 0
-        if (isTip && amount === 0) {
-          const m = note.replace(',', '.').match(/[\d.]+/)
-          amount = m ? parseFloat(m[0]) : 0
-        }
+          // amount από DB (σωστό), fallback από notes για παλιές εγγραφές
+          let amount = Number(t.amount) || 0
+          if (isTip && amount === 0) {
+            const m = note.replace(',', '.').match(/[\d.]+/)
+            amount = m ? parseFloat(m[0]) : 0
+          }
 
-        const d = new Date(t.date)
-        const isThisMonth = d.getFullYear() === currentYear && d.getMonth() === currentMonth
-        if (isThisMonth) monthlyTips += amount
+          return {
+            id: t.id,
+            name: t?.employees?.full_name || '—',
+            date: t.date,
+            amount,
+            note
+          }
+        })
+        .filter((t: any) => {
+          const d = new Date(t.date)
+          return d.getFullYear() === tipsMonth.year && d.getMonth() === tipsMonth.month
+        })
 
-        return {
-          id: t.id,
-          name: t?.employees?.full_name || '—',
-          date: t.date,
-          amount
-        }
+      tipsThisSelectedMonth.forEach((t: any) => {
+        monthlyTips += t.amount
       })
 
       setTipsStats({
         monthlyTips,
-        lastTips: mapped.slice(0, 5)
+        lastTips: tipsThisSelectedMonth.slice(0, 5).map((t: any) => ({
+          id: t.id,
+          name: t.name,
+          date: t.date,
+          amount: t.amount
+        }))
       })
     } catch (e) {
       console.error(e)
     }
-  }, [storeId])
+  }, [storeId, tipsMonth])
 
   const fetchInitialData = useCallback(async () => {
     setLoading(true)
@@ -226,7 +250,7 @@ function EmployeesContent() {
   }
 
   // ✅ Καταγραφή νέων Tips σαν transaction
-  // ✅ ΔΙΟΡΘΩΣΗ: amount = amountNum ώστε στο ιστορικό να δείχνει σωστά 10€ (όχι 0€)
+  // ✅ amount = amountNum για να φαίνεται σωστά στο ιστορικό
   async function handleQuickTip() {
     if (!tipAmount || !tipModal) return
 
@@ -263,7 +287,7 @@ function EmployeesContent() {
     getTipsStats()
   }
 
-  // ✅ Επεξεργασία υπάρχοντος Tip (αλλάζει notes + amount)
+  // ✅ Επεξεργασία υπάρχοντος Tip (notes + amount)
   async function handleEditTipSave() {
     if (!tipEditModal) return
     const amountNum = Number(tipEditAmount)
@@ -321,19 +345,27 @@ function EmployeesContent() {
     return Math.ceil(diffTime / (1000 * 60 * 60 * 24))
   }
 
-  // ✅ UPDATED getYearlyStats: tips από amount (και fallback από note για παλιά entries)
+  // ✅ UPDATED getYearlyStats:
+  // - tips υπολογίζονται στο stats.tips
+  // - tips ΔΕΝ υπολογίζονται στο stats.total (ΣΥΝΟΛΟ ΕΤΟΥΣ)
   const getYearlyStats = (id: string) => {
-    const yearTrans = transactions.filter((t) => t.employee_id === id && new Date(t.date).getFullYear() === viewYear)
+    const yearTrans = transactions.filter(
+      (t) => t.employee_id === id && new Date(t.date).getFullYear() === viewYear
+    )
 
     let stats = { base: 0, overtime: 0, bonus: 0, tips: 0, total: 0 }
     const processedDates = new Set()
 
     yearTrans.forEach((t) => {
-      stats.total += Number(t.amount) || 0
+      const note = String(t.notes || '')
+      const isTip = /tips/i.test(note)
+
+      // ✅ ΣΥΝΟΛΟ ΕΤΟΥΣ: ΜΗΝ προσθέτεις tips
+      if (!isTip) {
+        stats.total += Number(t.amount) || 0
+      }
 
       if (!processedDates.has(t.date)) {
-        const note = String(t.notes || '')
-
         const extract = (label: string) => {
           const regex = new RegExp(`${label}:\\s*(\\d+(\\.\\d+)?)`, 'i')
           const match = note.match(regex)
@@ -344,14 +376,14 @@ function EmployeesContent() {
         stats.overtime += extract('Υπερ.')
         stats.bonus += extract('Bonus')
 
-        if (/tips/i.test(note)) {
+        // ✅ Tips total (από amount, fallback από note για παλιά entries)
+        if (isTip) {
           const amt = Number(t.amount) || 0
           if (amt > 0) {
             stats.tips += amt
           } else {
             const m = note.replace(',', '.').match(/[\d.]+/)
-            const tip = m ? parseFloat(m[0]) : 0
-            stats.tips += tip
+            stats.tips += m ? parseFloat(m[0]) : 0
           }
         }
 
@@ -561,14 +593,33 @@ function EmployeesContent() {
           </button>
         </div>
 
-        {/* ✅ TIPS ANALYSIS (MONTH μόνο) */}
+        {/* ✅ MONTH TIPS (με επιλογή μήνα) */}
         <div style={tipsSingleWrap}>
           <div style={tipsCardSingle}>
-            <div style={tipsHeader}>
-              <Coins size={18} />
-              <span style={tipsTitle}>MONTH TIPS</span>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px' }}>
+              <div style={tipsHeader}>
+                <Coins size={18} />
+                <span style={tipsTitle}>MONTH TIPS</span>
+              </div>
+
+              <select
+                value={`${tipsMonth.year}-${tipsMonth.month}`}
+                onChange={(e) => {
+                  const [y, m] = e.target.value.split('-').map(Number)
+                  setTipsMonth({ year: y, month: m })
+                }}
+                style={tipsMonthSelect}
+              >
+                {monthOptions.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
             </div>
+
             <div style={tipsValue}>{tipsStats.monthlyTips.toFixed(2)}€</div>
+
             <button onClick={() => setShowTipsList((v) => !v)} style={tipsListBtn}>
               {showTipsList ? 'Hide List' : 'View List'}
             </button>
@@ -579,7 +630,7 @@ function EmployeesContent() {
           <div style={tipsListWrap}>
             {tipsStats.lastTips.length === 0 ? (
               <p style={{ margin: 0, fontSize: '12px', color: colors.secondaryText, fontWeight: 700 }}>
-                Δεν υπάρχουν tips καταγραφές.
+                Δεν υπάρχουν tips καταγραφές για αυτόν τον μήνα.
               </p>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -644,7 +695,8 @@ function EmployeesContent() {
                   inputMode="decimal"
                   value={payBasis === 'monthly' ? formData.monthly_salary : formData.daily_rate}
                   onFocus={(e) => {
-                    if (e.target.value === '0') setFormData({ ...formData, [payBasis === 'monthly' ? 'monthly_salary' : 'daily_rate']: '' } as any)
+                    if (e.target.value === '0')
+                      setFormData({ ...formData, [payBasis === 'monthly' ? 'monthly_salary' : 'daily_rate']: '' } as any)
                   }}
                   onChange={(e) =>
                     setFormData(
@@ -796,6 +848,8 @@ function EmployeesContent() {
                         <p style={statLabel}>TIPS ({viewYear})</p>
                         <p style={statValue}>{yearlyStats.tips.toFixed(2)}€</p>
                       </div>
+
+                      {/* ✅ ΣΥΝΟΛΟ ΕΤΟΥΣ (χωρίς tips) */}
                       <div style={{ ...statBox, backgroundColor: colors.primaryDark }}>
                         <p style={{ ...statLabel, color: '#94a3b8' }}>ΣΥΝΟΛΟ ΕΤΟΥΣ</p>
                         <p style={{ ...statValue, color: colors.accentGreen }}>{yearlyStats.total.toFixed(2)}€</p>
@@ -809,11 +863,18 @@ function EmployeesContent() {
                         .map((t) => {
                           const isTip = /tips/i.test(t.notes || '')
                           const note = String(t.notes || '')
-                          const noteLabel = isTip ? note.split('[')[0]?.trim() || 'Tips' : (note.split('[')[1]?.replace(']', '') || 'Πληρωμή')
+                          // Tips: δείξε το "Tips: XX€"
+                          // Άλλα: δείξε το [ ... ] (όπως πριν)
+                          const noteLabel = isTip
+                            ? (note.split('[')[0]?.trim() || 'Tips')
+                            : (note.split('[')[1]?.replace(']', '') || 'Πληρωμή')
+
                           return (
                             <div key={t.id} style={historyItemExtended}>
                               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <span style={{ color: colors.secondaryText, fontWeight: '700', fontSize: '11px' }}>{new Date(t.date).toLocaleDateString('el-GR')}</span>
+                                <span style={{ color: colors.secondaryText, fontWeight: '700', fontSize: '11px' }}>
+                                  {new Date(t.date).toLocaleDateString('el-GR')}
+                                </span>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                                   <span>{t.method === 'Τράπεζα' ? '🏦' : '💵'}</span>
                                   <span style={{ fontWeight: '800', color: colors.primaryDark }}>{Number(t.amount).toFixed(2)}€</span>
@@ -822,7 +883,16 @@ function EmployeesContent() {
                                   </button>
                                 </div>
                               </div>
-                              <p style={{ margin: '4px 0 0', fontSize: '10px', color: isTip ? '#b45309' : colors.secondaryText, fontStyle: 'italic', fontWeight: isTip ? 900 : 600 }}>
+
+                              <p
+                                style={{
+                                  margin: '4px 0 0',
+                                  fontSize: '10px',
+                                  color: isTip ? '#b45309' : colors.secondaryText,
+                                  fontStyle: 'italic',
+                                  fontWeight: isTip ? 900 : 600
+                                }}
+                              >
                                 {noteLabel}
                               </p>
                             </div>
@@ -877,23 +947,137 @@ function EmployeesContent() {
 }
 
 // --- STYLES ---
-const iphoneWrapper: any = { backgroundColor: colors.bgLight, minHeight: '100dvh', padding: '20px', overflowY: 'auto', position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }
-const logoBoxStyle: any = { width: '42px', height: '42px', backgroundColor: '#dbeafe', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px' }
-const backBtnStyle: any = { textDecoration: 'none', color: colors.secondaryText, fontSize: '18px', fontWeight: 'bold', width: '38px', height: '38px', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: colors.white, borderRadius: '12px', border: `1px solid ${colors.border}` }
-const payBtnStyle: any = { backgroundColor: colors.accentBlue, color: 'white', padding: '8px 14px', borderRadius: '10px', fontSize: '10px', fontWeight: '800', textDecoration: 'none', boxShadow: '0 4px 8px rgba(37, 99, 235, 0.2)' }
-const addBtn: any = { width: '100%', padding: '16px', backgroundColor: colors.primaryDark, color: 'white', border: 'none', borderRadius: '16px', fontWeight: '700', fontSize: '14px', marginBottom: '20px' }
+const iphoneWrapper: any = {
+  backgroundColor: colors.bgLight,
+  minHeight: '100dvh',
+  padding: '20px',
+  overflowY: 'auto',
+  position: 'absolute',
+  top: 0,
+  left: 0,
+  right: 0,
+  bottom: 0
+}
+
+const logoBoxStyle: any = {
+  width: '42px',
+  height: '42px',
+  backgroundColor: '#dbeafe',
+  borderRadius: '12px',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  fontSize: '20px'
+}
+
+const backBtnStyle: any = {
+  textDecoration: 'none',
+  color: colors.secondaryText,
+  fontSize: '18px',
+  fontWeight: 'bold',
+  width: '38px',
+  height: '38px',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  backgroundColor: colors.white,
+  borderRadius: '12px',
+  border: `1px solid ${colors.border}`
+}
+
+const payBtnStyle: any = {
+  backgroundColor: colors.accentBlue,
+  color: 'white',
+  padding: '8px 14px',
+  borderRadius: '10px',
+  fontSize: '10px',
+  fontWeight: '800',
+  textDecoration: 'none',
+  boxShadow: '0 4px 8px rgba(37, 99, 235, 0.2)'
+}
+
+const addBtn: any = {
+  width: '100%',
+  padding: '16px',
+  backgroundColor: colors.primaryDark,
+  color: 'white',
+  border: 'none',
+  borderRadius: '16px',
+  fontWeight: '700',
+  fontSize: '14px',
+  marginBottom: '20px'
+}
+
 const cancelBtn: any = { ...addBtn, backgroundColor: colors.white, color: colors.secondaryText, border: `1px solid ${colors.border}` }
 
-const formCard: any = { backgroundColor: colors.white, padding: '24px', borderRadius: '24px', border: '2px solid', marginBottom: '25px', boxShadow: '0 4px 12px rgba(0,0,0,0.05)' }
-const labelStyle: any = { fontSize: '10px', fontWeight: '800', color: colors.secondaryText, display: 'block', marginBottom: '6px', textTransform: 'uppercase' }
-const inputStyle: any = { width: '100%', padding: '14px', borderRadius: '12px', border: `1px solid ${colors.border}`, fontSize: '15px', fontWeight: '700', backgroundColor: colors.bgLight, boxSizing: 'border-box', outline: 'none' }
-const saveBtnStyle: any = { width: '100%', color: 'white', padding: '16px', borderRadius: '14px', border: 'none', fontWeight: '800', fontSize: '15px', marginTop: '20px' }
+const formCard: any = {
+  backgroundColor: colors.white,
+  padding: '24px',
+  borderRadius: '24px',
+  border: '2px solid',
+  marginBottom: '25px',
+  boxShadow: '0 4px 12px rgba(0,0,0,0.05)'
+}
 
-const employeeCard: any = { backgroundColor: colors.white, borderRadius: '22px', border: `1px solid ${colors.border}`, overflow: 'hidden', marginBottom: '12px' }
+const labelStyle: any = {
+  fontSize: '10px',
+  fontWeight: '800',
+  color: colors.secondaryText,
+  display: 'block',
+  marginBottom: '6px',
+  textTransform: 'uppercase'
+}
+
+const inputStyle: any = {
+  width: '100%',
+  padding: '14px',
+  borderRadius: '12px',
+  border: `1px solid ${colors.border}`,
+  fontSize: '15px',
+  fontWeight: '700',
+  backgroundColor: colors.bgLight,
+  boxSizing: 'border-box',
+  outline: 'none'
+}
+
+const saveBtnStyle: any = {
+  width: '100%',
+  color: 'white',
+  padding: '16px',
+  borderRadius: '14px',
+  border: 'none',
+  fontWeight: '800',
+  fontSize: '15px',
+  marginTop: '20px'
+}
+
+const employeeCard: any = {
+  backgroundColor: colors.white,
+  borderRadius: '22px',
+  border: `1px solid ${colors.border}`,
+  overflow: 'hidden',
+  marginBottom: '12px'
+}
+
 const badgeStyle: any = { fontSize: '9px', fontWeight: '700', padding: '4px 10px', borderRadius: '6px' }
 
-const filterContainer: any = { display: 'flex', gap: '8px', marginBottom: '15px', padding: '8px', backgroundColor: colors.slate100, borderRadius: '12px' }
-const filterSelect: any = { padding: '6px', borderRadius: '8px', border: `1px solid ${colors.border}`, backgroundColor: colors.white, fontSize: '12px', fontWeight: '800' }
+const filterContainer: any = {
+  display: 'flex',
+  gap: '8px',
+  marginBottom: '15px',
+  padding: '8px',
+  backgroundColor: colors.slate100,
+  borderRadius: '12px'
+}
+
+const filterSelect: any = {
+  padding: '6px',
+  borderRadius: '8px',
+  border: `1px solid ${colors.border}`,
+  backgroundColor: colors.white,
+  fontSize: '12px',
+  fontWeight: '800'
+}
 
 const statsGrid: any = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '25px' }
 const statBox: any = { padding: '15px', backgroundColor: colors.slate100, borderRadius: '16px', textAlign: 'center' }
@@ -931,6 +1115,18 @@ const tipsValue: any = { marginTop: '8px', fontSize: '20px', fontWeight: 900, co
 const tipsListBtn: any = { marginTop: '10px', width: '100%', padding: '10px', borderRadius: '12px', border: '1px solid #f59e0b', backgroundColor: '#fff7ed', color: '#b45309', fontWeight: 900, fontSize: '11px', cursor: 'pointer' }
 const tipsListWrap: any = { backgroundColor: colors.white, border: `1px solid ${colors.border}`, borderRadius: '16px', padding: '14px', marginBottom: '18px' }
 const tipsListItem: any = { padding: '10px', borderRadius: '12px', border: `1px solid ${colors.border}`, backgroundColor: colors.bgLight }
+
+const tipsMonthSelect: any = {
+  padding: '8px 10px',
+  borderRadius: '12px',
+  border: '1px solid #f59e0b',
+  backgroundColor: '#fff7ed',
+  color: '#b45309',
+  fontWeight: 900,
+  fontSize: '11px',
+  outline: 'none',
+  cursor: 'pointer'
+}
 
 const miniIconBtn: any = {
   width: '34px',
