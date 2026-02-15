@@ -31,9 +31,12 @@ function AddExpenseForm() {
   const [notes, setNotes] = useState('')
   const [isCredit, setIsCredit] = useState(false) 
   const [isAgainstDebt, setIsAgainstDebt] = useState(searchParams.get('mode') === 'debt')
-  
-  // ✅ ΝΕΑ ΑΛΛΑΓΗ: STATE ΓΙΑ ΧΩΡΙΣ ΤΙΜΟΛΟΓΙΟ
   const [noInvoice, setNoInvoice] = useState(false)
+
+  // ✅ STATES ΓΙΑ ΦΩΤΟΓΡΑΦΙΑ
+  const [imageFile, setImageFile] = useState<File | null>(null)
+  const [imagePreview, setImagePreview] = useState<string | null>(null)
+  const [isUploading, setIsUploading] = useState(false)
 
   const [currentUsername, setCurrentUsername] = useState('Χρήστης')
   const [loading, setLoading] = useState(true)
@@ -62,11 +65,7 @@ function AddExpenseForm() {
         setStoreId(profile.store_id)
         
         const [sRes, fRes] = await Promise.all([
-          supabase.from('suppliers')
-            .select('*')
-            .eq('store_id', profile.store_id)
-            .neq('is_active', false) 
-            .order('name'),
+          supabase.from('suppliers').select('*').eq('store_id', profile.store_id).neq('is_active', false).order('name'),
           supabase.from('fixed_assets').select('id, name').eq('store_id', profile.store_id).order('name')
         ])
         if (sRes.data) setSuppliers(sRes.data)
@@ -77,6 +76,15 @@ function AddExpenseForm() {
 
   useEffect(() => { loadFormData() }, [loadFormData])
 
+  // ✅ HANDLE IMAGE SELECTION
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0]
+      setImageFile(file)
+      setImagePreview(URL.createObjectURL(file))
+    }
+  }
+
   const filteredSuppliers = suppliers.filter(s => 
     s.name.toLowerCase().includes(searchTerm.toLowerCase())
   )
@@ -84,15 +92,10 @@ function AddExpenseForm() {
   async function handleQuickAddSupplier() {
     if (!newSupName) return toast.error('Δώστε όνομα προμηθευτή');
     if (!storeId) return toast.error('Σφάλμα: Δεν βρέθηκε το ID καταστήματος');
-
     try {
       const { data, error } = await supabase.from('suppliers').insert([
-        { 
-          name: newSupName, phone: newSupPhone, vat_number: newSupAfm, iban: newSupIban,
-          category: 'Εμπορεύματα', store_id: storeId, is_active: true 
-        }
+        { name: newSupName, phone: newSupPhone, vat_number: newSupAfm, iban: newSupIban, category: 'Εμπορεύματα', store_id: storeId, is_active: true }
       ]).select().single();
-
       if (error) throw error;
       setSuppliers([...suppliers, data].sort((a,b) => a.name.localeCompare(b.name)));
       setSelectedSup(data.id);
@@ -106,13 +109,27 @@ function AddExpenseForm() {
   async function handleSave() {
     if (!amount || Number(amount) <= 0) return alert('Συμπληρώστε το ποσό')
     setLoading(true)
-    try {
-      const { data: { session } } = await supabase.auth.getSession()
+    setIsUploading(true)
 
-      // ✅ ΝΕΑ ΑΛΛΑΓΗ: ΣΥΝΔΕΣΗ ΜΕ ΤΗΝ ΑΝΑΛΥΣΗ ΜΕΣΩ NOTES
-      const finalNotes = noInvoice 
-        ? (notes ? `${notes} (ΧΩΡΙΣ ΤΙΜΟΛΟΓΙΟ)` : 'ΧΩΡΙΣ ΤΙΜΟΛΟΓΙΟ') 
-        : notes;
+    try {
+      let imageUrl = null
+
+      // ✅ UPLOAD IMAGE TO STORE-SPECIFIC FOLDER
+      if (imageFile && storeId) {
+        const fileExt = imageFile.name.split('.').pop()
+        const fileName = `${storeId}/${Date.now()}.${fileExt}`
+        const { error: uploadError } = await supabase.storage
+          .from('invoices')
+          .upload(fileName, imageFile)
+        
+        if (uploadError) throw uploadError
+
+        const { data: urlData } = supabase.storage.from('invoices').getPublicUrl(fileName)
+        imageUrl = urlData.publicUrl
+      }
+
+      const { data: { session } } = await supabase.auth.getSession()
+      const finalNotes = noInvoice ? (notes ? `${notes} (ΧΩΡΙΣ ΤΙΜΟΛΟΓΙΟ)` : 'ΧΩΡΙΣ ΤΙΜΟΛΟΓΙΟ') : notes;
 
       const payload = {
         amount: Number(amount),
@@ -126,13 +143,19 @@ function AddExpenseForm() {
         fixed_asset_id: selectedFixed || null,
         category: isAgainstDebt ? 'Εξόφληση Χρέους' : (selectedSup ? 'Εμπορεύματα' : (selectedFixed ? 'Πάγια' : 'Λοιπά')),
         created_by_name: currentUsername,
-        notes: finalNotes
+        notes: finalNotes,
+        image_url: imageUrl // ✅ ΑΠΟΘΗΚΕΥΣΗ URL ΣΤΗ ΒΑΣΗ
       }
+
       const { error } = await supabase.from('transactions').insert([payload])
       if (error) throw error
       router.push(`/?date=${selectedDate}`)
       router.refresh()
-    } catch (error: any) { alert(error.message); setLoading(false); }
+    } catch (error: any) { 
+      alert(error.message); 
+      setLoading(false); 
+      setIsUploading(false);
+    }
   }
 
   return (
@@ -152,17 +175,31 @@ function AddExpenseForm() {
           <Link href="/" style={backBtnStyle}>✕</Link>
         </div>
 
-        {/* ✅ ΝΕΑ ΑΛΛΑΓΗ: ΠΟΣΟ ΜΕ AUTO-FOCUS & TOGGLE */}
+        {/* ✅ ΦΩΤΟΓΡΑΦΙΑ ΤΙΜΟΛΟΓΙΟΥ */}
+        <div style={{ marginBottom: '24px' }}>
+          <label style={labelStyle}>ΦΩΤΟΓΡΑΦΙΑ ΤΙΜΟΛΟΓΙΟΥ</label>
+          <div style={imageUploadContainer}>
+            {imagePreview ? (
+              <div style={{ position: 'relative', width: '100%', height: '180px' }}>
+                <img src={imagePreview} alt="Preview" style={imagePreviewStyle} />
+                <button onClick={() => {setImageFile(null); setImagePreview(null);}} style={removeImageBtn}>✕</button>
+              </div>
+            ) : (
+              <label style={uploadPlaceholder}>
+                <span style={{ fontSize: '30px' }}>📷</span>
+                <span style={{ fontSize: '12px', fontWeight: '800' }}>ΛΗΨΗ Η ΕΠΙΛΟΓΗ ΑΡΧΕΙΟΥ</span>
+                <input type="file" accept="image/*" capture="environment" onChange={handleImageChange} style={{ display: 'none' }} />
+              </label>
+            )}
+          </div>
+        </div>
+
         <div style={{ marginBottom: '20px' }}>
           <label style={labelStyle}>ΠΟΣΟ (€)</label>
           <input 
-            type="number" 
-            inputMode="decimal" 
-            autoFocus // ✅ ΕΣΤΙΑΣΗ ΜΕ ΤΟ ΜΠΑΙΝΕΙΣ
-            value={amount} 
-            onChange={e => setAmount(e.target.value)} 
-            style={inputStyle} 
-            placeholder="0.00" 
+            type="number" inputMode="decimal" autoFocus
+            value={amount} onChange={e => setAmount(e.target.value)} 
+            style={inputStyle} placeholder="0.00" 
           />
 
           <div 
@@ -188,7 +225,6 @@ function AddExpenseForm() {
           </div>
         </div>
 
-        {/* ΜΕΘΟΔΟΣ ΠΛΗΡΩΜΗΣ */}
         <div style={{ marginBottom: '24px' }}>
           <label style={labelStyle}>ΜΕΘΟΔΟΣ ΠΛΗΡΩΜΗΣ</label>
           <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
@@ -254,8 +290,8 @@ function AddExpenseForm() {
           <textarea value={notes} onChange={e => setNotes(e.target.value)} style={{ ...inputStyle, height: '80px' }} placeholder="Περιγραφή..." />
         </div>
 
-        <button onClick={handleSave} disabled={loading} style={saveBtn}>
-          {loading ? 'ΑΠΟΘΗΚΕΥΣΗ...' : 'ΟΛΟΚΛΗΡΩΣΗ'}
+        <button onClick={handleSave} disabled={loading || isUploading} style={saveBtn}>
+          {isUploading ? 'ΓΙΝΕΤΑΙ ΑΝΕΒΑΣΜΑ...' : 'ΟΛΟΚΛΗΡΩΣΗ'}
         </button>
       </div>
 
@@ -309,5 +345,11 @@ const dropdownList = { position: 'absolute' as const, top: '100%', left: 0, righ
 const dropdownItem = { padding: '14px', borderBottom: `1px solid ${colors.border}`, fontSize: '14px', fontWeight: '700', cursor: 'pointer', color: colors.primaryDark };
 const modalOverlay: any = { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px', backdropFilter: 'blur(2px)' };
 const modalCard = { backgroundColor: 'white', padding: '24px', borderRadius: '24px', width: '100%', maxWidth: '450px', boxShadow: '0 20px 40px rgba(0,0,0,0.2)', maxHeight: '90vh', overflowY: 'auto' as const };
+
+// ✅ NEW STYLES FOR IMAGE
+const imageUploadContainer = { width: '100%', backgroundColor: '#f1f5f9', borderRadius: '18px', border: '2px dashed #cbd5e1', overflow: 'hidden' };
+const uploadPlaceholder = { display: 'flex', flexDirection: 'column' as const, alignItems: 'center', justifyContent: 'center', padding: '40px', cursor: 'pointer', gap: '10px', color: '#64748b' };
+const imagePreviewStyle = { width: '100%', height: '180px', objectFit: 'cover' as const };
+const removeImageBtn: any = { position: 'absolute', top: '10px', right: '10px', backgroundColor: 'rgba(0,0,0,0.5)', color: 'white', border: 'none', borderRadius: '50%', width: '30px', height: '30px', cursor: 'pointer', fontWeight: 'bold' };
 
 export default function AddExpensePage() { return <Suspense><AddExpenseForm /></Suspense> }

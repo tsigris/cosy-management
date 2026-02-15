@@ -56,13 +56,11 @@ function AnalysisContent() {
     // --- ΥΠΟΛΟΓΙΣΜΟΙ ΕΞΟΔΩΝ (ΔΙΑΧΩΡΙΣΜΟΣ ΤΙΜΟΛΟΓΙΩΝ) ---
     const expenseTransactions = currentData.filter(t => t.type === 'expense' || t.category === 'pocket')
     
-    // Μαύρα έξοδα (αυτά που έχουν τη σήμανση "ΧΩΡΙΣ ΤΙΜΟΛΟΓΙΟ")
     const offTheBooksExpenses = expenseTransactions.filter(t => 
       t.notes?.toUpperCase().includes('ΧΩΡΙΣ ΤΙΜΟΛΟΓΙΟ')
     )
     const offTheBooksTotal = offTheBooksExpenses.reduce((acc, t) => acc + Number(t.amount), 0)
 
-    // Νόμιμα έξοδα (τα υπόλοιπα)
     const officialExpenses = expenseTransactions.filter(t => 
       !t.notes?.toUpperCase().includes('ΧΩΡΙΣ ΤΙΜΟΛΟΓΙΟ')
     )
@@ -111,7 +109,7 @@ function AnalysisContent() {
           <div style={logoBoxStyle}>📊</div>
           <div>
             <h1 style={{ fontWeight: '900', fontSize: '18px', margin: 0 }}>Ανάλυση</h1>
-            <p style={{ margin: 0, fontSize: '9px', color: '#94a3b8', fontWeight: '800' }}>ΕΠΙΛΟΓΗ ΠΕΡΙΟΔΟΥ</p>
+            <p style={{ margin: 0, fontSize: '9px', color: '#94a3b8', fontWeight: '800' }}>ΒΑΡΔΙΑ: 07:00 - 06:59</p>
           </div>
         </div>
         <Link href="/" style={backBtnStyle}>✕</Link>
@@ -170,9 +168,15 @@ function AnalysisContent() {
                 {stats.finalDisplayData.map((item: any) => (
                   <div key={item.id} style={item.isZ ? zRowStyle : rowStyle}>
                     <div style={{ flex: 1 }}>
-                      <p style={{ fontWeight: '800', fontSize: '14px', margin: 0, color: '#1e293b' }}>
+                      <p style={{ fontWeight: '800', fontSize: '14px', margin: 0, color: '#1e293b', display: 'flex', alignItems: 'center', gap: '8px' }}>
                         {item.isZ ? '📟 ΚΛΕΙΣΙΜΟ Ζ (ΟΜΑΔΟΠΟΙΗΜΕΝΟ)' : (item.suppliers?.name || item.notes || item.category)}
                         {item.notes?.includes('ΧΩΡΙΣ ΤΙΜΟΛΟΓΙΟ') && <span style={blackBadge}>ΜΑΥΡΑ</span>}
+                        {/* ✅ ΕΙΚΟΝΙΔΙΟ ΦΩΤΟΓΡΑΦΙΑΣ */}
+                        {item.image_url && (
+                          <a href={item.image_url} target="_blank" rel="noreferrer" style={{ textDecoration: 'none', fontSize: '16px' }}>
+                            🖼️
+                          </a>
+                        )}
                       </p>
                       <span style={{ fontSize: '11px', color: '#94a3b8', fontWeight: '700' }}>
                         {format(parseISO(item.date), 'dd MMM', { locale: el })} {item.isZ ? '' : `• ${item.method}`}
@@ -183,6 +187,7 @@ function AnalysisContent() {
                     </p>
                   </div>
                 ))}
+                {stats.finalDisplayData.length === 0 && <p style={{textAlign:'center', padding:'30px', color:'#94a3b8'}}>Δεν βρέθηκαν κινήσεις.</p>}
             </div>
         )}
       </div>
@@ -208,7 +213,7 @@ const listWrapper: any = { backgroundColor: 'white', padding: '22px', borderRadi
 const listTitle: any = { fontSize: '10px', fontWeight: '900', color: '#94a3b8', marginBottom: '15px', textTransform: 'uppercase' };
 const rowStyle: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 0', borderBottom: '1px solid #f8fafc' };
 const zRowStyle: any = { ...rowStyle, backgroundColor: '#f0f9ff', padding: '15px', borderRadius: '15px', margin: '6px 0', borderBottom: 'none' };
-const blackBadge: any = { fontSize: '8px', backgroundColor: '#fee2e2', color: '#ef4444', padding: '2px 6px', borderRadius: '6px', marginLeft: '8px', fontWeight: '900' };
+const blackBadge: any = { fontSize: '8px', backgroundColor: '#fee2e2', color: '#ef4444', padding: '2px 6px', borderRadius: '6px', fontWeight: '900' };
 
 export default function AnalysisPage() {
   return <main style={{ backgroundColor: '#f8fafc', minHeight: '100vh', padding: '15px' }}><Suspense fallback={<div>Φόρτωση...</div>}><AnalysisContent /></Suspense></main>
