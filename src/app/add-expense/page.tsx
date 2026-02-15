@@ -214,26 +214,14 @@ function AddExpenseForm() {
           </div>
         </div>
 
-        {/* ✅ ΕΠΑΝΑΦΟΡΑ: ΠΙΣΤΩΣΗ & ΕΝΑΝΤΙ ΧΡΕΟΥΣ */}
+        {/* ΠΙΣΤΩΣΗ & ΕΝΑΝΤΙ ΧΡΕΟΥΣ */}
         <div style={creditPanelStyle}>
           <div style={{ marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <input 
-                type="checkbox" 
-                checked={isCredit} 
-                onChange={e => {setIsCredit(e.target.checked); if(e.target.checked) setIsAgainstDebt(false)}} 
-                id="credit" 
-                style={checkboxStyle} 
-            />
+            <input type="checkbox" checked={isCredit} onChange={e => {setIsCredit(e.target.checked); if(e.target.checked) setIsAgainstDebt(false)}} id="credit" style={checkboxStyle} />
             <label htmlFor="credit" style={checkLabelStyle}>ΕΠΙ ΠΙΣΤΩΣΕΙ (ΝΕΟ ΧΡΕΟΣ)</label>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <input 
-                type="checkbox" 
-                checked={isAgainstDebt} 
-                onChange={e => {setIsAgainstDebt(e.target.checked); if(e.target.checked) setIsCredit(false)}} 
-                id="against" 
-                style={checkboxStyle} 
-            />
+            <input type="checkbox" checked={isAgainstDebt} onChange={e => {setIsAgainstDebt(e.target.checked); if(e.target.checked) setIsCredit(false)}} id="against" style={checkboxStyle} />
             <label htmlFor="against" style={{...checkLabelStyle, color: isAgainstDebt ? colors.accentBlue : colors.primaryDark }}>ΕΝΑΝΤΙ ΠΑΛΑΙΟΥ ΧΡΕΟΥ</label>
           </div>
         </div>
@@ -283,7 +271,7 @@ function AddExpenseForm() {
           <textarea value={notes} onChange={e => setNotes(e.target.value)} style={{ ...inputStyle, height: '60px' }} placeholder="..." />
         </div>
 
-        {/* ΦΩΤΟΓΡΑΦΙΑ (ΚΑΤΩ ΜΕΡΟΣ & COMPACT) */}
+        {/* ΦΩΤΟΓΡΑΦΙΑ */}
         {!noInvoice && (
           <div style={{ marginBottom: '30px' }}>
             <label style={labelStyle}>📸 ΦΩΤΟΓΡΑΦΙΑ ΤΙΜΟΛΟΓΙΟΥ</label>
@@ -341,23 +329,28 @@ function AddExpenseForm() {
   )
 }
 
-// ✅ ΣΤΥΛ - ΜΕ ΔΙΟΡΘΩΣΗ ΓΙΑ REDMI (ΑΦΑΙΡΕΣΗ VH & ΠΡΟΣΘΗΚΗ PADDING)
+// ✅ ΣΤΥΛ - ΔΙΟΡΘΩΣΗ ΓΙΑ REDMI (ΑΦΑΙΡΕΣΗ OVERFLOW AUTO ΑΠΟ ΤΟ MAIN ΚΑΙ ΧΡΗΣΗ 101VH)
 const mainContainerStyle: any = { 
   backgroundColor: colors.bgLight, 
-  minHeight: '100%', 
-  padding: '24px 16px 200px 16px', // Μεγάλο padding στο τέλος για το πληκτρολόγιο
-  display: 'block',
-  overflowY: 'auto'
+  minHeight: '101vh', // Αναγκάζει το browser να επιτρέψει το scroll
+  padding: '24px 16px 200px 16px', 
+  margin: 0,
+  position: 'relative' as const,
+  display: 'flex',
+  flexDirection: 'column' as const,
+  WebkitOverflowScrolling: 'touch'
 };
 
 const formCardStyle = { 
   maxWidth: '500px', 
+  width: '100%',
   margin: '0 auto', 
   backgroundColor: colors.white, 
   borderRadius: '28px', 
   padding: '24px', 
   boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)',
-  marginBottom: '40px'
+  marginBottom: '40px',
+  pointerEvents: 'auto' as const 
 };
 
 const headerRow = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' };
@@ -381,7 +374,6 @@ const uploadPlaceholder = { display: 'flex', flexDirection: 'column' as const, a
 const imagePreviewStyle = { width: '100%', height: '120px', objectFit: 'cover' as const };
 const removeImageBtn: any = { position: 'absolute', top: '5px', right: '5px', backgroundColor: 'rgba(0,0,0,0.5)', color: 'white', border: 'none', borderRadius: '50%', width: '24px', height: '24px', cursor: 'pointer', fontWeight: 'bold' };
 
-// ✅ ΝΕΑ ΣΤΥΛ ΓΙΑ ΠΙΣΤΩΣΗ
 const creditPanelStyle = { backgroundColor: colors.bgLight, padding: '16px', borderRadius: '18px', marginBottom: '20px' };
 const checkboxStyle = { width: '20px', height: '20px' };
 const checkLabelStyle = { fontSize: '12px', fontWeight: '700', color: colors.primaryDark };
