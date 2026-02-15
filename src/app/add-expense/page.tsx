@@ -33,7 +33,6 @@ function AddExpenseForm() {
   const [isAgainstDebt, setIsAgainstDebt] = useState(searchParams.get('mode') === 'debt')
   const [noInvoice, setNoInvoice] = useState(false)
 
-  // ✅ STATES ΓΙΑ ΦΩΤΟΓΡΑΦΙΑ
   const [imageFile, setImageFile] = useState<File | null>(null)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
   const [isUploading, setIsUploading] = useState(false)
@@ -76,7 +75,6 @@ function AddExpenseForm() {
 
   useEffect(() => { loadFormData() }, [loadFormData])
 
-  // ✅ HANDLE IMAGE SELECTION
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0]
@@ -113,17 +111,13 @@ function AddExpenseForm() {
 
     try {
       let imageUrl = null
-
-      // ✅ UPLOAD IMAGE TO STORE-SPECIFIC FOLDER
-      if (imageFile && storeId) {
+      if (imageFile && storeId && !noInvoice) {
         const fileExt = imageFile.name.split('.').pop()
         const fileName = `${storeId}/${Date.now()}.${fileExt}`
         const { error: uploadError } = await supabase.storage
           .from('invoices')
           .upload(fileName, imageFile)
-        
         if (uploadError) throw uploadError
-
         const { data: urlData } = supabase.storage.from('invoices').getPublicUrl(fileName)
         imageUrl = urlData.publicUrl
       }
@@ -144,7 +138,7 @@ function AddExpenseForm() {
         category: isAgainstDebt ? 'Εξόφληση Χρέους' : (selectedSup ? 'Εμπορεύματα' : (selectedFixed ? 'Πάγια' : 'Λοιπά')),
         created_by_name: currentUsername,
         notes: finalNotes,
-        image_url: imageUrl // ✅ ΑΠΟΘΗΚΕΥΣΗ URL ΣΤΗ ΒΑΣΗ
+        image_url: imageUrl
       }
 
       const { error } = await supabase.from('transactions').insert([payload])
@@ -159,7 +153,7 @@ function AddExpenseForm() {
   }
 
   return (
-    <main style={{ backgroundColor: colors.bgLight, minHeight: '100vh', padding: '24px 16px 120px 16px', display: 'block' }}>
+    <main style={{ backgroundColor: colors.bgLight, minHeight: '100vh', padding: '24px 16px 120px 16px' }}>
       <Toaster position="top-center" richColors />
       
       <div style={formCardStyle}>
@@ -175,25 +169,7 @@ function AddExpenseForm() {
           <Link href="/" style={backBtnStyle}>✕</Link>
         </div>
 
-        {/* ✅ ΦΩΤΟΓΡΑΦΙΑ ΤΙΜΟΛΟΓΙΟΥ */}
-        <div style={{ marginBottom: '24px' }}>
-          <label style={labelStyle}>ΦΩΤΟΓΡΑΦΙΑ ΤΙΜΟΛΟΓΙΟΥ</label>
-          <div style={imageUploadContainer}>
-            {imagePreview ? (
-              <div style={{ position: 'relative', width: '100%', height: '180px' }}>
-                <img src={imagePreview} alt="Preview" style={imagePreviewStyle} />
-                <button onClick={() => {setImageFile(null); setImagePreview(null);}} style={removeImageBtn}>✕</button>
-              </div>
-            ) : (
-              <label style={uploadPlaceholder}>
-                <span style={{ fontSize: '30px' }}>📷</span>
-                <span style={{ fontSize: '12px', fontWeight: '800' }}>ΛΗΨΗ Η ΕΠΙΛΟΓΗ ΑΡΧΕΙΟΥ</span>
-                <input type="file" accept="image/*" capture="environment" onChange={handleImageChange} style={{ display: 'none' }} />
-              </label>
-            )}
-          </div>
-        </div>
-
+        {/* ΠΟΣΟ & TOGGLE */}
         <div style={{ marginBottom: '20px' }}>
           <label style={labelStyle}>ΠΟΣΟ (€)</label>
           <input 
@@ -225,6 +201,7 @@ function AddExpenseForm() {
           </div>
         </div>
 
+        {/* ΜΕΘΟΔΟΣ ΠΛΗΡΩΜΗΣ */}
         <div style={{ marginBottom: '24px' }}>
           <label style={labelStyle}>ΜΕΘΟΔΟΣ ΠΛΗΡΩΜΗΣ</label>
           <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
@@ -237,17 +214,7 @@ function AddExpenseForm() {
           </div>
         </div>
 
-        <div style={creditPanel}>
-          <div style={{ marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <input type="checkbox" checked={isCredit} onChange={e => {setIsCredit(e.target.checked); if(e.target.checked) setIsAgainstDebt(false)}} id="credit" style={checkboxStyle} />
-            <label htmlFor="credit" style={checkLabel}>ΕΠΙ ΠΙΣΤΩΣΕΙ (ΝΕΟ ΧΡΕΟΣ)</label>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <input type="checkbox" checked={isAgainstDebt} onChange={e => {setIsAgainstDebt(e.target.checked); if(e.target.checked) setIsCredit(false)}} id="against" style={checkboxStyle} />
-            <label htmlFor="against" style={{...checkLabel, color: isAgainstDebt ? colors.accentBlue : colors.primaryDark }}>ΕΝΑΝΤΙ ΠΑΛΑΙΟΥ ΧΡΕΟΥ</label>
-          </div>
-        </div>
-
+        {/* ΠΡΟΜΗΘΕΥΤΗΣ */}
         <div style={{ marginBottom: '20px' }}>
           <label style={labelStyle}>🏭 ΑΝΑΖΗΤΗΣΗ ΠΡΟΜΗΘΕΥΤΗ</label>
           <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '12px' }}>
@@ -277,6 +244,7 @@ function AddExpenseForm() {
           </select>
         </div>
 
+        {/* ΠΑΓΙΟ */}
         <div style={{ marginBottom: '20px' }}>
           <label style={labelStyle}>🏢 ΠΑΓΙΟ / ΛΟΓΑΡΙΑΣΜΟΣ</label>
           <select value={selectedFixed} onChange={e => {setSelectedFixed(e.target.value); setSelectedSup(''); setSearchTerm('');}} style={inputStyle}>
@@ -285,10 +253,34 @@ function AddExpenseForm() {
           </select>
         </div>
 
+        {/* ΣΗΜΕΙΩΣΕΙΣ */}
         <div style={{ marginBottom: '25px' }}>
           <label style={labelStyle}>ΣΗΜΕΙΩΣΕΙΣ</label>
-          <textarea value={notes} onChange={e => setNotes(e.target.value)} style={{ ...inputStyle, height: '80px' }} placeholder="Περιγραφή..." />
+          <textarea value={notes} onChange={e => setNotes(e.target.value)} style={{ ...inputStyle, height: '60px' }} placeholder="..." />
         </div>
+
+        {/* ✅ ΦΩΤΟΓΡΑΦΙΑ (ΚΑΤΩ ΜΕΡΟΣ & COMPACT) */}
+        {!noInvoice && (
+          <div style={{ marginBottom: '20px' }}>
+            <label style={labelStyle}>📸 ΦΩΤΟΓΡΑΦΙΑ ΤΙΜΟΛΟΓΙΟΥ</label>
+            <div style={imageUploadContainer}>
+              {imagePreview ? (
+                <div style={{ position: 'relative', width: '100%', height: '120px' }}>
+                  <img src={imagePreview} alt="Preview" style={imagePreviewStyle} />
+                  <button onClick={() => {setImageFile(null); setImagePreview(null);}} style={removeImageBtn}>✕</button>
+                </div>
+              ) : (
+                <label style={uploadPlaceholder}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <span style={{ fontSize: '20px' }}>📷</span>
+                    <span style={{ fontSize: '11px', fontWeight: '800' }}>ΛΗΨΗ Η ΕΠΙΛΟΓΗ</span>
+                  </div>
+                  <input type="file" accept="image/*" capture="environment" onChange={handleImageChange} style={{ display: 'none' }} />
+                </label>
+              )}
+            </div>
+          </div>
+        )}
 
         <button onClick={handleSave} disabled={loading || isUploading} style={saveBtn}>
           {isUploading ? 'ΓΙΝΕΤΑΙ ΑΝΕΒΑΣΜΑ...' : 'ΟΛΟΚΛΗΡΩΣΗ'}
@@ -346,10 +338,9 @@ const dropdownItem = { padding: '14px', borderBottom: `1px solid ${colors.border
 const modalOverlay: any = { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px', backdropFilter: 'blur(2px)' };
 const modalCard = { backgroundColor: 'white', padding: '24px', borderRadius: '24px', width: '100%', maxWidth: '450px', boxShadow: '0 20px 40px rgba(0,0,0,0.2)', maxHeight: '90vh', overflowY: 'auto' as const };
 
-// ✅ NEW STYLES FOR IMAGE
 const imageUploadContainer = { width: '100%', backgroundColor: '#f1f5f9', borderRadius: '18px', border: '2px dashed #cbd5e1', overflow: 'hidden' };
-const uploadPlaceholder = { display: 'flex', flexDirection: 'column' as const, alignItems: 'center', justifyContent: 'center', padding: '40px', cursor: 'pointer', gap: '10px', color: '#64748b' };
-const imagePreviewStyle = { width: '100%', height: '180px', objectFit: 'cover' as const };
-const removeImageBtn: any = { position: 'absolute', top: '10px', right: '10px', backgroundColor: 'rgba(0,0,0,0.5)', color: 'white', border: 'none', borderRadius: '50%', width: '30px', height: '30px', cursor: 'pointer', fontWeight: 'bold' };
+const uploadPlaceholder = { display: 'flex', flexDirection: 'column' as const, alignItems: 'center', justifyContent: 'center', padding: '15px', cursor: 'pointer', gap: '5px', color: '#64748b' };
+const imagePreviewStyle = { width: '100%', height: '120px', objectFit: 'cover' as const };
+const removeImageBtn: any = { position: 'absolute', top: '5px', right: '5px', backgroundColor: 'rgba(0,0,0,0.5)', color: 'white', border: 'none', borderRadius: '50%', width: '24px', height: '24px', cursor: 'pointer', fontWeight: 'bold' };
 
 export default function AddExpensePage() { return <Suspense><AddExpenseForm /></Suspense> }
