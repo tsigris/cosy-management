@@ -4,19 +4,19 @@ export const dynamic = 'force-dynamic'
 import { useEffect, useState, Suspense, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
-import { Trash2, Edit2, Eye, EyeOff, X, Plus, Search } from 'lucide-react'
+import { Trash2, Edit2, Eye, EyeOff, X, Plus, Copy, Check } from 'lucide-react'
 import { toast, Toaster } from 'sonner'
 
-// --- MODERN PREMIUM PALETTE ---
+// --- FUTURISTIC DARK PALETTE ---
 const colors = {
-  primary: '#0f172a',    
-  secondary: '#64748b',
-  success: '#10b981',   
-  danger: '#f43f5e',     
-  background: '#f8fafc',       
-  surface: '#ffffff',
-  border: '#e2e8f0',
-  indigo: '#6366f1'
+  bg: '#0a0a0c',
+  glass: 'rgba(255, 255, 255, 0.03)',
+  glassBorder: 'rgba(255, 255, 255, 0.08)',
+  accent: '#6366f1', // Electric Indigo
+  success: '#10b981', 
+  danger: '#f43f5e',
+  textMain: '#ffffff',
+  textDim: '#94a3b8'
 }
 
 function SuppliersContent() {
@@ -24,7 +24,6 @@ function SuppliersContent() {
   const [transactions, setTransactions] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [storeId, setStoreId] = useState<string | null>(null)
-  
   const [showInactive, setShowInactive] = useState(false)
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
@@ -39,9 +38,7 @@ function SuppliersContent() {
     try {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session?.user) return;
-
       const { data: profile } = await supabase.from('profiles').select('store_id').eq('id', session.user.id).single()
-      
       if (profile?.store_id) {
         setStoreId(profile.store_id)
         const [sData, tData] = await Promise.all([
@@ -57,9 +54,7 @@ function SuppliersContent() {
   useEffect(() => { fetchSuppliersData() }, [fetchSuppliersData])
 
   const getSupplierTurnover = (supplierId: string) => {
-    return transactions
-      .filter(t => t.supplier_id === supplierId)
-      .reduce((acc, t) => acc + (Number(t.amount) || 0), 0)
+    return transactions.filter(t => t.supplier_id === supplierId).reduce((acc, t) => acc + (Number(t.amount) || 0), 0)
   }
 
   async function toggleActive(supplier: any) {
@@ -72,7 +67,7 @@ function SuppliersContent() {
   }
 
   async function handleDelete(id: string) {
-    if (!confirm('Προσοχή: Η διαγραφή είναι οριστική. Θέλετε να συνεχίσετε;')) return;
+    if (!confirm('Προσοχή: Η διαγραφή είναι οριστική.')) return;
     try {
       const { error } = await supabase.from('suppliers').delete().eq('id', id);
       if (error) throw error;
@@ -82,31 +77,23 @@ function SuppliersContent() {
   }
 
   async function handleSave() {
-    if (!name) return toast.error('Συμπληρώστε το όνομα')
-    if (!storeId) return toast.error('Σφάλμα καταστήματος')
+    if (!name || !storeId) return toast.error('Συμπληρώστε τα απαραίτητα')
     setIsSaving(true)
     try {
       const supplierData = { name, phone, vat_number: afm, iban, category, store_id: storeId }
-      let error;
-      if (editingId) {
-        const res = await supabase.from('suppliers').update(supplierData).eq('id', editingId)
-        error = res.error
-      } else {
-        const res = await supabase.from('suppliers').insert([{ ...supplierData, is_active: true }])
-        error = res.error
-      }
+      const { error } = editingId 
+        ? await supabase.from('suppliers').update(supplierData).eq('id', editingId)
+        : await supabase.from('suppliers').insert([{ ...supplierData, is_active: true }])
       if (error) throw error;
-      toast.success(editingId ? 'Ενημερώθηκε!' : 'Προστέθηκε!');
-      resetForm();
-      fetchSuppliersData();
+      toast.success('Επιτυχής αποθήκευση');
+      resetForm(); fetchSuppliersData();
     } catch (error: any) { toast.error(error.message) } finally { setIsSaving(false) }
   }
 
   const handleEdit = (s: any) => {
     setEditingId(s.id); setName(s.name); setPhone(s.phone || '');
     setAfm(s.vat_number || ''); setIban(s.iban || '');
-    setCategory(s.category || 'Εμπορεύματα');
-    setIsFormOpen(true);
+    setCategory(s.category || 'Εμπορεύματα'); setIsFormOpen(true);
   }
 
   const resetForm = () => {
@@ -116,142 +103,148 @@ function SuppliersContent() {
 
   const visibleSuppliers = suppliers.filter(s => showInactive ? true : s.is_active !== false);
 
-  if (loading) return <div style={loaderStyle}>Φόρτωση...</div>
+  if (loading) return <div style={loaderStyle}>SYSTEM INITIALIZING...</div>
 
   return (
-    <div style={containerStyle}>
-      <Toaster position="top-center" richColors />
+    <div style={mainContainer}>
+      <Toaster position="top-center" theme="dark" richColors />
       <style dangerouslySetInnerHTML={{ __html: `
-        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap');
-        body { background-color: ${colors.background}; font-family: 'Plus Jakarta Sans', sans-serif; margin: 0; }
-        .supplier-card { transition: transform 0.2s ease; }
-        .supplier-card:active { transform: scale(0.98); }
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;500;700;800&display=swap');
+        body { background: ${colors.bg}; font-family: 'Plus Jakarta Sans', sans-serif; color: ${colors.textMain}; }
+        .glass-card { background: ${colors.glass}; backdrop-filter: blur(12px); border: 1px solid ${colors.glassBorder}; }
+        .neon-btn { transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+        .neon-btn:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(99, 102, 241, 0.3); }
       `}} />
 
       <div style={contentWrapper}>
-        {/* HEADER */}
-        <header style={headerStyle}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div style={logoBox}>🛒</div>
-            <div>
-              <h1 style={titleStyle}>Προμηθευτές</h1>
-              <p style={subtitleStyle}>ΣΥΝΕΡΓΑΤΕΣ ({suppliers.length})</p>
-            </div>
+        {/* HEADER AREA */}
+        <div style={headerSection}>
+          <div style={brandBox}>
+             <div style={logoGlow}>🛒</div>
+             <div>
+                <h1 style={mainTitle}>Προμηθευτές</h1>
+                <p style={subTitle}>DATABASE MANAGEMENT</p>
+             </div>
           </div>
-          <Link href="/" style={backBtn}><X size={20} /></Link>
-        </header>
-
-        {/* TOP ACTIONS */}
-        <div style={topActionsRow}>
-          <button onClick={() => setIsFormOpen(!isFormOpen)} style={mainAddBtn}>
-            {isFormOpen ? 'ΑΚΥΡΩΣΗ' : <><Plus size={18} /> ΝΕΟΣ ΠΡΟΜΗΘΕΥΤΗΣ</>}
-          </button>
-          <button onClick={() => setShowInactive(!showInactive)} style={filterBtn(showInactive)}>
-            {showInactive ? <Eye size={20} /> : <EyeOff size={20} />}
-          </button>
+          <Link href="/" style={closeBtn}><X size={20} /></Link>
         </div>
 
-        {/* FORM CARD */}
+        {/* TOP ACTIONS */}
+        <div style={actionRow}>
+           <button onClick={() => setIsFormOpen(!isFormOpen)} style={primaryActionBtn} className="neon-btn">
+              {isFormOpen ? 'CLOSE FORM' : <><Plus size={20} /> ΝΕΟΣ ΠΡΟΜΗΘΕΥΤΗΣ</>}
+           </button>
+           <button onClick={() => setShowInactive(!showInactive)} style={toggleBtn(showInactive)}>
+              {showInactive ? <Eye size={20} /> : <EyeOff size={20} />}
+           </button>
+        </div>
+
+        {/* FORM MODAL / CARD */}
         {isFormOpen && (
-          <div style={formCard}>
-            <div style={{marginBottom: '16px'}}>
-                <label style={labelStyle}>ΕΠΩΝΥΜΙΑ ΕΠΙΧΕΙΡΗΣΗΣ</label>
-                <input value={name} onChange={(e) => setName(e.target.value)} placeholder="π.χ. Παπαδόπουλος Α.Ε." style={inputStyle} />
+          <div style={formWrapper} className="glass-card">
+            <h3 style={formHeader}>{editingId ? 'Edit Partner' : 'Create New Partner'}</h3>
+            <div style={inputGroup}>
+              <label style={microLabel}>ΕΠΩΝΥΜΙΑ</label>
+              <input value={name} onChange={(e) => setName(e.target.value)} style={inputField} placeholder="Company Name" />
             </div>
-            
-            <div style={grid2}>
-              <div>
-                <label style={labelStyle}>ΤΗΛΕΦΩΝΟ</label>
-                <input value={phone} onChange={(e) => setPhone(e.target.value)} style={inputStyle} inputMode="tel" placeholder="210..." />
+            <div style={rowGrid}>
+              <div style={{flex:1}}>
+                <label style={microLabel}>PHONE</label>
+                <input value={phone} onChange={(e) => setPhone(e.target.value)} style={inputField} placeholder="Contact" />
               </div>
-              <div>
-                <label style={labelStyle}>Α.Φ.Μ.</label>
-                <input maxLength={9} value={afm} onChange={(e) => setAfm(e.target.value)} style={inputStyle} inputMode="numeric" placeholder="9 ψηφία" />
+              <div style={{flex:1}}>
+                <label style={microLabel}>VAT / AFM</label>
+                <input value={afm} onChange={(e) => setAfm(e.target.value)} style={inputField} placeholder="9 digits" />
               </div>
             </div>
-
-            <div style={{marginTop: '16px'}}>
-                <label style={labelStyle}>IBAN ΛΟΓΑΡΙΑΣΜΟΣ</label>
-                <input value={iban} onChange={(e) => setIban(e.target.value.toUpperCase())} placeholder="GR..." style={inputStyle} />
+            <div style={inputGroup}>
+              <label style={microLabel}>IBAN</label>
+              <input value={iban} onChange={(e) => setIban(e.target.value.toUpperCase())} style={inputField} placeholder="GR00 0000..." />
             </div>
-
-            <div style={{marginTop: '16px'}}>
-                <label style={labelStyle}>ΚΑΤΗΓΟΡΙΑ</label>
-                <select value={category} onChange={(e) => setCategory(e.target.value)} style={inputStyle}>
-                    <option value="Εμπορεύματα">🛒 Εμπορεύματα</option>
-                    <option value="Πάγια">🏢 Πάγια / Λογαριασμοί</option>
-                    <option value="Λοιπά">📦 Λοιπά Έξοδα</option>
-                </select>
+            <div style={inputGroup}>
+              <label style={microLabel}>CATEGORY</label>
+              <select value={category} onChange={(e) => setCategory(e.target.value)} style={selectField}>
+                 <option value="Εμπορεύματα">🛒 Εμπορεύματα</option>
+                 <option value="Πάγια">🏢 Πάγια / Λογαριασμοί</option>
+                 <option value="Λοιπά">📦 Λοιπά Έξοδα</option>
+              </select>
             </div>
-
-            <button onClick={handleSave} disabled={isSaving} style={saveBtn}>
-              {isSaving ? 'ΑΠΟΘΗΚΕΥΣΗ...' : (editingId ? 'ΕΝΗΜΕΡΩΣΗ' : 'ΔΗΜΙΟΥΡΓΙΑ ΣΥΝΕΡΓΑΤΗ')}
+            <button onClick={handleSave} style={submitBtn} disabled={isSaving}>
+              {isSaving ? 'SYNCING...' : 'SAVE PARTNER'}
             </button>
           </div>
         )}
 
-        {/* SUPPLIERS LIST */}
-        <div style={{ marginTop: '20px' }}>
-          <p style={sectionLabel}>ΛΙΣΤΑ ΣΥΝΕΡΓΑΤΩΝ</p>
+        {/* THE LIST TABLE */}
+        <div style={listArea}>
+          <div style={listHead}>
+             <span>PARTNER NAME</span>
+             <span style={{textAlign: 'right'}}>TURNOVER</span>
+          </div>
+          
           {visibleSuppliers.map(s => (
-            <div key={s.id} style={{...supplierRow, opacity: s.is_active === false ? 0.5 : 1}} className="supplier-card">
-              <div style={{ flex: 1 }}>
-                <p style={supplierName}>{s.name.toUpperCase()}</p>
-                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '6px' }}>
-                   <span style={badgeStyle}>{s.category}</span>
-                   <span style={turnoverStyle}>{getSupplierTurnover(s.id).toFixed(2)}€</span>
-                </div>
-              </div>
-              
-              <div style={actionsContainer}>
-                <button onClick={() => handleEdit(s)} style={actionIconBtn}><Edit2 size={16}/></button>
-                <button onClick={() => toggleActive(s)} style={{...actionIconBtn, color: s.is_active ? colors.secondary : colors.success}}>
-                    {s.is_active ? '🚫' : '✅'}
-                </button>
-                <button onClick={() => handleDelete(s.id)} style={{...actionIconBtn, color: colors.danger}}><Trash2 size={16}/></button>
-              </div>
+            <div key={s.id} style={{...rowItem, opacity: s.is_active === false ? 0.4 : 1}} className="glass-card">
+               <div style={{flex: 1}}>
+                  <p style={rowName}>{s.name.toUpperCase()}</p>
+                  <div style={tagRow}>
+                     <span style={categoryTag}>{s.category}</span>
+                     {s.phone && <span style={contactTag}>📞 {s.phone}</span>}
+                  </div>
+               </div>
+               <div style={priceArea}>
+                  <p style={turnoverPrice}>{getSupplierTurnover(s.id).toFixed(2)}€</p>
+                  <div style={rowActions}>
+                     <button onClick={() => handleEdit(s)} style={miniBtn}><Edit2 size={12}/></button>
+                     <button onClick={() => toggleActive(s)} style={miniBtn}>{s.is_active ? '🚫' : '✅'}</button>
+                     <button onClick={() => handleDelete(s.id)} style={{...miniBtn, color: colors.danger}}><Trash2 size={12}/></button>
+                  </div>
+               </div>
             </div>
           ))}
-          
-          {visibleSuppliers.length === 0 && !isFormOpen && (
-            <div style={emptyState}>Δεν βρέθηκαν συνεργάτες.</div>
-          )}
         </div>
       </div>
     </div>
   )
 }
 
-// --- MODERN STYLES ---
-const containerStyle: any = { minHeight: '100dvh', padding: '20px', backgroundColor: colors.background }
-const contentWrapper: any = { maxWidth: '480px', margin: '0 auto', paddingBottom: '100px' }
+// --- FUTURISTIC STYLES ---
+const mainContainer: any = { minHeight: '100dvh', padding: '20px', background: 'radial-gradient(circle at top right, #1e1b4b, #0a0a0c)' }
+const contentWrapper: any = { maxWidth: '500px', margin: '0 auto', paddingBottom: '100px' }
 
-const headerStyle: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px' }
-const logoBox: any = { width: '44px', height: '44px', backgroundColor: colors.primary, borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '20px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }
-const titleStyle: any = { fontWeight: '800', fontSize: '22px', margin: 0, color: colors.primary, letterSpacing: '-0.5px' }
-const subtitleStyle: any = { margin: 0, fontSize: '10px', color: colors.secondary, fontWeight: '700', letterSpacing: '1px' }
-const backBtn: any = { textDecoration: 'none', color: colors.secondary, width: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface, borderRadius: '12px', border: `1px solid ${colors.border}` }
+const headerSection: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '35px' }
+const brandBox = { display: 'flex', alignItems: 'center', gap: '15px' }
+const logoGlow = { width: '50px', height: '50px', background: 'linear-gradient(135deg, #6366f1, #a855f7)', borderRadius: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '24px', boxShadow: '0 0 20px rgba(99, 102, 241, 0.4)' }
+const mainTitle = { margin: 0, fontSize: '24px', fontWeight: 800, letterSpacing: '-0.5px' }
+const subTitle = { margin: 0, fontSize: '10px', color: colors.accent, fontWeight: 700, letterSpacing: '2px' }
+const closeBtn: any = { color: colors.textDim, background: colors.glass, width: '40px', height: '40px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none' }
 
-const topActionsRow: any = { display: 'flex', gap: '12px', marginBottom: '25px' }
-const mainAddBtn: any = { flex: 1, height: '52px', backgroundColor: colors.primary, color: 'white', border: 'none', borderRadius: '16px', fontWeight: '700', fontSize: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', boxShadow: '0 4px 12px rgba(15, 23, 42, 0.2)' }
-const filterBtn = (active: boolean): any => ({ width: '52px', height: '52px', backgroundColor: active ? colors.primary : colors.surface, color: active ? 'white' : colors.primary, border: `1px solid ${colors.border}`, borderRadius: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' })
+const actionRow: any = { display: 'flex', gap: '10px', marginBottom: '30px' }
+const primaryActionBtn: any = { flex: 1, height: '55px', background: colors.accent, color: 'white', border: 'none', borderRadius: '18px', fontWeight: 800, fontSize: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', cursor: 'pointer' }
+const toggleBtn = (active: boolean): any => ({ width: '55px', height: '55px', background: active ? colors.textMain : colors.glass, color: active ? colors.bg : 'white', border: `1px solid ${colors.glassBorder}`, borderRadius: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' })
 
-const formCard: any = { backgroundColor: colors.surface, padding: '24px', borderRadius: '24px', border: `1px solid ${colors.border}`, marginBottom: '25px', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.05)' }
-const labelStyle: any = { fontSize: '10px', fontWeight: '800', color: colors.secondary, marginBottom: '6px', display: 'block', letterSpacing: '0.5px' }
-const inputStyle: any = { width: '100%', padding: '14px', borderRadius: '14px', border: `1px solid ${colors.border}`, fontSize: '15px', fontWeight: '600', backgroundColor: colors.background, boxSizing: 'border-box', outline: 'none' }
-const grid2: any = { display: 'flex', gap: '12px' }
-const saveBtn: any = { width: '100%', padding: '16px', backgroundColor: colors.success, color: 'white', border: 'none', borderRadius: '16px', fontWeight: '800', fontSize: '15px', marginTop: '24px', boxShadow: '0 4px 12px rgba(16, 185, 129, 0.2)' }
+const formWrapper: any = { padding: '25px', borderRadius: '24px', marginBottom: '30px' }
+const formHeader = { marginTop: 0, marginBottom: '20px', fontSize: '16px', fontWeight: 700, color: colors.accent }
+const inputGroup = { marginBottom: '15px' }
+const microLabel = { fontSize: '9px', fontWeight: 800, color: colors.textDim, display: 'block', marginBottom: '6px', letterSpacing: '1px' }
+const inputField: any = { width: '100%', background: 'rgba(0,0,0,0.2)', border: `1px solid ${colors.glassBorder}`, padding: '14px', borderRadius: '12px', color: 'white', fontSize: '14px', outline: 'none' }
+const selectField: any = { ...inputField, appearance: 'none' }
+const rowGrid = { display: 'flex', gap: '12px', marginBottom: '15px' }
+const submitBtn: any = { width: '100%', height: '50px', background: 'white', color: 'black', border: 'none', borderRadius: '14px', fontWeight: 800, cursor: 'pointer', marginTop: '10px' }
 
-const sectionLabel: any = { fontSize: '11px', fontWeight: '800', color: colors.secondary, marginBottom: '16px', letterSpacing: '1px' }
-const supplierRow: any = { backgroundColor: colors.surface, padding: '18px 20px', borderRadius: '22px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: `1px solid ${colors.border}`, marginBottom: '12px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }
-const supplierName: any = { fontWeight: '800', margin: 0, fontSize: '15px', color: colors.primary, letterSpacing: '-0.2px' }
-const badgeStyle: any = { fontSize: '10px', fontWeight: '700', backgroundColor: colors.background, padding: '4px 10px', borderRadius: '8px', color: colors.secondary, border: `1px solid ${colors.border}` }
-const turnoverStyle: any = { fontSize: '13px', color: colors.success, fontWeight: '800' }
-const actionsContainer: any = { display: 'flex', gap: '8px' }
-const actionIconBtn: any = { background: colors.background, border: `1px solid ${colors.border}`, width: '38px', height: '38px', borderRadius: '10px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: colors.secondary }
+const listArea = { marginTop: '20px' }
+const listHead = { display: 'flex', justifyContent: 'space-between', padding: '0 20px 10px', fontSize: '10px', fontWeight: 800, color: colors.textDim, letterSpacing: '1px' }
+const rowItem: any = { padding: '18px 20px', borderRadius: '22px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }
+const rowName = { margin: 0, fontSize: '15px', fontWeight: 700, letterSpacing: '-0.2px' }
+const tagRow = { display: 'flex', gap: '8px', marginTop: '6px' }
+const categoryTag = { fontSize: '9px', fontWeight: 700, background: 'rgba(99, 102, 241, 0.1)', color: colors.accent, padding: '3px 8px', borderRadius: '6px' }
+const contactTag = { fontSize: '9px', fontWeight: 600, color: colors.textDim }
 
-const emptyState: any = { textAlign: 'center', padding: '60px 20px', color: colors.secondary, fontWeight: '600', fontSize: '14px' }
-const loaderStyle: any = { height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: colors.secondary, fontWeight: '700' }
+const priceArea = { textAlign: 'right' as any }
+const turnoverPrice = { margin: 0, fontSize: '18px', fontWeight: 800, color: colors.success }
+const rowActions = { display: 'flex', gap: '6px', marginTop: '8px', justifyContent: 'flex-end' }
+const miniBtn: any = { background: 'rgba(255,255,255,0.05)', border: 'none', width: '30px', height: '30px', borderRadius: '8px', color: colors.textDim, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }
+
+const loaderStyle: any = { height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, letterSpacing: '2px', color: colors.accent }
 
 export default function SuppliersPage() {
   return <main><Suspense fallback={null}><SuppliersContent /></Suspense></main>
