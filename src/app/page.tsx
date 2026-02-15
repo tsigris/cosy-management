@@ -98,13 +98,12 @@ function DashboardContent() {
     }
   }
 
-  // 5. CALCULATIONS - ΕΔΩ ΕΓΙΝΕ Η ΔΙΟΡΘΩΣΗ ΓΙΑ ΤΗΝ ΠΙΣΤΩΣΗ
+  // 5. CALCULATIONS
   const totals = useMemo(() => {
     const income = transactions
       .filter(t => t.type === 'income')
       .reduce((acc, t) => acc + Number(t.amount), 0)
     
-    // Φιλτράρουμε ώστε να ΜΗΝ συμπεριλαμβάνονται οι πιστώσεις (is_credit: true)
     const expense = transactions
       .filter(t => (t.type === 'expense' || t.category === 'Προσωπικό' || t.category === 'Εξόφληση Χρέους') && t.is_credit !== true)
       .reduce((acc, t) => acc + Math.abs(Number(t.amount)), 0)
@@ -172,7 +171,7 @@ function DashboardContent() {
         <button onClick={() => changeDate(1)} style={dateNavBtn}>›</button>
       </div>
 
-      {/* HERO SECTION */}
+      {/* HERO SECTION - ΔΙΟΡΘΩΜΕΝΗ ΓΙΑ ΚΕΝΤΡΑΡΙΣΜΑ ΣΤΟΝ ΥΠΟΛΟΓΙΣΤΗ */}
       <div style={heroCardStyle}>
           <p style={heroLabel}>ΔΙΑΘΕΣΙΜΟ ΥΠΟΛΟΙΠΟ ΗΜΕΡΑΣ</p>
           <h2 style={heroAmountText}>{totals.balance.toFixed(2)}€</h2>
@@ -229,7 +228,6 @@ function DashboardContent() {
                   </p>
                 </div>
 
-                {/* ΕΜΦΑΝΙΣΗ ΚΟΥΜΠΙΩΝ ΔΙΑΓΡΑΦΗΣ/ΕΠΕΞΕΡΓΑΣΙΑΣ ΜΟΝΟ ΑΝ ΕΙΝΑΙ ΕΠΙΛΕΓΜΕΝΟ */}
                 {expandedTx === t.id && (
                   <div style={actionPanel}>
                     <button 
@@ -255,7 +253,7 @@ function DashboardContent() {
   )
 }
 
-// --- STYLES (Παραμένουν ίδια) ---
+// --- STYLES ---
 const iphoneWrapper: any = { minHeight: '100dvh', padding: '20px', paddingBottom: '100px' };
 const headerStyle: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px' };
 const brandArea = { display: 'flex', alignItems: 'center', gap: '12px' };
@@ -276,10 +274,40 @@ const dateCard: any = { backgroundColor: 'white', padding: '12px', borderRadius:
 const dateText = { fontSize: '13px', fontWeight: '800', color: colors.primaryDark, margin: 0 };
 const dateNavBtn = { background: 'none', border: 'none', fontSize: '22px', color: colors.secondaryText, cursor: 'pointer', fontWeight:'bold' };
 
-const heroCardStyle: any = { background: colors.primaryDark, padding: '28px', borderRadius: '24px', color: 'white', boxShadow: '0 15px 35px rgba(15, 23, 42, 0.25)', marginBottom: '25px' };
+// ΔΙΟΡΘΩΣΗ ΓΙΑ ΚΕΝΤΡΑΡΙΣΜΑ (Center Alignment)
+const heroCardStyle: any = { 
+  background: colors.primaryDark, 
+  padding: '28px', 
+  borderRadius: '24px', 
+  color: 'white', 
+  boxShadow: '0 15px 35px rgba(15, 23, 42, 0.25)', 
+  marginBottom: '25px',
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'center', // Κεντράρει τα στοιχεία οριζόντια
+  textAlign: 'center'   // Κεντράρει το κείμενο
+};
+
 const heroLabel: any = { fontSize: '10px', fontWeight: '700', opacity: 0.6, letterSpacing: '1px', marginBottom: '8px' };
-const heroAmountText: any = { fontSize: '34px', fontWeight: '800', margin: 0, letterSpacing: '-1px' };
-const heroStatsRow: any = { display: 'flex', gap: '16px', marginTop: '20px', paddingTop: '16px', borderTop: '1px solid rgba(255,255,255,0.1)' };
+
+const heroAmountText: any = { 
+  fontSize: '34px', 
+  fontWeight: '800', 
+  margin: 0, 
+  letterSpacing: '-1px',
+  textAlign: 'center' 
+};
+
+const heroStatsRow: any = { 
+  display: 'flex', 
+  gap: '16px', 
+  marginTop: '20px', 
+  paddingTop: '16px', 
+  borderTop: '1px solid rgba(255,255,255,0.1)',
+  justifyContent: 'center', // Κεντράρει τα έσοδα/έξοδα στη σειρά
+  width: '100%' 
+};
+
 const heroStatItem: any = { display: 'flex', alignItems: 'center', gap: '8px' };
 const heroStatValue = { fontSize: '14px', fontWeight: '700' };
 const statCircle = (bg: string): any => ({ width: '22px', height: '22px', borderRadius: '50%', background: bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight:'bold' });
