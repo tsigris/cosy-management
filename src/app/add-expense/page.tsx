@@ -45,6 +45,7 @@ function AddExpenseForm() {
   const [suppliers, setSuppliers] = useState<any[]>([])
   const [fixedAssets, setFixedAssets] = useState<any[]>([])
   
+  // LOGIC ΓΙΑ ΣΥΝΔΥΑΣΜΟ SEARCH ΚΑΙ ΠΛΗΡΟΥΣ ΛΙΣΤΑΣ
   const [searchTerm, setSearchTerm] = useState('')
   const [showDropdown, setShowDropdown] = useState(false)
   const [selectedSup, setSelectedSup] = useState(urlSupId || '')
@@ -54,6 +55,7 @@ function AddExpenseForm() {
   const [newSupName, setNewSupName] = useState('')
   const [newSupAfm, setNewSupAfm] = useState('')
 
+  // Κλείσιμο dropdown αν πατήσεις εκτός
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
@@ -82,7 +84,10 @@ function AddExpenseForm() {
 
         if (urlSupId && sRes.data) {
           const found = sRes.data.find((s: any) => s.id === urlSupId)
-          if (found) setSearchTerm(found.name)
+          if (found) {
+            setSearchTerm(found.name)
+            setSelectedSup(found.id)
+          }
         }
       }
     } catch (error) { console.error(error) } finally { setLoading(false) }
@@ -98,8 +103,9 @@ function AddExpenseForm() {
     }
   }
 
+  // ΔΙΟΡΘΩΣΗ: Αν το searchTerm είναι κενό, δείξε όλους τους προμηθευτές
   const filteredSuppliers = useMemo(() => {
-    if (!searchTerm) return []
+    if (!searchTerm) return suppliers
     return suppliers.filter(s => 
       s.name.toLowerCase().includes(searchTerm.toLowerCase())
     )
@@ -207,18 +213,18 @@ function AddExpenseForm() {
             </div>
           </div>
 
-          <label style={{ ...labelStyle, marginTop: '20px' }}>🏭 ΠΡΟΜΗΘΕΥΤΗΣ (ΑΥΤΟΜΑΤΗ ΑΝΑΖΗΤΗΣΗ)</label>
+          {/* ΑΝΑΖΗΤΗΣΗ & ΛΙΣΤΑ ΠΡΟΜΗΘΕΥΤΗ */}
+          <label style={{ ...labelStyle, marginTop: '20px' }}>🏭 ΠΡΟΜΗΘΕΥΤΗΣ</label>
           <div style={{ position: 'relative' }} ref={dropdownRef}>
             <div style={{ display: 'flex', gap: '10px' }}>
               <input 
                 type="text" 
-                placeholder="Γράψτε τα πρώτα γράμματα..." 
+                placeholder="🔍 Αναζήτηση ή επιλογή από λίστα..." 
                 value={searchTerm} 
                 onFocus={() => setShowDropdown(true)}
                 onChange={(e) => {
                     setSearchTerm(e.target.value); 
                     setShowDropdown(true); 
-                    // ✅ ΔΙΟΡΘΩΣΗ 1: Μηδενισμός επιλογής αν ο χρήστης γράφει κάτι νέο
                     setSelectedSup('');
                 }}
                 style={{...inputStyle, border: selectedSup ? `2px solid ${colors.accentGreen}` : `1px solid ${colors.border}`}}
@@ -226,7 +232,7 @@ function AddExpenseForm() {
               <button type="button" onClick={() => setIsSupModalOpen(true)} style={plusBtn}>+</button>
             </div>
             
-            {showDropdown && searchTerm && (
+            {showDropdown && (
               <div style={autocompleteDropdown}>
                 {filteredSuppliers.map(s => (
                   <div 
@@ -235,16 +241,15 @@ function AddExpenseForm() {
                     onClick={() => { 
                         setSelectedSup(s.id); 
                         setSearchTerm(s.name); 
-                        // ✅ ΔΙΟΡΘΩΣΗ 2: Κλείσιμο dropdown μετά την επιλογή
                         setShowDropdown(false); 
                         setSelectedFixed(''); 
                     }}
                   >
-                    {s.name}
+                    {s.name.toUpperCase()}
                   </div>
                 ))}
                 {filteredSuppliers.length === 0 && (
-                  <div style={{...dropdownRow, color: colors.secondaryText, fontStyle: 'italic'}}>Δεν βρέθηκε προμηθευτής</div>
+                  <div style={{...dropdownRow, color: colors.secondaryText}}>Δεν βρέθηκε προμηθευτής</div>
                 )}
               </div>
             )}
@@ -253,7 +258,7 @@ function AddExpenseForm() {
           <label style={{ ...labelStyle, marginTop: '20px' }}>🏢 ΠΑΓΙΟ / ΛΟΓΑΡΙΑΣΜΟΣ</label>
           <select value={selectedFixed} onChange={e => {setSelectedFixed(e.target.value); if(e.target.value) {setSelectedSup(''); setSearchTerm('');}}} style={inputStyle}>
             <option value="">Επιλογή από λίστα...</option>
-            {fixedAssets.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+            {fixedAssets.map(f => <option key={f.id} value={f.id}>{f.name.toUpperCase()}</option>)}
           </select>
 
           <label style={{ ...labelStyle, marginTop: '20px' }}>ΣΗΜΕΙΩΣΕΙΣ</label>
