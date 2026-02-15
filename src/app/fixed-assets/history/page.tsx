@@ -1,130 +1,173 @@
 'use client'
 export const dynamic = 'force-dynamic'
 
-import { useEffect, useState, Suspense } from 'react'
-import { useSearchParams } from 'next/navigation'
+import { useEffect, useState, Suspense, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
+import { Trash2, Edit2, History, Plus, X, CreditCard } from 'lucide-react'
+import { toast, Toaster } from 'sonner'
 
-function HistoryContent() {
-  const searchParams = useSearchParams()
-  const assetId = searchParams.get('id')
-  const assetName = searchParams.get('name')
-  
-  const [history, setHistory] = useState<any[]>([])
+const colors = {
+  primary: '#0f172a',
+  secondary: '#64748b',
+  success: '#10b981',
+  danger: '#f43f5e',
+  background: '#f8fafc',
+  surface: '#ffffff',
+  border: '#e2e8f0',
+  warning: '#f59e0b',
+  indigo: '#6366f1'
+}
+
+function FixedAssetsContent() {
+  const [assets, setAssets] = useState<any[]>([])
+  const [transactions, setTransactions] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [storeId, setStoreId] = useState<string | null>(null)
 
-  useEffect(() => {
-    async function loadHistory() {
-      if (!assetId) return
-      try {
-        setLoading(true)
-        const { data: { user } } = await supabase.auth.getUser()
-        if (user) {
-          const { data: profile } = await supabase.from('profiles').select('store_id').eq('id', user.id).single()
-          if (profile?.store_id) {
-            setStoreId(profile.store_id)
-            
-            // Φέρνουμε τις κινήσεις ΜΟΝΟ για το συγκεκριμένο κατάστημα και πάγιο
-            const { data } = await supabase
-              .from('transactions')
-              .select('*')
-              .eq('fixed_asset_id', assetId)
-              .eq('store_id', profile.store_id)
-              .order('date', { ascending: false })
-            
-            if (data) setHistory(data)
-          }
-        }
-      } catch (err) { console.error(err) } finally { setLoading(false) }
-    }
-    loadHistory()
-  }, [assetId])
+  const [isFormOpen, setIsFormOpen] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [name, setName] = useState('')
+  const [description, setDescription] = useState('')
+  const [isSaving, setIsSaving] = useState(false)
 
-  const totalSpent = history.reduce((acc, item) => acc + (Number(item.amount) || 0), 0)
+  const fetchData = useCallback(async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.user) return
+
+      const { data: profile } = await supabase.from('profiles').select('store_id').eq('id', session.user.id).single()
+      if (profile?.store_id) {
+        setStoreId(profile.store_id)
+        const [aRes, tRes] = await Promise.all([
+          supabase.from('fixed_assets').select('*').eq('store_id', profile.store_id).order('name'),
+          supabase.from('transactions').select('amount, fixed_asset_id').eq('store_id', profile.store_id)
+        ])
+        setAssets(aRes.data || [])
+        setTransactions(tRes.data || [])
+      }
+    } catch (err) { console.error(err) } finally { setLoading(false) }
+  }, [])
+
+  useEffect(() => { fetchData() }, [fetchData])
+
+  const getTotalSpent = (id: string) => {
+    return transactions
+      .filter(t => t.fixed_asset_id === id)
+      .reduce((acc, t) => acc + (Number(t.amount) || 0), 0)
+  }
+
+  const handleSave = async () => {
+    if (!name || !storeId) return toast.error('Συμπληρώστε το όνομα')
+    setIsSaving(true)
+    try {
+      const payload = { name, description, store_id: storeId }
+      const { error } = editingId 
+        ? await supabase.from('fixed_assets').update(payload).eq('id', editingId)
+        : await supabase.from('fixed_assets').insert([payload])
+      
+      if (error) throw error
+      toast.success(editingId ? 'Ενημερώθηκε' : 'Προστέθηκε')
+      setName(''); setDescription(''); setEditingId(null); setIsFormOpen(false);
+      fetchData()
+    } catch (err: any) { toast.error(err.message) } finally { setIsSaving(false) }
+  }
+
+  const handleDelete = async (id: string) => {
+    if (!confirm('Οριστική διαγραφή παγίου;')) return
+    try {
+      await supabase.from('fixed_assets').delete().eq('id', id)
+      fetchData()
+    } catch (err) { toast.error('Σφάλμα διαγραφής') }
+  }
+
+  if (loading) return <div style={{ padding: '40px', textAlign: 'center' }}>Φόρτωση...</div>
 
   return (
-    <div style={{ maxWidth: '500px', margin: '0 auto', fontFamily: 'sans-serif' }}>
+    <div style={containerStyle}>
+      <Toaster position="top-center" richColors />
       
-      {/* PROFESSIONAL HEADER */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '25px', paddingTop: '15px' }}>
+      <header style={headerStyle}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <div style={logoBoxStyle}>
-            <span style={{ fontSize: '20px' }}>🔌</span>
-          </div>
+          <div style={logoBox}>🔌</div>
           <div>
-            <h1 style={{ fontWeight: '900', fontSize: '20px', margin: 0, color: '#0f172a', lineHeight: '1.1' }}>
-              {assetName?.toUpperCase()}
-            </h1>
-            <p style={{ margin: '2px 0 0', fontSize: '10px', color: '#94a3b8', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '1px' }}>
-              ΙΣΤΟΡΙΚΟ ΠΛΗΡΩΜΩΝ
-            </p>
+            <h1 style={titleStyle}>Πάγια & Λογαριασμοί</h1>
+            <p style={subtitleStyle}>ΔΙΑΧΕΙΡΙΣΗ ΕΞΟΔΩΝ ({assets.length})</p>
           </div>
         </div>
-        <Link href="/fixed-assets" style={backBtnStyle}>✕</Link>
-      </div>
+        <Link href="/" style={closeBtn}><X size={20} /></Link>
+      </header>
 
-      {/* TOTAL SPENT CARD */}
-      <div style={totalCardStyle}>
-        <p style={{ margin: 0, fontSize: '10px', fontWeight: '900', color: '#94a3b8', letterSpacing: '1px', textTransform: 'uppercase' }}>Συνολική Δαπάνη Παγίου</p>
-        <p style={{ margin: '8px 0 0 0', fontSize: '36px', fontWeight: '900', color: '#f87171' }}>
-          {totalSpent.toFixed(2)}€
-        </p>
-      </div>
+      <button onClick={() => setIsFormOpen(!isFormOpen)} style={addBtn}>
+        {isFormOpen ? 'ΑΚΥΡΩΣΗ' : <><Plus size={18} /> ΝΕΟ ΠΑΓΙΟ</>}
+      </button>
 
-      {/* LIST SECTION */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-        <p style={{ fontSize: '11px', fontWeight: '800', color: '#94a3b8', textTransform: 'uppercase' }}>Ανάλυση Κινήσεων ({history.length})</p>
-        
-        {loading ? (
-           <div style={{ textAlign: 'center', padding: '40px', color: '#94a3b8' }}>Φόρτωση κινήσεων...</div>
-        ) : history.length > 0 ? (
-          history.map(item => (
-            <div key={item.id} style={historyCardStyle}>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: '800', color: '#1e293b', fontSize: '15px' }}>
-                  {new Date(item.date).toLocaleDateString('el-GR', { day: 'numeric', month: 'long', year: 'numeric' })}
-                </div>
-                <div style={{ display: 'flex', gap: '6px', marginTop: '6px' }}>
-                  <span style={methodBadgeStyle}>{item.method}</span>
-                  <span style={userBadgeStyle}>👤 {item.created_by_name?.split(' ')[0]}</span>
-                </div>
-              </div>
-              <div style={{ textAlign: 'right' }}>
-                <div style={{ fontWeight: '900', color: '#dc2626', fontSize: '18px' }}>
-                  -{Number(item.amount).toFixed(2)}€
-                </div>
-              </div>
-            </div>
-          ))
-        ) : (
-          <div style={emptyStateStyle}>
-            <div style={{ fontSize: '40px', marginBottom: '10px' }}>📄</div>
-            <p style={{ margin: 0, fontWeight: '900', color: '#1e293b' }}>Καμία καταγραφή</p>
-            <p style={{ margin: '5px 0 0 0', fontSize: '12px', color: '#94a3b8' }}>Δεν έχουν βρεθεί πληρωμές για αυτό το πάγιο.</p>
+      {isFormOpen && (
+        <div style={formCard}>
+          <label style={labelStyle}>ΟΝΟΜΑΣΙΑ</label>
+          <input value={name} onChange={e => setName(e.target.value)} style={inputStyle} placeholder="Όνομα παγίου..." />
+          <div style={{marginTop: '15px'}}>
+            <label style={labelStyle}>ΠΕΡΙΓΡΑΦΗ / ΚΩΔΙΚΟΣ</label>
+            <input value={description} onChange={e => setDescription(e.target.value)} style={inputStyle} placeholder="Προαιρετικά..." />
           </div>
-        )}
+          <button onClick={handleSave} disabled={isSaving} style={saveBtn}>
+            {isSaving ? 'ΑΠΟΘΗΚΕΥΣΗ...' : 'ΚΑΤΑΧΩΡΗΣΗ'}
+          </button>
+        </div>
+      )}
+
+      <div style={{ marginTop: '25px' }}>
+        {assets.map(asset => (
+          <div key={asset.id} style={assetCard}>
+            <div style={{ flex: 1 }}>
+              <h3 style={assetNameStyle}>{asset.name.toUpperCase()}</h3>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={labelMicro}>ΣΥΝΟΛΟ ΕΞΟΔΩΝ</span>
+                <span style={totalAmountStyle}>-{getTotalSpent(asset.id).toFixed(2)}€</span>
+              </div>
+              {asset.description && (
+                <div style={descBox}>
+                   <span style={{fontWeight:'800', color: colors.indigo, fontSize:'10px'}}>INFO:</span> {asset.description}
+                </div>
+              )}
+              
+              <Link href={`/add-expense?assetId=${asset.id}`} style={payBtn}>
+                <CreditCard size={14} /> ΚΑΤΑΧΩΡΗΣΗ ΠΛΗΡΩΜΗΣ →
+              </Link>
+            </div>
+
+            <div style={sideActions}>
+              <button onClick={() => { setEditingId(asset.id); setName(asset.name); setDescription(asset.description || ''); setIsFormOpen(true); }} style={iconBtn}><Edit2 size={16} color={colors.warning} /></button>
+              <Link href={`/fixed-assets/history?id=${asset.id}&name=${asset.name}`} style={iconBtn}><History size={16} color={colors.indigo} /></Link>
+              <button onClick={() => handleDelete(asset.id)} style={iconBtn}><Trash2 size={16} color={colors.danger} /></button>
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   )
 }
 
-// STYLES (Fixed with :any for TS)
-const logoBoxStyle: any = { width: '42px', height: '42px', backgroundColor: '#f1f5f9', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' };
-const backBtnStyle: any = { textDecoration: 'none', color: '#94a3b8', fontSize: '18px', fontWeight: 'bold', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#fff', borderRadius: '10px', border: '1px solid #e2e8f0' };
-const totalCardStyle: any = { backgroundColor: '#0f172a', padding: '30px', borderRadius: '28px', marginBottom: '25px', textAlign: 'center', color: 'white', boxShadow: '0 10px 20px rgba(0,0,0,0.1)' };
-const historyCardStyle: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '18px', backgroundColor: 'white', borderRadius: '22px', border: '1px solid #f1f5f9' };
-const methodBadgeStyle: any = { fontSize: '9px', fontWeight: '800', color: '#64748b', backgroundColor: '#f1f5f9', padding: '3px 8px', borderRadius: '6px', textTransform: 'uppercase' };
-const userBadgeStyle: any = { fontSize: '9px', fontWeight: '800', color: '#2563eb', backgroundColor: '#dbeafe', padding: '3px 8px', borderRadius: '6px' };
-const emptyStateStyle: any = { textAlign: 'center', marginTop: '30px', padding: '50px 20px', backgroundColor: 'white', borderRadius: '28px', border: '1px dashed #e2e8f0' };
+const containerStyle: any = { maxWidth: '500px', margin: '0 auto', padding: '20px', paddingBottom: '100px' };
+const headerStyle: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px' };
+const logoBox: any = { width: '45px', height: '45px', backgroundColor: colors.primary, borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '22px' };
+const titleStyle: any = { fontSize: '20px', fontWeight: '800', color: colors.primary, margin: 0 };
+const subtitleStyle: any = { fontSize: '10px', color: colors.secondary, fontWeight: '700', margin: 0, letterSpacing: '1px' };
+const closeBtn: any = { width: '38px', height: '38px', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface, border: `1px solid ${colors.border}`, borderRadius: '10px', color: colors.secondary };
+const addBtn: any = { width: '100%', padding: '16px', backgroundColor: colors.primary, color: 'white', border: 'none', borderRadius: '16px', fontWeight: '800', fontSize: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', marginBottom: '20px' };
+const formCard: any = { backgroundColor: colors.surface, padding: '20px', borderRadius: '22px', border: `1px solid ${colors.border}`, marginBottom: '25px' };
+const inputStyle: any = { width: '100%', padding: '14px', borderRadius: '12px', border: `1px solid ${colors.border}`, backgroundColor: colors.background, fontWeight: '600', fontSize: '14px', boxSizing: 'border-box' };
+const labelStyle: any = { fontSize: '10px', fontWeight: '800', color: colors.secondary, marginBottom: '6px', display: 'block' };
+const saveBtn: any = { width: '100%', padding: '16px', backgroundColor: colors.success, color: 'white', border: 'none', borderRadius: '14px', fontWeight: '800', marginTop: '15px' };
+const assetCard: any = { backgroundColor: colors.surface, padding: '20px', borderRadius: '24px', border: `1px solid ${colors.border}`, marginBottom: '15px', display: 'flex', gap: '15px' };
+const assetNameStyle: any = { fontSize: '15px', fontWeight: '800', color: colors.primary, margin: '0 0 8px 0' };
+const labelMicro: any = { fontSize: '9px', fontWeight: '800', color: colors.secondary };
+const totalAmountStyle: any = { fontSize: '14px', fontWeight: '800', color: colors.danger };
+const descBox: any = { marginTop: '10px', padding: '8px 12px', backgroundColor: colors.background, borderRadius: '10px', fontSize: '11px', fontWeight: '600', color: colors.secondary, border: `1px solid ${colors.border}` };
+const payBtn: any = { display: 'inline-flex', alignItems: 'center', gap: '6px', marginTop: '15px', padding: '8px 14px', backgroundColor: '#ecfdf5', color: colors.success, borderRadius: '10px', fontSize: '11px', fontWeight: '800', textDecoration: 'none', border: `1px solid ${colors.success}33` };
+const sideActions: any = { display: 'flex', flexDirection: 'column', gap: '8px' };
+const iconBtn: any = { width: '38px', height: '38px', backgroundColor: colors.background, border: `1px solid ${colors.border}`, borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' };
 
-export default function AssetHistoryPage() {
-  return (
-    <main style={{ backgroundColor: '#f8fafc', minHeight: '100vh', padding: '15px' }}>
-      <Suspense fallback={<div>Φόρτωση...</div>}>
-        <HistoryContent />
-      </Suspense>
-    </main>
-  )
+export default function FixedAssetsPage() {
+  return <main style={{ backgroundColor: colors.background, minHeight: '100vh' }}><Suspense fallback={null}><FixedAssetsContent /></Suspense></main>
 }
