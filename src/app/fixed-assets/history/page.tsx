@@ -99,13 +99,13 @@ function FixedAssetsContent() {
       </header>
 
       <button onClick={() => setIsFormOpen(!isFormOpen)} style={addBtn}>
-        {isFormOpen ? 'ΑΚΥΡΩΣΗ' : <><Plus size={18} /> ΝΕΟ ΠΑΓΙΟ</>}
+        {isFormOpen ? 'ΑΚΥΡΩΣΗ' : <><Plus size={18} /> ΝΕΟ ΠΑΓΙΟ / ΛΟΓΑΡΙΑΣΜΟΣ</>}
       </button>
 
       {isFormOpen && (
         <div style={formCard}>
           <label style={labelStyle}>ΟΝΟΜΑΣΙΑ</label>
-          <input value={name} onChange={e => setName(e.target.value)} style={inputStyle} placeholder="Όνομα παγίου..." />
+          <input value={name} onChange={e => setName(e.target.value)} style={inputStyle} placeholder="π.χ. ΔΕΗ, ΕΝΟΙΚΙΟ..." />
           <div style={{marginTop: '15px'}}>
             <label style={labelStyle}>ΠΕΡΙΓΡΑΦΗ / ΚΩΔΙΚΟΣ</label>
             <input value={description} onChange={e => setDescription(e.target.value)} style={inputStyle} placeholder="Προαιρετικά..." />
@@ -125,12 +125,15 @@ function FixedAssetsContent() {
                 <span style={labelMicro}>ΣΥΝΟΛΟ ΕΞΟΔΩΝ</span>
                 <span style={totalAmountStyle}>-{getTotalSpent(asset.id).toFixed(2)}€</span>
               </div>
+              
               {asset.description && (
                 <div style={descBox}>
-                   <span style={{fontWeight:'800', color: colors.indigo, fontSize:'10px'}}>INFO:</span> {asset.description}
+                   <span style={{fontWeight:'800', color: colors.indigo, fontSize:'10px'}}>INFO: </span> 
+                   {asset.description}
                 </div>
               )}
               
+              {/* ΔΙΟΡΘΩΜΕΝΟ URL ΓΙΑ ΤΟ ΦΑΚΕΛΟ add-expense */}
               <Link href={`/add-expense?assetId=${asset.id}`} style={payBtn}>
                 <CreditCard size={14} /> ΚΑΤΑΧΩΡΗΣΗ ΠΛΗΡΩΜΗΣ →
               </Link>
@@ -148,6 +151,7 @@ function FixedAssetsContent() {
   )
 }
 
+// STYLES
 const containerStyle: any = { maxWidth: '500px', margin: '0 auto', padding: '20px', paddingBottom: '100px' };
 const headerStyle: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px' };
 const logoBox: any = { width: '45px', height: '45px', backgroundColor: colors.primary, borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '22px' };
