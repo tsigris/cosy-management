@@ -23,6 +23,8 @@ function AddExpenseForm() {
   const searchParams = useSearchParams()
   const dropdownRef = useRef<HTMLDivElement>(null)
 
+  // Λήψη editId για λειτουργία επεξεργασίας
+  const editId = searchParams.get('editId')
   const urlSupId = searchParams.get('supId')
   const urlAssetId = searchParams.get('assetId')
   const selectedDate = searchParams.get('date') || new Date().toISOString().split('T')[0]
@@ -45,7 +47,6 @@ function AddExpenseForm() {
   const [suppliers, setSuppliers] = useState<any[]>([])
   const [fixedAssets, setFixedAssets] = useState<any[]>([])
   
-  // STATS ΓΙΑ ΤΟ ΚΟΥΜΠΙ
   const [dayStats, setDayStats] = useState({ income: 0, expenses: 0 });
 
   const [searchTerm, setSearchTerm] = useState('')
@@ -69,6 +70,8 @@ function AddExpenseForm() {
   const loadFormData = useCallback(async () => {
     try {
       const { data: { session } } = await supabase.auth.getSession()
+      if (!session) return router.push('/login')
+      
       const { data: profile } = await supabase.from('profiles').select('username, store_id').eq('id', session?.user.id).maybeSingle()
       
       if (profile) {
@@ -90,7 +93,25 @@ function AddExpenseForm() {
           setDayStats({ income: inc, expenses: exp });
         }
 
-        if (urlSupId && sRes.data) {
+        // --- ΛΟΓΙΚΗ ΕΠΕΞΕΡΓΑΣΙΑΣ: ΦΟΡΤΩΣΗ ΥΠΑΡΧΟΥΣΑΣ ΚΙΝΗΣΗΣ ---
+        if (editId) {
+          const { data: tx } = await supabase.from('transactions').select('*').eq('id', editId).single()
+          if (tx) {
+            setAmount(Math.abs(tx.amount).toString())
+            setMethod(tx.method)
+            setNotes(tx.notes || '')
+            setIsCredit(tx.is_credit || false)
+            setIsAgainstDebt(tx.type === 'debt_payment')
+            setSelectedSup(tx.supplier_id || '')
+            setSelectedFixed(tx.fixed_asset_id || '')
+            setNoInvoice(tx.notes?.includes('ΧΩΡΙΣ ΤΙΜΟΛΟΓΙΟ') || false)
+            
+            if (tx.supplier_id && sRes.data) {
+              const found = sRes.data.find((s: any) => s.id === tx.supplier_id)
+              if (found) setSearchTerm(found.name)
+            }
+          }
+        } else if (urlSupId && sRes.data) {
           const found = sRes.data.find((s: any) => s.id === urlSupId)
           if (found) {
             setSearchTerm(found.name)
@@ -99,11 +120,10 @@ function AddExpenseForm() {
         }
       }
     } catch (error) { console.error(error) } finally { setLoading(false) }
-  }, [urlSupId, selectedDate])
+  }, [urlSupId, selectedDate, editId, router])
 
   useEffect(() => { loadFormData() }, [loadFormData])
 
-  // Υπολογισμός τελικού ταμείου
   const currentBalance = useMemo(() => dayStats.income - dayStats.expenses, [dayStats]);
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -120,24 +140,13 @@ function AddExpenseForm() {
   }, [searchTerm, suppliers])
 
   const handleSave = async () => {
-    if (!amount || Number(amount) <= 0) return alert('Συμπληρώστε το ποσό')
-    if (!selectedSup && !selectedFixed) return alert('Επιλέξτε Προμηθευτή ή Πάγιο')
+    if (!amount || Number(amount) <= 0) return toast.error('Συμπληρώστε το ποσό')
+    if (!selectedSup && !selectedFixed) return toast.error('Επιλέξτε Προμηθευτή ή Πάγιο')
     setLoading(true)
-    setIsUploading(true)
 
     try {
-      let imageUrl = null
-      if (imageFile && storeId && !noInvoice) {
-        const fileExt = imageFile.name.split('.').pop()
-        const fileName = `${storeId}/${Date.now()}.${fileExt}`
-        const { error: uploadError } = await supabase.storage.from('invoices').upload(fileName, imageFile)
-        if (uploadError) throw uploadError
-        const { data: urlData } = supabase.storage.from('invoices').getPublicUrl(fileName)
-        imageUrl = urlData.publicUrl
-      }
-
       const { data: { session } } = await supabase.auth.getSession()
-      const payload = {
+      const payload: any = {
         amount: Number(amount),
         method: isCredit ? 'Πίστωση' : method,
         is_credit: isCredit,
@@ -150,15 +159,24 @@ function AddExpenseForm() {
         category: isAgainstDebt ? 'Εξόφληση Χρέους' : (selectedSup ? 'Εμπορεύματα' : (selectedFixed ? 'Πάγια' : 'Λοιπά')),
         created_by_name: currentUsername,
         notes: noInvoice ? (notes ? `${notes} (ΧΩΡΙΣ ΤΙΜΟΛΟΓΙΟ)` : 'ΧΩΡΙΣ ΤΙΜΟΛΟΓΙΟ') : notes,
-        image_url: imageUrl
       }
 
-      const { error } = await supabase.from('transactions').insert([payload])
+      let error;
+      if (editId) {
+        // ΕΝΗΜΕΡΩΣΗ ΑΝΤΙ ΓΙΑ ΝΕΑ ΕΓΓΡΑΦΗ
+        const res = await supabase.from('transactions').update(payload).eq('id', editId)
+        error = res.error
+      } else {
+        const res = await supabase.from('transactions').insert([payload])
+        error = res.error
+      }
+
       if (error) throw error
+      toast.success(editId ? 'Η κίνηση ενημερώθηκε!' : 'Η κίνηση καταχωρήθηκε!')
       router.push(`/?date=${selectedDate}`)
       router.refresh()
     } catch (error: any) { 
-      alert(error.message); setLoading(false); setIsUploading(false);
+      toast.error(error.message); setLoading(false);
     }
   }
 
@@ -171,7 +189,7 @@ function AddExpenseForm() {
           <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
             <div style={logoBoxStyle}>💸</div>
             <div>
-              <h1 style={{ fontWeight: '800', fontSize: '22px', margin: 0 }}>Έξοδο</h1>
+              <h1 style={{ fontWeight: '800', fontSize: '22px', margin: 0 }}>{editId ? 'Διόρθωση' : 'Έξοδο'}</h1>
               <p style={{ margin: 0, fontSize: '11px', color: colors.secondaryText, fontWeight: '700' }}>{new Date(selectedDate).toLocaleDateString('el-GR', { day: 'numeric', month: 'long' }).toUpperCase()}</p>
             </div>
           </div>
@@ -179,24 +197,20 @@ function AddExpenseForm() {
         </div>
 
         <div style={formCard}>
-          {/* ΠΟΣΟ */}
           <label style={labelStyle}>ΠΟΣΟ (€)</label>
           <input type="number" inputMode="decimal" autoFocus value={amount} onChange={e => setAmount(e.target.value)} style={inputStyle} placeholder="0.00" />
 
-          {/* ΜΑΥΡΑ */}
-          <div onClick={() => setNoInvoice(!noInvoice)} style={{ ...noInvoiceToggle, backgroundColor: noInvoice ? '#fee2e2' : colors.bgLight, border: `1px solid ${noInvoice ? colors.accentRed : colors.border}` }}>
+          <div onClick={() => setNoInvoice(!noInvoice)} style={{ ...noInvoiceToggle, backgroundColor: noInvoice ? '#fee2e2' : colors.bgLight, border: `1px solid ${noInvoice ? colors.accentRed : colors.border}`, marginTop: '15px' }}>
             <div style={{ ...checkboxBox, backgroundColor: noInvoice ? colors.accentRed : 'white', border: `2px solid ${noInvoice ? colors.accentRed : colors.secondaryText}` }}>{noInvoice && '✓'}</div>
             <span style={{ fontSize: '13px', fontWeight: '800', color: noInvoice ? colors.accentRed : colors.primaryDark }}>ΧΩΡΙΣ ΤΙΜΟΛΟΓΙΟ (Μαύρα)</span>
           </div>
 
-          {/* ΜΕΘΟΔΟΣ */}
           <label style={{ ...labelStyle, marginTop: '20px' }}>ΜΕΘΟΔΟΣ ΠΛΗΡΩΜΗΣ</label>
           <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
             <button type="button" onClick={() => {setMethod('Μετρητά'); setIsCredit(false);}} style={{ ...methodBtn, backgroundColor: method === 'Μετρητά' && !isCredit ? colors.primaryDark : colors.white, color: method === 'Μετρητά' && !isCredit ? 'white' : colors.secondaryText }}>💵 Μετρητά</button>
             <button type="button" onClick={() => {setMethod('Τράπεζα'); setIsCredit(false);}} style={{ ...methodBtn, backgroundColor: method === 'Τράπεζα' && !isCredit ? colors.primaryDark : colors.white, color: method === 'Τράπεζα' && !isCredit ? 'white' : colors.secondaryText }}>🏛️ Τράπεζα</button>
           </div>
 
-          {/* ΧΡΕΟΣ / ΠΙΣΤΩΣΗ */}
           <div style={creditPanel}>
             <div style={{ marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '10px' }}>
               <input type="checkbox" checked={isCredit} onChange={e => {setIsCredit(e.target.checked); if(e.target.checked) setIsAgainstDebt(false)}} id="credit" style={checkboxStyle} />
@@ -208,7 +222,6 @@ function AddExpenseForm() {
             </div>
           </div>
 
-          {/* 1. ΑΥΤΟΜΑΤΗ ΑΝΑΖΗΤΗΣΗ */}
           <label style={{ ...labelStyle, marginTop: '20px' }}>🏭 ΑΝΑΖΗΤΗΣΗ ΠΡΟΜΗΘΕΥΤΗ</label>
           <div style={{ position: 'relative' }} ref={dropdownRef}>
             <div style={{ display: 'flex', gap: '10px' }}>
@@ -231,7 +244,6 @@ function AddExpenseForm() {
             )}
           </div>
 
-          {/* 2. ΚΛΑΣΙΚΟ DROPDOWN ΠΡΟΜΗΘΕΥΤΩΝ */}
           <label style={{ ...labelStyle, marginTop: '15px' }}>ΛΙΣΤΑ ΠΡΟΜΗΘΕΥΤΩΝ (SELECT)</label>
           <select 
             value={selectedSup} 
@@ -247,7 +259,6 @@ function AddExpenseForm() {
             {suppliers.map(s => <option key={s.id} value={s.id}>{s.name.toUpperCase()}</option>)}
           </select>
 
-          {/* ΠΑΓΙΑ */}
           <label style={{ ...labelStyle, marginTop: '20px' }}>🏢 ΠΑΓΙΟ / ΛΟΓΑΡΙΑΣΜΟΣ</label>
           <select value={selectedFixed} onChange={e => {setSelectedFixed(e.target.value); if(e.target.value) {setSelectedSup(''); setSearchTerm('');}}} style={inputStyle}>
             <option value="">Επιλογή...</option>
@@ -257,8 +268,7 @@ function AddExpenseForm() {
           <label style={{ ...labelStyle, marginTop: '20px' }}>ΣΗΜΕΙΩΣΕΙΣ</label>
           <textarea value={notes} onChange={e => setNotes(e.target.value)} style={{ ...inputStyle, height: '60px' }} />
 
-          {/* ΦΩΤΟΓΡΑΦΙΑ */}
-          {!noInvoice && (
+          {!editId && !noInvoice && (
             <div style={{ marginTop: '20px' }}>
               <label style={labelStyle}>📸 ΦΩΤΟΓΡΑΦΙΑ ΤΙΜΟΛΟΓΙΟΥ</label>
               <div style={imageUploadContainer}>
@@ -277,26 +287,21 @@ function AddExpenseForm() {
             </div>
           )}
 
-          {/* SMART SUBMIT BUTTON ΜΕ ΠΛΗΡΟΦΟΡΙΑ ΤΑΜΕΙΟΥ */}
           <div style={{ marginTop: '25px' }}>
-            <button onClick={handleSave} disabled={loading || isUploading} style={smartSaveBtn}>
+            <button onClick={handleSave} disabled={loading} style={{...smartSaveBtn, backgroundColor: editId ? colors.accentBlue : colors.accentRed}}>
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
                 <span style={{ fontSize: '15px', fontWeight: '800' }}>
-                  {isUploading ? 'ΑΠΟΘΗΚΕΥΣΗ...' : 'ΟΛΟΚΛΗΡΩΣΗ ΕΞΟΔΟΥ'}
+                  {loading ? 'SYNCING...' : editId ? 'ΕΝΗΜΕΡΩΣΗ ΔΕΔΟΜΕΝΩΝ' : 'ΟΛΟΚΛΗΡΩΣΗ ΕΞΟΔΟΥ'}
                 </span>
-                {!isUploading && (
-                  <span style={{ fontSize: '10px', opacity: 0.8, fontWeight: '600', marginTop: '2px' }}>
-                    ΥΠΟΛΟΙΠΟ ΤΑΜΕΙΟΥ: {currentBalance.toFixed(2)}€
-                  </span>
-                )}
+                <span style={{ fontSize: '10px', opacity: 0.8, fontWeight: '600', marginTop: '2px' }}>
+                  ΚΑΘΑΡΟ ΤΑΜΕΙΟ: {currentBalance.toFixed(2)}€
+                </span>
               </div>
             </button>
           </div>
-
         </div>
       </div>
       
-      {/* MODAL ΝΕΟΥ ΠΡΟΜΗΘΕΥΤΗ */}
       {isSupModalOpen && (
         <div style={modalOverlay}>
           <div style={modalCard}>
@@ -311,18 +316,7 @@ function AddExpenseForm() {
 }
 
 // STYLES
-const smartSaveBtn: any = { 
-  width: '100%', 
-  padding: '16px', 
-  backgroundColor: colors.accentRed, 
-  color: 'white', 
-  border: 'none', 
-  borderRadius: '16px', 
-  cursor: 'pointer', 
-  boxShadow: '0 4px 12px rgba(220, 38, 38, 0.2)',
-  transition: 'transform 0.1s ease'
-};
-
+const smartSaveBtn: any = { width: '100%', padding: '16px', color: 'white', border: 'none', borderRadius: '16px', cursor: 'pointer', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' };
 const autocompleteDropdown: any = { position: 'absolute', top: '105%', left: 0, right: 0, backgroundColor: 'white', border: `1px solid ${colors.border}`, borderRadius: '14px', zIndex: 1000, maxHeight: '200px', overflowY: 'auto', boxShadow: '0 10px 20px rgba(0,0,0,0.1)' };
 const dropdownRow = { padding: '12px 15px', fontSize: '14px', fontWeight: '700', cursor: 'pointer', borderBottom: `1px solid ${colors.bgLight}` };
 const iphoneWrapper: any = { backgroundColor: colors.bgLight, minHeight: '100dvh', padding: '20px', overflowY: 'auto', position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 };
