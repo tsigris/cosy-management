@@ -8,16 +8,17 @@ export function AuthLogic() {
   const pathname = usePathname()
 
   useEffect(() => {
-    // 1. Παρακολούθηση Auth & Διαχείριση Session
+    // Λίστα σελίδων που επιτρέπονται ΧΩΡΙΣ επιλεγμένο κατάστημα
+    const allowedPaths = ['/select-store', '/login', '/stores/new']
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (event === 'SIGNED_OUT' || (event === 'TOKEN_REFRESHED' && !session)) {
-        localStorage.removeItem('active_store_id') // Καθαρισμός επιλεγμένου καταστήματος
+        localStorage.removeItem('active_store_id')
         window.location.href = '/login'
         return
       }
 
-      // Αν γίνει Login ή Refresh, έλεγξε αν υπάρχει επιλεγμένο κατάστημα
-      if (session && pathname !== '/select-store' && pathname !== '/login') {
+      if (session && !allowedPaths.includes(pathname)) {
         const activeStoreId = localStorage.getItem('active_store_id')
         if (!activeStoreId) {
           router.push('/select-store')
@@ -25,7 +26,6 @@ export function AuthLogic() {
       }
     })
 
-    // 2. Μηχανισμός Αφύπνισης (Resilience): Έλεγχος κατά το focus ή visibility change
     const handleGlobalResilience = async () => {
       if (document.visibilityState === 'visible') {
         const { data: { session }, error } = await supabase.auth.getSession()
@@ -38,15 +38,14 @@ export function AuthLogic() {
           return
         }
 
-        // Έλεγχος καταστήματος κατά την "αφύπνιση"
         const activeStoreId = localStorage.getItem('active_store_id')
-        if (!activeStoreId && pathname !== '/select-store' && pathname !== '/login') {
+        // Έλεγχος αν η τρέχουσα σελίδα είναι στις εξαιρέσεις
+        if (!activeStoreId && !allowedPaths.includes(pathname)) {
           router.push('/select-store')
         }
       }
     }
 
-    // Πρώτος έλεγχος κατά το φόρτωμα
     handleGlobalResilience()
 
     document.addEventListener('visibilitychange', handleGlobalResilience)
@@ -59,5 +58,5 @@ export function AuthLogic() {
     }
   }, [router, pathname])
 
-  return null; // Δουλεύει αόρατα στο παρασκήνιο
+  return null;
 }
