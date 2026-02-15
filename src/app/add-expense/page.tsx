@@ -45,7 +45,9 @@ function AddExpenseForm() {
   const [suppliers, setSuppliers] = useState<any[]>([])
   const [fixedAssets, setFixedAssets] = useState<any[]>([])
   
-  // LOGIC ΓΙΑ ΔΙΠΛΗ ΕΠΙΛΟΓΗ (SEARCH & SELECT)
+  // STATS STATE ΓΙΑ ΤΟ VS
+  const [dayStats, setDayStats] = useState({ income: 0, expenses: 0 });
+
   const [searchTerm, setSearchTerm] = useState('')
   const [showDropdown, setShowDropdown] = useState(false)
   const [selectedSup, setSelectedSup] = useState(urlSupId || '')
@@ -54,7 +56,6 @@ function AddExpenseForm() {
   const [isSupModalOpen, setIsSupModalOpen] = useState(false)
   const [newSupName, setNewSupName] = useState('')
 
-  // Κλείσιμο dropdown αν πατήσεις εκτός
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
@@ -74,12 +75,21 @@ function AddExpenseForm() {
         setCurrentUsername(profile.username || 'Admin')
         setStoreId(profile.store_id)
         
-        const [sRes, fRes] = await Promise.all([
+        const [sRes, fRes, tRes] = await Promise.all([
           supabase.from('suppliers').select('*').eq('store_id', profile.store_id).neq('is_active', false).order('name'),
-          supabase.from('fixed_assets').select('id, name').eq('store_id', profile.store_id).order('name')
+          supabase.from('fixed_assets').select('id, name').eq('store_id', profile.store_id).order('name'),
+          supabase.from('transactions').select('amount, type').eq('store_id', profile.store_id).eq('date', selectedDate)
         ])
+        
         if (sRes.data) setSuppliers(sRes.data)
         if (fRes.data) setFixedAssets(fRes.data)
+        
+        // Υπολογισμός stats ημέρας
+        if (tRes.data) {
+          const inc = tRes.data.filter(t => t.type === 'income').reduce((acc, t) => acc + Number(t.amount), 0);
+          const exp = tRes.data.filter(t => t.type === 'expense' || t.type === 'debt_payment').reduce((acc, t) => acc + Math.abs(Number(t.amount)), 0);
+          setDayStats({ income: inc, expenses: exp });
+        }
 
         if (urlSupId && sRes.data) {
           const found = sRes.data.find((s: any) => s.id === urlSupId)
@@ -90,9 +100,18 @@ function AddExpenseForm() {
         }
       }
     } catch (error) { console.error(error) } finally { setLoading(false) }
-  }, [urlSupId])
+  }, [urlSupId, selectedDate])
 
   useEffect(() => { loadFormData() }, [loadFormData])
+
+  // Υπολογισμός διαφοράς και ποσοστού
+  const vsAnalysis = useMemo(() => {
+    const diff = dayStats.income - dayStats.expenses;
+    const total = dayStats.income + dayStats.expenses;
+    const incPct = total > 0 ? (dayStats.income / total) * 100 : 0;
+    const expPct = total > 0 ? (dayStats.expenses / total) * 100 : 0;
+    return { diff, incPct, expPct };
+  }, [dayStats]);
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -164,6 +183,37 @@ function AddExpenseForm() {
             </div>
           </div>
           <Link href="/" style={backBtnStyle}>✕</Link>
+        </div>
+
+        {/* HERO CARD ΜΕ ΕΣΟΔΑ VS ΕΞΟΔΑ */}
+        <div style={heroStatsCard}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
+            <div>
+              <p style={heroLabelSmall}>ΣΥΝΟΛΟ ΕΞΟΔΩΝ</p>
+              <h2 style={heroAmountLarge}>{dayStats.expenses.toFixed(2)}€</h2>
+            </div>
+            <div style={{ textAlign: 'right' }}>
+              <p style={heroLabelSmall}>ΕΣΟΔΑ ΗΜΕΡΑΣ</p>
+              <p style={{ fontSize: '18px', fontWeight: '800', color: colors.accentGreen, margin: 0 }}>{dayStats.income.toFixed(2)}€</p>
+            </div>
+          </div>
+
+          <div style={heroDivider} />
+
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div>
+              <p style={heroLabelSmall}>ΑΠΟΤΕΛΕΣΜΑ</p>
+              <p style={{ fontSize: '16px', fontWeight: '900', color: vsAnalysis.diff >= 0 ? colors.accentGreen : colors.accentRed, margin: 0 }}>
+                {vsAnalysis.diff >= 0 ? '+' : ''}{vsAnalysis.diff.toFixed(2)}€
+              </p>
+            </div>
+            <div style={{ textAlign: 'right' }}>
+              <p style={heroLabelSmall}>ΣΧΕΣΗ %</p>
+              <p style={{ fontSize: '14px', fontWeight: '800', color: colors.primaryDark, margin: 0 }}>
+                <span style={{color: colors.accentGreen}}>{vsAnalysis.incPct.toFixed(0)}%</span> / <span style={{color: colors.accentRed}}>{vsAnalysis.expPct.toFixed(0)}%</span>
+              </p>
+            </div>
+          </div>
         </div>
 
         <div style={formCard}>
@@ -284,6 +334,11 @@ function AddExpenseForm() {
 }
 
 // STYLES
+const heroStatsCard: any = { backgroundColor: 'white', padding: '20px', borderRadius: '24px', marginBottom: '20px', border: `1px solid ${colors.border}`, boxShadow: '0 4px 12px rgba(0,0,0,0.03)' };
+const heroLabelSmall = { fontSize: '10px', fontWeight: '800', color: colors.secondaryText, marginBottom: '4px', letterSpacing: '0.5px' };
+const heroAmountLarge = { fontSize: '28px', fontWeight: '900', color: colors.accentRed, margin: 0 };
+const heroDivider = { height: '1px', backgroundColor: colors.bgLight, margin: '15px 0' };
+
 const autocompleteDropdown: any = { position: 'absolute', top: '105%', left: 0, right: 0, backgroundColor: 'white', border: `1px solid ${colors.border}`, borderRadius: '14px', zIndex: 1000, maxHeight: '200px', overflowY: 'auto', boxShadow: '0 10px 20px rgba(0,0,0,0.1)' };
 const dropdownRow = { padding: '12px 15px', fontSize: '14px', fontWeight: '700', cursor: 'pointer', borderBottom: `1px solid ${colors.bgLight}` };
 const iphoneWrapper: any = { backgroundColor: colors.bgLight, minHeight: '100dvh', padding: '20px', overflowY: 'auto', position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 };
