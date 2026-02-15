@@ -16,7 +16,8 @@ const colors = {
   background: '#f8fafc',       
   surface: '#ffffff',
   border: '#e2e8f0',
-  indigo: '#6366f1'
+  indigo: '#6366f1',
+  warning: '#f59e0b'
 }
 
 function DashboardContent() {
@@ -35,7 +36,6 @@ function DashboardContent() {
   const [loading, setLoading] = useState(true)
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [expandedTx, setExpandedTx] = useState<string | null>(null)
-  const [isZExpanded, setIsZExpanded] = useState(false)
   const [storeName, setStoreName] = useState('Cosy')
   const [permissions, setPermissions] = useState({ role: 'user', store_id: null as any })
 
@@ -77,6 +77,17 @@ function DashboardContent() {
     const d = new Date(selectedDate)
     d.setDate(d.getDate() + days)
     router.push(`/?date=${d.toISOString().split('T')[0]}`)
+    setExpandedTx(null)
+  }
+
+  const handleDelete = async (id: string) => {
+    if (confirm('Οριστική διαγραφή αυτής της κίνησης;')) {
+      const { error } = await supabase.from('transactions').delete().eq('id', id)
+      if (!error) {
+        setTransactions(prev => prev.filter(t => t.id !== id))
+        setExpandedTx(null)
+      }
+    }
   }
 
   const totals = useMemo(() => {
@@ -89,20 +100,15 @@ function DashboardContent() {
     }, { inc: 0, exp: 0 })
   }, [transactions])
 
-  const zTotal = useMemo(() => 
-    transactions.filter(t => t.category === 'Εσοδα Ζ').reduce((a, b) => a + Number(b.amount), 0), 
-  [transactions])
-
   if (loading) return null
 
   return (
     <div style={containerStyle}>
-      {/* Διόρθωση του Style Tag για να μην πετάει error */}
       <style dangerouslySetInnerHTML={{ __html: `
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap');
         body { background-color: ${colors.background}; font-family: 'Plus Jakarta Sans', sans-serif; color: ${colors.primary}; margin: 0; }
-        .modern-card { transition: transform 0.2s ease, box-shadow 0.2s ease; }
-        .modern-card:active { transform: scale(0.98); }
+        .modern-card { transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+        .action-panel { overflow: hidden; transition: max-height 0.3s ease-out, opacity 0.2s; }
       `}} />
 
       {/* TOP BAR */}
@@ -132,7 +138,7 @@ function DashboardContent() {
         <button onClick={() => shiftDate(1)} style={dateArrow}>→</button>
       </div>
 
-      {/* HERO SECTION */}
+      {/* HERO CARD (BALANCE) */}
       <section style={heroCard}>
         <p style={heroLabel}>ΔΙΑΘΕΣΙΜΟ ΥΠΟΛΟΙΠΟ ΗΜΕΡΑΣ</p>
         <h2 style={heroAmount}>{(totals.inc - totals.exp).toFixed(2)}€</h2>
@@ -148,38 +154,64 @@ function DashboardContent() {
         </div>
       </section>
 
-      {/* ACTION BUTTONS */}
+      {/* ACTIONS */}
       <div style={actionsGrid}>
         <Link href={`/add-income?date=${selectedDate}`} style={actionBtn(colors.success)}>+ Έσοδο</Link>
         <Link href={`/add-expense?date=${selectedDate}`} style={actionBtn(colors.danger)}>- Έξοδο</Link>
-        {isAdmin && <Link href="/daily-z" style={actionBtn(colors.primary)}>📟 Ζ</Link>}
+        <Link href="/daily-z" style={actionBtn(colors.primary)}>📟 Z</Link>
       </div>
 
       {/* TRANSACTIONS FEED */}
       <div style={{ marginTop: '30px' }}>
-        <h3 style={feedTitle}>Κινήσεις</h3>
+        <h3 style={feedTitle}>Κινήσεις Ημέρας</h3>
 
-        {zTotal > 0 && (
-          <div style={zCard} onClick={() => setIsZExpanded(!isZExpanded)}>
-             <div style={{ flex: 1 }}>
-                <span style={zBadge}>DAILY TOTAL</span>
-                <p style={{ margin: 0, fontWeight: 700 }}>Σύνολο Ζ</p>
-             </div>
-             <span style={zAmountText}>+{zTotal.toFixed(2)}€</span>
-          </div>
+        {transactions.length === 0 && (
+          <div style={emptyState}>Δεν υπάρχουν κινήσεις για σήμερα</div>
         )}
 
-        {transactions.filter(t => t.category !== 'Εσοδα Ζ').map((t) => (
-          <div key={t.id} style={txRow} className="modern-card">
-            <div style={txIconContainer(t.type === 'income')}>
-              {t.type === 'income' ? '↙' : '↗'}
+        {transactions.map((t) => (
+          <div key={t.id} style={{ marginBottom: '12px' }}>
+            <div 
+              style={{
+                ...txRow,
+                borderBottomLeftRadius: expandedTx === t.id ? '0' : '20px',
+                borderBottomRightRadius: expandedTx === t.id ? '0' : '20px',
+                borderBottom: expandedTx === t.id ? 'none' : `1px solid ${colors.border}`
+              }} 
+              className="modern-card"
+              onClick={() => setExpandedTx(expandedTx === t.id ? null : t.id)}
+            >
+              <div style={txIconContainer(t.type === 'income')}>
+                {t.type === 'income' ? '↙' : '↗'}
+              </div>
+              <div style={{ flex: 1, marginLeft: '12px' }}>
+                <p style={txTitleText}>{t.suppliers?.name || t.category || 'Συναλλαγή'}</p>
+                <p style={txSubText}>{t.method} • {formatTime(t.created_at)}</p>
+              </div>
+              <div style={txAmountValue(t.type === 'income')}>
+                {t.type === 'income' ? '+' : '-'}{Math.abs(t.amount).toFixed(2)}€
+              </div>
             </div>
-            <div style={{ flex: 1, marginLeft: '12px' }}>
-              <p style={txTitleText}>{t.suppliers?.name || t.category || 'Συναλλαγή'}</p>
-              <p style={txSubText}>{t.method} • {formatTime(t.created_at)}</p>
-            </div>
-            <div style={txAmountValue(t.type === 'income')}>
-              {t.type === 'income' ? '+' : '-'}{Math.abs(t.amount).toFixed(2)}€
+
+            {/* EXPANDABLE ACTIONS PANEL */}
+            <div style={{
+              ...actionPanelStyle,
+              maxHeight: expandedTx === t.id ? '80px' : '0',
+              opacity: expandedTx === t.id ? 1 : 0,
+              borderTop: expandedTx === t.id ? `1px dashed ${colors.border}` : 'none'
+            }} className="action-panel">
+               <button 
+                 onClick={() => router.push(`/${t.type === 'income' ? 'add-income' : 'add-expense'}?editId=${t.id}`)}
+                 style={editBtn}
+               >
+                 ✎ Επεξεργασία
+               </button>
+               <button 
+                 onClick={() => handleDelete(t.id)}
+                 style={deleteBtn}
+               >
+                 🗑 Διαγραφή
+               </button>
             </div>
           </div>
         ))}
@@ -188,8 +220,8 @@ function DashboardContent() {
   )
 }
 
-// --- REFINED STYLES ---
-const containerStyle: any = { maxWidth: '480px', margin: '0 auto', padding: '0 20px 100px' }
+// --- STYLES ---
+const containerStyle: any = { maxWidth: '480px', margin: '0 auto', padding: '0 20px 120px' }
 const topBar: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '20px 0' }
 const brandArea: any = { display: 'flex', alignItems: 'center', gap: '12px' }
 const logoIcon: any = { width: '36px', height: '36px', background: colors.primary, color: 'white', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '800', fontSize: '18px' }
@@ -210,18 +242,19 @@ const heroStatsRow: any = { display: 'flex', gap: '16px', marginTop: '20px', pad
 const heroStatItem: any = { display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', fontWeight: '600' }
 const statCircle = (bg: string): any => ({ width: '20px', height: '20px', borderRadius: '50%', background: bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px' })
 
-const actionsGrid: any = { display: 'flex', gap: '12px' }
+const actionsGrid: any = { display: 'flex', gap: '10px' }
 const actionBtn = (bg: string): any => ({ flex: 1, padding: '16px', background: bg, color: 'white', borderRadius: '18px', textAlign: 'center', textDecoration: 'none', fontWeight: '700', fontSize: '14px', boxShadow: `0 6px 12px ${bg}22` })
 
-const feedTitle: any = { fontSize: '16px', fontWeight: '800', marginBottom: '16px' }
-const zCard: any = { background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)', color: 'white', padding: '18px', borderRadius: '20px', display: 'flex', alignItems: 'center', marginBottom: '16px', boxShadow: '0 8px 20px rgba(0,0,0,0.1)' }
-const zBadge: any = { fontSize: '9px', background: colors.indigo, padding: '3px 8px', borderRadius: '6px', fontWeight: '800', marginBottom: '4px', display: 'inline-block' }
-const zAmountText: any = { fontSize: '18px', fontWeight: '800' }
-
-const txRow: any = { background: colors.surface, padding: '16px', borderRadius: '20px', display: 'flex', alignItems: 'center', marginBottom: '12px', border: `1px solid ${colors.border}` }
+const feedTitle: any = { fontSize: '16px', fontWeight: '800', marginBottom: '16px', paddingLeft: '4px' }
+const txRow: any = { background: colors.surface, padding: '16px', borderRadius: '20px', display: 'flex', alignItems: 'center', border: `1px solid ${colors.border}`, cursor: 'pointer' }
 const txIconContainer = (isInc: boolean): any => ({ width: '42px', height: '42px', borderRadius: '14px', background: isInc ? '#ecfdf5' : '#fff1f2', color: isInc ? colors.success : colors.danger, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: '18px' })
 const txTitleText: any = { margin: 0, fontWeight: '700', fontSize: '15px', color: colors.primary }
 const txSubText: any = { margin: 0, fontSize: '12px', color: colors.secondary, marginTop: '2px' }
 const txAmountValue = (isInc: boolean): any => ({ fontWeight: '800', fontSize: '16px', color: isInc ? colors.success : colors.primary })
+
+const actionPanelStyle: any = { background: colors.surface, border: `1px solid ${colors.border}`, borderTop: 'none', borderBottomLeftRadius: '20px', borderBottomRightRadius: '20px', display: 'flex', gap: '8px', padding: '0 16px', alignItems: 'center', overflow: 'hidden' }
+const editBtn: any = { flex: 1, background: '#fef3c7', color: '#92400e', border: 'none', padding: '10px', borderRadius: '12px', fontWeight: '700', fontSize: '12px', cursor: 'pointer' }
+const deleteBtn: any = { flex: 1, background: '#fee2e2', color: '#b91c1c', border: 'none', padding: '10px', borderRadius: '12px', fontWeight: '700', fontSize: '12px', cursor: 'pointer' }
+const emptyState: any = { textAlign: 'center', padding: '40px', color: colors.secondary, fontSize: '14px', fontWeight: '600' }
 
 export default function HomePage() { return <Suspense fallback={null}><DashboardContent /></Suspense> }
