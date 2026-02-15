@@ -3,13 +3,21 @@ import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+// Εισάγουμε το subHours για τη λογική της ώρας
+import { format, subHours } from 'date-fns'
 
 export default function DailyZPage() {
   const router = useRouter()
   const [cashZ, setCashZ] = useState('')      
   const [posZ, setPosZ] = useState('')        
   const [noTax, setNoTax] = useState('')      
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0])
+  
+  // ✅ ΛΟΓΙΚΗ 07:00: Αν είναι πριν τις 7πμ, δείξε την προηγούμενη μέρα ως προεπιλογή
+  const [date, setDate] = useState(() => {
+    const now = new Date()
+    return format(subHours(now, 7), 'yyyy-MM-dd')
+  })
+  
   const [loading, setLoading] = useState(false)
   const [username, setUsername] = useState('Admin')
 
@@ -34,6 +42,7 @@ export default function DailyZPage() {
     if (totalSales <= 0) return alert('Παρακαλώ συμπληρώστε τα ποσά της ημέρας.')
     setLoading(true)
 
+    // ✅ Οι εγγραφές παίρνουν το σωστό date για το φιλτράρισμα
     const incomeTransactions = [
       { amount: Number(cashZ), method: 'Μετρητά (Ζ)', notes: 'Ζ ΤΑΜΕΙΑΚΗΣ', type: 'income', date, category: 'Εσοδα Ζ', created_by_name: username },
       { amount: Number(posZ), method: 'Κάρτα', notes: 'Ζ ΤΑΜΕΙΑΚΗΣ (POS)', type: 'income', date, category: 'Εσοδα Ζ', created_by_name: username },
@@ -43,7 +52,7 @@ export default function DailyZPage() {
     const { error } = await supabase.from('transactions').insert(incomeTransactions)
     
     if (!error) {
-      alert(`Το ταμείο έκλεισε επιτυχώς από τον χρήστη: ${username}`)
+      alert(`Το ταμείο έκλεισε επιτυχώς για τη βάρδια ημερομηνίας: ${format(new Date(date), 'dd/MM/yyyy')}`)
       router.push('/')
     } else {
       alert('Σφάλμα κατά την αποθήκευση: ' + error.message)
@@ -68,7 +77,7 @@ export default function DailyZPage() {
 
         {/* SECTION: ΕΣΟΔΑ */}
         <div style={sectionBox}>
-          <p style={sectionTitle}>💰 ΕΙΣΠΡΑΞΕΙΣ (ΑΠΟ ΤΑΜΕΙΑΚΗ & POS)</p>
+          <p style={sectionTitle}>💰 ΕΙΣΠΡΑΞΕΙΣ ΒΑΡΔΙΑΣ (ΕΩΣ 07:00 ΠΜ)</p>
           
           <div style={fieldBox}>
             <label style={labelStyle}>💵 ΜΕΤΡΗΤΑ ΤΑΜΕΙΑΚΗΣ (Z)</label>
@@ -88,13 +97,14 @@ export default function DailyZPage() {
 
         {/* ΗΜΕΡΟΜΗΝΙΑ */}
         <div style={{ marginBottom: '20px' }}>
-          <label style={labelStyle}>ΗΜΕΡΟΜΗΝΙΑ ΚΛΕΙΣΙΜΑΤΟΣ</label>
+          <label style={labelStyle}>ΗΜΕΡΟΜΗΝΙΑ ΒΑΡΔΙΑΣ</label>
           <input type="date" value={date} onChange={e => setDate(e.target.value)} style={dateInputStyle} />
+          <p style={{fontSize: '10px', color: '#94a3b8', marginTop: '5px'}}>* Η βάρδια λήγει στις 07:00 π.μ. της επόμενης ημέρας.</p>
         </div>
 
         {/* ΣΥΝΟΛΟ */}
         <div style={totalDisplay}>
-          <p style={labelStyle}>ΣΥΝΟΛΙΚΟΣ ΤΖΙΡΟΣ ΗΜΕΡΑΣ</p>
+          <p style={labelStyle}>ΣΥΝΟΛΙΚΟΣ ΤΖΙΡΟΣ ΒΑΡΔΙΑΣ</p>
           <h2 style={{ fontSize: '32px', margin: 0, fontWeight: '900', color: '#0f172a' }}>
             {totalSales.toFixed(2)}€
           </h2>
@@ -110,28 +120,9 @@ export default function DailyZPage() {
   )
 }
 
-// --- STYLES ---
-const mainWrapperStyle: any = { 
-  backgroundColor: '#f8fafc', 
-  minHeight: '100vh', 
-  padding: '16px', 
-  fontFamily: 'sans-serif',
-  overflowY: 'auto',
-  WebkitOverflowScrolling: 'touch' 
-};
-
-const cardStyle: any = { 
-  maxWidth: '500px', 
-  margin: '0 auto', 
-  backgroundColor: 'white', 
-  borderRadius: '28px', 
-  padding: '24px', 
-  paddingBottom: '100px',
-  boxShadow: '0 10px 15px rgba(0,0,0,0.05)',
-  display: 'flex',
-  flexDirection: 'column'
-};
-
+// --- STYLES (Παραμένουν ως είχαν) ---
+const mainWrapperStyle: any = { backgroundColor: '#f8fafc', minHeight: '100vh', padding: '16px', fontFamily: 'sans-serif', overflowY: 'auto', WebkitOverflowScrolling: 'touch' };
+const cardStyle: any = { maxWidth: '500px', margin: '0 auto', backgroundColor: 'white', borderRadius: '28px', padding: '24px', paddingBottom: '100px', boxShadow: '0 10px 15px rgba(0,0,0,0.05)', display: 'flex', flexDirection: 'column' };
 const userLabelStyle = { marginBottom: '20px', padding: '10px', backgroundColor: '#f1f5f9', borderRadius: '12px', textAlign: 'center' as const };
 const sectionBox = { marginBottom: '20px', padding: '18px', borderRadius: '22px', border: '1px solid #e2e8f0' };
 const sectionTitle = { fontSize: '10px', fontWeight: '900', color: '#64748b', marginBottom: '15px', letterSpacing: '0.5px' };
