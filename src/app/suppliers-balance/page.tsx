@@ -23,7 +23,6 @@ function BalancesContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   
-  // Η ΜΟΝΑΔΙΚΗ ΠΗΓΗ ΑΛΗΘΕΙΑΣ: Το ID από το URL
   const storeIdFromUrl = searchParams.get('store')
 
   const [data, setData] = useState<any[]>([])
@@ -39,18 +38,19 @@ function BalancesContent() {
     try {
       setLoading(true)
       
-      // Ανάκτηση ΜΟΝΟ των δεδομένων που ανήκουν στο συγκεκριμένο store_id
+      // --- Η ΑΛΛΑΓΗ: Χρησιμοποιούμε select('*') αντί για συγκεκριμένα ονόματα ---
+      // Αυτό κάνει τον κώδικα να μην "σκάει" αν λείπει κάποια στήλη στη βάση.
       const [supsRes, transRes] = await Promise.all([
         supabase
           .from('suppliers')
-          .select('id, name, category')
+          .select('*') // <--- Ζητάμε τα πάντα για ασφάλεια
           .eq('store_id', storeIdFromUrl)
           .order('name'),
         supabase
           .from('transactions')
-          .select('amount, type, is_credit, supplier_id')
+          .select('*') // <--- Ζητάμε τα πάντα για ασφάλεια
           .eq('store_id', storeIdFromUrl)
-          .neq('supplier_id', null) // Φέρνουμε μόνο όσες έχουν προμηθευτή
+          .neq('supplier_id', null)
       ]);
 
       if (supsRes.error) throw supsRes.error
@@ -63,15 +63,13 @@ function BalancesContent() {
       const balanceList = suppliers.map(s => {
         const sTrans = transactions.filter(t => t.supplier_id === s.id)
         
-        // totalCredit: Συναλλαγές με "is_credit: true" (Αγορές με πίστωση)
-        // ΠΡΟΣΟΧΗ: Το amount στα έξοδα είναι αρνητικό (-). 
-        // Για να βρούμε το χρέος, παίρνουμε το απόλυτο (abs).
+        // Υπολογισμός Πίστωσης (Χρέος)
+        // Αν λείπει το πεδίο is_credit, απλά θεωρούμε ότι είναι false (δεν κρασάρει)
         const totalCredit = sTrans
           .filter(t => t.is_credit === true)
           .reduce((acc, t) => acc + Math.abs(Number(t.amount) || 0), 0)
         
-        // totalPaid: Συναλλαγές τύπου "debt_payment" (Πληρωμές έναντι χρέους)
-        // Αυτά είναι έξοδα, άρα αρνητικά. Παίρνουμε το απόλυτο.
+        // Υπολογισμός Πληρωμών
         const totalPaid = sTrans
           .filter(t => t.type === 'debt_payment')
           .reduce((acc, t) => acc + Math.abs(Number(t.amount) || 0), 0)
@@ -81,14 +79,15 @@ function BalancesContent() {
           balance: totalCredit - totalPaid 
         }
       })
-      // Φιλτράρισμα: Δείχνουμε μόνο όσους έχουν υπόλοιπο > 0.50€ (για αποφυγή μικροδιαφορών)
+      // Φιλτράρισμα: Δείχνουμε μόνο όσους έχουν υπόλοιπο > 0.10€
       .filter(s => Math.abs(s.balance) > 0.1)
-      .sort((a, b) => b.balance - a.balance) // Ταξινόμηση: Μεγαλύτερο χρέος πρώτο
+      .sort((a, b) => b.balance - a.balance)
 
       setData(balanceList)
     } catch (err: any) { 
       console.error(err)
-      toast.error('Σφάλμα κατά τον υπολογισμό υπολοίπων')
+      // Δείχνουμε το πραγματικό μήνυμα λάθους για να ξέρουμε τι φταίει
+      toast.error(`Σφάλμα: ${err.message || 'Υπολογισμός'}`)
     } finally { 
       setLoading(false) 
     }
@@ -103,6 +102,7 @@ function BalancesContent() {
     if (!confirmAction) return;
 
     try {
+      // Εδώ πρέπει να είμαστε προσεκτικοί με το delete
       const { error } = await supabase
         .from('transactions')
         .delete()
