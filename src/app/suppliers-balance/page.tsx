@@ -19,6 +19,12 @@ const colors = {
   accentRed: '#dc2626'
 };
 
+// Βοηθητική συνάρτηση: Ελέγχει αν ένας κωδικός είναι πραγματικό UUID
+const isValidUUID = (id: any) => {
+  const regex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  return typeof id === 'string' && regex.test(id);
+}
+
 function BalancesContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -30,11 +36,10 @@ function BalancesContent() {
   const [selectedSupplierId, setSelectedSupplierId] = useState<string>('all')
 
   const fetchBalances = useCallback(async () => {
-    // --- Η ΔΙΟΡΘΩΣΗ: Έλεγχος για "null" string ---
-    // Αν το URL λέει store=null ή δεν υπάρχει store, σταματάμε εδώ.
-    if (!storeIdFromUrl || storeIdFromUrl === 'null' || storeIdFromUrl === 'undefined') {
-      // Μην δείξεις σφάλμα, απλά περίμενε ή γύρνα πίσω
-      setLoading(true); 
+    // 1. ΑΥΣΤΗΡΟΣ ΕΛΕΓΧΟΣ: Αν το ID δεν είναι έγκυρο UUID, μην κάνεις τίποτα!
+    if (!storeIdFromUrl || !isValidUUID(storeIdFromUrl)) {
+      console.log("Invalid Store ID detected, skipping fetch.");
+      setLoading(true); // Κρατάμε το loading για να μην φανεί άδειο content πριν το redirect
       return; 
     }
 
@@ -51,7 +56,7 @@ function BalancesContent() {
           .from('transactions')
           .select('*')
           .eq('store_id', storeIdFromUrl)
-          .neq('supplier_id', null)
+          .not('supplier_id', 'is', null) // <-- Η ΣΩΣΤΗ ΣΥΝΤΑΞΗ ΓΙΑ "ΟΧΙ NULL"
       ]);
 
       if (supsRes.error) throw supsRes.error
@@ -60,7 +65,6 @@ function BalancesContent() {
       const suppliers = supsRes.data || []
       const transactions = transRes.data || []
 
-      // Υπολογισμός υπολοίπου ανά προμηθευτή
       const balanceList = suppliers.map(s => {
         const sTrans = transactions.filter(t => t.supplier_id === s.id)
         
@@ -83,16 +87,22 @@ function BalancesContent() {
       setData(balanceList)
     } catch (err: any) { 
       console.error(err)
-      toast.error(`Σφάλμα: ${err.message}`)
+      // Δεν δείχνουμε toast για το "invalid input syntax" για να μην τρομάζει ο χρήστης
+      if (!err.message.includes("invalid input syntax")) {
+        toast.error(`Σφάλμα: ${err.message}`)
+      }
     } finally { 
       setLoading(false) 
     }
   }, [storeIdFromUrl])
 
-  // --- ΕΛΕΓΧΟΣ ΑΣΦΑΛΕΙΑΣ ---
+  // --- ΕΛΕΓΧΟΣ ΑΣΦΑΛΕΙΑΣ & ΚΑΘΑΡΙΣΜΟΣ ---
   useEffect(() => {
-    // Αν το ID είναι προβληματικό, γύρνα στην επιλογή
-    if (!storeIdFromUrl || storeIdFromUrl === 'null') {
+    // Αν το ID στο URL είναι "null" ή λάθος, καθάρισε τα πάντα και γύρνα στην επιλογή
+    if (!storeIdFromUrl || !isValidUUID(storeIdFromUrl)) {
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('active_store_id'); // Σβήνουμε το "σκουπίδι" null
+      }
       router.replace('/select-store');
     } else {
       fetchBalances();
@@ -140,8 +150,7 @@ function BalancesContent() {
               <p style={{ margin: 0, fontSize: '10px', color: colors.secondaryText, fontWeight: '700', letterSpacing: '1px' }}>ΥΠΟΛΟΙΠΑ ΠΡΟΜΗΘΕΥΤΩΝ</p>
             </div>
           </div>
-          {/* Κουμπί Πίσω: Αν το storeId είναι null, μην βάλεις τίποτα στο Link για να το πιάσει το AuthLogic */}
-          <Link href={storeIdFromUrl && storeIdFromUrl !== 'null' ? `/?store=${storeIdFromUrl}` : '/select-store'} style={backBtnStyle}>
+          <Link href={isValidUUID(storeIdFromUrl) ? `/?store=${storeIdFromUrl}` : '/select-store'} style={backBtnStyle}>
             <ChevronLeft size={20} />
           </Link>
         </div>
@@ -183,7 +192,7 @@ function BalancesContent() {
             <div style={{ textAlign: 'center', padding: '50px' }}>
                <div style={spinnerStyle}></div>
                <p style={{ color: colors.secondaryText, fontWeight: '600', marginTop: '15px', fontSize: '12px' }}>
-                 {(!storeIdFromUrl || storeIdFromUrl === 'null') ? 'Ανακατεύθυνση...' : 'Υπολογισμός...'}
+                 {!isValidUUID(storeIdFromUrl) ? 'Ανακατεύθυνση...' : 'Υπολογισμός...'}
                </p>
             </div>
           ) : filteredData.length > 0 ? (
