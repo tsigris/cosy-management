@@ -5,7 +5,7 @@ import { useEffect, useState, Suspense, useCallback } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
-import { Plus, TrendingUp, Phone, CreditCard, Hash, Tag, Trash2, Edit2, ChevronLeft, AlertCircle } from 'lucide-react'
+import { Plus, TrendingUp, Phone, CreditCard, Hash, Tag, Trash2, Edit2, ChevronLeft } from 'lucide-react'
 import { toast, Toaster } from 'sonner'
 
 const colors = {
@@ -24,6 +24,8 @@ const colors = {
 function SuppliersContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
+  
+  // 1. Η ΜΟΝΑΔΙΚΗ ΠΗΓΗ ΑΛΗΘΕΙΑΣ - Μόνο από το URL
   const storeIdFromUrl = searchParams.get('store');
 
   const [suppliers, setSuppliers] = useState<any[]>([])
@@ -55,7 +57,6 @@ function SuppliersContent() {
       
       if (storeInfo) setCurrentStoreName(storeInfo.name);
 
-      // LOCK: Φέρνουμε ΜΟΝΟ όσα ανήκουν στο store του URL
       const [sRes, tRes] = await Promise.all([
         supabase.from('suppliers').select('*').eq('store_id', storeIdFromUrl),
         supabase.from('transactions').select('amount, supplier_id').eq('store_id', storeIdFromUrl)
@@ -77,9 +78,15 @@ function SuppliersContent() {
     setEditingId(null); setIsFormOpen(false);
   }
 
+  // --- Η ΚΡΙΣΙΜΗ ΔΙΟΡΘΩΣΗ: handleSave ---
   const handleSave = async () => {
     if (!name.trim()) return toast.error('Συμπληρώστε το όνομα');
-    if (!storeIdFromUrl) return toast.error('Σφάλμα: Δεν βρέθηκε το κατάστημα στο URL');
+    
+    // ΑΠΟΛΥΤΟΣ ΕΛΕΓΧΟΣ: Αν δεν υπάρχει storeId στο URL, σταμάτα τα πάντα
+    if (!storeIdFromUrl) {
+      toast.error('Σφάλμα: Δεν βρέθηκε κατάστημα στο URL. Παρακαλώ ανανεώστε τη σελίδα.');
+      return;
+    }
 
     setIsSaving(true);
     try {
@@ -89,7 +96,7 @@ function SuppliersContent() {
         vat_number: afm.trim(),
         iban: iban.trim().toUpperCase(),
         category: category,
-        store_id: storeIdFromUrl // ΑΠΟΛΥΤΟΣ ΕΛΕΓΧΟΣ
+        store_id: storeIdFromUrl // <--- ΕΠΙΒΟΛΗ ΑΠΟ ΤΟ URL
       };
 
       let error;
@@ -98,7 +105,7 @@ function SuppliersContent() {
           .from('suppliers')
           .update(supplierData)
           .eq('id', editingId)
-          .eq('store_id', storeIdFromUrl); // Επιπλέον ασφάλεια στο update
+          .eq('store_id', storeIdFromUrl); // Επιπλέον κλείδωμα
         error = err;
       } else {
         const { error: err } = await supabase
@@ -109,7 +116,7 @@ function SuppliersContent() {
 
       if (error) throw error;
       
-      toast.success('Αποθηκεύτηκε επιτυχώς');
+      toast.success(`Καταχωρήθηκε στο ${currentStoreName}`);
       resetForm(); 
       fetchSuppliersData();
     } catch (error: any) { 
@@ -122,19 +129,15 @@ function SuppliersContent() {
   const handleDelete = async (id: string) => {
     if (!confirm('Οριστική διαγραφή;')) return;
     try {
-      // LOCK: Διαγραφή μόνο αν ανήκει στο τρέχον store
       const { error } = await supabase
         .from('suppliers')
         .delete()
         .eq('id', id)
         .eq('store_id', storeIdFromUrl);
-      
       if (error) throw error;
       toast.success('Διαγράφηκε');
       fetchSuppliersData();
-    } catch (err) {
-      toast.error('Αποτυχία διαγραφής');
-    }
+    } catch (err) { toast.error('Σφάλμα διαγραφής'); }
   }
 
   const getSupplierTurnover = (id: string) => 
@@ -142,21 +145,10 @@ function SuppliersContent() {
   
   const sortedSuppliers = [...suppliers].sort((a, b) => getSupplierTurnover(b.id) - getSupplierTurnover(a.id));
 
-  if (!storeIdFromUrl) {
-    return (
-      <div style={errorScreenStyle}>
-        <AlertCircle size={48} color={colors.accentRed} />
-        <p>Δεν βρέθηκε αναγνωριστικό καταστήματος.</p>
-        <Link href="/select-store" style={backLinkStyle}>Επιστροφή στην επιλογή</Link>
-      </div>
-    )
-  }
-
   return (
     <div style={containerStyle}>
       <Toaster position="top-center" richColors />
       <div style={contentWrapper}>
-        
         <header style={headerStyle}>
           <div>
             <h1 style={titleStyle}>Προμηθευτές</h1>
@@ -172,7 +164,7 @@ function SuppliersContent() {
         {isFormOpen && (
           <div style={formCard}>
             <div style={inputGroup}>
-              <label style={labelStyle}><Hash size={12} /> ΕΠΩΝΥΜΙΑ / ΟΝΟΜΑ</label>
+              <label style={labelStyle}><Hash size={12} /> ΕΠΩΝΥΜΙΑ</label>
               <input value={name} onChange={(e) => setName(e.target.value)} style={inputStyle} placeholder="π.χ. COCA COLA" />
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
@@ -197,7 +189,7 @@ function SuppliersContent() {
 
         <div style={listArea}>
           <div style={rankingHeader}><TrendingUp size={14} /> ΚΑΤΑΤΑΞΗ ΤΖΙΡΟΥ</div>
-          {sortedSuppliers.length === 0 ? <p style={emptyText}>Δεν βρέθηκαν προμηθευτές στο {currentStoreName}</p> : 
+          {loading ? <p style={emptyText}>Συγχρονισμός...</p> : sortedSuppliers.length === 0 ? <p style={emptyText}>Δεν βρέθηκαν προμηθευτές στο {currentStoreName}</p> : 
             sortedSuppliers.map((s, idx) => (
               <div key={s.id} style={{ borderBottom: `1px solid ${colors.border}` }}>
                 <div style={rowWrapper} onClick={() => setExpandedId(expandedId === s.id ? null : s.id)}>
@@ -254,8 +246,6 @@ const infoText: any = { fontSize: '12px', margin: 0, color: colors.primaryDark }
 const editBtn: any = { flex: 1, padding: '10px', background: colors.warning, color: colors.warningText, border: 'none', borderRadius: '10px', fontWeight: '700', fontSize: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px', cursor: 'pointer' };
 const delBtn: any = { flex: 1, padding: '10px', background: '#fee2e2', color: colors.accentRed, border: 'none', borderRadius: '10px', fontWeight: '700', fontSize: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px', cursor: 'pointer' };
 const emptyText: any = { padding: '40px', textAlign: 'center', color: colors.secondaryText, fontSize: '13px', fontWeight: '600' };
-const errorScreenStyle: any = { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100vh', gap: '20px', color: colors.primaryDark, fontWeight: '700' };
-const backLinkStyle: any = { padding: '10px 20px', backgroundColor: colors.primaryDark, color: 'white', borderRadius: '12px', textDecoration: 'none' };
 
 export default function SuppliersPage() {
   return <main><Suspense fallback={null}><SuppliersContent /></Suspense></main>
