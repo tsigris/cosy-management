@@ -39,20 +39,42 @@ function AnalysisContent() {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) return router.push('/login')
 
-      const { data: profile } = await supabase.from('profiles').select('store_id').eq('id', session.user.id).single()
-      
-      if (profile?.store_id) {
-        const sId = profile.store_id
-        const [transRes, supsRes, assetsRes] = await Promise.all([
-          supabase.from('transactions').select('*, suppliers(name), fixed_assets(name)').eq('store_id', sId).order('date', { ascending: false }),
-          supabase.from('suppliers').select('id, name').eq('store_id', sId).order('name'),
-          supabase.from('fixed_assets').select('id, name').eq('store_id', sId).order('name')
-        ])
-
-        if (transRes.data) setTransactions(transRes.data)
-        if (supsRes.data) setSuppliers(supsRes.data)
-        if (assetsRes.data) setFixedAssets(assetsRes.data)
+      // Get activeStoreId from localStorage
+      const activeStoreId = typeof window !== 'undefined' ? localStorage.getItem('active_store_id') : null;
+      if (!activeStoreId) {
+        setLoading(false);
+        return;
       }
+
+      // For legacy support, include records with store_id null if main store
+      const mainStoreId = 'e50a8803-a262-4303-9e90-c116c965e683';
+      const transactionsQuery = supabase
+        .from('transactions')
+        .select('*, suppliers(name), fixed_assets(name)')
+        .or(`store_id.eq.${activeStoreId},store_id.is.null`)
+        .order('date', { ascending: false });
+
+      const suppliersQuery = supabase
+        .from('suppliers')
+        .select('id, name')
+        .eq('store_id', activeStoreId)
+        .order('name');
+
+      const assetsQuery = supabase
+        .from('fixed_assets')
+        .select('id, name')
+        .eq('store_id', activeStoreId)
+        .order('name');
+
+      const [transRes, supsRes, assetsRes] = await Promise.all([
+        transactionsQuery,
+        suppliersQuery,
+        assetsQuery
+      ]);
+
+      if (transRes.data) setTransactions(transRes.data)
+      if (supsRes.data) setSuppliers(supsRes.data)
+      if (assetsRes.data) setFixedAssets(assetsRes.data)
     } catch (err) { console.error(err) } finally { setLoading(false) }
   }, [router])
 
@@ -78,24 +100,33 @@ function AnalysisContent() {
   }
 
   const stats = useMemo(() => {
-    let currentData = transactions.filter(t => t.date >= startDate && t.date <= endDate)
+    // Get activeStoreId from localStorage
+    const activeStoreId = typeof window !== 'undefined' ? localStorage.getItem('active_store_id') : null;
+    const mainStoreId = 'e50a8803-a262-4303-9e90-c116c965e683';
+
+    let currentData = transactions.filter(t => t.date >= startDate && t.date <= endDate);
+
+    // If not main store, filter out transactions with store_id null
+    if (activeStoreId && activeStoreId !== mainStoreId) {
+      currentData = currentData.filter(t => t.store_id !== null);
+    }
 
     if (selectedFilter !== 'all') {
-      currentData = currentData.filter(t => t.supplier_id === selectedFilter || t.fixed_asset_id === selectedFilter)
+      currentData = currentData.filter(t => t.supplier_id === selectedFilter || t.fixed_asset_id === selectedFilter);
     }
 
     // Υπολογισμός και των δύο τύπων για τη σύγκριση
-    const allIncome = currentData.filter(t => t.type === 'income').reduce((acc, t) => acc + Number(t.amount), 0)
-    const allExpenses = currentData.filter(t => t.type === 'expense' || t.category === 'pocket' || t.type === 'debt_payment').reduce((acc, t) => acc + Math.abs(Number(t.amount)), 0)
-    
-    const netResult = allIncome - allExpenses
-    const profitMargin = allIncome > 0 ? (netResult / allIncome) * 100 : 0
+    const allIncome = currentData.filter(t => t.type === 'income').reduce((acc, t) => acc + Number(t.amount), 0);
+    const allExpenses = currentData.filter(t => t.type === 'expense' || t.category === 'pocket' || t.type === 'debt_payment').reduce((acc, t) => acc + Math.abs(Number(t.amount)), 0);
 
-    const finalDisplayData = currentData.filter(t => 
+    const netResult = allIncome - allExpenses;
+    const profitMargin = allIncome > 0 ? (netResult / allIncome) * 100 : 0;
+
+    const finalDisplayData = currentData.filter(t =>
       view === 'income' ? t.type === 'income' : (t.type === 'expense' || t.category === 'pocket' || t.type === 'debt_payment')
-    )
+    );
 
-    return { 
+    return {
         currentTotal: view === 'income' ? allIncome : allExpenses,
         allIncome,
         allExpenses,

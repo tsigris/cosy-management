@@ -22,13 +22,14 @@ export default function DailyZPage() {
 
   // Έλεγχος αν υπάρχει ήδη Ζ
   async function checkExistingZ() {
+    const activeStoreId = typeof window !== 'undefined' ? localStorage.getItem('active_store_id') : null;
     const { data } = await supabase
       .from('transactions')
       .select('id')
       .eq('category', 'Εσοδα Ζ')
       .eq('date', date)
+      .eq('store_id', activeStoreId)
       .limit(1)
-    
     setIsAlreadyClosed(data && data.length > 0 ? true : false)
   }
 
@@ -53,11 +54,13 @@ export default function DailyZPage() {
     if (!confirmUnlock) return;
 
     setLoading(true);
+    const activeStoreId = typeof window !== 'undefined' ? localStorage.getItem('active_store_id') : null;
     const { error } = await supabase
       .from('transactions')
       .delete()
       .eq('category', 'Εσοδα Ζ')
-      .eq('date', date);
+      .eq('date', date)
+      .eq('store_id', activeStoreId);
 
     if (!error) {
       setIsAlreadyClosed(false);
@@ -78,10 +81,11 @@ export default function DailyZPage() {
     if (totalSales <= 0) return alert('Παρακαλώ συμπληρώστε τα ποσά.')
     setLoading(true)
 
+    const activeStoreId = typeof window !== 'undefined' ? localStorage.getItem('active_store_id') : null;
     const incomeTransactions = [
-      { amount: Number(cashZ), method: 'Μετρητά (Ζ)', notes: 'Ζ ΤΑΜΕΙΑΚΗΣ', type: 'income', date, category: 'Εσοδα Ζ', created_by_name: username },
-      { amount: Number(posZ), method: 'Κάρτα', notes: 'Ζ ΤΑΜΕΙΑΚΗΣ (POS)', type: 'income', date, category: 'Εσοδα Ζ', created_by_name: username },
-      { amount: Number(noTax), method: 'Μετρητά', notes: 'ΧΩΡΙΣ ΣΗΜΑΝΣΗ', type: 'income', date, category: 'Εσοδα Ζ', created_by_name: username }
+      { amount: Number(cashZ), method: 'Μετρητά (Ζ)', notes: 'Ζ ΤΑΜΕΙΑΚΗΣ', type: 'income', date, category: 'Εσοδα Ζ', created_by_name: username, store_id: activeStoreId },
+      { amount: Number(posZ), method: 'Κάρτα', notes: 'Ζ ΤΑΜΕΙΑΚΗΣ (POS)', type: 'income', date, category: 'Εσοδα Ζ', created_by_name: username, store_id: activeStoreId },
+      { amount: Number(noTax), method: 'Μετρητά', notes: 'ΧΩΡΙΣ ΣΗΜΑΝΣΗ', type: 'income', date, category: 'Εσοδα Ζ', created_by_name: username, store_id: activeStoreId }
     ].filter(t => t.amount > 0)
 
     const { error } = await supabase.from('transactions').insert(incomeTransactions)

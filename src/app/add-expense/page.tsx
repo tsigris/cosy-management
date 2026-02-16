@@ -71,52 +71,57 @@ function AddExpenseForm() {
     try {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) return router.push('/login')
-      
-      const { data: profile } = await supabase.from('profiles').select('username, store_id').eq('id', session?.user.id).maybeSingle()
-      
-      if (profile) {
-        setCurrentUsername(profile.username || 'Admin')
-        setStoreId(profile.store_id)
-        
-        const [sRes, fRes, tRes] = await Promise.all([
-          supabase.from('suppliers').select('*').eq('store_id', profile.store_id).neq('is_active', false).order('name'),
-          supabase.from('fixed_assets').select('id, name').eq('store_id', profile.store_id).order('name'),
-          supabase.from('transactions').select('amount, type').eq('store_id', profile.store_id).eq('date', selectedDate)
-        ])
-        
-        if (sRes.data) setSuppliers(sRes.data)
-        if (fRes.data) setFixedAssets(fRes.data)
-        
-        if (tRes.data) {
-          const inc = tRes.data.filter(t => t.type === 'income').reduce((acc, t) => acc + Number(t.amount), 0);
-          const exp = tRes.data.filter(t => t.type === 'expense' || t.type === 'debt_payment').reduce((acc, t) => acc + Math.abs(Number(t.amount)), 0);
-          setDayStats({ income: inc, expenses: exp });
-        }
 
-        // --- ΛΟΓΙΚΗ ΕΠΕΞΕΡΓΑΣΙΑΣ: ΦΟΡΤΩΣΗ ΥΠΑΡΧΟΥΣΑΣ ΚΙΝΗΣΗΣ ---
-        if (editId) {
-          const { data: tx } = await supabase.from('transactions').select('*').eq('id', editId).single()
-          if (tx) {
-            setAmount(Math.abs(tx.amount).toString())
-            setMethod(tx.method)
-            setNotes(tx.notes || '')
-            setIsCredit(tx.is_credit || false)
-            setIsAgainstDebt(tx.type === 'debt_payment')
-            setSelectedSup(tx.supplier_id || '')
-            setSelectedFixed(tx.fixed_asset_id || '')
-            setNoInvoice(tx.notes?.includes('ΧΩΡΙΣ ΤΙΜΟΛΟΓΙΟ') || false)
-            
-            if (tx.supplier_id && sRes.data) {
-              const found = sRes.data.find((s: any) => s.id === tx.supplier_id)
-              if (found) setSearchTerm(found.name)
-            }
+      // Get activeStoreId from localStorage
+      const activeStoreId = typeof window !== 'undefined' ? localStorage.getItem('active_store_id') : null;
+      if (!activeStoreId) {
+        setLoading(false);
+        return;
+      }
+
+      // Fetch username from profile (but ignore profile.store_id)
+      const { data: profile } = await supabase.from('profiles').select('username').eq('id', session?.user.id).maybeSingle();
+      if (profile) setCurrentUsername(profile.username || 'Admin');
+      setStoreId(activeStoreId);
+
+      const [sRes, fRes, tRes] = await Promise.all([
+        supabase.from('suppliers').select('*').eq('store_id', activeStoreId).neq('is_active', false).order('name'),
+        supabase.from('fixed_assets').select('id, name').eq('store_id', activeStoreId).order('name'),
+        supabase.from('transactions').select('amount, type').eq('store_id', activeStoreId).eq('date', selectedDate)
+      ]);
+
+      if (sRes.data) setSuppliers(sRes.data);
+      if (fRes.data) setFixedAssets(fRes.data);
+
+      if (tRes.data) {
+        const inc = tRes.data.filter(t => t.type === 'income').reduce((acc, t) => acc + Number(t.amount), 0);
+        const exp = tRes.data.filter(t => t.type === 'expense' || t.type === 'debt_payment').reduce((acc, t) => acc + Math.abs(Number(t.amount)), 0);
+        setDayStats({ income: inc, expenses: exp });
+      }
+
+      // --- ΛΟΓΙΚΗ ΕΠΕΞΕΡΓΑΣΙΑΣ: ΦΟΡΤΩΣΗ ΥΠΑΡΧΟΥΣΑΣ ΚΙΝΗΣΗΣ ---
+      if (editId) {
+        const { data: tx } = await supabase.from('transactions').select('*').eq('id', editId).eq('store_id', activeStoreId).single();
+        if (tx) {
+          setAmount(Math.abs(tx.amount).toString());
+          setMethod(tx.method);
+          setNotes(tx.notes || '');
+          setIsCredit(tx.is_credit || false);
+          setIsAgainstDebt(tx.type === 'debt_payment');
+          setSelectedSup(tx.supplier_id || '');
+          setSelectedFixed(tx.fixed_asset_id || '');
+          setNoInvoice(tx.notes?.includes('ΧΩΡΙΣ ΤΙΜΟΛΟΓΙΟ') || false);
+
+          if (tx.supplier_id && sRes.data) {
+            const found = sRes.data.find((s: any) => s.id === tx.supplier_id);
+            if (found) setSearchTerm(found.name);
           }
-        } else if (urlSupId && sRes.data) {
-          const found = sRes.data.find((s: any) => s.id === urlSupId)
-          if (found) {
-            setSearchTerm(found.name)
-            setSelectedSup(found.id)
-          }
+        }
+      } else if (urlSupId && sRes.data) {
+        const found = sRes.data.find((s: any) => s.id === urlSupId);
+        if (found) {
+          setSearchTerm(found.name);
+          setSelectedSup(found.id);
         }
       }
     } catch (error) { console.error(error) } finally { setLoading(false) }
@@ -143,22 +148,38 @@ function AddExpenseForm() {
     if (!amount || Number(amount) <= 0) return toast.error('Συμπληρώστε το ποσό')
     if (!selectedSup && !selectedFixed) return toast.error('Επιλέξτε Προμηθευτή ή Πάγιο')
     setLoading(true)
+    setIsUploading(true)
 
     try {
       const { data: { session } } = await supabase.auth.getSession()
+      // Get activeStoreId from localStorage
+      const activeStoreId = typeof window !== 'undefined' ? localStorage.getItem('active_store_id') : storeId;
+
       const payload: any = {
-        amount: Number(amount),
+        amount: -Math.abs(Number(amount)),
         method: isCredit ? 'Πίστωση' : method,
         is_credit: isCredit,
         type: isAgainstDebt ? 'debt_payment' : 'expense',
         date: selectedDate,
         user_id: session?.user.id,
-        store_id: storeId,
+        store_id: activeStoreId,
         supplier_id: selectedSup || null,
         fixed_asset_id: selectedFixed || null,
         category: isAgainstDebt ? 'Εξόφληση Χρέους' : (selectedSup ? 'Εμπορεύματα' : (selectedFixed ? 'Πάγια' : 'Λοιπά')),
         created_by_name: currentUsername,
         notes: noInvoice ? (notes ? `${notes} (ΧΩΡΙΣ ΤΙΜΟΛΟΓΙΟ)` : 'ΧΩΡΙΣ ΤΙΜΟΛΟΓΙΟ') : notes,
+      }
+
+      // Image upload logic (if present)
+      let imageUrl = null;
+      if (imageFile) {
+        const fileExt = imageFile.name.split('.').pop();
+        const fileName = `${Date.now()}.${fileExt}`;
+        const filePath = `${activeStoreId}/${fileName}`;
+        const { data: uploadData, error: uploadError } = await supabase.storage.from('invoices').upload(filePath, imageFile);
+        if (uploadError) throw uploadError;
+        imageUrl = uploadData?.path || null;
+        payload.invoice_image = imageUrl;
       }
 
       let error;
@@ -175,8 +196,10 @@ function AddExpenseForm() {
       toast.success(editId ? 'Η κίνηση ενημερώθηκε!' : 'Η κίνηση καταχωρήθηκε!')
       router.push(`/?date=${selectedDate}`)
       router.refresh()
+      setIsUploading(false)
     } catch (error: any) { 
       toast.error(error.message); setLoading(false);
+      setIsUploading(false)
     }
   }
 
@@ -307,7 +330,25 @@ function AddExpenseForm() {
           <div style={modalCard}>
             <h2 style={{fontSize: '18px', margin: '0 0 15px'}}>Νέος Προμηθευτής</h2>
             <input value={newSupName} onChange={e => setNewSupName(e.target.value)} style={{...inputStyle, marginBottom:'15px'}} placeholder="Όνομα" />
-            <button onClick={() => setIsSupModalOpen(false)} style={saveBtn}>ΠΡΟΣΘΗΚΗ</button>
+            <button
+              onClick={async () => {
+                if (!newSupName.trim()) return;
+                const activeStoreId = typeof window !== 'undefined' ? localStorage.getItem('active_store_id') : storeId;
+                const { data, error } = await supabase.from('suppliers').insert([
+                  { name: newSupName.trim(), store_id: activeStoreId }
+                ]).select().single();
+                if (!error && data) {
+                  setSuppliers(prev => [...prev, data]);
+                  setSelectedSup(data.id);
+                  setSearchTerm(data.name);
+                  setIsSupModalOpen(false);
+                  setNewSupName('');
+                }
+              }}
+              style={saveBtn}
+            >
+              ΠΡΟΣΘΗΚΗ
+            </button>
           </div>
         </div>
       )}

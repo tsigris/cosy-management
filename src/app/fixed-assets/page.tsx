@@ -35,46 +35,63 @@ function FixedAssetsContent() {
   const fetchAssets = useCallback(async () => {
     try {
       setLoading(true)
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) return
-
-      const { data: profile } = await supabase.from('profiles').select('store_id').eq('id', user.id).single()
       
-      if (profile?.store_id) {
-        const sId = profile.store_id
-        setStoreId(sId)
+      // 1. ΠΑΙΡΝΟΥΜΕ ΤΟ ΕΝΕΡΓΟ STORE ID
+      const activeStoreId = localStorage.getItem('active_store_id')
+      if (!activeStoreId) return
+      setStoreId(activeStoreId)
 
-        let { data: assetsData } = await supabase.from('fixed_assets').select('*').eq('store_id', sId).order('name')
-        
-        if (assetsData && assetsData.length === 0) {
-          await supabase.from('fixed_assets').insert(
-            DEFAULT_ASSETS.map(name => ({ name, store_id: sId }))
-          )
-          const { data: newData } = await supabase.from('fixed_assets').select('*').eq('store_id', sId).order('name')
-          assetsData = newData
-        }
+      // 2. FETCH ΜΕ ΛΟΓΙΚΗ SAFE MIGRATION (ID ή NULL)
+      // Οι παλιοί λογαριασμοί (null) θα εμφανίζονται μόνο στο Cosy
+      const { data: assetsData, error: assetsErr } = await supabase
+        .from('fixed_assets')
+        .select('*')
+        .or(`store_id.eq.${activeStoreId},store_id.is.null`)
+        .order('name')
 
-        const { data: transData } = await supabase.from('transactions')
-            .select('amount, fixed_asset_id')
-            .eq('store_id', sId)
+      if (assetsErr) throw assetsErr
 
-        if (assetsData) {
-          const enriched = assetsData.map(asset => {
-            const total = transData
-              ?.filter(t => t.fixed_asset_id === asset.id)
-              .reduce((sum, curr) => sum + (Number(curr.amount) || 0), 0) || 0
-            return { ...asset, total }
-          })
-          setAssets(enriched)
-        }
+      // Φιλτράρισμα: Αν δεν είμαστε στο Cosy, κρύψε τα NULL
+      const isMainStore = activeStoreId === 'e50a8803-a262-4303-9e90-c116c965e683'
+      let filteredAssets = assetsData || []
+      
+      if (!isMainStore) {
+        filteredAssets = filteredAssets.filter(a => a.store_id === activeStoreId)
       }
-    } catch (err) { console.error(err) } finally { setLoading(false) }
+
+      // 3. ΑΥΤΟΜΑΤΗ ΔΗΜΙΟΥΡΓΙΑ DEFAULT ΑΝ ΕΙΝΑΙ ΑΔΕΙΟ ΤΟ ΝΕΟ ΚΑΤΑΣΤΗΜΑ
+      if (filteredAssets.length === 0) {
+        const { data: inserted } = await supabase.from('fixed_assets').insert(
+          DEFAULT_ASSETS.map(name => ({ name, store_id: activeStoreId }))
+        ).select()
+        filteredAssets = inserted || []
+      }
+
+      // 4. ΥΠΟΛΟΓΙΣΜΟΣ ΕΞΟΔΩΝ ΓΙΑ ΤΟ ΣΥΓΚΕΚΡΙΜΕΝΟ ΚΑΤΑΣΤΗΜΑ
+      const { data: transData } = await supabase.from('transactions')
+          .select('amount, fixed_asset_id')
+          .eq('store_id', activeStoreId)
+
+      const enriched = filteredAssets.map(asset => {
+        const total = transData
+          ?.filter(t => t.fixed_asset_id === asset.id)
+          .reduce((sum, curr) => sum + Math.abs(Number(curr.amount) || 0), 0) || 0
+        return { ...asset, total }
+      })
+
+      setAssets(enriched)
+    } catch (err) { 
+      console.error(err) 
+      toast.error('Σφάλμα κατά τη φόρτωση')
+    } finally { 
+      setLoading(false) 
+    }
   }, [])
 
   useEffect(() => { fetchAssets() }, [fetchAssets])
 
   async function handleSave() {
-    if (!newName.trim()) return
+    if (!newName.trim() || !storeId) return
     setLoading(true)
 
     try {
@@ -87,13 +104,18 @@ function FixedAssetsContent() {
       setNewName(''); setNewRf(''); setEditingId(null); setIsAdding(false)
       fetchAssets()
       toast.success('Αποθηκεύτηκε επιτυχώς')
-    } catch (err) { toast.error('Σφάλμα αποθήκευσης') } finally { setLoading(false) }
+    } catch (err) { 
+      toast.error('Σφάλμα αποθήκευσης') 
+    } finally { 
+      setLoading(false) 
+    }
   }
 
   async function handleDelete(id: string) {
     if (confirm('Διαγραφή παγίου; Το ιστορικό του στις κινήσεις θα παραμείνει.')) {
-      await supabase.from('fixed_assets').delete().eq('id', id)
-      fetchAssets()
+      const { error } = await supabase.from('fixed_assets').delete().eq('id', id)
+      if (!error) fetchAssets()
+      else toast.error('Δεν είναι δυνατή η διαγραφή')
     }
   }
 
@@ -126,21 +148,9 @@ function FixedAssetsContent() {
         {isAdding && (
           <div style={{...formCard, borderColor: editingId ? '#f59e0b' : colors.primaryDark}}>
             <p style={labelStyle}>ΟΝΟΜΑ ΠΑΓΙΟΥ</p>
-            <input 
-              value={newName} 
-              onChange={e => setNewName(e.target.value)} 
-              placeholder="π.χ. ΔΕΗ, Ενοίκιο..." 
-              style={inputStyle} 
-            />
-            
+            <input value={newName} onChange={e => setNewName(e.target.value)} placeholder="π.χ. ΔΕΗ, Ενοίκιο..." style={inputStyle} />
             <p style={labelStyle}>ΚΩΔΙΚΟΣ ΠΛΗΡΩΜΗΣ (RF)</p>
-            <input 
-              value={newRf} 
-              onChange={e => setNewRf(e.target.value)} 
-              placeholder="RF00 0000..." 
-              style={inputStyle} 
-            />
-            
+            <input value={newRf} onChange={e => setNewRf(e.target.value)} placeholder="RF00 0000..." style={inputStyle} />
             <button onClick={handleSave} style={{...saveBtn, backgroundColor: editingId ? '#f59e0b' : colors.primaryDark}}>
                {editingId ? 'ΕΝΗΜΕΡΩΣΗ ΑΛΛΑΓΩΝ' : 'ΠΡΟΣΘΗΚΗ ΣΤΗ ΛΙΣΤΑ'}
             </button>
@@ -167,20 +177,13 @@ function FixedAssetsContent() {
                 </div>
 
                 {asset.rf_code && asset.rf_code.trim() !== '' && (
-                  <div 
-                    onClick={(e) => handleCopy(e, asset.rf_code)}
-                    style={rfBadgeStyle}
-                  >
+                  <div onClick={(e) => handleCopy(e, asset.rf_code)} style={rfBadgeStyle}>
                     <span style={{ fontSize: '10px', fontWeight: '900' }}>RF: {asset.rf_code}</span>
                     <span style={{ marginLeft: '6px' }}>📋</span>
                   </div>
                 )}
 
-                {/* ΔΙΟΡΘΩΣΗ: ΑΛΛΑΓΗ ΑΠΟ /expenses/add ΣΕ /add-expense */}
-                <button 
-                  onClick={() => router.push(`/add-expense?assetId=${asset.id}`)}
-                  style={payBtnStyle}
-                >
+                <button onClick={() => router.push(`/add-expense?assetId=${asset.id}`)} style={payBtnStyle}>
                   ΚΑΤΑΧΩΡΗΣΗ ΠΛΗΡΩΜΗΣ →
                 </button>
               </div>
@@ -197,18 +200,8 @@ function FixedAssetsContent() {
   )
 }
 
-// STYLES
-const iphoneWrapper: any = { 
-  backgroundColor: colors.bgLight, 
-  minHeight: '100dvh', 
-  padding: '20px', 
-  overflowY: 'auto', 
-  position: 'absolute', 
-  top: 0, 
-  left: 0, 
-  right: 0, 
-  bottom: 0 
-};
+// STYLES (Παραμένουν ως είχαν)
+const iphoneWrapper: any = { backgroundColor: colors.bgLight, minHeight: '100dvh', padding: '20px', overflowY: 'auto', position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 };
 const headerWrapper: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '25px', paddingTop: '15px' };
 const subHeaderStyle: any = { margin: '2px 0 0', fontSize: '10px', color: colors.secondaryText, fontWeight: '800', textTransform: 'uppercase', letterSpacing: '1px' };
 const logoBoxStyle: any = { width: '48px', height: '48px', backgroundColor: colors.primaryDark, borderRadius: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '22px' };

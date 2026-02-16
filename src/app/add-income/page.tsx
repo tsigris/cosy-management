@@ -43,31 +43,37 @@ function AddIncomeForm() {
         return
       }
 
+      // Get activeStoreId from localStorage
+      const activeStoreId = typeof window !== 'undefined' ? localStorage.getItem('active_store_id') : null;
+      if (!activeStoreId) {
+        setLoading(false);
+        return;
+      }
+
+      // Fetch username from profile (ignore profile.store_id)
       const { data: profile } = await supabase
         .from('profiles')
-        .select('username, store_id')
+        .select('username')
         .eq('id', session.user.id)
-        .maybeSingle()
-      
-      if (profile) {
-        setCurrentUsername(profile.username || 'Admin')
-        setStoreId(profile.store_id)
+        .maybeSingle();
+      if (profile) setCurrentUsername(profile.username || 'Admin');
+      setStoreId(activeStoreId);
 
-        // 🛠 ΑΝ ΕΙΝΑΙ ΕΠΕΞΕΡΓΑΣΙΑ (EDIT MODE)
-        if (editId) {
-          const { data: tx, error: txErr } = await supabase
-            .from('transactions')
-            .select('*')
-            .eq('id', editId)
-            .single()
+      // 🛠 ΑΝ ΕΙΝΑΙ ΕΠΕΞΕΡΓΑΣΙΑ (EDIT MODE)
+      if (editId) {
+        const { data: tx, error: txErr } = await supabase
+          .from('transactions')
+          .select('*')
+          .eq('id', editId)
+          .eq('store_id', activeStoreId)
+          .single();
 
-          if (tx && !txErr) {
-            setAmount(tx.amount.toString())
-            setMethod(tx.method || 'Μετρητά')
-            setNotes(tx.notes || '')
-            // Αναγνώριση τύπου εσόδου από την κατηγορία
-            setIncomeType(tx.category === 'income' ? 'Είσπραξη' : 'Άλλο')
-          }
+        if (tx && !txErr) {
+          setAmount(tx.amount.toString());
+          setMethod(tx.method || 'Μετρητά');
+          setNotes(tx.notes || '');
+          // Αναγνώριση τύπου εσόδου από την κατηγορία
+          setIncomeType(tx.category === 'income' ? 'Είσπραξη' : 'Άλλο');
         }
       }
     } catch (error) {
@@ -87,16 +93,18 @@ function AddIncomeForm() {
     setLoading(true)
 
     try {
-      if (!storeId) throw new Error('Δεν βρέθηκε κατάστημα')
+      // Always get store_id from localStorage
+      const activeStoreId = typeof window !== 'undefined' ? localStorage.getItem('active_store_id') : storeId;
+      if (!activeStoreId) throw new Error('Δεν βρέθηκε κατάστημα')
 
       const payload = {
-        amount: parseFloat(amount),
+        amount: Math.abs(parseFloat(amount)), // Always positive for income
         type: 'income',
         category: incomeType === 'Είσπραξη' ? 'income' : 'other_income',
         method: method,
         notes: notes,
         date: selectedDate,
-        store_id: storeId,
+        store_id: activeStoreId,
         created_by_name: currentUsername
       }
 

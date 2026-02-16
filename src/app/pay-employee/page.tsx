@@ -53,18 +53,22 @@ function PayEmployeeContent() {
       setLoading(true)
       const { data: { session } } = await supabase.auth.getSession()
       if (!session?.user) return
-      
+
+      // Get activeStoreId from localStorage
+      let activeStoreId = typeof window !== 'undefined' ? localStorage.getItem('active_store_id') : '';
+      if (!activeStoreId) activeStoreId = '';
+
+      // Fetch username from profile (ignore profile.store_id)
       const { data: profile } = await supabase.from('profiles')
-        .select('store_id, username')
+        .select('username')
         .eq('id', session.user.id)
-        .maybeSingle()
-        
-      if (profile) setUserData({ store_id: profile.store_id, username: profile.username || 'Admin' })
+        .maybeSingle();
+      setUserData({ store_id: String(activeStoreId), username: profile?.username || 'Admin' });
 
       if (empId) {
         const [empRes, otRes] = await Promise.all([
           supabase.from('employees').select('monthly_salary, monthly_days, pay_basis, daily_rate').eq('id', empId).maybeSingle(),
-          supabase.from('employee_overtimes').select('*').eq('employee_id', empId).eq('is_paid', false).order('created_at', { ascending: false })
+          supabase.from('employee_overtimes').select('*').eq('employee_id', empId).eq('store_id', activeStoreId).eq('is_paid', false).order('created_at', { ascending: false })
         ])
 
         if (empRes.data) {
@@ -104,6 +108,8 @@ function PayEmployeeContent() {
     if (isNaN(finalAmount) || finalAmount <= 0) return toast.error('Εισάγετε έγκυρο ποσό.');
 
     try {
+      // Get activeStoreId from localStorage
+      const activeStoreId = typeof window !== 'undefined' ? localStorage.getItem('active_store_id') : userData.store_id;
       await supabase.from('employee_overtimes').update({ is_paid: true }).eq('id', ot.id);
       await supabase.from('transactions').insert([{
         amount: finalAmount,
@@ -111,7 +117,7 @@ function PayEmployeeContent() {
         category: 'Προσωπικό',
         method: 'Μετρητά',
         notes: `Πληρωμή Υπερωρίας: ${empName} (${ot.hours} ώρες)`,
-        store_id: userData.store_id,
+        store_id: activeStoreId,
         date: new Date().toISOString().split('T')[0]
       }]);
       toast.success(`Πληρώθηκαν ${finalAmount.toFixed(2)}€`);
@@ -138,20 +144,22 @@ function PayEmployeeContent() {
     setLoading(true);
 
     try {
+      // Get activeStoreId from localStorage
+      const activeStoreId = typeof window !== 'undefined' ? localStorage.getItem('active_store_id') : userData.store_id;
       const breakdown = `Σύνολο: ${totalEarnings.toFixed(2)}€ (Τράπεζα: ${bankAmount}€, Μετρητά: ${autoCashAmount.toFixed(2)}€)`;
       const transactions = [];
 
       if (bankAmount > 0) {
         transactions.push({
           amount: bankAmount, type: 'expense', category: 'Προσωπικό', method: 'Τράπεζα',
-          date, employee_id: empId, store_id: userData.store_id,
+          date, employee_id: empId, store_id: activeStoreId,
           notes: `Μισθοδοσία ${empName} (Τράπεζα) [${breakdown}]`
         });
       }
       if (autoCashAmount > 0) {
         transactions.push({
           amount: autoCashAmount, type: 'expense', category: 'Προσωπικό', method: 'Μετρητά',
-          date, employee_id: empId, store_id: userData.store_id,
+          date, employee_id: empId, store_id: activeStoreId,
           notes: `Μισθοδοσία ${empName} (Μετρητά) [${breakdown}]`
         });
       }

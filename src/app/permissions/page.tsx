@@ -21,36 +21,60 @@ function PermissionsContent() {
     try {
       setLoading(true)
       const { data: { user } } = await supabase.auth.getUser()
-      
+
       if (user) {
         setMyId(user.id)
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('role, store_id')
-          .eq('id', user.id)
-          .single()
+        // Get activeStoreId from localStorage
+        const activeStoreId = typeof window !== 'undefined' ? localStorage.getItem('active_store_id') : null;
+        if (!activeStoreId) {
+          alert("Δεν βρέθηκε κατάστημα.")
+          router.push('/')
+          return;
+        }
 
-        if (profile?.role !== 'admin') {
+        // Check admin role in store_access table for this store
+        const { data: access } = await supabase
+          .from('store_access')
+          .select('role')
+          .eq('user_id', user.id)
+          .eq('store_id', activeStoreId)
+          .maybeSingle();
+
+        if (!access || access.role !== 'admin') {
           alert("Δεν έχετε πρόσβαση σε αυτή τη σελίδα!")
           router.push('/')
-          return
+          return;
         }
-        setStoreId(profile.store_id)
-        fetchUsers(profile.store_id)
+        setStoreId(activeStoreId);
+        fetchUsers(activeStoreId);
       }
     } catch (err) { console.error(err) }
   }
 
   async function fetchUsers(sId: string | null) {
     if (!sId) return setLoading(false);
-    const { data } = await supabase
-      .from('profiles')
-      .select('*')
+    // Join profiles and store_access to get all users associated with this store
+    const { data, error } = await supabase
+      .from('store_access')
+      .select('user_id, role, can_view_analysis, can_view_history, can_edit_transactions, profiles:profiles(*)')
       .eq('store_id', sId)
-      .order('role', { ascending: true })
-    
-    if (data) setUsers(data)
-    setLoading(false)
+      .order('role', { ascending: true });
+    if (error) {
+      alert('Σφάλμα φόρτωσης χρηστών: ' + error.message);
+      setLoading(false);
+      return;
+    }
+    // Map users to include profile info
+    const usersWithProfiles = (data || []).map((entry: any) => ({
+      ...entry.profiles,
+      id: entry.user_id,
+      role: entry.role,
+      can_view_analysis: entry.can_view_analysis,
+      can_view_history: entry.can_view_history,
+      can_edit_transactions: entry.can_edit_transactions
+    }));
+    setUsers(usersWithProfiles);
+    setLoading(false);
   }
 
   async function updateField(userId: string, field: string, newValue: any) {
@@ -58,25 +82,29 @@ function PermissionsContent() {
       alert("Δεν μπορείτε να αφαιρέσετε τον ρόλο Admin από τον εαυτό σας!");
       return;
     }
-
+    // Update the field in store_access for the current store
     const { error } = await supabase
-      .from('profiles')
+      .from('store_access')
       .update({ [field]: newValue })
-      .eq('id', userId)
-    
+      .eq('user_id', userId)
+      .eq('store_id', storeId);
     if (!error) {
-      fetchUsers(storeId)
+      fetchUsers(storeId);
     } else {
-      alert("Σφάλμα: " + error.message)
+      alert("Σφάλμα: " + error.message);
     }
   }
 
   async function handleDelete(userId: string) {
     if (userId === myId) return alert("Δεν μπορείτε να διαγράψετε τον εαυτό σας!");
-    
-    if (confirm('Θέλετε σίγουρα να αφαιρέσετε αυτόν τον χρήστη από την επιχείρηση;')) {
-      const { error } = await supabase.from('profiles').delete().eq('id', userId)
-      if (!error) fetchUsers(storeId)
+    if (confirm('Θέλετε σίγουρα να αφαιρέσετε αυτόν τον χρήστη από το κατάστημα;')) {
+      // Delete the store_access entry for this user and store
+      const { error } = await supabase
+        .from('store_access')
+        .delete()
+        .eq('user_id', userId)
+        .eq('store_id', storeId);
+      if (!error) fetchUsers(storeId);
     }
   }
 
