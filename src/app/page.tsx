@@ -35,6 +35,7 @@ function DashboardContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   
+  // 1. Η ΜΟΝΑΔΙΚΗ ΠΗΓΗ ΑΛΗΘΕΙΑΣ: Το ID από το URL
   const storeIdFromUrl = searchParams.get('store')
   
   const getBusinessDate = () => {
@@ -63,22 +64,26 @@ function DashboardContent() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) return router.push('/login');
 
-      // Λήψη ονόματος καταστήματος
+      // Επιβεβαίωση καταστήματος - Χρήση maybeSingle για αποφυγή crash
       const { data: storeData } = await supabase
         .from('stores')
         .select('name')
         .eq('id', storeIdFromUrl)
         .maybeSingle();
       
-      if (storeData) setStoreName(storeData.name);
+      if (storeData) {
+        setStoreName(storeData.name);
+      } else {
+        setStoreName('ΚΑΤΑΣΤΗΜΑ');
+      }
 
-      // Φόρτωση κινήσεων με ασφάλεια για τις σχέσεις
+      // Φόρτωση κινήσεων - Προσθήκη safe join (γιατί ο πίνακας fixed_assets άλλαξε)
       const { data: tx, error: txError } = await supabase
         .from('transactions')
         .select(`
-          *,
-          suppliers (name),
-          fixed_assets (name)
+            *,
+            suppliers (name),
+            fixed_assets (name)
         `) 
         .eq('store_id', storeIdFromUrl)
         .eq('date', selectedDate)
@@ -106,6 +111,24 @@ function DashboardContent() {
   }, [selectedDate, router, storeIdFromUrl]);
 
   useEffect(() => { loadDashboard() }, [loadDashboard])
+
+  const handleDelete = async (id: string) => {
+    if (!confirm('Οριστική διαγραφή αυτής της κίνησης;')) return
+    try {
+      const { error } = await supabase
+        .from('transactions')
+        .delete()
+        .eq('id', id)
+        .eq('store_id', storeIdFromUrl);
+
+      if (error) throw error
+      setTransactions(prev => prev.filter(t => t.id !== id))
+      setExpandedTx(null)
+      toast.success('Η κίνηση διαγράφηκε');
+    } catch (err) {
+      toast.error('Σφάλμα κατά τη διαγραφή');
+    }
+  }
 
   const totals = useMemo(() => {
     const income = transactions
@@ -135,7 +158,7 @@ function DashboardContent() {
           <div style={logoBox}>{storeName?.charAt(0) || '?'}</div>
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <h1 style={storeTitleText}>{storeName?.toUpperCase() || 'ΚΑΤΑΣΤΗΜΑ'}</h1>
+                <h1 style={storeTitleText}>{storeName?.toUpperCase() || 'ΦΟΡΤΩΣΗ...'}</h1>
                 <NextLink href="/select-store" style={switchBtnStyle}>ΑΛΛΑΓΗ</NextLink>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -155,13 +178,14 @@ function DashboardContent() {
               <p style={menuSectionLabel}>ΔΙΑΧΕΙΡΙΣΗ</p>
               {isAdmin && (
                   <>
-                    <NextLink href={`/suppliers?store=${storeIdFromUrl}`} style={menuItem}>🛒 Προμηθευτές</NextLink>
-                    <NextLink href={`/fixed-assets?store=${storeIdFromUrl}`} style={menuItem}>🔌 Πάγια</NextLink>
-                    <NextLink href={`/employees?store=${storeIdFromUrl}`} style={menuItem}>👥 Υπάλληλοι</NextLink>
-                    <NextLink href={`/suppliers-balance?store=${storeIdFromUrl}`} style={menuItem}>🚩 Καρτέλες</NextLink>
+                    <NextLink href={`/suppliers?store=${storeIdFromUrl}`} style={menuItem} onClick={() => setIsMenuOpen(false)}>🛒 Προμηθευτές</NextLink>
+                    <NextLink href={`/fixed-assets?store=${storeIdFromUrl}`} style={menuItem} onClick={() => setIsMenuOpen(false)}>🔌 Πάγια</NextLink>
+                    <NextLink href={`/employees?store=${storeIdFromUrl}`} style={menuItem} onClick={() => setIsMenuOpen(false)}>👥 Υπάλληλοι</NextLink>
+                    <NextLink href={`/suppliers-balance?store=${storeIdFromUrl}`} style={menuItem} onClick={() => setIsMenuOpen(false)}>🚩 Καρτέλες (Χρέη)</NextLink>
                   </>
               )}
-              <NextLink href={`/analysis?store=${storeIdFromUrl}`} style={menuItem}>📊 Ανάλυση</NextLink>
+              <NextLink href={`/analysis?store=${storeIdFromUrl}`} style={menuItem} onClick={() => setIsMenuOpen(false)}>📊 Ανάλυση</NextLink>
+              
               <div style={menuDivider} />
               <button onClick={() => supabase.auth.signOut().then(() => router.push('/login'))} style={logoutBtnStyle}>
                 ΑΠΟΣΥΝΔΕΣΗ 🚪
@@ -205,7 +229,9 @@ function DashboardContent() {
         {loading ? (
           <div style={{textAlign:'center', padding:'40px'}}><div style={spinnerStyle}></div></div>
         ) : transactions.length === 0 ? (
-          <div style={emptyStateStyle}>Δεν υπάρχουν κινήσεις</div>
+          <div style={emptyStateStyle}>
+            <p>Δεν υπάρχουν κινήσεις για αυτή την ημερομηνία</p>
+          </div>
         ) : (
           transactions.map(t => (
             <div key={t.id} style={{ marginBottom: '12px' }}>
@@ -235,12 +261,7 @@ function DashboardContent() {
               {expandedTx === t.id && (
                 <div style={actionPanel}>
                   <button onClick={() => router.push(`/add-${t.type === 'income' ? 'income' : 'expense'}?editId=${t.id}&store=${storeIdFromUrl}`)} style={editRowBtn}>Επεξεργασία</button>
-                  <button onClick={async () => {
-                    if(confirm('Διαγραφή;')) {
-                       await supabase.from('transactions').delete().eq('id', t.id);
-                       loadDashboard();
-                    }
-                  }} style={deleteRowBtn}>Διαγραφή</button>
+                  <button onClick={() => handleDelete(t.id)} style={deleteRowBtn}>Διαγραφή</button>
                 </div>
               )}
             </div>
@@ -251,7 +272,7 @@ function DashboardContent() {
   )
 }
 
-// --- STYLES (ΠΑΡΑΜΕΝΟΥΝ ΙΔΙΑ ΟΠΩΣ ΤΑ ΕΔΩΣΕΣ) ---
+// --- STYLES ---
 const iphoneWrapper: any = { backgroundColor: colors.bgLight, minHeight: '100dvh', padding: '20px', paddingBottom: '100px' };
 const headerStyle: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px' };
 const brandArea = { display: 'flex', alignItems: 'center', gap: '12px' };
