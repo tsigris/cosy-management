@@ -10,6 +10,9 @@ export default function SelectStorePage() {
   const [loading, setLoading] = useState(true)
   const router = useRouter()
 
+  // ✅ Stripe-like "LIVE" datetime label (auto updates)
+  const [liveDateTime, setLiveDateTime] = useState<string>('')
+
   const handleLogout = async () => {
     await supabase.auth.signOut()
     window.location.href = '/login'
@@ -30,11 +33,45 @@ export default function SelectStorePage() {
     return `πριν ${days} μέρες`
   }
 
+  // ✅ Stripe-like LIVE label content
+  const buildStripeLiveLabel = () => {
+    const now = new Date()
+
+    // e.g. "ΤΡΙ, 17 ΦΕΒ 2026"
+    const datePart = now
+      .toLocaleDateString('el-GR', {
+        weekday: 'short',
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric'
+      })
+      .toUpperCase()
+
+    // e.g. "01:06"
+    const timePart = now.toLocaleTimeString('el-GR', {
+      hour: '2-digit',
+      minute: '2-digit'
+    })
+
+    return `${datePart} • ${timePart}`
+  }
+
+  // ✅ live clock (updates every minute)
+  useEffect(() => {
+    const tick = () => setLiveDateTime(buildStripeLiveLabel())
+    tick()
+    const id = setInterval(tick, 60_000)
+    return () => clearInterval(id)
+  }, [])
+
   const fetchStoresData = useCallback(async () => {
     try {
       setLoading(true)
 
-      const { data: { session } } = await supabase.auth.getSession()
+      const {
+        data: { session }
+      } = await supabase.auth.getSession()
+
       if (!session) {
         router.replace('/login')
         return
@@ -73,11 +110,13 @@ export default function SelectStorePage() {
           if (transErr) console.error('Transactions fetch error:', transErr)
 
           const income =
-            trans?.filter((t: any) => t.type === 'income')
+            trans
+              ?.filter((t: any) => t.type === 'income')
               .reduce((acc: number, curr: any) => acc + (Number(curr.amount) || 0), 0) || 0
 
           const expenses =
-            trans?.filter((t: any) => t.type === 'expense' || t.type === 'debt_payment')
+            trans
+              ?.filter((t: any) => t.type === 'expense' || t.type === 'debt_payment')
               .reduce((acc: number, curr: any) => acc + Math.abs(Number(curr.amount) || 0), 0) || 0
 
           const lastUpdated = trans?.[0]?.date || null // επειδή order desc
@@ -135,16 +174,27 @@ export default function SelectStorePage() {
 
       <header style={{ marginBottom: '18px', textAlign: 'center' }}>
         <h1 style={{ fontWeight: '900', fontSize: '28px', color: '#0f172a', margin: 0 }}>Τα Καταστήματά μου</h1>
-        <p style={{ color: '#64748b', fontSize: '14px', fontWeight: '600', marginTop: '5px' }}>
-          {new Intl.DateTimeFormat('el-GR', { month: 'long', year: 'numeric' }).format(new Date()).toUpperCase()}
-        </p>
+
+        {/* ✅ Stripe-like LIVE label */}
+        <div style={liveRow}>
+          <span style={livePill}>
+            <span style={liveDot} />
+            LIVE
+          </span>
+          <span style={liveText}>{liveDateTime}</span>
+        </div>
       </header>
 
       {/* ✅ GLOBAL SUMMARY CARD */}
       {userStores.length > 0 && (
         <div style={heroCard}>
           <p style={heroLabel}>ΣΥΝΟΛΟ ΜΗΝΑ (ΟΛΑ ΤΑ ΚΑΤΑΣΤΗΜΑΤΑ)</p>
-          <div style={heroValue}>{globalStats.profit.toFixed(2)} €</div>
+          <div style={heroValue}>
+            {globalStats.profit >= 0 ? '' : '-'}
+            {Math.abs(globalStats.profit).toFixed(2)} €
+          </div>
+
+          <div style={heroDivider} />
 
           <div style={heroRow}>
             <div style={{ textAlign: 'left' }}>
@@ -172,8 +222,6 @@ export default function SelectStorePage() {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
                 <div>
                   <h2 style={{ fontSize: '18px', fontWeight: '900', margin: 0, color: '#0f172a' }}>{store.name}</h2>
-
-                  {/* ✅ LAST UPDATED */}
                   <p style={lastUpdatedStyle}>Τελευταία ενημέρωση: {formatRelativeMinutes(store.lastUpdated)}</p>
                 </div>
 
@@ -230,9 +278,27 @@ export default function SelectStorePage() {
   )
 }
 
-// --- STYLES (Βελτιωμένα) ---
+// --- STYLES ---
 const containerStyle: any = { padding: '30px 20px', backgroundColor: '#f8fafc', minHeight: '100dvh', paddingBottom: '60px' }
 const centerStyle: any = { display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', fontWeight: '800', color: '#94a3b8', letterSpacing: '1px' }
+
+// ✅ Stripe-like live row
+const liveRow: any = { marginTop: '10px', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '10px' }
+const livePill: any = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '6px',
+  padding: '6px 10px',
+  borderRadius: '999px',
+  backgroundColor: '#ffffff',
+  border: '1px solid #e2e8f0',
+  fontSize: '11px',
+  fontWeight: '900',
+  color: '#0f172a',
+  letterSpacing: '0.06em'
+}
+const liveDot: any = { width: '8px', height: '8px', borderRadius: '999px', backgroundColor: '#10b981', boxShadow: '0 0 0 4px rgba(16, 185, 129, 0.15)' }
+const liveText: any = { fontSize: '12px', fontWeight: '800', color: '#64748b', letterSpacing: '0.02em' }
 
 const heroCard: any = {
   background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
@@ -244,19 +310,49 @@ const heroCard: any = {
 }
 const heroLabel: any = { margin: 0, fontSize: '10px', fontWeight: '900', letterSpacing: '1px', opacity: 0.75 }
 const heroValue: any = { marginTop: '6px', fontSize: '26px', fontWeight: '900' }
+const heroDivider: any = { height: '1px', backgroundColor: 'rgba(255,255,255,0.12)', marginTop: '12px' }
 const heroRow: any = { display: 'flex', justifyContent: 'space-between', marginTop: '12px' }
 const heroMiniLabel: any = { fontSize: '10px', fontWeight: '900', opacity: 0.7 }
 const heroMiniValue: any = { fontSize: '14px', fontWeight: '900' }
 
 const cardStyle: any = { backgroundColor: 'white', padding: '24px', borderRadius: '24px', border: '1px solid #e2e8f0', cursor: 'pointer', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.02)' }
-const statsGrid = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }
-const statBox = { padding: '12px', backgroundColor: '#f8fafc', borderRadius: '16px', border: '1px solid #f1f5f9' }
-const statLabel = { fontSize: '10px', fontWeight: '800' }
-const statValue = { fontSize: '15px', fontWeight: '900', color: '#1e293b' }
-const profitRow = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '15px', paddingTop: '15px', borderTop: '1px dashed #e2e8f0' }
-const arrowCircle = { width: '32px', height: '32px', backgroundColor: '#0f172a', color: 'white', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }
+const statsGrid: any = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }
+const statBox: any = { padding: '12px', backgroundColor: '#f8fafc', borderRadius: '16px', border: '1px solid #f1f5f9' }
+const statLabel: any = { fontSize: '10px', fontWeight: '800' }
+const statValue: any = { fontSize: '15px', fontWeight: '900', color: '#1e293b' }
+const profitRow: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '15px', paddingTop: '15px', borderTop: '1px dashed #e2e8f0' }
+const arrowCircle: any = { width: '32px', height: '32px', backgroundColor: '#0f172a', color: 'white', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }
 const lastUpdatedStyle: any = { margin: '6px 0 0', fontSize: '11px', fontWeight: 800, color: '#64748b' }
 
-const addBtnStyle: any = { width: '100%', padding: '18px', border: '2px dashed #cbd5e1', backgroundColor: 'transparent', color: '#64748b', borderRadius: '20px', fontWeight: '800', marginTop: '20px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px' }
-const logoutBtnStyle: any = { backgroundColor: '#fff', color: '#f43f5e', border: '1px solid #fee2e2', padding: '14px', borderRadius: '16px', fontWeight: '800', fontSize: '13px', cursor: 'pointer', width: '100%', marginTop: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }
+const addBtnStyle: any = {
+  width: '100%',
+  padding: '18px',
+  border: '2px dashed #cbd5e1',
+  backgroundColor: 'transparent',
+  color: '#64748b',
+  borderRadius: '20px',
+  fontWeight: '800',
+  marginTop: '20px',
+  cursor: 'pointer',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: '10px'
+}
+const logoutBtnStyle: any = {
+  backgroundColor: '#fff',
+  color: '#f43f5e',
+  border: '1px solid #fee2e2',
+  padding: '14px',
+  borderRadius: '16px',
+  fontWeight: '800',
+  fontSize: '13px',
+  cursor: 'pointer',
+  width: '100%',
+  marginTop: '40px',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: '8px'
+}
 const emptyStateStyle: any = { textAlign: 'center', padding: '50px 20px', backgroundColor: 'white', borderRadius: '24px', border: '1px solid #e2e8f0' }
