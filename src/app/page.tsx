@@ -43,45 +43,53 @@ function DashboardContent() {
 
   const loadDashboard = useCallback(async () => {
     try {
-      setLoading(true)
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) return router.push('/login')
+      setLoading(true);
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return router.push('/login');
 
-      const activeStoreId = localStorage.getItem('active_store_id')
+      const activeStoreId = localStorage.getItem('active_store_id');
+      const MAIN_STORE_ID = 'e50a8803-7311-4665-8d83-2935e1320b9c';
+      if (!activeStoreId) {
+        router.push('/select-store');
+        return;
+      }
 
       const { data: profile } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', session.user.id)
-        .maybeSingle()
-      
-      if (profile) {
-        setIsAdmin(profile.role === 'admin' || profile.role === 'superadmin')
-        
-        if (activeStoreId) {
-            const { data: storeData } = await supabase
-                .from('stores')
-                .select('name')
-                .eq('id', activeStoreId)
-                .single()
-            setStoreName(storeData?.name || profile.store_name || 'Κατάστημα')
-        }
+        .maybeSingle();
 
-        const { data: tx } = await supabase
+      if (profile) {
+        setIsAdmin(profile.role === 'admin' || profile.role === 'superadmin');
+
+        const { data: storeData } = await supabase
+          .from('stores')
+          .select('name')
+          .eq('id', activeStoreId)
+          .single();
+        setStoreName(storeData?.name || profile.store_name || 'Κατάστημα');
+
+        let txQuery = supabase
           .from('transactions')
           .select('*, suppliers(name), fixed_assets(name)')
-          .eq('store_id', activeStoreId || profile.store_id)
+          .eq('store_id', activeStoreId)
           .eq('date', selectedDate)
-          .order('created_at', { ascending: false })
+          .order('created_at', { ascending: false });
 
-        if (tx) setTransactions(tx)
+        // If not main store, strictly hide any records where store_id is null
+        if (activeStoreId !== MAIN_STORE_ID) {
+          txQuery = txQuery.neq('store_id', null);
+        }
+        const { data: tx } = await txQuery;
+        if (tx) setTransactions(tx);
       }
     } catch (err) {
-      console.error(err)
+      console.error(err);
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }, [selectedDate, router])
+  }, [selectedDate, router]);
 
   useEffect(() => { loadDashboard() }, [loadDashboard])
 
@@ -111,8 +119,9 @@ function DashboardContent() {
   }
 
   const handleSwitchStore = () => {
-      localStorage.removeItem('active_store_id')
-      router.push('/select-store')
+    localStorage.removeItem('active_store_id');
+    router.push('/select-store');
+    window.location.reload();
   }
 
   return (
