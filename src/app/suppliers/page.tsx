@@ -20,6 +20,16 @@ const colors = {
 };
 
 function SuppliersContent() {
+    // Toggle supplier active/inactive
+    async function toggleActive(supplier: any) {
+      try {
+        const { error } = await supabase.from('suppliers').update({ is_active: !supplier.is_active }).eq('id', supplier.id);
+        if (error) throw error;
+        fetchSuppliersData();
+      } catch (err: any) {
+        toast.error('Σφάλμα ενημέρωσης κατάστασης');
+      }
+    }
   const [suppliers, setSuppliers] = useState<any[]>([])
   const [transactions, setTransactions] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
@@ -95,10 +105,8 @@ function SuppliersContent() {
   // ✅ 3. ΑΥΣΤΗΡΗ ΑΠΟΘΗΚΕΥΣΗ (Κλείδωμα στο Store ID)
   async function handleSave() {
     const activeStoreId = typeof window !== 'undefined' ? localStorage.getItem('active_store_id') : null;
-    
     if (!name.trim()) return toast.error('Συμπληρώστε το όνομα');
     if (!activeStoreId) return toast.error('Δεν βρέθηκε ενεργό κατάστημα');
-    
     setIsSaving(true);
     try {
       const supplierData = {
@@ -107,31 +115,18 @@ function SuppliersContent() {
         vat_number: afm.trim(),
         iban: iban.trim(),
         category,
-        store_id: activeStoreId // Πάντα αποθήκευση με το ID του localStorage
+        store_id: activeStoreId
       };
-
       const { error } = editingId
         ? await supabase.from('suppliers').update(supplierData).eq('id', editingId)
         : await supabase.from('suppliers').insert([{ ...supplierData, is_active: true }]);
-
       if (error) throw error;
-      
-      toast.success('Αποθηκεύτηκε επιτυχώς');
-      resetForm(); 
       fetchSuppliersData();
-    } catch (error: any) { 
-      toast.error(error.message); 
-    } finally { 
-      setIsSaving(false); 
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setIsSaving(false);
     }
-  }
-
-  async function toggleActive(supplier: any) {
-    try {
-      const { error } = await supabase.from('suppliers').update({ is_active: !supplier.is_active }).eq('id', supplier.id);
-      if (error) throw error;
-      fetchSuppliersData();
-    } catch (err: any) { toast.error(err.message); }
   }
 
   async function handleDelete(id: string) {
