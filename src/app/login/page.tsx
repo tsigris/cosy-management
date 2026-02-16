@@ -1,18 +1,17 @@
 'use client'
 
-// 1. ΕΞΑΣΦΑΛΙΣΗ ΔΥΝΑΜΙΚΗΣ ΛΕΙΤΟΥΡΓΙΑΣ ΓΙΑ ΤΟ BUILD
 export const dynamic = 'force-dynamic'
 
-import { useState, useEffect, Suspense } from 'react'
+import { useState, Suspense } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
+import { toast, Toaster } from 'sonner'
 
-// 2. ΤΟ ΕΣΩΤΕΡΙΚΟ COMPONENT ΜΕ ΟΛΗ ΤΗ ΛΟΓΙΚΗ
 function LoginContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const mode = searchParams.get('mode') // 'fast' για PIN/Biometrics
+  const mode = searchParams.get('mode') 
 
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -22,7 +21,7 @@ function LoginContent() {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!email || !password) return alert('Παρακαλώ συμπληρώστε τα στοιχεία σας.')
+    if (!email || !password) return toast.error('Συμπληρώστε τα στοιχεία σας.')
     setLoading(true)
     
     const { error } = await supabase.auth.signInWithPassword({ 
@@ -31,10 +30,11 @@ function LoginContent() {
     })
     
     if (error) {
-      alert('Σφάλμα: ' + error.message)
+      toast.error('Σφάλμα: ' + error.message)
       setLoading(false)
     } else {
-      router.push('/')
+      // ✅ ΔΙΟΡΘΩΣΗ: Πηγαίνουμε στην επιλογή καταστήματος, όχι στην αρχική
+      router.push('/select-store')
       router.refresh()
     }
   }
@@ -50,12 +50,14 @@ function LoginContent() {
   }
 
   const verifyPin = (pin: string) => {
-    const savedPin = localStorage.getItem('fleet_track_pin')
+    // Χρήση του νέου κλειδιού για το Cosy App
+    const savedPin = localStorage.getItem('cosy_app_pin')
     if (pin === savedPin) {
-      router.push('/')
+      // ✅ ΔΙΟΡΘΩΣΗ: Και το PIN στέλνει στην επιλογή καταστήματος
+      router.push('/select-store')
       router.refresh()
     } else {
-      alert('Λάθος PIN')
+      toast.error('Λάθος PIN')
       setEnteredPin('')
     }
   }
@@ -72,7 +74,8 @@ function LoginContent() {
             {[1, 2, 3, 4].map((i) => (
               <div key={i} style={{ 
                 ...dotStyle, 
-                backgroundColor: enteredPin.length >= i ? '#1e40af' : '#e2e8f0' 
+                backgroundColor: enteredPin.length >= i ? '#6366f1' : '#e2e8f0',
+                transform: enteredPin.length >= i ? 'scale(1.2)' : 'scale(1)'
               }} />
             ))}
           </div>
@@ -86,6 +89,7 @@ function LoginContent() {
                   else handlePinPress(btn)
                 }}
                 style={numBtnStyle}
+                className="num-button"
               >
                 {btn}
               </button>
@@ -95,7 +99,7 @@ function LoginContent() {
             onClick={() => setIsFastMode(false)}
             style={{ ...footerLinkStyle, marginTop: '30px', background: 'none', border: 'none', cursor: 'pointer' }}
           >
-            Είσοδος με κωδικό πρόσβασης →
+            Είσοδος με email →
           </button>
         </div>
       </main>
@@ -104,6 +108,7 @@ function LoginContent() {
 
   return (
     <main style={containerStyle}>
+      <Toaster richColors position="top-center" />
       <div style={loginCardStyle}>
         <div style={headerStyle}>
           <h1 style={brandStyle}>COSY APP</h1>
@@ -132,7 +137,6 @@ function LoginContent() {
   )
 }
 
-// 3. ΤΟ ΚΕΝΤΡΙΚΟ EXPORT ΠΟΥ ΠΕΡΙΒΑΛΛΕΙ ΜΕ SUSPENSE
 export default function LoginPage() {
   return (
     <Suspense fallback={<div style={containerStyle}>Φόρτωση...</div>}>
@@ -141,21 +145,21 @@ export default function LoginPage() {
   )
 }
 
-// --- STYLES (Πλήρη) ---
-const containerStyle = { minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#f1f5f9', fontFamily: 'sans-serif', padding: '20px' };
-const loginCardStyle = { backgroundColor: '#ffffff', width: '100%', maxWidth: '420px', padding: '40px', borderRadius: '16px', boxShadow: '0 10px 25px rgba(0,0,0,0.05)', borderTop: '5px solid #1e40af', textAlign: 'center' as const };
+// --- STYLES ---
+const containerStyle = { minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#f8fafc', padding: '20px' };
+const loginCardStyle = { backgroundColor: '#ffffff', width: '100%', maxWidth: '400px', padding: '40px', borderRadius: '24px', boxShadow: '0 10px 25px rgba(0,0,0,0.05)', borderTop: '6px solid #6366f1', textAlign: 'center' as const };
 const headerStyle = { marginBottom: '30px' };
-const brandStyle = { fontSize: '24px', fontWeight: '800', color: '#1e293b', margin: '0 0 10px 0' };
-const dividerStyle = { height: '2px', width: '30px', backgroundColor: '#e2e8f0', margin: '0 auto 15px auto' };
-const instructionStyle = { fontSize: '14px', color: '#64748b', fontWeight: '600' };
+const brandStyle = { fontSize: '28px', fontWeight: '900', color: '#0f172a', margin: '0 0 5px 0', letterSpacing: '-1px' };
+const dividerStyle = { height: '3px', width: '30px', backgroundColor: '#6366f1', margin: '0 auto 15px auto', borderRadius: '2px' };
+const instructionStyle = { fontSize: '14px', color: '#64748b', fontWeight: '700', textTransform: 'uppercase' as const, letterSpacing: '0.5px' };
 const formStyle = { display: 'flex', flexDirection: 'column' as const, gap: '20px', textAlign: 'left' as const };
 const fieldGroup = { display: 'flex', flexDirection: 'column' as const, gap: '6px' };
-const labelStyle = { fontSize: '11px', fontWeight: '700', color: '#475569', letterSpacing: '0.5px' };
-const inputStyle = { padding: '14px', borderRadius: '12px', border: '1px solid #cbd5e1', fontSize: '15px', outline: 'none' };
-const submitBtnStyle = { backgroundColor: '#1e40af', color: '#ffffff', padding: '16px', borderRadius: '12px', border: 'none', fontWeight: '800', cursor: 'pointer', marginTop: '10px' };
+const labelStyle = { fontSize: '10px', fontWeight: '800', color: '#94a3b8', letterSpacing: '0.5px' };
+const inputStyle = { padding: '14px', borderRadius: '12px', border: '1px solid #e2e8f0', fontSize: '15px', outline: 'none', backgroundColor: '#f8fafc' };
+const submitBtnStyle = { backgroundColor: '#0f172a', color: '#ffffff', padding: '16px', borderRadius: '14px', border: 'none', fontWeight: '800', cursor: 'pointer', marginTop: '10px' };
 const footerStyle = { marginTop: '30px', textAlign: 'center' as const, borderTop: '1px solid #f1f5f9', paddingTop: '20px' };
-const footerLinkStyle = { color: '#1e40af', fontWeight: '700', textDecoration: 'none', fontSize: '14px' };
-const dotsContainer = { display: 'flex', justifyContent: 'center', gap: '15px', marginBottom: '40px' };
-const dotStyle = { width: '14px', height: '14px', borderRadius: '50%', border: '2px solid #e2e8f0', transition: 'all 0.2s' };
+const footerLinkStyle = { color: '#6366f1', fontWeight: '800', textDecoration: 'none', fontSize: '14px' };
+const dotsContainer = { display: 'flex', justifyContent: 'center', gap: '20px', marginBottom: '40px' };
+const dotStyle = { width: '12px', height: '12px', borderRadius: '50%', border: '2px solid #e2e8f0', transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)' };
 const numpadGrid = { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '15px', width: '100%', maxWidth: '280px', margin: '0 auto' };
-const numBtnStyle = { padding: '20px', fontSize: '22px', fontWeight: '800', backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', cursor: 'pointer', color: '#1e293b' };
+const numBtnStyle = { padding: '20px', fontSize: '22px', fontWeight: '800', backgroundColor: '#ffffff', border: '1px solid #f1f5f9', borderRadius: '16px', cursor: 'pointer', color: '#0f172a', transition: 'all 0.1s' };
