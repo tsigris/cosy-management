@@ -12,20 +12,20 @@ export default function SelectStorePage() {
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
-    localStorage.clear() 
     window.location.href = '/login'
   }
 
   const fetchStoresData = useCallback(async () => {
     try {
       setLoading(true)
-      // 1. Καθαρίζουμε το localStorage αμέσως για να αποφύγουμε "φαντάσματα" δεδομένων
-      localStorage.removeItem('active_store_id');
 
       const { data: { session } } = await supabase.auth.getSession()
-      if (!session) return router.replace('/login')
+      if (!session) {
+        router.replace('/login')
+        return
+      }
 
-      // 2. Ανάκτηση προσβάσεων
+      // 1) Ανάκτηση προσβάσεων
       const { data: access, error } = await supabase
         .from('store_access')
         .select('store_id, stores(id, name)')
@@ -37,39 +37,48 @@ export default function SelectStorePage() {
         return
       }
 
-      // 3. Υπολογισμός στατιστικών μήνα
+      // 2) Υπολογισμός στατιστικών μήνα
       const now = new Date()
       const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
 
-      const storesWithStats = await Promise.all(access.map(async (item: any) => {
-        const store = item.stores
-        if (!store) return null
+      const storesWithStats = await Promise.all(
+        access.map(async (item: any) => {
+          const store = item.stores
+          if (!store) return null
 
-        // Φέρνουμε μόνο τα απαραίτητα για την περίληψη
-        const { data: trans } = await supabase
-          .from('transactions')
-          .select('amount, type')
-          .eq('store_id', store.id)
-          .gte('date', firstDay)
+          // Φέρνουμε μόνο τα απαραίτητα για την περίληψη
+          const { data: trans, error: transErr } = await supabase
+            .from('transactions')
+            .select('amount, type')
+            .eq('store_id', store.id)
+            .gte('date', firstDay)
 
-        const income = trans?.filter(t => t.type === 'income')
-          .reduce((acc, curr) => acc + (Number(curr.amount) || 0), 0) || 0
-        const expenses = trans?.filter(t => t.type === 'expense' || t.type === 'debt_payment')
-          .reduce((acc, curr) => acc + (Number(curr.amount) || 0), 0) || 0
-        
-        return { 
-          id: store.id, 
-          name: store.name, 
-          income, 
-          expenses, 
-          profit: income - expenses 
-        }
-      }))
+          if (transErr) {
+            console.error('Transactions fetch error:', transErr)
+          }
 
-      setUserStores(storesWithStats.filter(s => s !== null))
+          const income =
+            trans?.filter((t: any) => t.type === 'income')
+              .reduce((acc: number, curr: any) => acc + (Number(curr.amount) || 0), 0) || 0
+
+          const expenses =
+            trans?.filter((t: any) => t.type === 'expense' || t.type === 'debt_payment')
+              .reduce((acc: number, curr: any) => acc + (Number(curr.amount) || 0), 0) || 0
+
+          return {
+            id: store.id,
+            name: store.name,
+            income,
+            expenses,
+            profit: income - expenses
+          }
+        })
+      )
+
+      setUserStores(storesWithStats.filter(Boolean))
     } catch (err: any) {
-      console.error("Fetch error:", err)
-      toast.error("Πρόβλημα κατά την ανάκτηση των καταστημάτων")
+      console.error('Fetch error:', err)
+      toast.error('Πρόβλημα κατά την ανάκτηση των καταστημάτων')
     } finally {
       setLoading(false)
     }
@@ -80,24 +89,24 @@ export default function SelectStorePage() {
   }, [fetchStoresData])
 
   const handleSelect = (storeId: string) => {
-    // Κλειδώνουμε το νέο ID
-    localStorage.setItem('active_store_id', storeId)
-    // Σκληρό refresh στο URL για να καθαρίσει το state της εφαρμογής
-    window.location.href = `/?store=${storeId}`
+    // ✅ SaaS context ONLY via URL (no localStorage)
+    router.replace(`/?store=${storeId}`)
   }
 
-  if (loading) return (
-    <div style={centerStyle}>
-      <div style={{ textAlign: 'center' }}>
-        <Store className="animate-pulse" size={40} color="#6366f1" style={{ marginBottom: '15px' }} />
-        <p>ΑΝΑΚΤΗΣΗ ΚΑΤΑΣΤΗΜΑΤΩΝ...</p>
+  if (loading)
+    return (
+      <div style={centerStyle}>
+        <div style={{ textAlign: 'center' }}>
+          <Store className="animate-pulse" size={40} color="#6366f1" style={{ marginBottom: '15px' }} />
+          <p>ΑΝΑΚΤΗΣΗ ΚΑΤΑΣΤΗΜΑΤΩΝ...</p>
+        </div>
       </div>
-    </div>
-  )
+    )
 
   return (
     <div style={containerStyle}>
       <Toaster richColors position="top-center" />
+
       <header style={{ marginBottom: '30px', textAlign: 'center' }}>
         <h1 style={{ fontWeight: '900', fontSize: '28px', color: '#0f172a', margin: 0 }}>Τα Καταστήματά μου</h1>
         <p style={{ color: '#64748b', fontSize: '14px', fontWeight: '600', marginTop: '5px' }}>
@@ -113,13 +122,15 @@ export default function SelectStorePage() {
         </div>
       ) : (
         <div style={{ display: 'grid', gap: '15px' }}>
-          {userStores.map(store => (
+          {userStores.map((store) => (
             <div key={store.id} onClick={() => handleSelect(store.id)} style={cardStyle} className="store-card">
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
                 <h2 style={{ fontSize: '18px', fontWeight: '900', margin: 0, color: '#0f172a' }}>{store.name}</h2>
-                <div style={arrowCircle}><ArrowRight size={16} /></div>
+                <div style={arrowCircle}>
+                  <ArrowRight size={16} />
+                </div>
               </div>
-              
+
               <div style={statsGrid}>
                 <div style={statBox}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '5px', color: '#059669', marginBottom: '4px' }}>
@@ -127,7 +138,7 @@ export default function SelectStorePage() {
                   </div>
                   <span style={statValue}>{store.income.toFixed(2)} €</span>
                 </div>
-                
+
                 <div style={statBox}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '5px', color: '#dc2626', marginBottom: '4px' }}>
                     <TrendingDown size={14} /> <span style={statLabel}>ΕΞΟΔΑ</span>
@@ -141,11 +152,13 @@ export default function SelectStorePage() {
                   <Wallet size={18} color="#6366f1" />
                   <span style={{ fontWeight: '800', color: '#1e293b', fontSize: '14px' }}>ΚΑΘΑΡΟ ΚΕΡΔΟΣ</span>
                 </div>
-                <span style={{ 
-                  fontWeight: '900', 
-                  fontSize: '18px', 
-                  color: store.profit >= 0 ? '#0f172a' : '#dc2626' 
-                }}>
+                <span
+                  style={{
+                    fontWeight: '900',
+                    fontSize: '18px',
+                    color: store.profit >= 0 ? '#0f172a' : '#dc2626'
+                  }}
+                >
                   {store.profit.toFixed(2)} €
                 </span>
               </div>
@@ -166,15 +179,15 @@ export default function SelectStorePage() {
 }
 
 // --- STYLES (Βελτιωμένα) ---
-const containerStyle: any = { padding: '30px 20px', backgroundColor: '#f8fafc', minHeight: '100dvh', paddingBottom: '60px' };
-const centerStyle: any = { display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', fontWeight: '800', color: '#94a3b8', letterSpacing: '1px' };
-const cardStyle: any = { backgroundColor: 'white', padding: '24px', borderRadius: '24px', border: '1px solid #e2e8f0', cursor: 'pointer', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.02)' };
-const statsGrid = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' };
-const statBox = { padding: '12px', backgroundColor: '#f8fafc', borderRadius: '16px', border: '1px solid #f1f5f9' };
-const statLabel = { fontSize: '10px', fontWeight: '800' };
-const statValue = { fontSize: '15px', fontWeight: '900', color: '#1e293b' };
-const profitRow = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '15px', paddingTop: '15px', borderTop: '1px dashed #e2e8f0' };
-const arrowCircle = { width: '32px', height: '32px', backgroundColor: '#0f172a', color: 'white', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' };
-const addBtnStyle: any = { width: '100%', padding: '18px', border: '2px dashed #cbd5e1', backgroundColor: 'transparent', color: '#64748b', borderRadius: '20px', fontWeight: '800', marginTop: '20px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px' };
-const logoutBtnStyle: any = { backgroundColor: '#fff', color: '#f43f5e', border: '1px solid #fee2e2', padding: '14px', borderRadius: '16px', fontWeight: '800', fontSize: '13px', cursor: 'pointer', width: '100%', marginTop: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' };
-const emptyStateStyle: any = { textAlign: 'center', padding: '50px 20px', backgroundColor: 'white', borderRadius: '24px', border: '1px solid #e2e8f0' };
+const containerStyle: any = { padding: '30px 20px', backgroundColor: '#f8fafc', minHeight: '100dvh', paddingBottom: '60px' }
+const centerStyle: any = { display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', fontWeight: '800', color: '#94a3b8', letterSpacing: '1px' }
+const cardStyle: any = { backgroundColor: 'white', padding: '24px', borderRadius: '24px', border: '1px solid #e2e8f0', cursor: 'pointer', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.02)' }
+const statsGrid = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }
+const statBox = { padding: '12px', backgroundColor: '#f8fafc', borderRadius: '16px', border: '1px solid #f1f5f9' }
+const statLabel = { fontSize: '10px', fontWeight: '800' }
+const statValue = { fontSize: '15px', fontWeight: '900', color: '#1e293b' }
+const profitRow = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '15px', paddingTop: '15px', borderTop: '1px dashed #e2e8f0' }
+const arrowCircle = { width: '32px', height: '32px', backgroundColor: '#0f172a', color: 'white', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }
+const addBtnStyle: any = { width: '100%', padding: '18px', border: '2px dashed #cbd5e1', backgroundColor: 'transparent', color: '#64748b', borderRadius: '20px', fontWeight: '800', marginTop: '20px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px' }
+const logoutBtnStyle: any = { backgroundColor: '#fff', color: '#f43f5e', border: '1px solid #fee2e2', padding: '14px', borderRadius: '16px', fontWeight: '800', fontSize: '13px', cursor: 'pointer', width: '100%', marginTop: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }
+const emptyStateStyle: any = { textAlign: 'center', padding: '50px 20px', backgroundColor: 'white', borderRadius: '24px', border: '1px solid #e2e8f0' }
