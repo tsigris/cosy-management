@@ -1,7 +1,7 @@
 'use client'
 import React from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useSearchParams } from 'next/navigation'; // Προσθήκη useSearchParams
 
 // --- PREMIUM PALETTE ---
 const colors = {
@@ -22,16 +22,18 @@ const navItems = [
 
 export default function BottomNav() {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
 
-  // Κρύβουμε την μπάρα σε login και σε φόρμες προσθήκης για περισσότερο χώρο
-  const hideOnPaths = ['/login', '/register', '/signup'];
+  // 1. ΠΑΙΡΝΟΥΜΕ ΤΟ ID ΑΠΟ ΤΟ URL Η ΤΟ LOCALSTORAGE
+  const storeId = searchParams.get('store') || (typeof window !== 'undefined' ? localStorage.getItem('active_store_id') : null);
+
+  const hideOnPaths = ['/login', '/register', '/signup', '/select-store'];
   const isFormPage = pathname.includes('/add-');
   
   if (hideOnPaths.includes(pathname) || isFormPage) return null;
 
   return (
     <nav style={navWrapper}>
-      {/* CSS Injection για τη γραμματοσειρά και τα transitions */}
       <style dangerouslySetInnerHTML={{ __html: `
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@700;800&display=swap');
         .nav-item { transition: transform 0.2s ease; }
@@ -40,8 +42,12 @@ export default function BottomNav() {
 
       {navItems.map((item) => {
         const isActive = pathname === item.path;
+        
+        // 2. ΔΗΜΙΟΥΡΓΟΥΜΕ ΤΟ URL ΜΕ ΤΟ STORE ID (αν υπάρχει)
+        const fullPath = storeId ? `${item.path}?store=${storeId}` : item.path;
+
         return (
-          <Link key={item.path} href={item.path} style={navLink} className="nav-item">
+          <Link key={item.path} href={fullPath} style={navLink} className="nav-item">
             <div style={{
               ...iconBox,
               backgroundColor: isActive ? '#f1f5f9' : 'transparent',
@@ -73,7 +79,7 @@ export default function BottomNav() {
   );
 }
 
-// --- MODERN STYLES ---
+// --- MODERN STYLES --- (Παραμένουν τα ίδια)
 const navWrapper: React.CSSProperties = {
   position: 'fixed',
   bottom: 0, left: 0, right: 0, 
@@ -90,33 +96,6 @@ const navWrapper: React.CSSProperties = {
   boxShadow: '0 -10px 30px rgba(0,0,0,0.03)',
 };
 
-const navLink: React.CSSProperties = { 
-  display: 'flex', 
-  flexDirection: 'column', 
-  alignItems: 'center', 
-  textDecoration: 'none', 
-  position: 'relative', 
-  flex: 1, 
-  height: '100%', 
-  justifyContent: 'center' 
-};
-
-const iconBox: React.CSSProperties = {
-  width: '40px',
-  height: '32px',
-  borderRadius: '12px',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  transition: 'background-color 0.3s ease'
-};
-
-const activeIndicator: React.CSSProperties = { 
-  position: 'absolute', 
-  bottom: '10px', 
-  width: '4px', 
-  height: '4px', 
-  backgroundColor: colors.indigo, 
-  borderRadius: '50%',
-  boxShadow: `0 0 10px ${colors.indigo}`
-};
+const navLink: React.CSSProperties = { display: 'flex', flexDirection: 'column', alignItems: 'center', textDecoration: 'none', position: 'relative', flex: 1, height: '100%', justifyContent: 'center' };
+const iconBox: React.CSSProperties = { width: '40px', height: '32px', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background-color 0.3s ease' };
+const activeIndicator: React.CSSProperties = { position: 'absolute', bottom: '10px', width: '4px', height: '4px', backgroundColor: colors.indigo, borderRadius: '50%', boxShadow: `0 0 10px ${colors.indigo}` };
