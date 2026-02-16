@@ -5,6 +5,7 @@ import { useEffect, useState, Suspense } from 'react'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
+import { toast, Toaster } from 'sonner'
 
 function PermissionsContent() {
   const router = useRouter()
@@ -22,173 +23,192 @@ function PermissionsContent() {
       setLoading(true)
       const { data: { user } } = await supabase.auth.getUser()
 
-      if (user) {
-        setMyId(user.id)
-        // Get activeStoreId from localStorage
-        const activeStoreId = typeof window !== 'undefined' ? localStorage.getItem('active_store_id') : null;
-        if (!activeStoreId) {
-          alert("Δεν βρέθηκε κατάστημα.")
-          router.push('/')
-          return;
-        }
-
-        // Check admin role in store_access table for this store
-        const { data: access } = await supabase
-          .from('store_access')
-          .select('role')
-          .eq('user_id', user.id)
-          .eq('store_id', activeStoreId)
-          .maybeSingle();
-
-        if (!access || access.role !== 'admin') {
-          alert("Δεν έχετε πρόσβαση σε αυτή τη σελίδα!")
-          router.push('/')
-          return;
-        }
-        setStoreId(activeStoreId);
-        fetchUsers(activeStoreId);
+      if (!user) {
+        router.push('/login')
+        return
       }
-    } catch (err) { console.error(err) }
+
+      setMyId(user.id)
+      
+      // Λήψη του ενεργού store_id
+      const activeStoreId = localStorage.getItem('active_store_id')
+      
+      if (!activeStoreId) {
+        toast.error("Δεν βρέθηκε επιλεγμένο κατάστημα.")
+        router.push('/')
+        return
+      }
+
+      setStoreId(activeStoreId)
+
+      // ΕΛΕΓΧΟΣ: Είσαι όντως Admin σε αυτό το κατάστημα;
+      const { data: access, error: accessError } = await supabase
+        .from('store_access')
+        .select('role')
+        .eq('user_id', user.id)
+        .eq('store_id', activeStoreId)
+        .maybeSingle()
+
+      if (accessError || !access || access.role !== 'admin') {
+        alert("Δεν έχετε δικαιώματα διαχειριστή για αυτό το κατάστημα!")
+        router.push('/')
+        return
+      }
+
+      fetchUsers(activeStoreId)
+    } catch (err) { 
+      console.error(err)
+      setLoading(false)
+    }
   }
 
-  async function fetchUsers(sId: string | null) {
-    if (!sId) return setLoading(false);
-    // Join profiles and store_access to get all users associated with this store
-    const { data, error } = await supabase
-      .from('store_access')
-      .select('user_id, role, can_view_analysis, can_view_history, can_edit_transactions, profiles:profiles(*)')
-      .eq('store_id', sId)
-      .order('role', { ascending: true });
-    if (error) {
-      alert('Σφάλμα φόρτωσης χρηστών: ' + error.message);
-      setLoading(false);
-      return;
+  async function fetchUsers(sId: string) {
+    try {
+      // Φέρνουμε όλους όσους έχουν πρόσβαση στο συγκεκριμένο κατάστημα
+      const { data, error } = await supabase
+        .from('store_access')
+        .select(`
+          user_id, 
+          role, 
+          can_view_analysis, 
+          can_view_history, 
+          can_edit_transactions, 
+          profiles:user_id (id, username, email)
+        `)
+        .eq('store_id', sId)
+        .order('role', { ascending: true })
+
+      if (error) throw error
+
+      const usersWithProfiles = (data || []).map((entry: any) => {
+        // Αν το join με το profiles αποτύχει, χρησιμοποιούμε βασικά στοιχεία
+        const profile = Array.isArray(entry.profiles) ? entry.profiles[0] : entry.profiles
+        return {
+          id: entry.user_id,
+          email: profile?.email || 'Unknown',
+          username: profile?.username || profile?.email?.split('@')[0] || 'Χρήστης',
+          role: entry.role,
+          can_view_analysis: entry.can_view_analysis,
+          can_view_history: entry.can_view_history,
+          can_edit_transactions: entry.can_edit_transactions
+        }
+      })
+
+      setUsers(usersWithProfiles)
+    } catch (err: any) {
+      alert('Σφάλμα φόρτωσης χρηστών: ' + err.message)
+    } finally {
+      setLoading(false)
     }
-    // Map users to include profile info
-    const usersWithProfiles = (data || []).map((entry: any) => ({
-      ...entry.profiles,
-      id: entry.user_id,
-      role: entry.role,
-      can_view_analysis: entry.can_view_analysis,
-      can_view_history: entry.can_view_history,
-      can_edit_transactions: entry.can_edit_transactions
-    }));
-    setUsers(usersWithProfiles);
-    setLoading(false);
   }
 
   async function updateField(userId: string, field: string, newValue: any) {
     if (userId === myId && field === 'role' && newValue !== 'admin') {
-      alert("Δεν μπορείτε να αφαιρέσετε τον ρόλο Admin από τον εαυτό σας!");
+      alert("Δεν μπορείτε να υποβαθμίσετε τον εαυτό σας!");
       return;
     }
-    // Update the field in store_access for the current store
-    const { error } = await supabase
-      .from('store_access')
-      .update({ [field]: newValue })
-      .eq('user_id', userId)
-      .eq('store_id', storeId);
-    if (!error) {
-      fetchUsers(storeId);
-    } else {
+
+    try {
+      const { error } = await supabase
+        .from('store_access')
+        .update({ [field]: newValue })
+        .eq('user_id', userId)
+        .eq('store_id', storeId);
+
+      if (error) throw error;
+      
+      // Ανανέωση τοπικά για ταχύτητα
+      setUsers(prev => prev.map(u => u.id === userId ? { ...u, [field]: newValue } : u));
+      toast.success("Η αλλαγή αποθηκεύτηκε");
+    } catch (error: any) {
       alert("Σφάλμα: " + error.message);
     }
   }
 
   async function handleDelete(userId: string) {
     if (userId === myId) return alert("Δεν μπορείτε να διαγράψετε τον εαυτό σας!");
+    
     if (confirm('Θέλετε σίγουρα να αφαιρέσετε αυτόν τον χρήστη από το κατάστημα;')) {
-      // Delete the store_access entry for this user and store
       const { error } = await supabase
         .from('store_access')
         .delete()
         .eq('user_id', userId)
         .eq('store_id', storeId);
-      if (!error) fetchUsers(storeId);
+      
+      if (!error) {
+        setUsers(prev => prev.filter(u => u.id !== userId));
+        toast.success("Ο χρήστης αφαιρέθηκε");
+      }
     }
   }
 
   const admins = users.filter(u => u.role === 'admin')
-  const staff = users.filter(u => u.role === 'user' || !u.role)
+  const staff = users.filter(u => u.role !== 'admin')
 
   return (
-    <div style={{ maxWidth: '500px', margin: '0 auto', fontFamily: 'sans-serif' }}>
+    <div style={{ maxWidth: '500px', margin: '0 auto', paddingBottom: '50px' }}>
+      <Toaster position="top-center" richColors />
       
-      {/* PROFESSIONAL HEADER */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '25px', paddingTop: '15px' }}>
+      {/* HEADER */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px', paddingTop: '10px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <div style={logoBoxStyle}>
-            <span style={{ fontSize: '20px' }}>🔐</span>
-          </div>
+          <div style={logoBoxStyle}>🔐</div>
           <div>
-            <h1 style={{ fontWeight: '900', fontSize: '22px', margin: 0, color: '#0f172a', lineHeight: '1.1' }}>
-              Δικαιώματα
-            </h1>
-            <p style={{ margin: '2px 0 0', fontSize: '10px', color: '#475569', fontWeight: '900', textTransform: 'uppercase', letterSpacing: '1px' }}>
-              ΕΛΕΓΧΟΣ ΠΡΟΣΒΑΣΗΣ & ΡΟΛΟΙ
-            </p>
+            <h1 style={{ fontWeight: '900', fontSize: '20px', margin: 0, color: '#0f172a' }}>Δικαιώματα</h1>
+            <p style={{ margin: 0, fontSize: '10px', color: '#64748b', fontWeight: '800' }}>ΔΙΑΧΕΙΡΙΣΗ ΠΡΟΣΒΑΣΗΣ</p>
           </div>
         </div>
         <Link href="/" style={backBtnStyle}>✕</Link>
       </div>
 
       {loading ? (
-        <div style={{ textAlign: 'center', padding: '50px', color: '#1e293b', fontWeight: 'bold' }}>Φόρτωση χρηστών...</div>
+        <div style={{ textAlign: 'center', padding: '50px', fontWeight: 'bold', color: '#64748b' }}>Συγχρονισμός χρηστών...</div>
       ) : (
         <>
-          {/* ADMINS SECTION */}
+          {/* SECTION: ADMINS */}
           <p style={sectionLabel}>ΔΙΑΧΕΙΡΙΣΤΕΣ ({admins.length})</p>
           {admins.map(u => (
             <div key={u.id} style={adminCard}>
               <div style={{ flex: 1 }}>
-                <p style={{ fontWeight: '900', margin: 0, fontSize: '15px', color: 'white' }}>{u.username?.toUpperCase() || 'ADMIN'}</p>
-                <p style={{ fontSize: '12px', color: '#94a3b8', margin: 0, fontWeight: '600' }}>{u.email}</p>
+                <p style={{ fontWeight: '900', margin: 0, fontSize: '14px', color: 'white' }}>
+                  {u.username?.toUpperCase()} {u.id === myId ? '(ΕΣΕΙΣ)' : ''}
+                </p>
+                <p style={{ fontSize: '11px', color: '#94a3b8', margin: 0 }}>{u.email}</p>
               </div>
               <span style={adminBadge}>FULL ACCESS</span>
             </div>
           ))}
 
-          <div style={{ marginBottom: '30px' }} />
+          <div style={{ height: '20px' }} />
 
-          {/* STAFF SECTION */}
-          <p style={sectionLabel}>ΥΠΑΛΛΗΛΟΙ & ΧΡΗΣΤΕΣ ({staff.length})</p>
-          <div style={legendBox}>
-            <div style={{display:'flex', gap:'12px', flexWrap: 'wrap'}}>
-                <span style={{fontWeight: '800'}}>📊 Ανάλυση</span>
-                <span style={{fontWeight: '800'}}>📜 Ιστορικό</span>
-                <span style={{fontWeight: '800'}}>✏️ Edit</span>
-            </div>
-          </div>
-
+          {/* SECTION: STAFF */}
+          <p style={sectionLabel}>ΠΡΟΣΩΠΙΚΟ ({staff.length})</p>
           {staff.map(u => (
             <div key={u.id} style={userCard}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '15px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
                 <div>
-                  <p style={{ fontWeight: '900', margin: 0, fontSize: '16px', color: '#0f172a' }}>{u.username || 'Νέος Χρήστης'}</p>
-                  <p style={{ fontSize: '12px', color: '#475569', margin: 0, fontWeight: '700' }}>{u.email}</p>
+                  <p style={{ fontWeight: '800', margin: 0, fontSize: '15px' }}>{u.username}</p>
+                  <p style={{ fontSize: '12px', color: '#64748b', margin: 0 }}>{u.email}</p>
                 </div>
-                <button onClick={() => handleDelete(u.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '18px' }}>🗑️</button>
+                <button onClick={() => handleDelete(u.id)} style={{ background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer' }}>🗑️</button>
               </div>
 
-              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                <button 
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <PermissionToggle 
+                  label="📊 Ανάλυση" 
+                  active={u.can_view_analysis} 
                   onClick={() => updateField(u.id, 'can_view_analysis', !u.can_view_analysis)} 
-                  style={{ ...permBtn, backgroundColor: u.can_view_analysis ? '#dcfce7' : '#f1f5f9', color: u.can_view_analysis ? '#166534' : '#64748b', border: u.can_view_analysis ? '1px solid #166534' : '1px solid #e2e8f0' }}
-                >
-                  📊 Ανάλυση
-                </button>
-                <button 
+                />
+                <PermissionToggle 
+                  label="📜 Ιστορικό" 
+                  active={u.can_view_history} 
                   onClick={() => updateField(u.id, 'can_view_history', !u.can_view_history)} 
-                  style={{ ...permBtn, backgroundColor: u.can_view_history ? '#dcfce7' : '#f1f5f9', color: u.can_view_history ? '#166534' : '#64748b', border: u.can_view_history ? '1px solid #166534' : '1px solid #e2e8f0' }}
-                >
-                  📜 Ιστορικό
-                </button>
-                <button 
+                />
+                <PermissionToggle 
+                  label="✏️ Edit" 
+                  active={u.can_edit_transactions} 
                   onClick={() => updateField(u.id, 'can_edit_transactions', !u.can_edit_transactions)} 
-                  style={{ ...permBtn, backgroundColor: u.can_edit_transactions ? '#dcfce7' : '#f1f5f9', color: u.can_edit_transactions ? '#166534' : '#64748b', border: u.can_edit_transactions ? '1px solid #166534' : '1px solid #e2e8f0' }}
-                >
-                  ✏️ Edit
-                </button>
+                />
               </div>
               
               <button 
@@ -201,30 +221,51 @@ function PermissionsContent() {
           ))}
 
           {staff.length === 0 && (
-            <div style={{ textAlign: 'center', padding: '40px', backgroundColor: 'white', borderRadius: '24px', border: '2px dashed #e2e8f0' }}>
-              <p style={{ fontSize: '14px', color: '#475569', margin: 0, fontWeight: '700' }}>Δεν υπάρχουν συνδεδεμένοι υπάλληλοι.</p>
+            <div style={{ textAlign: 'center', padding: '30px', border: '2px dashed #e2e8f0', borderRadius: '20px', color: '#64748b', fontSize: '13px', fontWeight: '600' }}>
+              Δεν υπάρχουν άλλοι χρήστες με πρόσβαση.
             </div>
           )}
 
-          {/* ΔΙΟΡΘΩΣΗ: Δυναμικό Link με ρόλο */}
-          <Link href="/admin/invite?role=user" style={inviteBtn}>+ ΠΡΟΣΚΛΗΣΗ ΝΕΟΥ ΧΡΗΣΤΗ</Link>
+          <Link href="/admin/invite" style={inviteBtn}>+ ΠΡΟΣΚΛΗΣΗ ΝΕΟΥ ΧΡΗΣΤΗ</Link>
         </>
       )}
     </div>
   )
 }
 
+// Μικρό βοηθητικό component για τα κουμπιά
+function PermissionToggle({ label, active, onClick }: any) {
+  return (
+    <button 
+      onClick={onClick}
+      style={{
+        flex: 1,
+        padding: '10px 5px',
+        borderRadius: '10px',
+        fontSize: '10px',
+        fontWeight: '800',
+        cursor: 'pointer',
+        border: '1px solid',
+        transition: '0.2s',
+        backgroundColor: active ? '#dcfce7' : '#f8fafc',
+        color: active ? '#166534' : '#64748b',
+        borderColor: active ? '#166534' : '#e2e8f0'
+      }}
+    >
+      {label}
+    </button>
+  )
+}
+
 // STYLES
-const logoBoxStyle: any = { width: '45px', height: '45px', backgroundColor: '#fef3c7', borderRadius: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center' };
-const backBtnStyle: any = { textDecoration: 'none', color: '#475569', fontSize: '20px', fontWeight: 'bold', width: '35px', height: '35px', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#fff', borderRadius: '12px', border: '1px solid #e2e8f0' };
-const sectionLabel: any = { fontSize: '11px', fontWeight: '900', color: '#1e293b', marginBottom: '12px', letterSpacing: '0.8px', textTransform: 'uppercase' };
-const adminCard: any = { backgroundColor: '#0f172a', padding: '18px', borderRadius: '22px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' };
-const adminBadge: any = { backgroundColor: '#1e293b', color: '#4ade80', fontSize: '10px', fontWeight: '900', padding: '5px 10px', borderRadius: '8px', border: '1px solid #166534' };
-const userCard: any = { backgroundColor: 'white', padding: '20px', borderRadius: '26px', border: '1px solid #f1f5f9', marginBottom: '15px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' };
-const legendBox: any = { backgroundColor: '#f1f5f9', padding: '12px 15px', borderRadius: '14px', marginBottom: '15px', fontSize: '11px', color: '#0f172a', border: '1px solid #e2e8f0' };
-const permBtn: any = { flex: 1, border: '1px solid #e2e8f0', padding: '12px 5px', borderRadius: '12px', fontSize: '11px', fontWeight: '900', cursor: 'pointer', transition: '0.2s' };
-const promoteBtn: any = { width: '100%', marginTop: '15px', padding: '12px', border: '1px solid #e2e8f0', borderRadius: '14px', backgroundColor: '#f8fafc', color: '#1e293b', fontSize: '11px', fontWeight: '900', cursor: 'pointer' };
-const inviteBtn: any = { display: 'block', textAlign: 'center', marginTop: '30px', padding: '20px', backgroundColor: '#0f172a', color: 'white', borderRadius: '20px', textDecoration: 'none', fontWeight: '900', fontSize: '14px', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' };
+const logoBoxStyle: any = { width: '40px', height: '40px', backgroundColor: '#fef3c7', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px' };
+const backBtnStyle: any = { textDecoration: 'none', color: '#64748b', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: 'white', borderRadius: '10px', border: '1px solid #e2e8f0', fontWeight: 'bold' };
+const sectionLabel: any = { fontSize: '10px', fontWeight: '900', color: '#475569', marginBottom: '10px', letterSpacing: '0.5px' };
+const adminCard: any = { backgroundColor: '#0f172a', padding: '15px', borderRadius: '18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' };
+const adminBadge: any = { color: '#4ade80', fontSize: '9px', fontWeight: '900', padding: '4px 8px', borderRadius: '6px', border: '1px solid #166534' };
+const userCard: any = { backgroundColor: 'white', padding: '18px', borderRadius: '20px', border: '1px solid #e2e8f0', marginBottom: '12px' };
+const promoteBtn: any = { width: '100%', marginTop: '12px', padding: '10px', borderRadius: '10px', backgroundColor: '#f1f5f9', color: '#1e293b', fontSize: '10px', fontWeight: '800', border: '1px solid #e2e8f0', cursor: 'pointer' };
+const inviteBtn: any = { display: 'block', textAlign: 'center', marginTop: '25px', padding: '16px', backgroundColor: '#0f172a', color: 'white', borderRadius: '15px', textDecoration: 'none', fontWeight: '800', fontSize: '13px' };
 
 export default function PermissionsPage() {
   return (
