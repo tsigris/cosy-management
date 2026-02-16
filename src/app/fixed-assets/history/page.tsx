@@ -3,150 +3,171 @@ export const dynamic = 'force-dynamic'
 
 import { useEffect, useState, Suspense, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
-import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
-import { ChevronLeft, History, Trash2, Calendar } from 'lucide-react'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { Trash2, Edit2, History, Plus, X, CreditCard, ChevronLeft } from 'lucide-react'
 import { toast, Toaster } from 'sonner'
+
+const DEFAULT_ASSETS = ['ΔΕΗ / ΡΕΥΜΑ', 'ΕΝΟΙΚΙΟ', 'ΝΕΡΟ / ΕΥΔΑΠ', 'ΛΟΓΙΣΤΗΣ', 'ΤΗΛΕΦΩΝΙΑ / INTERNET', 'ΕΦΟΡΙΑ', 'ΕΦΚΑ', 'ΜΙΣΘΟΔΟΣΙΑ']
 
 const colors = {
   primary: '#0f172a',
   secondary: '#64748b',
+  success: '#10b981',
   danger: '#f43f5e',
   background: '#f8fafc',
   surface: '#ffffff',
   border: '#e2e8f0',
+  warning: '#f59e0b',
   indigo: '#6366f1'
 }
 
-const isValidUUID = (id: any) => {
-  const regex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-  return typeof id === 'string' && regex.test(id);
-}
+const isValidUUID = (id: any) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
 
-function HistoryContent() {
+function FixedAssetsContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  
-  const storeId = searchParams.get('store')
-  const assetId = searchParams.get('id')
-  const assetName = searchParams.get('name') || 'Πάγιο'
+  const storeIdFromUrl = searchParams.get('store')
 
-  const [transactions, setTransactions] = useState<any[]>([])
+  const [assets, setAssets] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [isFormOpen, setIsFormOpen] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [name, setName] = useState('')
+  const [isSaving, setIsSaving] = useState(false)
 
-  const fetchHistory = useCallback(async () => {
-    if (!storeId || !isValidUUID(storeId) || !assetId || !isValidUUID(assetId)) {
-      setLoading(false)
-      return
-    }
+  const fetchData = useCallback(async () => {
+    if (!storeIdFromUrl || !isValidUUID(storeIdFromUrl)) return;
 
     try {
       setLoading(true)
-      const { data, error } = await supabase
-        .from('transactions')
+      
+      // 1. Φέρνουμε τα πάγια
+      const { data: assetsData, error: assetsErr } = await supabase
+        .from('fixed_assets')
         .select('*')
-        .eq('store_id', storeId)
-        .eq('fixed_asset_id', assetId)
-        .order('date', { ascending: false })
+        .eq('store_id', storeIdFromUrl)
+        .order('name')
 
-      if (error) throw error
-      setTransactions(data || [])
-    } catch (err: any) {
-      console.error(err)
-      toast.error('Σφάλμα φόρτωσης ιστορικού')
-    } finally {
-      setLoading(false)
-    }
-  }, [storeId, assetId])
+      if (assetsErr) throw assetsErr
+      
+      console.log("DEBUG ASSETS FROM DB:", assetsData); // <--- ΕΔΩ ΘΑ ΔΕΙΣ ΑΝ ΦΕΡΝΕΙ ΔΕΔΟΜΕΝΑ
+
+      let currentAssets = assetsData || []
+
+      // 2. Auto-create αν είναι άδεια η λίστα
+      if (currentAssets.length === 0) {
+        const { data: inserted } = await supabase
+          .from('fixed_assets')
+          .insert(DEFAULT_ASSETS.map(n => ({ name: n, store_id: storeIdFromUrl })))
+          .select()
+        if (inserted) currentAssets = inserted
+      }
+
+      // 3. Φέρνουμε συναλλαγές για τα σύνολα
+      const { data: transData } = await supabase
+        .from('transactions')
+        .select('amount, fixed_asset_id')
+        .eq('store_id', storeIdFromUrl)
+        .not('fixed_asset_id', 'is', null)
+
+      const enriched = currentAssets.map(asset => {
+        const total = transData
+          ?.filter(t => t.fixed_asset_id === asset.id)
+          .reduce((sum, curr) => sum + Math.abs(Number(curr.amount) || 0), 0) || 0
+        return { ...asset, total }
+      })
+
+      setAssets(enriched)
+    } catch (err) { console.error(err) } finally { setLoading(false) }
+  }, [storeIdFromUrl])
 
   useEffect(() => {
-    if (!storeId || !isValidUUID(storeId) || !assetId || !isValidUUID(assetId)) {
+    if (!storeIdFromUrl || !isValidUUID(storeIdFromUrl)) {
       router.replace('/select-store')
     } else {
-      fetchHistory()
+      fetchData()
     }
-  }, [fetchHistory, storeId, assetId, router])
+  }, [fetchData, storeIdFromUrl, router])
 
-  const handleDelete = async (txId: string) => {
-    if (!confirm('Διαγραφή αυτής της πληρωμής;')) return
+  const handleSave = async () => {
+    if (!name.trim() || !storeIdFromUrl) return toast.error('Δώστε όνομα')
+    setIsSaving(true)
     try {
-      const { error } = await supabase.from('transactions').delete().eq('id', txId)
+      const payload = { name: name.trim().toUpperCase(), store_id: storeIdFromUrl }
+      const { error } = editingId 
+        ? await supabase.from('fixed_assets').update(payload).eq('id', editingId)
+        : await supabase.from('fixed_assets').insert([payload])
+      
       if (error) throw error
-      toast.success('Η πληρωμή διαγράφηκε')
-      fetchHistory()
-    } catch (err) {
-      toast.error('Σφάλμα κατά τη διαγραφή')
-    }
+      toast.success('Αποθηκεύτηκε!')
+      setName(''); setEditingId(null); setIsFormOpen(false);
+      fetchData()
+    } catch (err: any) { toast.error(err.message) } finally { setIsSaving(false) }
   }
 
-  const totalSpent = transactions.reduce((acc, t) => acc + Math.abs(Number(t.amount) || 0), 0)
+  const handleDelete = async (id: string) => {
+    if (!confirm('Οριστική διαγραφή;')) return
+    try {
+      await supabase.from('fixed_assets').delete().eq('id', id)
+      fetchData()
+    } catch (err) { toast.error('Σφάλμα διαγραφής') }
+  }
 
   return (
-    <div style={containerStyle}>
+    <div style={{ maxWidth: '500px', margin: '0 auto', padding: '20px', backgroundColor: colors.background, minHeight: '100vh' }}>
       <Toaster position="top-center" richColors />
-
-      <header style={headerStyle}>
+      <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <div style={logoBox}><History size={22} color="white" /></div>
+          <div style={{ width: '45px', height: '45px', backgroundColor: colors.primary, borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '22px' }}>🔌</div>
           <div>
-            <h1 style={titleStyle}>{assetName.toUpperCase()}</h1>
-            <p style={subtitleStyle}>ΙΣΤΟΡΙΚΟ ΠΛΗΡΩΜΩΝ</p>
+            <h1 style={{ fontSize: '20px', fontWeight: '800', color: colors.primary, margin: 0 }}>Πάγια</h1>
+            <p style={{ fontSize: '10px', color: colors.secondary, fontWeight: '700', margin: 0 }}>ΔΙΑΧΕΙΡΙΣΗ ΛΟΓΑΡΙΑΣΜΩΝ</p>
           </div>
         </div>
-        <Link href={`/fixed-assets?store=${storeId}`} style={backBtn}>
-          <ChevronLeft size={24} />
-        </Link>
+        <Link href={`/?store=${storeIdFromUrl}`} style={{ width: '38px', height: '38px', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface, border: `1px solid ${colors.border}`, borderRadius: '10px' }}><X size={20} /></Link>
       </header>
 
-      <div style={summaryCard}>
-        <span style={summaryLabel}>ΣΥΝΟΛΙΚΑ ΕΞΟΔΑ</span>
-        <h2 style={summaryAmount}>-{totalSpent.toFixed(2)}€</h2>
-      </div>
+      <button onClick={() => { setIsFormOpen(!isFormOpen); setEditingId(null); setName(''); }} style={{ width: '100%', padding: '16px', backgroundColor: colors.primary, color: 'white', borderRadius: '16px', fontWeight: '800', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', border: 'none', cursor: 'pointer' }}>
+        {isFormOpen ? 'ΑΚΥΡΩΣΗ' : <><Plus size={18} /> ΝΕΟ ΠΑΓΙΟ</>}
+      </button>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-        {loading ? (
-           <p style={{textAlign:'center', color:colors.secondary}}>Φόρτωση...</p>
-        ) : transactions.length === 0 ? (
-          <div style={emptyState}>Δεν βρέθηκαν πληρωμές.</div>
-        ) : (
-          transactions.map((tx) => (
-            <div key={tx.id} style={txCard}>
-              <div style={{ flex: 1 }}>
-                <div style={dateRow}>
-                  <Calendar size={14} />
-                  {new Date(tx.date).toLocaleDateString('el-GR', { day: 'numeric', month: 'long', year: 'numeric' })}
-                </div>
-                <div style={amountStyle}>-{Math.abs(tx.amount).toFixed(2)}€</div>
-                <div style={methodBadge}>{tx.method || 'Μετρητά'}</div>
-              </div>
-              <button onClick={() => handleDelete(tx.id)} style={deleteBtn}>
-                <Trash2 size={18} />
-              </button>
+      {isFormOpen && (
+        <div style={{ backgroundColor: colors.surface, padding: '20px', borderRadius: '22px', border: `1px solid ${colors.border}`, marginTop: '15px' }}>
+          <label style={{ fontSize: '10px', fontWeight: '800', color: colors.secondary, marginBottom: '6px', display: 'block' }}>ΟΝΟΜΑΣΙΑ</label>
+          <input value={name} onChange={e => setName(e.target.value)} style={{ width: '100%', padding: '14px', borderRadius: '12px', border: `1px solid ${colors.border}`, backgroundColor: colors.background, fontWeight: '600', boxSizing: 'border-box', outline: 'none' }} placeholder="π.χ. ΔΕΗ..." />
+          <button onClick={handleSave} disabled={isSaving} style={{ width: '100%', padding: '16px', backgroundColor: colors.primary, color: 'white', border: 'none', borderRadius: '14px', fontWeight: '800', marginTop: '15px', cursor: 'pointer' }}>
+            {isSaving ? 'ΑΠΟΘΗΚΕΥΣΗ...' : 'ΚΑΤΑΧΩΡΗΣΗ'}
+          </button>
+        </div>
+      )}
+
+      <div style={{ marginTop: '20px' }}>
+        {loading ? <p style={{textAlign:'center', color: colors.secondary}}>Φόρτωση...</p> : assets.map(asset => (
+          <div key={asset.id} style={{ backgroundColor: colors.surface, padding: '18px', borderRadius: '22px', border: `1px solid ${colors.border}`, marginBottom: '12px', display: 'flex', gap: '15px' }}>
+            <div style={{ flex: 1 }}>
+              <h3 style={{ fontSize: '15px', fontWeight: '800', color: colors.primary, margin: '0 0 5px 0' }}>{asset.name}</h3>
+              <p style={{ fontSize: '13px', fontWeight: '700', color: colors.danger, margin: 0 }}>Σύνολο: -{asset.total.toFixed(2)}€</p>
+              <Link href={`/add-expense?store=${storeIdFromUrl}&assetId=${asset.id}`} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', marginTop: '12px', padding: '8px 12px', backgroundColor: '#f0fdf4', color: colors.success, borderRadius: '10px', fontSize: '11px', fontWeight: '800', textDecoration: 'none', border: '1px solid #bbf7d0' }}>
+                <CreditCard size={14} /> ΠΛΗΡΩΜΗ →
+              </Link>
             </div>
-          ))
-        )}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <button onClick={() => { setEditingId(asset.id); setName(asset.name); setIsFormOpen(true); }} style={{ width: '34px', height: '34px', backgroundColor: colors.background, border: `1px solid ${colors.border}`, borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}><Edit2 size={16} color={colors.warning} /></button>
+              <Link href={`/fixed-assets/history?store=${storeIdFromUrl}&id=${asset.id}&name=${asset.name}`} style={{ width: '34px', height: '34px', backgroundColor: colors.background, border: `1px solid ${colors.border}`, borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><History size={16} color={colors.indigo} /></Link>
+              <button onClick={() => handleDelete(asset.id)} style={{ width: '34px', height: '34px', backgroundColor: colors.background, border: `1px solid ${colors.border}`, borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}><Trash2 size={16} color={colors.danger} /></button>
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   )
 }
 
-// STYLES
-const containerStyle: any = { maxWidth: '500px', margin: '0 auto', padding: '20px', minHeight: '100vh', backgroundColor: colors.background };
-const headerStyle: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px' };
-const logoBox: any = { width: '45px', height: '45px', backgroundColor: colors.indigo, borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' };
-const titleStyle: any = { fontSize: '18px', fontWeight: '800', color: colors.primary, margin: 0 };
-const subtitleStyle: any = { fontSize: '10px', color: colors.secondary, fontWeight: '700', margin: 0, letterSpacing: '1px' };
-const backBtn: any = { width: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface, borderRadius: '12px', border: `1px solid ${colors.border}`, color: colors.primary };
-const summaryCard: any = { backgroundColor: colors.primary, padding: '20px', borderRadius: '20px', marginBottom: '25px', color: 'white', textAlign: 'center' };
-const summaryLabel: any = { fontSize: '10px', fontWeight: '700', opacity: 0.7 };
-const summaryAmount: any = { fontSize: '32px', fontWeight: '900', margin: '5px 0 0 0' };
-const txCard: any = { backgroundColor: colors.surface, padding: '16px', borderRadius: '18px', border: `1px solid ${colors.border}`, display: 'flex', alignItems: 'center' };
-const dateRow: any = { display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', color: colors.secondary, fontWeight: '700', marginBottom: '5px' };
-const amountStyle: any = { fontSize: '18px', fontWeight: '800', color: colors.danger };
-const methodBadge: any = { display: 'inline-block', marginTop: '8px', padding: '3px 8px', backgroundColor: colors.background, borderRadius: '6px', fontSize: '10px', fontWeight: '800', color: colors.secondary };
-const deleteBtn: any = { padding: '10px', color: colors.danger, backgroundColor: '#fff1f2', border: 'none', borderRadius: '12px', cursor: 'pointer' };
-const emptyState: any = { textAlign: 'center', padding: '40px', color: colors.secondary, fontSize: '14px' };
-
-export default function FixedAssetHistoryPage() {
-  return <Suspense fallback={null}><HistoryContent /></Suspense>
+export default function FixedAssetsPage() {
+  return (
+    <Suspense fallback={<div style={{padding:'50px', textAlign:'center'}}>Φόρτωση...</div>}>
+      <FixedAssetsContent />
+    </Suspense>
+  )
 }
