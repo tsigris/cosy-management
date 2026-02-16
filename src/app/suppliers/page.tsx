@@ -35,16 +35,20 @@ function SuppliersContent() {
   const [isFormOpen, setIsFormOpen] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
 
-  // 1. ΦΟΡΤΩΣΗ ΔΕΔΟΜΕΝΩΝ ΜΕ ΑΥΣΤΗΡΟ ΦΙΛΤΡΟ STORE_ID
+  // 1. ΦΟΡΤΩΣΗ ΔΕΔΟΜΕΝΩΝ - ΕΠΙΒΟΛΗ ΔΥΝΑΜΙΚΗΣ ΑΝΑΓΝΩΣΗΣ ID
   const fetchSuppliersData = useCallback(async () => {
     try {
       setLoading(true)
       const activeStoreId = localStorage.getItem('active_store_id');
       
-      if (!activeStoreId) {
-        setLoading(false)
-        return
+      if (!activeStoreId || activeStoreId === 'undefined') {
+        setSuppliers([]);
+        setTransactions([]);
+        setLoading(false);
+        return;
       }
+
+      console.log("Fetching suppliers for Store:", activeStoreId);
 
       const [sRes, tRes] = await Promise.all([
         supabase.from('suppliers')
@@ -61,7 +65,7 @@ function SuppliersContent() {
       setTransactions(tRes.data || []);
     } catch (err) {
       console.error("Fetch error:", err);
-      toast.error('Σφάλμα φόρτωσης');
+      toast.error('Σφάλμα φόρτωσης δεδομένων');
     } finally {
       setLoading(false);
     }
@@ -81,13 +85,13 @@ function SuppliersContent() {
     .filter(s => showInactive ? true : s.is_active !== false)
     .sort((a, b) => getSupplierTurnover(b.id) - getSupplierTurnover(a.id));
 
-  // 2. ΑΠΟΘΗΚΕΥΣΗ ΜΕ ΔΥΝΑΜΙΚΟ STORE_ID
+  // 2. ΑΠΟΘΗΚΕΥΣΗ ΜΕ ΔΥΝΑΜΙΚΟ ΕΛΕΓΧΟ ID ΤΗ ΣΤΙΓΜΗ ΤΟΥ CLICK
   async function handleSave() {
-    const currentStoreId = localStorage.getItem('active_store_id');
+    const currentActiveId = localStorage.getItem('active_store_id');
     
     if (!name.trim()) return toast.error('Συμπληρώστε το όνομα');
-    if (!currentStoreId) {
-        toast.error('Σφάλμα: Δεν βρέθηκε ενεργό κατάστημα. Παρακαλώ ξαναεπιλέξτε κατάστημα από την αρχική.');
+    if (!currentActiveId || currentActiveId === 'undefined') {
+        toast.error('Σφάλμα: Δεν βρέθηκε ενεργό κατάστημα. Παρακαλώ επιλέξτε ξανά κατάστημα από την αρχική.');
         return;
     }
 
@@ -99,8 +103,10 @@ function SuppliersContent() {
         vat_number: afm.trim(),
         iban: iban.trim(),
         category: category,
-        store_id: currentStoreId // Χρησιμοποιεί το ID τη στιγμή της καταχώρησης
+        store_id: currentActiveId // Χρησιμοποιεί το ID που διάβασε ΜΟΛΙΣ ΤΩΡΑ
       };
+
+      console.log("Saving to store:", currentActiveId);
 
       const { error } = editingId
         ? await supabase.from('suppliers').update(supplierData).eq('id', editingId)
@@ -123,32 +129,45 @@ function SuppliersContent() {
       const { error } = await supabase.from('suppliers').update({ is_active: !supplier.is_active }).eq('id', supplier.id);
       if (error) throw error;
       fetchSuppliersData();
-    } catch (err: any) { toast.error('Σφάλμα'); }
+    } catch (err: any) { toast.error('Σφάλμα ενημέρωσης κατάστασης'); }
   }
 
   async function handleDelete(id: string) {
-    if (!confirm('Οριστική διαγραφή;')) return;
+    if (!confirm('Οριστική διαγραφή προμηθευτή;')) return;
     try {
       const { error } = await supabase.from('suppliers').delete().eq('id', id);
       if (error) throw error;
       fetchSuppliersData();
-      toast.success('Διαγράφηκε');
-    } catch (err: any) { toast.error('Σφάλμα'); }
+      toast.success('Ο προμηθευτής διαγράφηκε');
+    } catch (err: any) { toast.error('Σφάλμα κατά τη διαγραφή'); }
   }
 
   const handleEdit = (s: any) => {
-    setEditingId(s.id); setName(s.name); setPhone(s.phone || '');
-    setAfm(s.vat_number || ''); setIban(s.iban || '');
-    setCategory(s.category || 'Εμπορεύματα'); setIsFormOpen(true);
+    setEditingId(s.id); 
+    setName(s.name); 
+    setPhone(s.phone || '');
+    setAfm(s.vat_number || ''); 
+    setIban(s.iban || '');
+    setCategory(s.category || 'Εμπορεύματα'); 
+    setIsFormOpen(true);
     setExpandedId(null);
   }
 
   const resetForm = () => {
-    setName(''); setPhone(''); setAfm(''); setIban(''); setCategory('Εμπορεύματα');
-    setEditingId(null); setIsFormOpen(false);
+    setName(''); 
+    setPhone(''); 
+    setAfm(''); 
+    setIban(''); 
+    setCategory('Εμπορεύματα');
+    setEditingId(null); 
+    setIsFormOpen(false);
   }
 
-  if (loading) return <div style={{padding:'50px', textAlign:'center', color: colors.secondaryText, fontWeight:'800'}}>ΦΟΡΤΩΣΗ...</div>
+  if (loading) return (
+    <div style={{padding:'100px 20px', textAlign:'center', color: colors.secondaryText, fontWeight:'800', backgroundColor: colors.bgLight, minHeight: '100vh'}}>
+      ΣΥΓΧΡΟΝΙΣΜΟΣ ΔΕΔΟΜΕΝΩΝ...
+    </div>
+  )
 
   return (
     <div style={containerStyle}>
@@ -178,18 +197,33 @@ function SuppliersContent() {
           <div style={formCard}>
             <label style={labelStyle}>ΕΠΩΝΥΜΙΑ</label>
             <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Όνομα..." style={inputStyle} />
+            
             <div style={{ display: 'flex', gap: '12px', marginTop: '12px' }}>
-              <div style={{ flex: 1 }}><label style={labelStyle}>ΤΗΛΕΦΩΝΟ</label><input value={phone} onChange={(e) => setPhone(e.target.value)} style={inputStyle} inputMode="tel" /></div>
-              <div style={{ flex: 1 }}><label style={labelStyle}>Α.Φ.Μ.</label><input maxLength={9} value={afm} onChange={(e) => setAfm(e.target.value)} style={inputStyle} inputMode="numeric" /></div>
+              <div style={{ flex: 1 }}>
+                <label style={labelStyle}>ΤΗΛΕΦΩΝΟ</label>
+                <input value={phone} onChange={(e) => setPhone(e.target.value)} style={inputStyle} inputMode="tel" placeholder="210..." />
+              </div>
+              <div style={{ flex: 1 }}>
+                <label style={labelStyle}>Α.Φ.Μ.</label>
+                <input maxLength={9} value={afm} onChange={(e) => setAfm(e.target.value)} style={inputStyle} inputMode="numeric" placeholder="9 ψηφία" />
+              </div>
             </div>
-            <div style={{ marginTop: '12px' }}><label style={labelStyle}>IBAN</label><input value={iban} onChange={(e) => setIban(e.target.value.toUpperCase())} placeholder="GR..." style={inputStyle} /></div>
+
+            <div style={{ marginTop: '12px' }}>
+              <label style={labelStyle}>IBAN</label>
+              <input value={iban} onChange={(e) => setIban(e.target.value.toUpperCase())} placeholder="GR..." style={inputStyle} />
+            </div>
+
             <label style={{ ...labelStyle, marginTop: '12px' }}>ΚΑΤΗΓΟΡΙΑ</label>
             <select value={category} onChange={(e) => setCategory(e.target.value)} style={inputStyle}>
               <option value="Εμπορεύματα">🛒 Εμπορεύματα</option>
               <option value="Πάγια">🏢 Πάγια / Λογαριασμοί</option>
               <option value="Λοιπά">📦 Λοιπά Έξοδα</option>
             </select>
-            <button onClick={handleSave} disabled={isSaving} style={saveBtn}>{isSaving ? 'ΑΠΟΘΗΚΕΥΣΗ...' : (editingId ? 'ΕΝΗΜΕΡΩΣΗ' : 'ΚΑΤΑΧΩΡΗΣΗ')}</button>
+
+            <button onClick={handleSave} disabled={isSaving} style={saveBtn}>
+              {isSaving ? 'ΑΠΟΘΗΚΕΥΣΗ...' : (editingId ? 'ΕΝΗΜΕΡΩΣΗ ΣΤΟΙΧΕΙΩΝ' : 'ΚΑΤΑΧΩΡΗΣΗ')}
+            </button>
           </div>
         )}
 
@@ -207,17 +241,25 @@ function SuppliersContent() {
                    <p style={turnoverText}>{getSupplierTurnover(s.id).toFixed(2)}€</p>
                 </div>
               </div>
+              
               {expandedId === s.id && (
                 <div style={actionPanel}>
-                  <button onClick={() => handleEdit(s)} style={panelBtnEdit}>✎ Edit</button>
-                  <button onClick={() => toggleActive(s)} style={panelBtnActive}>{s.is_active ? 'Disable' : 'Enable'}</button>
-                  <button onClick={() => handleDelete(s.id)} style={panelBtnDelete}>🗑 Delete</button>
+                  <button onClick={(e) => { e.stopPropagation(); handleEdit(s); }} style={panelBtnEdit}>
+                    <Edit2 size={14} /> Edit
+                  </button>
+                  <button onClick={(e) => { e.stopPropagation(); toggleActive(s); }} style={panelBtnActive}>
+                    {s.is_active ? 'Disable' : 'Enable'}
+                  </button>
+                  <button onClick={(e) => { e.stopPropagation(); handleDelete(s.id); }} style={panelBtnDelete}>
+                    <Trash2 size={14} /> Delete
+                  </button>
                 </div>
               )}
             </div>
           ))}
+          
           {visibleSuppliers.length === 0 && (
-              <div style={{padding:'40px', textAlign:'center', color: colors.secondaryText}}>
+              <div style={{padding:'60px 20px', textAlign:'center', color: colors.secondaryText, fontWeight: '700'}}>
                   Δεν υπάρχουν προμηθευτές για αυτό το κατάστημα.
               </div>
           )}
@@ -227,22 +269,22 @@ function SuppliersContent() {
   )
 }
 
-// STYLES
+// --- STYLES ---
 const containerStyle: any = { backgroundColor: colors.bgLight, minHeight: '100dvh', padding: '20px' };
 const contentWrapper: any = { maxWidth: '480px', margin: '0 auto', paddingBottom: '100px' };
 const headerStyle: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px' };
-const logoBox: any = { width: '40px', height: '40px', backgroundColor: colors.primaryDark, borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '18px' };
+const logoBox: any = { width: '40px', height: '40px', backgroundColor: colors.primaryDark, borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '18px', fontWeight:'800' };
 const titleStyle: any = { fontSize: '20px', fontWeight: '800', color: colors.primaryDark, margin: 0 };
 const subtitleStyle: any = { fontSize: '10px', fontWeight: '700', color: colors.secondaryText, margin: 0, letterSpacing: '0.5px' };
 const backBtn: any = { textDecoration: 'none', color: colors.secondaryText, fontSize: '18px', fontWeight: 'bold' };
 const controlsRow: any = { display: 'flex', gap: '8px', marginBottom: '20px' };
-const addBtn: any = { flex: 1, backgroundColor: colors.primaryDark, color: 'white', border: 'none', borderRadius: '12px', padding: '12px', fontWeight: '700', fontSize: '13px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' };
+const addBtn: any = { flex: 1, backgroundColor: colors.primaryDark, color: 'white', border: 'none', borderRadius: '12px', padding: '12px', fontWeight: '700', fontSize: '13px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', cursor: 'pointer' };
 const filterBtn = (active: boolean): any => ({ width: '45px', backgroundColor: active ? colors.primaryDark : 'white', color: active ? 'white' : colors.primaryDark, border: `1px solid ${colors.border}`, borderRadius: '12px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' });
-const formCard: any = { backgroundColor: 'white', padding: '20px', borderRadius: '20px', border: `1px solid ${colors.border}`, marginBottom: '25px' };
+const formCard: any = { backgroundColor: 'white', padding: '20px', borderRadius: '20px', border: `1px solid ${colors.border}`, marginBottom: '25px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' };
 const inputStyle: any = { width: '100%', padding: '12px', borderRadius: '10px', border: `1px solid ${colors.border}`, backgroundColor: colors.bgLight, fontSize: '14px', fontWeight: '600', outline: 'none', boxSizing: 'border-box' };
 const labelStyle: any = { fontSize: '10px', fontWeight: '800', color: colors.secondaryText, marginBottom: '4px', display: 'block' };
-const saveBtn: any = { width: '100%', padding: '14px', backgroundColor: colors.accentGreen, color: 'white', border: 'none', borderRadius: '12px', fontWeight: '700', marginTop: '15px' };
-const listArea: any = { backgroundColor: 'white', borderRadius: '20px', border: `1px solid ${colors.border}`, overflow: 'hidden' };
+const saveBtn: any = { width: '100%', padding: '14px', backgroundColor: colors.accentGreen, color: 'white', border: 'none', borderRadius: '12px', fontWeight: '700', marginTop: '15px', cursor: 'pointer' };
+const listArea: any = { backgroundColor: 'white', borderRadius: '20px', border: `1px solid ${colors.border}`, overflow: 'hidden', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' };
 const rankingHeader: any = { padding: '12px 16px', backgroundColor: colors.bgLight, fontSize: '10px', fontWeight: '800', color: colors.secondaryText, display: 'flex', alignItems: 'center', gap: '6px', borderBottom: `1px solid ${colors.border}` };
 const rowWrapper: any = { display: 'flex', padding: '16px', alignItems: 'center', cursor: 'pointer' };
 const rankNumber: any = { width: '24px', height: '24px', backgroundColor: colors.bgLight, borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '11px', fontWeight: '800', color: colors.secondaryText, marginRight: '12px' };
