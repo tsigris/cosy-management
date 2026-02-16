@@ -154,45 +154,38 @@ function EmployeesContent() {
   const fetchInitialData = useCallback(async () => {
     setLoading(true)
     try {
-      const {
-        data: { session }
-      } = await supabase.auth.getSession()
-      if (!session?.user) return
-
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('store_id')
-        .eq('id', session.user.id)
-        .single()
-
-      if (profile?.store_id) {
-        setStoreId(profile.store_id)
-
-        const [empsRes, transRes, otRes] = await Promise.all([
-          supabase.from('employees').select('*').eq('store_id', profile.store_id).order('full_name'),
-          supabase
-            .from('transactions')
-            .select('*')
-            .eq('store_id', profile.store_id)
-            .not('employee_id', 'is', null)
-            .order('date', { ascending: false }),
-          supabase
-            .from('employee_overtimes')
-            .select('*')
-            .eq('store_id', profile.store_id)
-            .eq('is_paid', false)
-        ])
-
-        if (empsRes.data) setEmployees(empsRes.data)
-        if (transRes.data) setTransactions(transRes.data)
-        if (otRes.data) setOvertimes(otRes.data)
+      const activeStoreId = typeof window !== 'undefined' ? localStorage.getItem('active_store_id') : null;
+      if (!activeStoreId) {
+        setLoading(false);
+        return;
       }
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) return;
+      setStoreId(activeStoreId);
+      const [empsRes, transRes, otRes] = await Promise.all([
+        supabase.from('employees')
+          .select('*')
+          .or(`store_id.eq.${activeStoreId},store_id.is.null`)
+          .order('full_name'),
+        supabase.from('transactions')
+          .select('*')
+          .eq('store_id', activeStoreId)
+          .not('employee_id', 'is', null)
+          .order('date', { ascending: false }),
+        supabase.from('employee_overtimes')
+          .select('*')
+          .eq('store_id', activeStoreId)
+          .eq('is_paid', false)
+      ]);
+      if (empsRes.data) setEmployees(empsRes.data);
+      if (transRes.data) setTransactions(transRes.data);
+      if (otRes.data) setOvertimes(otRes.data);
     } catch (err) {
-      console.error(err)
+      console.error(err);
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }, [])
+  }, []);
 
   useEffect(() => {
     fetchInitialData()
@@ -203,7 +196,13 @@ function EmployeesContent() {
   }, [storeId, getTipsStats])
 
   // Φιλτράρισμα λίστας βάσει showInactive
-  const visibleEmployees = showInactive ? employees : employees.filter((e) => e.is_active !== false)
+  // Hide employees with null store_id if not main store
+  const mainStoreId = 'e50a8803-a262-4303-9e90-c116c965e683';
+  const visibleEmployees = employees.filter(emp => {
+    if (!showInactive && emp.is_active === false) return false;
+    if (storeId && storeId !== mainStoreId && emp.store_id == null) return false;
+    return true;
+  });
 
   // ✅ Toggle Active/Inactive (Supabase)
   async function toggleActive(empId: string, currentValue: boolean | null | undefined) {
@@ -232,10 +231,12 @@ function EmployeesContent() {
   // Καταγραφή νέας υπερωρίας
   async function handleQuickOvertime() {
     if (!otHours || !otModal) return
+    // Ensure storeId is set from state or localStorage
+    const activeStoreId = storeId || (typeof window !== 'undefined' ? localStorage.getItem('active_store_id') : null);
     const { error } = await supabase.from('employee_overtimes').insert([
       {
         employee_id: otModal.empId,
-        store_id: storeId,
+        store_id: activeStoreId,
         hours: Number(otHours),
         date: new Date().toISOString().split('T')[0],
         is_paid: false
@@ -261,10 +262,12 @@ function EmployeesContent() {
     }
 
     const today = new Date().toISOString().split('T')[0]
+    // Ensure storeId is set from state or localStorage
+    const activeStoreId = storeId || (typeof window !== 'undefined' ? localStorage.getItem('active_store_id') : null);
 
     const { error } = await supabase.from('transactions').insert([
       {
-        store_id: storeId,
+        store_id: activeStoreId,
         employee_id: tipModal.empId,
         amount: amountNum,
         type: 'expense',
@@ -297,11 +300,15 @@ function EmployeesContent() {
       return
     }
 
+    // Ensure storeId is set from state or localStorage
+    const activeStoreId = storeId || (typeof window !== 'undefined' ? localStorage.getItem('active_store_id') : null);
+
     const { error } = await supabase
       .from('transactions')
       .update({
         amount: amountNum,
-        notes: `Tips: ${amountNum}€ [${tipEditModal.name}]`
+        notes: `Tips: ${amountNum}€ [${tipEditModal.name}]`,
+        store_id: activeStoreId
       })
       .eq('id', tipEditModal.id)
 
@@ -399,6 +406,8 @@ function EmployeesContent() {
     if (!formData.full_name.trim() || isSalaryMissing) return alert('Συμπληρώστε τα υποχρεωτικά πεδία!')
 
     setLoading(true)
+    // Get activeStoreId from localStorage
+    const activeStoreId = typeof window !== 'undefined' ? localStorage.getItem('active_store_id') : storeId;
     const payload: any = {
       full_name: formData.full_name.trim(),
       position: formData.position.trim() || null,
@@ -409,7 +418,7 @@ function EmployeesContent() {
       monthly_salary: payBasis === 'monthly' ? Number(formData.monthly_salary) : null,
       daily_rate: payBasis === 'daily' ? Number(formData.daily_rate) : null,
       start_date: formData.start_date,
-      store_id: storeId
+      store_id: activeStoreId
     }
 
     if (!editingId) payload.is_active = true
