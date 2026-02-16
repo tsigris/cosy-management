@@ -38,30 +38,21 @@ function SuppliersContent() {
 
   const fetchSuppliersData = useCallback(async () => {
     try {
-      setLoading(true)
+      setLoading(true);
       const activeStoreId = typeof window !== 'undefined' ? localStorage.getItem('active_store_id') : null;
       if (!activeStoreId) return;
       setStoreId(activeStoreId);
-      const MAIN_STORE_ID = 'e50a8803-a262-4303-9e90-c116c965e683';
-      // Multi-tenant: .or() for main store, strict for others
-      let supsQuery = supabase.from('suppliers').select('*');
-      if (activeStoreId === MAIN_STORE_ID) {
-        supsQuery = supsQuery.or(`store_id.eq.${activeStoreId},store_id.is.null`);
-      } else {
-        supsQuery = supsQuery.eq('store_id', activeStoreId);
-      }
-      const { data: sData, error: sErr } = await supsQuery;
+      // Strict multi-tenant: only show suppliers for this store
+      const { data: sData, error: sErr } = await supabase
+        .from('suppliers')
+        .select('*')
+        .eq('store_id', activeStoreId);
       // Transactions only for current store
       const { data: tData, error: tErr } = await supabase
         .from('transactions')
         .select('amount, supplier_id')
         .eq('store_id', activeStoreId);
-      // Client-side filter: hide nulls if not main store
-      let filteredSuppliers = sData || [];
-      if (activeStoreId !== MAIN_STORE_ID) {
-        filteredSuppliers = filteredSuppliers.filter(s => s.store_id === activeStoreId);
-      }
-      setSuppliers(filteredSuppliers);
+      setSuppliers(sData || []);
       setTransactions(tData || []);
     } catch (err) {
       console.error(err);
@@ -79,19 +70,7 @@ function SuppliersContent() {
   }
 
   const visibleSuppliers = suppliers
-    .filter(s => {
-      const activeStore = localStorage.getItem('active_store_id');
-      // Φίλτρο: Δείξε μόνο αν το store_id ταιριάζει. 
-      // Αν είναι NULL, δείξε το μόνο αν ΔΕΝ είμαστε στο νέο κατάστημα (CFU).
-      if (s.store_id !== activeStore && s.store_id !== null) return false;
-      
-      // Αν είμαστε στο CFU, κρύψε τα παλιά (NULL)
-      // Σημείωση: Αν το CFU είναι το κατάστημα που μόλις έφτιαξες, 
-      // θα εμφανίζει μόνο όσα έχουν το ID του.
-      if (s.store_id === null && suppliers.some(sup => sup.name === 'CFU CAR RENTAL')) return false;
-
-      return showInactive ? true : s.is_active !== false;
-    })
+    .filter(s => showInactive ? true : s.is_active !== false)
     .sort((a, b) => getSupplierTurnover(b.id) - getSupplierTurnover(a.id));
 
   async function handleSave() {
