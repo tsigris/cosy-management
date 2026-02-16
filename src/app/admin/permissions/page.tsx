@@ -6,7 +6,7 @@ import { supabase } from '@/lib/supabase'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { toast, Toaster } from 'sonner'
-import { ShieldCheck, X, Settings, UserPlus, Trash2, ChevronUp } from 'lucide-react'
+import { ShieldCheck, X, Settings, UserPlus, Trash2 } from 'lucide-react'
 
 function PermissionsContent() {
   const router = useRouter()
@@ -20,7 +20,12 @@ function PermissionsContent() {
 
   // 1. ΦΟΡΤΩΣΗ ΔΕΔΟΜΕΝΩΝ
   const fetchPermissionsData = useCallback(async () => {
-    if (!storeId) return;
+    // Αν λείπει το storeId, μην κολλάς, στείλε τον χρήστη να διαλέξει μαγαζί
+    if (!storeId) {
+      router.push('/select-store')
+      return
+    }
+
     try {
       setLoading(true)
       const { data: { user } } = await supabase.auth.getUser()
@@ -65,6 +70,11 @@ function PermissionsContent() {
     if (!selectedUser || !storeId) return;
     const newValue = !selectedUser[field];
     
+    // Optimistic UI update
+    const updatedUser = { ...selectedUser, [field]: newValue };
+    setSelectedUser(updatedUser);
+    setUsers(users.map(u => u.user_id === selectedUser.user_id ? updatedUser : u));
+
     const { error } = await supabase
       .from('store_access')
       .update({ [field]: newValue })
@@ -73,9 +83,8 @@ function PermissionsContent() {
 
     if (error) {
       toast.error("Σφάλμα στην ενημέρωση");
+      fetchPermissionsData(); // Rollback σε περίπτωση σφάλματος
     } else {
-      setSelectedUser({ ...selectedUser, [field]: newValue });
-      setUsers(users.map(u => u.user_id === selectedUser.user_id ? { ...u, [field]: newValue } : u));
       toast.success("Η αλλαγή αποθηκεύτηκε");
     }
   };
@@ -118,7 +127,7 @@ function PermissionsContent() {
       {loading ? (
         <div style={loadingTextStyle}>ΣΥΓΧΡΟΝΙΣΜΟΣ ΧΡΗΣΤΩΝ...</div>
       ) : (
-        <>
+        <div style={{ paddingBottom: '100px' }}> {/* Padding για το BottomNav */}
           <p style={sectionLabel}>ΔΙΑΧΕΙΡΙΣΤΕΣ</p>
           {admins.map(u => (
             <div key={u.user_id} style={adminCard}>
@@ -155,7 +164,7 @@ function PermissionsContent() {
           <Link href={`/admin/invite?store=${storeId}`} style={inviteBtn}>
             <UserPlus size={20} /> ΠΡΟΣΚΛΗΣΗ ΣΥΝΕΡΓΑΤΗ
           </Link>
-        </>
+        </div>
       )}
 
       {/* MODAL ΕΠΕΞΕΡΓΑΣΙΑΣ */}
@@ -181,7 +190,7 @@ function PermissionToggle({ label, active, onClick }: any) {
   return (
     <div style={toggleRow}>
       <span style={{fontSize:'14px', fontWeight:'700'}}>{label}</span>
-      <button onClick={onClick} style={{...toggleBtn, backgroundColor: active ? '#10b981' : '#e2e8f0'}}>
+      <button onClick={onClick} style={{...toggleBtn, backgroundColor: active ? '#10b981' : '#e2e8f0', transition: 'all 0.3s'}}>
         {active ? 'ΝΑΙ' : 'ΟΧΙ'}
       </button>
     </div>
@@ -192,7 +201,7 @@ export default function PermissionsPage() {
   return <main style={{backgroundColor:'#f8fafc', minHeight:'100vh'}}><Suspense fallback={null}><PermissionsContent /></Suspense></main>
 }
 
-// --- STYLES ---
+// --- STYLES (Παραμένουν ως έχουν) ---
 const containerStyle: any = { maxWidth: '480px', margin: '0 auto', padding: '20px' };
 const headerStyle: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px' };
 const logoBoxStyle: any = { width: '45px', height: '45px', backgroundColor: '#fef3c7', borderRadius: '15px', display: 'flex', alignItems: 'center', justifyContent: 'center' };
