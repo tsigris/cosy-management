@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import { LogOut, Plus, ArrowRight, TrendingUp, TrendingDown, Wallet } from 'lucide-react'
+import { toast, Toaster } from 'sonner'
 
 export default function SelectStorePage() {
   const [userStores, setUserStores] = useState<any[]>([])
@@ -17,58 +18,64 @@ export default function SelectStorePage() {
 
   useEffect(() => {
     async function fetchStoresData() {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) return router.push('/login')
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        if (!session) return router.push('/login')
 
-      // Παίρνουμε τα καταστήματα στα οποία έχει πρόσβαση ο χρήστης
-      const { data: access, error } = await supabase
-        .from('store_access')
-        .select('store_id, stores(id, name)')
-        .eq('user_id', session.user.id)
+        console.log("Fetching access for user:", session.user.id)
 
-      if (error || !access || access.length === 0) {
-        setLoading(false)
-        return
-      }
+        const { data: access, error } = await supabase
+          .from('store_access')
+          .select('store_id, stores(id, name)')
+          .eq('user_id', session.user.id)
 
-      const storesWithStats = await Promise.all(access.map(async (item: any) => {
-        const store = item.stores
-        if (!store) return null;
-
-        const now = new Date()
-        const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
-
-        const { data: trans } = await supabase
-          .from('transactions')
-          .select('amount, type')
-          .eq('store_id', store.id)
-          .gte('date', firstDay)
-
-        const income = trans?.filter(t => t.type === 'income').reduce((acc, curr) => acc + (Number(curr.amount) || 0), 0) || 0
-        const expenses = trans?.filter(t => t.type === 'expense' || t.type === 'debt_payment').reduce((acc, curr) => acc + (Number(curr.amount) || 0), 0) || 0
-        
-        return { 
-          id: store.id, 
-          name: store.name, 
-          income, 
-          expenses, 
-          profit: income - expenses 
+        if (error) throw error;
+        if (!access || access.length === 0) {
+          console.log("No stores found for this user.")
+          setLoading(false)
+          return
         }
-      }))
 
-      setUserStores(storesWithStats.filter(s => s !== null))
-      setLoading(false)
+        const storesWithStats = await Promise.all(access.map(async (item: any) => {
+          const store = item.stores
+          if (!store) return null;
+
+          const now = new Date()
+          const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
+
+          const { data: trans, error: transError } = await supabase
+            .from('transactions')
+            .select('amount, type')
+            .eq('store_id', store.id)
+            .gte('date', firstDay)
+
+          if (transError) console.error("Error fetching transactions for store", store.name, transError)
+
+          const income = trans?.filter(t => t.type === 'income').reduce((acc, curr) => acc + (Number(curr.amount) || 0), 0) || 0
+          const expenses = trans?.filter(t => t.type === 'expense' || t.type === 'debt_payment').reduce((acc, curr) => acc + (Number(curr.amount) || 0), 0) || 0
+          
+          return { 
+            id: store.id, 
+            name: store.name, 
+            income, 
+            expenses, 
+            profit: income - expenses 
+          }
+        }))
+
+        setUserStores(storesWithStats.filter(s => s !== null))
+      } catch (err: any) {
+        console.error("Critical error in fetchStoresData:", err)
+        toast.error("Αποτυχία σύνδεσης με τη βάση δεδομένων")
+      } finally {
+        setLoading(false)
+      }
     }
     fetchStoresData()
   }, [router])
 
   const handleSelect = (storeId: string) => {
-    // 1. Ενημερώνουμε το localStorage ως δευτερεύουσα πηγή
     localStorage.setItem('active_store_id', storeId)
-    
-    // 2. Στέλνουμε το ID στο URL (Η ΚΥΡΙΑ ΠΗΓΗ ΑΛΗΘΕΙΑΣ)
-    // Χρησιμοποιούμε window.location για να κάνουμε ένα γρήγορο "σκληρό" refresh 
-    // ώστε να καθαρίσουν όλα τα παλιά states του προηγούμενου μαγαζιού
     window.location.href = `/?store=${storeId}`;
   }
 
@@ -76,6 +83,7 @@ export default function SelectStorePage() {
 
   return (
     <div style={containerStyle}>
+      <Toaster richColors position="top-center" />
       <header style={{ marginBottom: '30px', textAlign: 'center' }}>
         <h1 style={{ fontWeight: '900', fontSize: '28px', color: '#0f172a', margin: 0 }}>Τα Καταστήματά μου</h1>
         <p style={{ color: '#64748b', fontSize: '14px', fontWeight: '600', marginTop: '5px' }}>Σύνοψη Φεβρουαρίου 2026</p>
@@ -133,7 +141,7 @@ export default function SelectStorePage() {
   )
 }
 
-// STYLES
+// --- STYLES (Παραμένουν τα ίδια) ---
 const containerStyle: any = { padding: '30px 20px', backgroundColor: '#f8fafc', minHeight: '100dvh', paddingBottom: '60px' };
 const centerStyle: any = { display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', fontWeight: '800', color: '#94a3b8', letterSpacing: '1px' };
 const cardStyle: any = { backgroundColor: 'white', padding: '24px', borderRadius: '24px', border: '1px solid #e2e8f0', cursor: 'pointer', transition: 'transform 0.2s', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.02)' };
