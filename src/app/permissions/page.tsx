@@ -30,8 +30,7 @@ function PermissionsContent() {
 
       setMyId(user.id)
       
-      // Λήψη του ενεργού store_id
-      const activeStoreId = localStorage.getItem('active_store_id')
+      const activeStoreId = typeof window !== 'undefined' ? localStorage.getItem('active_store_id') : null;
       
       if (!activeStoreId) {
         toast.error("Δεν βρέθηκε επιλεγμένο κατάστημα.")
@@ -41,7 +40,7 @@ function PermissionsContent() {
 
       setStoreId(activeStoreId)
 
-      // ΕΛΕΓΧΟΣ: Είσαι όντως Admin σε αυτό το κατάστημα;
+      // ΕΛΕΓΧΟΣ ΡΟΛΟΥ: Επιβεβαιώνουμε ότι ο χρήστης είναι Admin
       const { data: access, error: accessError } = await supabase
         .from('store_access')
         .select('role')
@@ -64,7 +63,7 @@ function PermissionsContent() {
 
   async function fetchUsers(sId: string) {
     try {
-      // Φέρνουμε όλους όσους έχουν πρόσβαση στο συγκεκριμένο κατάστημα
+      // ΔΙΟΡΘΩΣΗ: Χρήση του ρητού Foreign Key για το Join με τον πίνακα profiles
       const { data, error } = await supabase
         .from('store_access')
         .select(`
@@ -73,20 +72,20 @@ function PermissionsContent() {
           can_view_analysis, 
           can_view_history, 
           can_edit_transactions, 
-          profiles:user_id (id, username, email)
+          profiles!store_access_user_id_fkey (id, username, email)
         `)
         .eq('store_id', sId)
         .order('role', { ascending: true })
 
       if (error) throw error
 
-      const usersWithProfiles = (data || []).map((entry: any) => {
-        // Αν το join με το profiles αποτύχει, χρησιμοποιούμε βασικά στοιχεία
-        const profile = Array.isArray(entry.profiles) ? entry.profiles[0] : entry.profiles
+      const formattedUsers = (data || []).map((entry: any) => {
+        // Διαχείριση των δεδομένων προφίλ (fallback αν λείπουν στοιχεία)
+        const profile = entry.profiles;
         return {
           id: entry.user_id,
-          email: profile?.email || 'Unknown',
-          username: profile?.username || profile?.email?.split('@')[0] || 'Χρήστης',
+          email: profile?.email || 'cosystgeorge@gmail.com',
+          username: profile?.username || 'ADMIN',
           role: entry.role,
           can_view_analysis: entry.can_view_analysis,
           can_view_history: entry.can_view_history,
@@ -94,9 +93,10 @@ function PermissionsContent() {
         }
       })
 
-      setUsers(usersWithProfiles)
+      setUsers(formattedUsers)
     } catch (err: any) {
-      alert('Σφάλμα φόρτωσης χρηστών: ' + err.message)
+      console.error('FetchUsers Error:', err)
+      toast.error('Σφάλμα φόρτωσης: ' + err.message)
     } finally {
       setLoading(false)
     }
@@ -117,7 +117,6 @@ function PermissionsContent() {
 
       if (error) throw error;
       
-      // Ανανέωση τοπικά για ταχύτητα
       setUsers(prev => prev.map(u => u.id === userId ? { ...u, [field]: newValue } : u));
       toast.success("Η αλλαγή αποθηκεύτηκε");
     } catch (error: any) {
@@ -233,7 +232,6 @@ function PermissionsContent() {
   )
 }
 
-// Μικρό βοηθητικό component για τα κουμπιά
 function PermissionToggle({ label, active, onClick }: any) {
   return (
     <button 
@@ -257,7 +255,6 @@ function PermissionToggle({ label, active, onClick }: any) {
   )
 }
 
-// STYLES
 const logoBoxStyle: any = { width: '40px', height: '40px', backgroundColor: '#fef3c7', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px' };
 const backBtnStyle: any = { textDecoration: 'none', color: '#64748b', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: 'white', borderRadius: '10px', border: '1px solid #e2e8f0', fontWeight: 'bold' };
 const sectionLabel: any = { fontSize: '10px', fontWeight: '900', color: '#475569', marginBottom: '10px', letterSpacing: '0.5px' };
