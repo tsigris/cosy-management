@@ -27,28 +27,44 @@ function BalancesContent() {
   const fetchBalances = useCallback(async () => {
     try {
       setLoading(true)
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session?.user) return
+      // Multi-tenant: get activeStoreId from localStorage
+      const activeStoreId = typeof window !== 'undefined' ? localStorage.getItem('active_store_id') : null;
+      if (!activeStoreId) return setLoading(false);
+      const MAIN_STORE_ID = 'e50a8803-a262-4303-9e90-c116c965e683';
 
-      const { data: profile } = await supabase.from('profiles').select('store_id').eq('id', session.user.id).single()
-      
-      if (profile?.store_id) {
-        const [supsRes, transRes] = await Promise.all([
-          supabase.from('suppliers').select('*').eq('store_id', profile.store_id).order('name'),
-          supabase.from('transactions').select('*').eq('store_id', profile.store_id)
-        ])
+      // Suppliers query
+      let supsQuery = supabase.from('suppliers').select('*').order('name');
+      if (activeStoreId === MAIN_STORE_ID) {
+        supsQuery = supsQuery.or(`store_id.eq.${activeStoreId},store_id.is.null`);
+      } else {
+        supsQuery = supsQuery.eq('store_id', activeStoreId);
+      }
 
-        if (supsRes.data && transRes.data) {
-          const trans = transRes.data
-          const balanceList = supsRes.data.map(s => {
-            const sTrans = trans.filter(t => t.supplier_id === s.id)
-            const totalCredit = sTrans.filter(t => t.is_credit).reduce((acc, t) => acc + Number(t.amount), 0)
-            const totalPaid = sTrans.filter(t => t.type === 'debt_payment').reduce((acc, t) => acc + Number(t.amount), 0)
-            return { ...s, balance: totalCredit - totalPaid }
-          }).filter(s => s.balance > 0)
+      // Transactions query
+      let transQuery = supabase.from('transactions').select('*');
+      if (activeStoreId === MAIN_STORE_ID) {
+        transQuery = transQuery.or(`store_id.eq.${activeStoreId},store_id.is.null`);
+      } else {
+        transQuery = transQuery.eq('store_id', activeStoreId);
+      }
 
-          setData(balanceList)
+      const [supsRes, transRes] = await Promise.all([supsQuery, transQuery]);
+
+      if (supsRes.data && transRes.data) {
+        let suppliers = supsRes.data;
+        let transactions = transRes.data;
+        // If not main store, filter out records where store_id is null
+        if (activeStoreId !== MAIN_STORE_ID) {
+          suppliers = suppliers.filter((s: any) => s.store_id === activeStoreId);
+          transactions = transactions.filter((t: any) => t.store_id === activeStoreId);
         }
+        const balanceList = suppliers.map(s => {
+          const sTrans = transactions.filter(t => t.supplier_id === s.id);
+          const totalCredit = sTrans.filter(t => t.is_credit).reduce((acc, t) => acc + Number(t.amount), 0);
+          const totalPaid = sTrans.filter(t => t.type === 'debt_payment').reduce((acc, t) => acc + Number(t.amount), 0);
+          return { ...s, balance: totalCredit - totalPaid };
+        }).filter(s => s.balance > 0);
+        setData(balanceList);
       }
     } catch (err) { console.error(err) } finally { setLoading(false) }
   }, [])
@@ -59,14 +75,15 @@ function BalancesContent() {
   async function handleDeleteDebt(supplierId: string, supplierName: string) {
     const confirm = window.confirm(`Προσοχή! Θέλετε να διαγράψετε ΟΛΕΣ τις εκκρεμείς συναλλαγές χρέους για τον προμηθευτή ${supplierName.toUpperCase()}; Αυτό θα μηδενίσει την καρτέλα του.`);
     if (!confirm) return;
-
     try {
+      const activeStoreId = typeof window !== 'undefined' ? localStorage.getItem('active_store_id') : null;
+      if (!activeStoreId) return;
       const { error } = await supabase
         .from('transactions')
         .delete()
         .eq('supplier_id', supplierId)
+        .eq('store_id', activeStoreId)
         .or('is_credit.eq.true,type.eq.debt_payment');
-
       if (error) throw error;
       toast.success('Το υπόλοιπο μηδενίστηκε επιτυχώς');
       fetchBalances();
