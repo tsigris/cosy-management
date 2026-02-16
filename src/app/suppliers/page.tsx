@@ -101,7 +101,7 @@ function SuppliersContent() {
         category: category,
         store_id: activeStoreId // ΕΔΩ ΕΙΝΑΙ ΤΟ ΚΛΕΙΔΙ
       };
-
+      console.log('Saving supplier data:', supplierData);
       const { error } = editingId
         ? await supabase.from('suppliers').update(supplierData).eq('id', editingId)
         : await supabase.from('suppliers').insert([{ ...supplierData, is_active: true }]);
