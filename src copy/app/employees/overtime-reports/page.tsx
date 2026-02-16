@@ -25,26 +25,27 @@ function OvertimeReportsContent() {
   const fetchReports = useCallback(async () => {
     setLoading(true)
     try {
-      // Multi-tenant: get activeStoreId from localStorage
-      const activeStoreId = typeof window !== 'undefined' ? localStorage.getItem('active_store_id') : null;
-      if (!activeStoreId) return setLoading(false);
-      const MAIN_STORE_ID = 'e50a8803-a262-4303-9e90-c116c965e683';
-      let query = supabase
-        .from('employee_overtimes')
-        .select(`*, employees (full_name)`)
-        .order('date', { ascending: false });
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.user) return
 
-      if (activeStoreId === MAIN_STORE_ID) {
-        // Main store: allow records with store_id null or main
-        query = query.or(`store_id.eq.${activeStoreId},store_id.is.null`);
-      } else {
-        // Other stores: strict filter, no nulls
-        query = query.eq('store_id', activeStoreId);
+      const { data: profile } = await supabase.from('profiles').select('store_id').eq('id', session.user.id).single()
+      
+      if (profile?.store_id) {
+        let query = supabase
+          .from('employee_overtimes')
+          .select(`
+            *,
+            employees (full_name)
+          `)
+          .eq('store_id', profile.store_id)
+          .order('date', { ascending: false });
+
+        if (filter === 'pending') query = query.eq('is_paid', false);
+        if (filter === 'paid') query = query.eq('is_paid', true);
+
+        const { data, error } = await query;
+        if (data) setReports(data);
       }
-      if (filter === 'pending') query = query.eq('is_paid', false);
-      if (filter === 'paid') query = query.eq('is_paid', true);
-      const { data, error } = await query;
-      if (data) setReports(data);
     } catch (err) {
       console.error(err);
     } finally {
