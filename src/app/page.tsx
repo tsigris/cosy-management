@@ -49,7 +49,7 @@ function DashboardContent() {
       if (!session) return router.push('/login');
 
       const activeStoreId = localStorage.getItem('active_store_id');
-      if (!activeStoreId) {
+      if (!activeStoreId || activeStoreId === 'undefined') {
         router.push('/select-store');
         return;
       }
@@ -119,11 +119,14 @@ function DashboardContent() {
     setExpandedTx(null)
   }
 
-  // ΔΙΟΡΘΩΣΗ: ΣΚΛΗΡΟ RESET ΓΙΑ ΝΑ ΞΕΚΟΛΛΗΣΕΙ ΤΟ PC/ΚΙΝΗΤΟ
+  // ΔΙΟΡΘΩΣΗ: ΣΚΛΗΡΟ RESET ΓΙΑ ΝΑ ΞΕΚΟΛΛΗΣΕΙ Η ΜΝΗΜΗ
   const handleSwitchStore = () => {
-    localStorage.removeItem('active_store_id');
-    // Χρησιμοποιούμε window.location για να καθαρίσει η μνήμη του browser τελείως
-    window.location.href = '/select-store';
+    // 1. Καθαρίζουμε ΟΛΑ τα δεδομένα του browser
+    localStorage.clear();
+    sessionStorage.clear();
+    
+    // 2. Χρησιμοποιούμε replace για να μην μπορεί να πάει "πίσω" στην παλιά μνήμη
+    window.location.replace('/select-store');
   }
 
   return (
