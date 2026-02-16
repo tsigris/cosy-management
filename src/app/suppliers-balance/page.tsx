@@ -6,7 +6,7 @@ import { supabase } from '@/lib/supabase'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { toast, Toaster } from 'sonner'
-import { ChevronLeft, Receipt, Trash2, Edit3, CreditCard, Filter } from 'lucide-react'
+import { ChevronLeft, Receipt, CreditCard, Filter } from 'lucide-react'
 
 const colors = {
   primaryDark: '#1e293b',
@@ -30,25 +30,26 @@ function BalancesContent() {
   const [selectedSupplierId, setSelectedSupplierId] = useState<string>('all')
 
   const fetchBalances = useCallback(async () => {
-    if (!storeIdFromUrl) {
-      setLoading(false)
-      return
+    // --- Η ΔΙΟΡΘΩΣΗ: Έλεγχος για "null" string ---
+    // Αν το URL λέει store=null ή δεν υπάρχει store, σταματάμε εδώ.
+    if (!storeIdFromUrl || storeIdFromUrl === 'null' || storeIdFromUrl === 'undefined') {
+      // Μην δείξεις σφάλμα, απλά περίμενε ή γύρνα πίσω
+      setLoading(true); 
+      return; 
     }
 
     try {
       setLoading(true)
       
-      // --- Η ΑΛΛΑΓΗ: Χρησιμοποιούμε select('*') αντί για συγκεκριμένα ονόματα ---
-      // Αυτό κάνει τον κώδικα να μην "σκάει" αν λείπει κάποια στήλη στη βάση.
       const [supsRes, transRes] = await Promise.all([
         supabase
           .from('suppliers')
-          .select('*') // <--- Ζητάμε τα πάντα για ασφάλεια
+          .select('*')
           .eq('store_id', storeIdFromUrl)
           .order('name'),
         supabase
           .from('transactions')
-          .select('*') // <--- Ζητάμε τα πάντα για ασφάλεια
+          .select('*')
           .eq('store_id', storeIdFromUrl)
           .neq('supplier_id', null)
       ]);
@@ -63,13 +64,10 @@ function BalancesContent() {
       const balanceList = suppliers.map(s => {
         const sTrans = transactions.filter(t => t.supplier_id === s.id)
         
-        // Υπολογισμός Πίστωσης (Χρέος)
-        // Αν λείπει το πεδίο is_credit, απλά θεωρούμε ότι είναι false (δεν κρασάρει)
         const totalCredit = sTrans
           .filter(t => t.is_credit === true)
           .reduce((acc, t) => acc + Math.abs(Number(t.amount) || 0), 0)
         
-        // Υπολογισμός Πληρωμών
         const totalPaid = sTrans
           .filter(t => t.type === 'debt_payment')
           .reduce((acc, t) => acc + Math.abs(Number(t.amount) || 0), 0)
@@ -79,30 +77,33 @@ function BalancesContent() {
           balance: totalCredit - totalPaid 
         }
       })
-      // Φιλτράρισμα: Δείχνουμε μόνο όσους έχουν υπόλοιπο > 0.10€
       .filter(s => Math.abs(s.balance) > 0.1)
       .sort((a, b) => b.balance - a.balance)
 
       setData(balanceList)
     } catch (err: any) { 
       console.error(err)
-      // Δείχνουμε το πραγματικό μήνυμα λάθους για να ξέρουμε τι φταίει
-      toast.error(`Σφάλμα: ${err.message || 'Υπολογισμός'}`)
+      toast.error(`Σφάλμα: ${err.message}`)
     } finally { 
       setLoading(false) 
     }
   }, [storeIdFromUrl])
 
-  useEffect(() => { 
-    fetchBalances() 
-  }, [fetchBalances])
+  // --- ΕΛΕΓΧΟΣ ΑΣΦΑΛΕΙΑΣ ---
+  useEffect(() => {
+    // Αν το ID είναι προβληματικό, γύρνα στην επιλογή
+    if (!storeIdFromUrl || storeIdFromUrl === 'null') {
+      router.replace('/select-store');
+    } else {
+      fetchBalances();
+    }
+  }, [fetchBalances, storeIdFromUrl, router])
 
   async function handleDeleteDebt(supplierId: string, supplierName: string) {
-    const confirmAction = window.confirm(`Προσοχή! Θέλετε να μηδενίσετε την καρτέλα του προμηθευτή ${supplierName.toUpperCase()}; \n\nΑυτό θα διαγράψει ΟΛΕΣ τις εγγραφές χρέους και πληρωμών του από το ιστορικό.`);
+    const confirmAction = window.confirm(`Προσοχή! Θέλετε να μηδενίσετε την καρτέλα του προμηθευτή ${supplierName.toUpperCase()};`);
     if (!confirmAction) return;
 
     try {
-      // Εδώ πρέπει να είμαστε προσεκτικοί με το delete
       const { error } = await supabase
         .from('transactions')
         .delete()
@@ -111,7 +112,6 @@ function BalancesContent() {
         .or('is_credit.eq.true,type.eq.debt_payment');
 
       if (error) throw error;
-      
       toast.success('Το υπόλοιπο μηδενίστηκε');
       fetchBalances();
     } catch (err: any) {
@@ -140,7 +140,10 @@ function BalancesContent() {
               <p style={{ margin: 0, fontSize: '10px', color: colors.secondaryText, fontWeight: '700', letterSpacing: '1px' }}>ΥΠΟΛΟΙΠΑ ΠΡΟΜΗΘΕΥΤΩΝ</p>
             </div>
           </div>
-          <Link href={`/?store=${storeIdFromUrl}`} style={backBtnStyle}><ChevronLeft size={20} /></Link>
+          {/* Κουμπί Πίσω: Αν το storeId είναι null, μην βάλεις τίποτα στο Link για να το πιάσει το AuthLogic */}
+          <Link href={storeIdFromUrl && storeIdFromUrl !== 'null' ? `/?store=${storeIdFromUrl}` : '/select-store'} style={backBtnStyle}>
+            <ChevronLeft size={20} />
+          </Link>
         </div>
 
         {/* SELECT SUPPLIER */}
@@ -179,7 +182,9 @@ function BalancesContent() {
           {loading ? (
             <div style={{ textAlign: 'center', padding: '50px' }}>
                <div style={spinnerStyle}></div>
-               <p style={{ color: colors.secondaryText, fontWeight: '600', marginTop: '15px', fontSize: '12px' }}>Υπολογισμός...</p>
+               <p style={{ color: colors.secondaryText, fontWeight: '600', marginTop: '15px', fontSize: '12px' }}>
+                 {(!storeIdFromUrl || storeIdFromUrl === 'null') ? 'Ανακατεύθυνση...' : 'Υπολογισμός...'}
+               </p>
             </div>
           ) : filteredData.length > 0 ? (
             filteredData.map(s => (
@@ -239,7 +244,6 @@ const supplierCardStyle: any = { backgroundColor: colors.white, padding: '18px',
 const payBtnStyle: any = { backgroundColor: '#eff6ff', color: colors.accentBlue, border: `1px solid #dbeafe`, padding: '8px 12px', borderRadius: '10px', fontSize: '10px', fontWeight: '900', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' };
 const badgeStyle: any = { fontSize: '9px', fontWeight: '800', backgroundColor: '#f1f5f9', color: colors.secondaryText, padding: '4px 8px', borderRadius: '6px', marginTop: '6px', display: 'inline-block', textTransform: 'uppercase' };
 const emptyStateStyle: any = { textAlign: 'center', padding: '60px 20px', background: colors.white, borderRadius: '24px', border: `2px dashed ${colors.border}` };
-const labelStyle: any = { fontSize: '10px', fontWeight: '900', color: colors.secondaryText, marginBottom: '8px', display: 'block', letterSpacing: '0.5px' };
 const selectStyle: any = { width: '100%', padding: '14px 14px 14px 40px', borderRadius: '14px', border: `1px solid ${colors.border}`, fontSize: '13px', fontWeight: '700', backgroundColor: colors.white, outline: 'none', color: colors.primaryDark, appearance: 'none' };
 const linkBtnStyle: any = { background: 'none', border: 'none', padding: 0, fontSize: '10px', fontWeight: '700', color: colors.secondaryText, cursor: 'pointer', textDecoration: 'underline' };
 const linkBtnDangerStyle: any = { ...linkBtnStyle, color: colors.accentRed };
