@@ -10,32 +10,29 @@ export default function NewStorePage() {
   const router = useRouter()
 
   const handleCreate = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!name) return toast.error('Δώστε όνομα')
-    setLoading(true)
-
+    e.preventDefault();
+    if (!name) return toast.error('Δώστε όνομα');
+    setLoading(true);
     try {
-      const { data: { session } } = await supabase.auth.getSession()
-      
-      // 1. Δημιουργία Καταστήματος
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user?.id) throw new Error('Δεν βρέθηκε χρήστης.');
+      // 1. Δημιουργία Καταστήματος με owner_id
       const { data: store, error: sErr } = await supabase
         .from('stores')
-        .insert([{ name: name.toUpperCase() }])
-        .select().single()
-      if (sErr) throw sErr
-
-      // 2. Σύνδεση με τον χρήστη
+        .insert([{ name: name.toUpperCase(), owner_id: session.user.id }])
+        .select().single();
+      if (sErr) throw sErr;
+      // 2. Σύνδεση με τον χρήστη (store_access)
       const { error: aErr } = await supabase
         .from('store_access')
-        .insert([{ user_id: session?.user.id, store_id: store.id }])
-      if (aErr) throw aErr
-
-      toast.success('Το κατάστημα δημιουργήθηκε!')
-      setTimeout(() => router.push('/select-store'), 1500)
+        .insert([{ user_id: session.user.id, store_id: store.id, role: 'admin' }]);
+      if (aErr) throw aErr;
+      toast.success('Το κατάστημα δημιουργήθηκε!');
+      setTimeout(() => router.push('/select-store'), 1500);
     } catch (err: any) {
-      toast.error(err.message)
+      toast.error(err.message);
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
   }
 
