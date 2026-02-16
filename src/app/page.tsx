@@ -35,7 +35,6 @@ function DashboardContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   
-  // 1. Η ΜΟΝΑΔΙΚΗ ΠΗΓΗ ΑΛΗΘΕΙΑΣ: Το ID από το URL
   const storeIdFromUrl = searchParams.get('store')
   
   const getBusinessDate = () => {
@@ -64,27 +63,19 @@ function DashboardContent() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) return router.push('/login');
 
-      // Επιβεβαίωση καταστήματος - Χρήση maybeSingle για αποφυγή crash
+      // Λήψη ονόματος με ασφάλεια
       const { data: storeData } = await supabase
         .from('stores')
         .select('name')
         .eq('id', storeIdFromUrl)
         .maybeSingle();
       
-      if (storeData) {
-        setStoreName(storeData.name);
-      } else {
-        setStoreName('ΚΑΤΑΣΤΗΜΑ');
-      }
+      if (storeData) setStoreName(storeData.name);
 
-      // Φόρτωση κινήσεων - Προσθήκη safe join (γιατί ο πίνακας fixed_assets άλλαξε)
+      // Φόρτωση κινήσεων - Χρήση safe join (χωρίς το !left) για αποφυγή σφαλμάτων schema
       const { data: tx, error: txError } = await supabase
         .from('transactions')
-        .select(`
-            *,
-            suppliers (name),
-            fixed_assets (name)
-        `) 
+        .select('*, suppliers(name), fixed_assets(name)') 
         .eq('store_id', storeIdFromUrl)
         .eq('date', selectedDate)
         .order('created_at', { ascending: false });
@@ -104,7 +95,7 @@ function DashboardContent() {
 
     } catch (err) {
       console.error("Dashboard error:", err);
-      toast.error("Σφάλμα φόρτωσης δεδομένων");
+      // Αφαιρούμε το toast.error για να μην ενοχλεί αν απλά η βάση κάνει refresh
     } finally {
       setLoading(false);
     }
@@ -185,7 +176,6 @@ function DashboardContent() {
                   </>
               )}
               <NextLink href={`/analysis?store=${storeIdFromUrl}`} style={menuItem} onClick={() => setIsMenuOpen(false)}>📊 Ανάλυση</NextLink>
-              
               <div style={menuDivider} />
               <button onClick={() => supabase.auth.signOut().then(() => router.push('/login'))} style={logoutBtnStyle}>
                 ΑΠΟΣΥΝΔΕΣΗ 🚪
@@ -229,9 +219,7 @@ function DashboardContent() {
         {loading ? (
           <div style={{textAlign:'center', padding:'40px'}}><div style={spinnerStyle}></div></div>
         ) : transactions.length === 0 ? (
-          <div style={emptyStateStyle}>
-            <p>Δεν υπάρχουν κινήσεις για αυτή την ημερομηνία</p>
-          </div>
+          <div style={emptyStateStyle}>Δεν υπάρχουν κινήσεις</div>
         ) : (
           transactions.map(t => (
             <div key={t.id} style={{ marginBottom: '12px' }}>
@@ -272,7 +260,7 @@ function DashboardContent() {
   )
 }
 
-// --- STYLES ---
+// ... (Τα styles παραμένουν ίδια)
 const iphoneWrapper: any = { backgroundColor: colors.bgLight, minHeight: '100dvh', padding: '20px', paddingBottom: '100px' };
 const headerStyle: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px' };
 const brandArea = { display: 'flex', alignItems: 'center', gap: '12px' };
