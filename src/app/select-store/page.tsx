@@ -8,12 +8,18 @@ export default function SelectStorePage() {
   const [loading, setLoading] = useState(true)
   const router = useRouter()
 
+  const handleLogout = async () => {
+    await supabase.auth.signOut()
+    localStorage.clear() // Καθαρίζει το active_store_id και κάθε άλλη παλιά ρύθμιση
+    window.location.href = '/login'
+  }
+
   useEffect(() => {
     async function fetchStoresData() {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) return router.push('/login')
 
-      // Φέρνουμε τα καταστήματα από τον ΝΕΟ πίνακα store_access
+      // Φέρνουμε τα καταστήματα από τον πίνακα store_access
       const { data: access, error } = await supabase
         .from('store_access')
         .select('store_id, stores(id, name)')
@@ -24,9 +30,10 @@ export default function SelectStorePage() {
         return
       }
 
-      // Για κάθε κατάστημα, υπολογίζουμε στατιστικά μήνα
       const storesWithStats = await Promise.all(access.map(async (item: any) => {
         const store = item.stores
+        if (!store) return null;
+
         const now = new Date()
         const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
 
@@ -48,28 +55,28 @@ export default function SelectStorePage() {
         }
       }))
 
-      setUserStores(storesWithStats)
+      setUserStores(storesWithStats.filter(s => s !== null))
       setLoading(false)
     }
     fetchStoresData()
   }, [router])
 
   const handleSelect = (storeId: string) => {
-    // Αποθηκεύουμε το "ενεργό" κατάστημα για τη συγκεκριμένη συσκευή
     localStorage.setItem('active_store_id', storeId)
-    router.push('/') // Μετάβαση στην αρχική
+    router.push('/')
   }
 
   if (loading) return <div style={centerStyle}>Φόρτωση δεδομένων...</div>
 
   return (
-    <div style={{ padding: '20px', backgroundColor: '#f8fafc', minHeight: '100dvh' }}>
+    <div style={{ padding: '20px', backgroundColor: '#f8fafc', minHeight: '100dvh', paddingBottom: '50px' }}>
       <h1 style={{ textAlign: 'center', fontWeight: '800', fontSize: '24px', marginBottom: '5px' }}>Τα Καταστήματά μου</h1>
       <p style={{ textAlign: 'center', color: '#64748b', fontSize: '13px', marginBottom: '30px' }}>Σύνοψη Φεβρουαρίου 2026</p>
 
       {userStores.length === 0 && !loading && (
-        <div style={{ textAlign: 'center', padding: '40px' }}>
-          <p>Δεν βρέθηκαν καταστήματα συνδεδεμένα με το λογαριασμό σας.</p>
+        <div style={{ textAlign: 'center', padding: '40px', backgroundColor: 'white', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
+          <p style={{ fontWeight: '600', color: '#475569' }}>Δεν βρέθηκαν καταστήματα.</p>
+          <p style={{ fontSize: '12px', color: '#64748b' }}>Βεβαιωθείτε ότι είστε συνδεδεμένοι με το σωστό λογαριασμό.</p>
         </div>
       )}
 
@@ -102,14 +109,21 @@ export default function SelectStorePage() {
       <button onClick={() => router.push('/stores/new')} style={addBtnStyle}>
         + Προσθήκη Νέου Καταστήματος
       </button>
+
+      <div style={{ marginTop: '40px', textAlign: 'center', borderTop: '1px solid #e2e8f0', paddingTop: '20px' }}>
+        <button onClick={handleLogout} style={logoutBtnStyle}>
+          ΑΠΟΣΥΝΔΕΣΗ (LOGOUT) 🚪
+        </button>
+      </div>
     </div>
   )
 }
 
 // STYLES
-const centerStyle: any = { display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', fontWeight: '600' };
+const centerStyle: any = { display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', fontWeight: '600', color: '#64748b' };
 const cardStyle: any = { backgroundColor: 'white', padding: '20px', borderRadius: '20px', border: '1px solid #e2e8f0', marginBottom: '15px', cursor: 'pointer', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' };
 const statRow = { display: 'flex', justifyContent: 'space-between', marginBottom: '6px' };
 const labelStyle = { color: '#64748b', fontSize: '14px', fontWeight: '600' };
 const arrowStyle = { backgroundColor: '#1e293b', color: 'white', width: '28px', height: '28px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px' };
-const addBtnStyle: any = { width: '100%', padding: '16px', border: '2px dashed #cbd5e1', backgroundColor: 'transparent', color: '#64748b', borderRadius: '15px', fontWeight: '700', marginTop: '20px', cursor: 'pointer' };
+const addBtnStyle: any = { width: '100%', padding: '16px', border: '2px dashed #cbd5e1', backgroundColor: 'white', color: '#64748b', borderRadius: '15px', fontWeight: '700', marginTop: '10px', cursor: 'pointer' };
+const logoutBtnStyle: any = { backgroundColor: '#fff1f2', color: '#f43f5e', border: '1px solid #fecaca', padding: '12px 24px', borderRadius: '12px', fontWeight: '800', fontSize: '13px', cursor: 'pointer', width: '100%' };
