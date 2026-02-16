@@ -35,12 +35,10 @@ function DashboardContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   
-  // 1. Η ΜΟΝΑΔΙΚΗ ΠΗΓΗ ΑΛΗΘΕΙΑΣ: Το ID από το URL
   const storeIdFromUrl = searchParams.get('store')
   
   const getBusinessDate = () => {
     const now = new Date()
-    // Επιχείρηση που κλείνει μετά τα μεσάνυχτα (π.χ. 07:00 το πρωί αλλαγή ημέρας)
     if (now.getHours() < 7) now.setDate(now.getDate() - 1)
     return format(now, 'yyyy-MM-dd')
   }
@@ -55,7 +53,6 @@ function DashboardContent() {
   const [expandedTx, setExpandedTx] = useState<string | null>(null) 
 
   const loadDashboard = useCallback(async () => {
-    // Ασφάλεια: Αν δεν υπάρχει store ID στο URL, γύρνα στην επιλογή
     if (!storeIdFromUrl) {
       router.replace('/select-store');
       return;
@@ -63,32 +60,26 @@ function DashboardContent() {
 
     try {
       setLoading(true);
-      // Καθαρισμός προηγούμενων κινήσεων για αποφυγή "flash" δεδομένων άλλου καταστήματος
-      setTransactions([]);
-
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) return router.push('/login');
 
-      // Επιβεβαίωση καταστήματος και λήψη ονόματος
-      const { data: storeData, error: storeErr } = await supabase
+      // Λήψη ονόματος καταστήματος
+      const { data: storeData } = await supabase
         .from('stores')
         .select('name')
         .eq('id', storeIdFromUrl)
-        .single();
+        .maybeSingle();
       
-      if (storeErr || !storeData) {
-        toast.error("Μη έγκυρο κατάστημα");
-        router.push('/select-store');
-        return;
-      }
-      
-      setStoreName(storeData.name);
+      if (storeData) setStoreName(storeData.name);
 
-      // Φόρτωση κινήσεων - ΑΥΣΤΗΡΟ ΦΙΛΤΡΟ ΜΕ ΤΟ URL ID
-      // Χρησιμοποιούμε !left για να μην χάσουμε κινήσεις αν λείπει ο προμηθευτής
+      // Φόρτωση κινήσεων με ασφάλεια για τις σχέσεις
       const { data: tx, error: txError } = await supabase
         .from('transactions')
-        .select('*, suppliers!left(name), fixed_assets!left(name)') 
+        .select(`
+          *,
+          suppliers (name),
+          fixed_assets (name)
+        `) 
         .eq('store_id', storeIdFromUrl)
         .eq('date', selectedDate)
         .order('created_at', { ascending: false });
@@ -96,7 +87,6 @@ function DashboardContent() {
       if (txError) throw txError;
       setTransactions(tx || []);
 
-      // Έλεγχος δικαιωμάτων Admin
       const { data: profile } = await supabase
         .from('profiles')
         .select('role')
@@ -116,24 +106,6 @@ function DashboardContent() {
   }, [selectedDate, router, storeIdFromUrl]);
 
   useEffect(() => { loadDashboard() }, [loadDashboard])
-
-  const handleDelete = async (id: string) => {
-    if (!confirm('Οριστική διαγραφή αυτής της κίνησης;')) return
-    try {
-      const { error } = await supabase
-        .from('transactions')
-        .delete()
-        .eq('id', id)
-        .eq('store_id', storeIdFromUrl); // Επιπλέον ασφάλεια στο delete
-
-      if (error) throw error
-      setTransactions(prev => prev.filter(t => t.id !== id))
-      setExpandedTx(null)
-      toast.success('Η κίνηση διαγράφηκε');
-    } catch (err) {
-      toast.error('Σφάλμα κατά τη διαγραφή');
-    }
-  }
 
   const totals = useMemo(() => {
     const income = transactions
@@ -158,13 +130,12 @@ function DashboardContent() {
     <div style={iphoneWrapper}>
       <Toaster position="top-center" richColors />
       
-      {/* HEADER */}
       <header style={headerStyle}>
         <div style={brandArea}>
-          <div style={logoBox}>{storeName.charAt(0)}</div>
+          <div style={logoBox}>{storeName?.charAt(0) || '?'}</div>
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <h1 style={storeTitleText}>{storeName.toUpperCase()}</h1>
+                <h1 style={storeTitleText}>{storeName?.toUpperCase() || 'ΚΑΤΑΣΤΗΜΑ'}</h1>
                 <NextLink href="/select-store" style={switchBtnStyle}>ΑΛΛΑΓΗ</NextLink>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -184,14 +155,13 @@ function DashboardContent() {
               <p style={menuSectionLabel}>ΔΙΑΧΕΙΡΙΣΗ</p>
               {isAdmin && (
                   <>
-                    <NextLink href={`/suppliers?store=${storeIdFromUrl}`} style={menuItem} onClick={() => setIsMenuOpen(false)}>🛒 Προμηθευτές</NextLink>
-                    <NextLink href={`/fixed-assets?store=${storeIdFromUrl}`} style={menuItem} onClick={() => setIsMenuOpen(false)}>🔌 Πάγια</NextLink>
-                    <NextLink href={`/employees?store=${storeIdFromUrl}`} style={menuItem} onClick={() => setIsMenuOpen(false)}>👥 Υπάλληλοι</NextLink>
-                    <NextLink href={`/suppliers-balance?store=${storeIdFromUrl}`} style={menuItem} onClick={() => setIsMenuOpen(false)}>🚩 Καρτέλες (Χρέη)</NextLink>
+                    <NextLink href={`/suppliers?store=${storeIdFromUrl}`} style={menuItem}>🛒 Προμηθευτές</NextLink>
+                    <NextLink href={`/fixed-assets?store=${storeIdFromUrl}`} style={menuItem}>🔌 Πάγια</NextLink>
+                    <NextLink href={`/employees?store=${storeIdFromUrl}`} style={menuItem}>👥 Υπάλληλοι</NextLink>
+                    <NextLink href={`/suppliers-balance?store=${storeIdFromUrl}`} style={menuItem}>🚩 Καρτέλες</NextLink>
                   </>
               )}
-              <NextLink href={`/analysis?store=${storeIdFromUrl}`} style={menuItem} onClick={() => setIsMenuOpen(false)}>📊 Ανάλυση</NextLink>
-              
+              <NextLink href={`/analysis?store=${storeIdFromUrl}`} style={menuItem}>📊 Ανάλυση</NextLink>
               <div style={menuDivider} />
               <button onClick={() => supabase.auth.signOut().then(() => router.push('/login'))} style={logoutBtnStyle}>
                 ΑΠΟΣΥΝΔΕΣΗ 🚪
@@ -201,7 +171,6 @@ function DashboardContent() {
         </div>
       </header>
 
-      {/* DATE NAVIGATION */}
       <div style={dateCard}>
         <button onClick={() => changeDate(-1)} style={dateNavBtn}><ChevronLeft size={24} /></button>
         <div style={{ textAlign: 'center' }}>
@@ -210,7 +179,6 @@ function DashboardContent() {
         <button onClick={() => changeDate(1)} style={dateNavBtn}><ChevronRight size={24} /></button>
       </div>
 
-      {/* HERO CARD (TOTALS) */}
       <div style={heroCardStyle}>
           <p style={heroLabel}>ΔΙΑΘΕΣΙΜΟ ΥΠΟΛΟΙΠΟ ΗΜΕΡΑΣ</p>
           <h2 style={heroAmountText}>{totals.balance.toFixed(2)}€</h2>
@@ -226,22 +194,18 @@ function DashboardContent() {
           </div>
       </div>
 
-      {/* ACTIONS */}
       <div style={actionGrid}>
         <NextLink href={`/add-income?date=${selectedDate}&store=${storeIdFromUrl}`} style={{ ...actionBtn, backgroundColor: colors.accentGreen }}>+ Έσοδο</NextLink>
         <NextLink href={`/add-expense?date=${selectedDate}&store=${storeIdFromUrl}`} style={{ ...actionBtn, backgroundColor: colors.accentRed }}>- Έξοδο</NextLink>
         <NextLink href={`/daily-z?store=${storeIdFromUrl}`} style={{ ...actionBtn, backgroundColor: colors.primaryDark }}>📟 Z</NextLink>
       </div>
 
-      {/* TRANSACTION LIST */}
       <div style={listContainer}>
         <p style={listHeader}>ΚΙΝΗΣΕΙΣ ΗΜΕΡΑΣ ({transactions.length})</p>
         {loading ? (
           <div style={{textAlign:'center', padding:'40px'}}><div style={spinnerStyle}></div></div>
         ) : transactions.length === 0 ? (
-          <div style={emptyStateStyle}>
-            <p>Δεν υπάρχουν κινήσεις για αυτή την ημερομηνία</p>
-          </div>
+          <div style={emptyStateStyle}>Δεν υπάρχουν κινήσεις</div>
         ) : (
           transactions.map(t => (
             <div key={t.id} style={{ marginBottom: '12px' }}>
@@ -261,17 +225,22 @@ function DashboardContent() {
                     {t.suppliers?.name || t.fixed_assets?.name || t.category || 'Συναλλαγή'}
                     {t.is_credit && <span style={creditBadgeStyle}>ΠΙΣΤΩΣΗ</span>}
                   </p>
-                  <p style={txMeta}>{t.method} • {format(parseISO(t.created_at), 'HH:mm')}</p>
+                  <p style={txMeta}>{t.method} • {t.created_at ? format(parseISO(t.created_at), 'HH:mm') : '--:--'}</p>
                 </div>
                 <p style={{ ...txAmount, color: t.type === 'income' ? colors.accentGreen : colors.accentRed }}>
-                  {t.type === 'income' ? '+' : '-'}{Math.abs(t.amount).toFixed(2)}€
+                  {t.type === 'income' ? '+' : '-'}{Math.abs(Number(t.amount) || 0).toFixed(2)}€
                 </p>
               </div>
 
               {expandedTx === t.id && (
                 <div style={actionPanel}>
                   <button onClick={() => router.push(`/add-${t.type === 'income' ? 'income' : 'expense'}?editId=${t.id}&store=${storeIdFromUrl}`)} style={editRowBtn}>Επεξεργασία</button>
-                  <button onClick={() => handleDelete(t.id)} style={deleteRowBtn}>Διαγραφή</button>
+                  <button onClick={async () => {
+                    if(confirm('Διαγραφή;')) {
+                       await supabase.from('transactions').delete().eq('id', t.id);
+                       loadDashboard();
+                    }
+                  }} style={deleteRowBtn}>Διαγραφή</button>
                 </div>
               )}
             </div>
@@ -282,7 +251,7 @@ function DashboardContent() {
   )
 }
 
-// --- STYLES ---
+// --- STYLES (ΠΑΡΑΜΕΝΟΥΝ ΙΔΙΑ ΟΠΩΣ ΤΑ ΕΔΩΣΕΣ) ---
 const iphoneWrapper: any = { backgroundColor: colors.bgLight, minHeight: '100dvh', padding: '20px', paddingBottom: '100px' };
 const headerStyle: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px' };
 const brandArea = { display: 'flex', alignItems: 'center', gap: '12px' };
@@ -325,7 +294,7 @@ const spinnerStyle: any = { width: '24px', height: '24px', border: '3px solid #f
 
 export default function DashboardPage() {
   return (
-    <Suspense fallback={<div style={{padding: '50px', textAlign: 'center'}}>Προετοιμασία Dashboard...</div>}>
+    <Suspense fallback={null}>
       <DashboardContent />
     </Suspense>
   )
