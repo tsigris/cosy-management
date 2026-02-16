@@ -26,7 +26,7 @@ function SuppliersContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   
-  // Η ΜΟΝΑΔΙΚΗ ΠΗΓΗ ΑΛΗΘΕΙΑΣ
+  // Η ΜΟΝΑΔΙΚΗ ΠΗΓΗ ΑΛΗΘΕΙΑΣ - Διαβάζεται απευθείας από το URL
   const storeIdFromUrl = searchParams.get('store');
 
   const [suppliers, setSuppliers] = useState<any[]>([])
@@ -63,7 +63,7 @@ function SuppliersContent() {
       
       if (storeInfo) setCurrentStoreName(storeInfo.name);
 
-      // Φιλτράρισμα ΑΠΟΚΛΕΙΣΤΙΚΑ βάσει του ID στο URL
+      // Φιλτράρισμα ΑΠΟΚΛΕΙΣΤΙΚΑ βάσει του ID στο URL για να μη βλέπεις του άλλου μαγαζιού
       const [sRes, tRes] = await Promise.all([
         supabase.from('suppliers').select('*').eq('store_id', storeIdFromUrl),
         supabase.from('transactions').select('amount, supplier_id').eq('store_id', storeIdFromUrl)
@@ -111,12 +111,17 @@ function SuppliersContent() {
     }
   }
 
-  // --- Η ΚΡΙΣΙΜΗ ΣΥΝΑΡΤΗΣΗ ΑΠΟΘΗΚΕΥΣΗΣ (URL-ONLY LOGIC) ---
+  // --- Η ΚΡΙΣΙΜΗ ΣΥΝΑΡΤΗΣΗ ΑΠΟΘΗΚΕΥΣΗΣ (ΔΙΟΡΘΩΜΕΝΗ) ---
   async function handleSave() {
     if (!name.trim()) return toast.error('Συμπληρώστε το όνομα');
+    
+    // ΠΡΟΣΟΧΗ: Χρησιμοποιούμε ΜΟΝΟ το storeIdFromUrl
     if (!storeIdFromUrl) return toast.error('Σφάλμα: Δεν βρέθηκε ID στο URL');
 
     setIsSaving(true);
+    // Log για να βλέπεις στην κονσόλα τι στέλνει
+    console.log("Saving to store ID:", storeIdFromUrl);
+
     try {
       const supplierData = {
         name: name.trim().toUpperCase(),
@@ -124,7 +129,7 @@ function SuppliersContent() {
         vat_number: afm.trim(),
         iban: iban.trim().toUpperCase(),
         category: category,
-        store_id: storeIdFromUrl // ΕΠΙΒΟΛΗ ΤΟΥ ID ΠΟΥ ΒΛΕΠΟΥΜΕ ΣΤΟ URL
+        store_id: storeIdFromUrl // ΕΠΙΒΟΛΗ ΑΠΟ ΤΟ URL
       };
 
       const { error } = editingId
@@ -133,7 +138,7 @@ function SuppliersContent() {
 
       if (error) throw error;
       
-      toast.success(`Καταχωρήθηκε στο ${currentStoreName.toUpperCase()}`);
+      toast.success(`Καταχωρήθηκε επιτυχώς στο ${currentStoreName.toUpperCase()}`);
       resetForm(); 
       fetchSuppliersData();
     } catch (error: any) { 
@@ -244,14 +249,14 @@ function SuppliersContent() {
   )
 }
 
-// --- STYLES ---
+// --- STYLES (Διατηρήθηκαν όλα) ---
 const containerStyle: any = { backgroundColor: colors.bgLight, minHeight: '100dvh', padding: '20px' };
 const contentWrapper: any = { maxWidth: '480px', margin: '0 auto', paddingBottom: '100px' };
 const headerStyle: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px' };
 const titleStyle: any = { fontSize: '22px', fontWeight: '800', color: colors.primaryDark, margin: 0 };
 const subtitleStyle: any = { fontSize: '10px', fontWeight: '800', color: colors.secondaryText, marginTop: '4px' };
 const closeBtn: any = { padding: '8px', background: 'white', borderRadius: '12px', border: `1px solid ${colors.border}`, color: colors.primaryDark, textDecoration: 'none', display: 'flex' };
-const addBtn: any = { width: '100%', backgroundColor: colors.primaryDark, color: 'white', padding: '16px', borderRadius: '16px', fontWeight: '800', border: 'none', marginBottom: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' };
+const addBtn: any = { width: '100%', backgroundColor: colors.primaryDark, color: 'white', padding: '16px', borderRadius: '16px', fontWeight: '800', border: 'none', marginBottom: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', cursor: 'pointer' };
 const cancelBtn: any = { ...addBtn, backgroundColor: '#fee2e2', color: colors.accentRed };
 const formCard: any = { background: 'white', padding: '24px', borderRadius: '24px', marginBottom: '25px', border: `1px solid ${colors.border}`, boxShadow: '0 4px 20px rgba(0,0,0,0.05)' };
 const inputGroup: any = { marginBottom: '15px' };
@@ -268,8 +273,8 @@ const turnoverText: any = { fontSize: '16px', fontWeight: '800', color: colors.a
 const actionPanel: any = { padding: '20px', backgroundColor: '#fcfcfc', borderTop: `1px dashed ${colors.border}` };
 const infoGrid: any = { display: 'grid', gap: '8px' };
 const infoText: any = { fontSize: '12px', margin: 0, color: colors.primaryDark };
-const editBtn: any = { flex: 1, padding: '10px', background: colors.warning, color: colors.warningText, border: 'none', borderRadius: '10px', fontWeight: '700', fontSize: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px' };
-const delBtn: any = { flex: 1, padding: '10px', background: '#fee2e2', color: colors.accentRed, border: 'none', borderRadius: '10px', fontWeight: '700', fontSize: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px' };
+const editBtn: any = { flex: 1, padding: '10px', background: colors.warning, color: colors.warningText, border: 'none', borderRadius: '10px', fontWeight: '700', fontSize: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px', cursor: 'pointer' };
+const delBtn: any = { flex: 1, padding: '10px', background: '#fee2e2', color: colors.accentRed, border: 'none', borderRadius: '10px', fontWeight: '700', fontSize: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px', cursor: 'pointer' };
 const loadingStyle: any = { display: 'flex', height: '100dvh', alignItems: 'center', justifyContent: 'center', fontWeight: '800', color: colors.secondaryText, background: colors.bgLight };
 const emptyText: any = { padding: '40px', textAlign: 'center', color: colors.secondaryText, fontSize: '13px', fontWeight: '600' };
 
