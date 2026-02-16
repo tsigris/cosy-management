@@ -8,7 +8,6 @@ import Link from 'next/link'
 import { Plus, TrendingUp, Phone, CreditCard, Hash, Tag, Trash2, Edit2, X, ChevronLeft } from 'lucide-react'
 import { toast, Toaster } from 'sonner'
 
-// --- MODERN PREMIUM PALETTE ---
 const colors = {
   primaryDark: '#0f172a',
   secondaryText: '#64748b',
@@ -26,7 +25,7 @@ function SuppliersContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   
-  // 1. Η ΜΟΝΑΔΙΚΗ ΠΗΓΗ ΑΛΗΘΕΙΑΣ: Το ID από το URL
+  // Η ΜΟΝΑΔΙΚΗ ΠΗΓΗ ΑΛΗΘΕΙΑΣ ΓΙΑ ΤΟ SaaS ΜΑΣ
   const storeIdFromUrl = searchParams.get('store');
 
   const [suppliers, setSuppliers] = useState<any[]>([])
@@ -35,7 +34,7 @@ function SuppliersContent() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [currentStoreName, setCurrentStoreName] = useState('Φορτώνει...')
 
-  // Καταστάσεις Φόρμας
+  // Φόρμα Προμηθευτή
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
   const [afm, setAfm] = useState('') 
@@ -47,7 +46,7 @@ function SuppliersContent() {
 
   const fetchSuppliersData = useCallback(async () => {
     if (!storeIdFromUrl) {
-      toast.error('Δεν βρέθηκε κατάστημα στο URL. Επιστροφή...');
+      toast.error('Δεν βρέθηκε κατάστημα στο URL');
       router.push('/select-store');
       return;
     }
@@ -55,13 +54,7 @@ function SuppliersContent() {
     try {
       setLoading(true)
       
-      // Λήψη ονόματος καταστήματος βάσει URL ID για επιβεβαίωση στην οθόνη
-      const { data: storeInfo } = await supabase
-        .from('stores')
-        .select('name')
-        .eq('id', storeIdFromUrl)
-        .single();
-      
+      const { data: storeInfo } = await supabase.from('stores').select('name').eq('id', storeIdFromUrl).single();
       if (storeInfo) setCurrentStoreName(storeInfo.name);
 
       const [sRes, tRes] = await Promise.all([
@@ -73,7 +66,7 @@ function SuppliersContent() {
       setSuppliers(sRes.data || []);
       setTransactions(tRes.data || []);
     } catch (err: any) {
-      toast.error('Σφάλμα συγχρονισμού δεδομένων');
+      toast.error('Σφάλμα φόρτωσης δεδομένων');
     } finally {
       setLoading(false);
     }
@@ -111,14 +104,9 @@ function SuppliersContent() {
     }
   }
 
-  // --- Η ΚΡΙΣΙΜΗ ΣΥΝΑΡΤΗΣΗ ΑΠΟΘΗΚΕΥΣΗΣ ---
   async function handleSave() {
     if (!name.trim()) return toast.error('Συμπληρώστε το όνομα');
-    
-    // ΑΓΝΟΟΥΜΕ ΤΟ LOCALSTORAGE - ΧΡΗΣΙΜΟΠΟΙΟΥΜΕ ΜΟΝΟ ΤΟ URL
-    if (!storeIdFromUrl) {
-      return toast.error('Σφάλμα: Λείπει το ID καταστήματος από το URL');
-    }
+    if (!storeIdFromUrl) return toast.error('Σφάλμα ID καταστήματος στο URL');
 
     setIsSaving(true);
     try {
@@ -128,7 +116,7 @@ function SuppliersContent() {
         vat_number: afm.trim(),
         iban: iban.trim(),
         category: category,
-        store_id: storeIdFromUrl // ΕΠΙΒΟΛΗ ID ΒΑΣΕΙ URL
+        store_id: storeIdFromUrl // ΕΠΙΒΟΛΗ ΒΑΣΕΙ URL
       };
 
       const { error } = editingId
@@ -141,15 +129,13 @@ function SuppliersContent() {
       resetForm(); 
       fetchSuppliersData();
     } catch (error: any) { 
-      toast.error('Σφάλμα βάσης: ' + error.message); 
+      toast.error(error.message); 
     } finally { 
       setIsSaving(false); 
     }
   }
 
-  const getSupplierTurnover = (id: string) => 
-    transactions.filter(t => t.supplier_id === id).reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
-  
+  const getSupplierTurnover = (id: string) => transactions.filter(t => t.supplier_id === id).reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
   const sortedSuppliers = [...suppliers].sort((a, b) => getSupplierTurnover(b.id) - getSupplierTurnover(a.id));
 
   if (loading) return <div style={loadingStyle}>ΣΥΓΧΡΟΝΙΣΜΟΣ {currentStoreName.toUpperCase()}...</div>
@@ -162,7 +148,7 @@ function SuppliersContent() {
         <header style={headerStyle}>
           <div>
             <h1 style={titleStyle}>Προμηθευτές</h1>
-            <p style={subtitleStyle}>ΚΑΤΑΣΤΗΜΑ: <span style={{color: colors.accentBlue}}>{currentStoreName.toUpperCase()}</span></p>
+            <p style={subtitleStyle}>ΕΝΕΡΓΟ: <span style={{color: colors.accentBlue}}>{currentStoreName.toUpperCase()}</span></p>
           </div>
           <Link href={`/?store=${storeIdFromUrl}`} style={closeBtn}><ChevronLeft size={20} /></Link>
         </header>
@@ -174,7 +160,7 @@ function SuppliersContent() {
         {isFormOpen && (
           <div style={formCard}>
             <div style={inputGroup}>
-              <label style={labelStyle}><Hash size={12} /> ΕΠΩΝΥΜΙΑ / ΟΝΟΜΑ</label>
+              <label style={labelStyle}><Hash size={12} /> ΕΠΩΝΥΜΙΑ</label>
               <input value={name} onChange={(e) => setName(e.target.value)} style={inputStyle} placeholder="π.χ. COCA COLA" />
             </div>
 
@@ -197,15 +183,15 @@ function SuppliersContent() {
             <div style={inputGroup}>
               <label style={labelStyle}>ΚΑΤΗΓΟΡΙΑ</label>
               <select value={category} onChange={(e) => setCategory(e.target.value)} style={inputStyle}>
-                <option value="Εμπορεύματα">Εμπορεύματα</option>
-                <option value="Αναλώσιμα">Αναλώσιμα</option>
-                <option value="Υπηρεσίες">Υπηρεσίες</option>
-                <option value="Άλλο">Άλλο</option>
+                <option value="Εμπορεύματα">🛒 Εμπορεύματα</option>
+                <option value="Αναλώσιμα">📦 Αναλώσιμα</option>
+                <option value="Υπηρεσίες">🛠️ Υπηρεσίες</option>
+                <option value="Άλλο">❓ Άλλο</option>
               </select>
             </div>
 
             <button onClick={handleSave} disabled={isSaving} style={saveBtn}>
-              {isSaving ? 'ΑΠΟΘΗΚΕΥΣΗ...' : (editingId ? 'ΕΝΗΜΕΡΩΣΗ ΣΤΟΙΧΕΙΩΝ' : 'ΚΑΤΑΧΩΡΗΣΗ')}
+              {isSaving ? 'ΑΠΟΘΗΚΕΥΣΗ...' : (editingId ? 'ΑΠΟΘΗΚΕΥΣΗ ΑΛΛΑΓΩΝ' : 'ΚΑΤΑΧΩΡΗΣΗ')}
             </button>
           </div>
         )}
@@ -234,8 +220,8 @@ function SuppliersContent() {
                       <p style={infoText}><strong style={{display:'block'}}>IBAN:</strong> {s.iban || '-'}</p>
                     </div>
                     <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
-                      <button onClick={() => handleEdit(s)} style={editBtn}><Edit2 size={14} /> Edit</button>
-                      <button onClick={() => handleDelete(s.id)} style={delBtn}><Trash2 size={14} /> Delete</button>
+                      <button onClick={() => handleEdit(s)} style={editBtn}><Edit2 size={14} /> Επεξεργασία</button>
+                      <button onClick={() => handleDelete(s.id)} style={delBtn}><Trash2 size={14} /> Διαγραφή</button>
                     </div>
                   </div>
                 )}
@@ -253,15 +239,15 @@ const containerStyle: any = { backgroundColor: colors.bgLight, minHeight: '100dv
 const contentWrapper: any = { maxWidth: '480px', margin: '0 auto', paddingBottom: '100px' };
 const headerStyle: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px' };
 const titleStyle: any = { fontSize: '22px', fontWeight: '800', color: colors.primaryDark, margin: 0 };
-const subtitleStyle: any = { fontSize: '10px', fontWeight: '800', color: colors.secondaryText, marginTop: '4px' };
-const closeBtn: any = { padding: '8px', background: 'white', borderRadius: '12px', border: `1px solid ${colors.border}`, color: colors.primaryDark, textDecoration: 'none', display: 'flex', alignItems: 'center' };
-const addBtn: any = { width: '100%', backgroundColor: colors.primaryDark, color: 'white', padding: '16px', borderRadius: '16px', fontWeight: '800', border: 'none', marginBottom: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' };
+const subtitleStyle: any = { fontSize: '10px', fontWeight: '800', color: colors.secondaryText };
+const closeBtn: any = { padding: '8px', background: 'white', borderRadius: '12px', border: `1px solid ${colors.border}`, color: colors.primaryDark, textDecoration: 'none', display:'flex', alignItems:'center' };
+const addBtn: any = { width: '100%', backgroundColor: colors.primaryDark, color: 'white', padding: '16px', borderRadius: '16px', fontWeight: '800', border: 'none', marginBottom: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', cursor: 'pointer' };
 const cancelBtn: any = { ...addBtn, backgroundColor: '#fee2e2', color: colors.accentRed };
 const formCard: any = { background: 'white', padding: '24px', borderRadius: '24px', marginBottom: '25px', border: `1px solid ${colors.border}`, boxShadow: '0 4px 20px rgba(0,0,0,0.05)' };
 const inputGroup: any = { marginBottom: '15px' };
 const labelStyle: any = { fontSize: '10px', fontWeight: '800', color: colors.secondaryText, marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '4px' };
 const inputStyle: any = { width: '100%', padding: '14px', borderRadius: '12px', border: `1px solid ${colors.border}`, fontSize: '14px', fontWeight: '600', outline: 'none', backgroundColor: colors.bgLight };
-const saveBtn: any = { width: '100%', padding: '16px', backgroundColor: colors.accentGreen, color: 'white', borderRadius: '16px', border: 'none', fontWeight: '800', fontSize: '14px', marginTop: '10px' };
+const saveBtn: any = { width: '100%', padding: '16px', backgroundColor: colors.accentGreen, color: 'white', borderRadius: '16px', border: 'none', fontWeight: '800', fontSize: '14px', cursor: 'pointer', marginTop: '10px' };
 const listArea: any = { background: 'white', borderRadius: '24px', border: `1px solid ${colors.border}`, overflow: 'hidden', boxShadow: '0 4px 20px rgba(0,0,0,0.05)' };
 const rankingHeader: any = { padding: '14px 20px', backgroundColor: colors.bgLight, fontSize: '10px', fontWeight: '800', color: colors.secondaryText, display: 'flex', alignItems: 'center', gap: '8px' };
 const rowWrapper: any = { display: 'flex', padding: '18px 20px', alignItems: 'center', cursor: 'pointer' };
@@ -272,8 +258,8 @@ const turnoverText: any = { fontSize: '16px', fontWeight: '800', color: colors.a
 const actionPanel: any = { padding: '20px', backgroundColor: '#fcfcfc', borderTop: `1px dashed ${colors.border}` };
 const infoGrid: any = { display: 'grid', gap: '8px' };
 const infoText: any = { fontSize: '12px', margin: 0, color: colors.primaryDark };
-const editBtn: any = { flex: 1, padding: '10px', background: colors.warning, color: colors.warningText, border: 'none', borderRadius: '10px', fontWeight: '700', fontSize: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px' };
-const delBtn: any = { flex: 1, padding: '10px', background: '#fee2e2', color: colors.accentRed, border: 'none', borderRadius: '10px', fontWeight: '700', fontSize: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px' };
+const editBtn: any = { flex: 1, padding: '10px', background: colors.warning, color: colors.warningText, border: 'none', borderRadius: '10px', fontWeight: '700', fontSize: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px', cursor: 'pointer' };
+const delBtn: any = { flex: 1, padding: '10px', background: '#fee2e2', color: colors.accentRed, border: 'none', borderRadius: '10px', fontWeight: '700', fontSize: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px', cursor: 'pointer' };
 const loadingStyle: any = { display: 'flex', height: '100dvh', alignItems: 'center', justifyContent: 'center', fontWeight: '800', color: colors.secondaryText, background: colors.bgLight };
 const emptyText: any = { padding: '40px', textAlign: 'center', color: colors.secondaryText, fontSize: '13px', fontWeight: '600' };
 
