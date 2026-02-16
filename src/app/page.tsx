@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabase'
 import NextLink from 'next/link'
 import { format, addDays, subDays, parseISO } from 'date-fns'
 import { el } from 'date-fns/locale'
+import { Toaster, toast } from 'sonner'
 
 // --- MODERN PREMIUM PALETTE ---
 const colors = {
@@ -48,12 +49,12 @@ function DashboardContent() {
       if (!session) return router.push('/login');
 
       const activeStoreId = localStorage.getItem('active_store_id');
-      const MAIN_STORE_ID = 'e50a8803-7311-4665-8d83-2935e1320b9c';
       if (!activeStoreId) {
         router.push('/select-store');
         return;
       }
 
+      // Λήψη προφίλ για έλεγχο admin
       const { data: profile } = await supabase
         .from('profiles')
         .select('*')
@@ -63,29 +64,28 @@ function DashboardContent() {
       if (profile) {
         setIsAdmin(profile.role === 'admin' || profile.role === 'superadmin');
 
+        // Λήψη ονόματος καταστήματος
         const { data: storeData } = await supabase
           .from('stores')
           .select('name')
           .eq('id', activeStoreId)
           .single();
-        setStoreName(storeData?.name || profile.store_name || 'Κατάστημα');
+        
+        setStoreName(storeData?.name || 'Κατάστημα');
 
-        let txQuery = supabase
+        // Φόρτωση κινήσεων με αυστηρό eq('store_id')
+        const { data: tx, error: txError } = await supabase
           .from('transactions')
           .select('*, suppliers(name), fixed_assets(name)')
           .eq('store_id', activeStoreId)
           .eq('date', selectedDate)
           .order('created_at', { ascending: false });
 
-        // If not main store, strictly hide any records where store_id is null
-        if (activeStoreId !== MAIN_STORE_ID) {
-          txQuery = txQuery.neq('store_id', null);
-        }
-        const { data: tx } = await txQuery;
-        if (tx) setTransactions(tx);
+        if (txError) throw txError;
+        setTransactions(tx || []);
       }
     } catch (err) {
-      console.error(err);
+      console.error("Dashboard error:", err);
     } finally {
       setLoading(false);
     }
@@ -100,8 +100,9 @@ function DashboardContent() {
       if (error) throw error
       setTransactions(prev => prev.filter(t => t.id !== id))
       setExpandedTx(null)
+      toast.success('Η κίνηση διαγράφηκε');
     } catch (err) {
-      alert('Σφάλμα κατά τη διαγραφή')
+      toast.error('Σφάλμα κατά τη διαγραφή');
     }
   }
 
@@ -118,17 +119,19 @@ function DashboardContent() {
     setExpandedTx(null)
   }
 
+  // ΔΙΟΡΘΩΣΗ: ΣΚΛΗΡΟ RESET ΓΙΑ ΝΑ ΞΕΚΟΛΛΗΣΕΙ ΤΟ PC/ΚΙΝΗΤΟ
   const handleSwitchStore = () => {
     localStorage.removeItem('active_store_id');
-    router.push('/select-store');
-    window.location.reload();
+    // Χρησιμοποιούμε window.location για να καθαρίσει η μνήμη του browser τελείως
+    window.location.href = '/select-store';
   }
 
   return (
     <div style={iphoneWrapper}>
+      <Toaster position="top-center" richColors />
       <style dangerouslySetInnerHTML={{ __html: `
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap');
-        body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: ${colors.bgLight}; }
+        body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: ${colors.bgLight}; margin: 0; }
       `}} />
 
       <header style={headerStyle}>
@@ -161,27 +164,20 @@ function DashboardContent() {
                     <NextLink href="/fixed-assets" style={menuItem} onClick={() => setIsMenuOpen(false)}>🔌 Πάγια</NextLink>
                     <NextLink href="/employees" style={menuItem} onClick={() => setIsMenuOpen(false)}>👥 Υπάλληλοι</NextLink>
                     <NextLink href="/suppliers-balance" style={menuItem} onClick={() => setIsMenuOpen(false)}>🚩 Καρτέλες (Χρέη)</NextLink>
+                    <NextLink href="/permissions" style={{...menuItem, color: colors.accentBlue}} onClick={() => setIsMenuOpen(false)}>🔑 Δικαιώματα (Admin)</NextLink>
                   </>
               )}
               <NextLink href="/analysis" style={menuItem} onClick={() => setIsMenuOpen(false)}>📊 Ανάλυση</NextLink>
               
               <div style={menuDivider} />
               <p style={menuSectionLabel}>ΕΦΑΡΜΟΓΗ</p>
-              <NextLink href="/help" style={menuItem} onClick={() => setIsMenuOpen(false)}>❓ Οδηγίες Χρήσης</NextLink>
-              <NextLink href="/settings" style={menuItem} onClick={() => setIsMenuOpen(false)}>⚙️ Ρυθμίσεις</NextLink>
-              
-              {/* Η ΕΠΙΛΟΓΗ ΔΙΚΑΙΩΜΑΤΑ ΠΟΥ ΕΛΕΙΠΕ */}
-              {isAdmin && (
-                <NextLink href="/permissions" style={{...menuItem, color: colors.accentBlue}} onClick={() => setIsMenuOpen(false)}>🔑 Δικαιώματα (Admin)</NextLink>
-              )}
-              
-              <button onClick={() => supabase.auth.signOut()} style={logoutBtnStyle}>ΑΠΟΣΥΝΔΕΣΗ 🚪</button>
+              <NextLink href="/help" style={menuItem} onClick={() => setIsMenuOpen(false)}>❓ Οδηγίες</NextLink>
+              <button onClick={() => { localStorage.clear(); supabase.auth.signOut().then(() => window.location.href='/login'); }} style={logoutBtnStyle}>ΑΠΟΣΥΝΔΕΣΗ 🚪</button>
             </div>
           )}
         </div>
       </header>
 
-      {/* ΥΠΟΛΟΙΠΟ ΤΟΥ ΚΩΔΙΚΑ ΣΟΥ (DATE SELECTOR, HERO, ACTIONS, LIST) ΠΑΡΑΜΕΝΕΙ ΩΣ ΕΧΕΙ */}
       <div style={dateCard}>
         <button onClick={() => changeDate(-1)} style={dateNavBtn}>‹</button>
         <div style={{ textAlign: 'center' }}>
@@ -214,10 +210,10 @@ function DashboardContent() {
       <div style={listContainer}>
         <p style={listHeader}>ΚΙΝΗΣΕΙΣ ΗΜΕΡΑΣ</p>
         {loading ? (
-          <p style={{textAlign:'center', padding:'20px'}}>Ενημέρωση...</p>
+          <p style={{textAlign:'center', padding:'20px', fontWeight: '700', color: colors.secondaryText}}>Ενημέρωση...</p>
         ) : (
           transactions.length === 0 ? (
-            <p style={{textAlign:'center', padding:'30px', color: colors.secondaryText, fontSize:'14px'}}>Δεν υπάρχουν κινήσεις</p>
+            <p style={{textAlign:'center', padding:'30px', color: colors.secondaryText, fontSize:'14px', fontWeight: '600'}}>Δεν υπάρχουν κινήσεις</p>
           ) : (
             transactions.map(t => (
               <div key={t.id} style={{ marginBottom: '12px' }}>
@@ -269,8 +265,8 @@ function DashboardContent() {
   )
 }
 
-// STYLES (ΤΑ ΙΔΙΑ ΠΟΥ ΕΙΧΕΣ)
-const iphoneWrapper: any = { minHeight: '100dvh', padding: '20px', paddingBottom: '100px' };
+// --- STYLES ---
+const iphoneWrapper: any = { minHeight: '100dvh', padding: '20px', paddingBottom: '100px', boxSizing: 'border-box' };
 const headerStyle: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px' };
 const brandArea = { display: 'flex', alignItems: 'center', gap: '12px' };
 const logoBox = { width: '40px', height: '40px', backgroundColor: colors.primaryDark, borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', color:'white', fontSize: '18px', fontWeight:'800' };
