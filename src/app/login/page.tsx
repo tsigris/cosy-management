@@ -2,7 +2,7 @@
 
 export const dynamic = 'force-dynamic'
 
-import { useState, Suspense } from 'react'
+import { useState, Suspense, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
@@ -19,23 +19,42 @@ function LoginContent() {
   const [loading, setLoading] = useState(false)
   const [isFastMode, setIsFastMode] = useState(mode === 'fast')
 
+  // Καθαρισμός τυχόν παλιών σκουπιδιών κατά τη φόρτωση της σελίδας
+  useEffect(() => {
+    const checkSession = async () => {
+      const { data } = await supabase.auth.getSession()
+      if (data.session) {
+         router.replace('/select-store')
+      }
+    }
+    checkSession()
+  }, [router])
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!email || !password) return toast.error('Συμπληρώστε τα στοιχεία σας.')
+    
     setLoading(true)
     
-    const { error } = await supabase.auth.signInWithPassword({ 
-      email: email.trim(), 
-      password: password.trim() 
-    })
-    
-    if (error) {
-      toast.error('Σφάλμα: ' + error.message)
+    try {
+      // Καθαρίζουμε το παλιό ID καταστήματος πριν το νέο login για να αποφύγουμε το "μπέρδεμα"
+      localStorage.removeItem('active_store_id')
+
+      const { data, error } = await supabase.auth.signInWithPassword({ 
+        email: email.trim(), 
+        password: password.trim() 
+      })
+      
+      if (error) {
+        toast.error('Σφάλμα: ' + error.message)
+        setLoading(false)
+      } else if (data.user) {
+        // Χρησιμοποιούμε replace για πιο γρήγορη μετάβαση χωρίς ιστορικό
+        router.replace('/select-store')
+      }
+    } catch (err) {
+      toast.error('Παρουσιάστηκε πρόβλημα κατά τη σύνδεση.')
       setLoading(false)
-    } else {
-      // ✅ ΔΙΟΡΘΩΣΗ: Πηγαίνουμε στην επιλογή καταστήματος, όχι στην αρχική
-      router.push('/select-store')
-      router.refresh()
     }
   }
 
@@ -50,12 +69,10 @@ function LoginContent() {
   }
 
   const verifyPin = (pin: string) => {
-    // Χρήση του νέου κλειδιού για το Cosy App
     const savedPin = localStorage.getItem('cosy_app_pin')
     if (pin === savedPin) {
-      // ✅ ΔΙΟΡΘΩΣΗ: Και το PIN στέλνει στην επιλογή καταστήματος
-      router.push('/select-store')
-      router.refresh()
+      localStorage.removeItem('active_store_id') // Καθαρισμός για σιγουριά
+      router.replace('/select-store')
     } else {
       toast.error('Λάθος PIN')
       setEnteredPin('')
@@ -89,7 +106,6 @@ function LoginContent() {
                   else handlePinPress(btn)
                 }}
                 style={numBtnStyle}
-                className="num-button"
               >
                 {btn}
               </button>
