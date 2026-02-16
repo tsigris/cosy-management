@@ -4,7 +4,7 @@ export const dynamic = 'force-dynamic'
 import { useEffect, useState, Suspense, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
-import { Trash2, Edit2, Eye, EyeOff, Plus, ChevronDown, ChevronUp, TrendingUp } from 'lucide-react'
+import { Trash2, Edit2, Eye, EyeOff, Plus, TrendingUp } from 'lucide-react'
 import { toast, Toaster } from 'sonner'
 
 const colors = {
@@ -35,20 +35,20 @@ function SuppliersContent() {
   const [isFormOpen, setIsFormOpen] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
 
-  // 1. ΦΟΡΤΩΣΗ ΔΕΔΟΜΕΝΩΝ - ΕΠΙΒΟΛΗ ΔΥΝΑΜΙΚΗΣ ΑΝΑΓΝΩΣΗΣ ID
+  // ΒΕΛΤΙΩΜΕΝΗ ΦΟΡΤΩΣΗ - ΔΙΑΒΑΖΕΙ ΤΟ ID ΑΠΕΥΘΕΙΑΣ ΑΠΟ ΤΟ LOCALSTORAGE
   const fetchSuppliersData = useCallback(async () => {
     try {
       setLoading(true)
-      const activeStoreId = localStorage.getItem('active_store_id');
+      const activeStoreId = typeof window !== 'undefined' ? localStorage.getItem('active_store_id') : null;
       
       if (!activeStoreId || activeStoreId === 'undefined') {
+        console.warn("No active store ID found");
         setSuppliers([]);
-        setTransactions([]);
         setLoading(false);
         return;
       }
 
-      console.log("Fetching suppliers for Store:", activeStoreId);
+      console.log("Fetching suppliers for Store ID:", activeStoreId);
 
       const [sRes, tRes] = await Promise.all([
         supabase.from('suppliers')
@@ -63,16 +63,19 @@ function SuppliersContent() {
 
       setSuppliers(sRes.data || []);
       setTransactions(tRes.data || []);
-    } catch (err) {
+    } catch (err: any) {
       console.error("Fetch error:", err);
-      toast.error('Σφάλμα φόρτωσης δεδομένων');
+      toast.error('Σφάλμα συγχρονισμού δεδομένων');
     } finally {
       setLoading(false);
     }
   }, [])
 
   useEffect(() => { 
-    fetchSuppliersData() 
+    fetchSuppliersData();
+    // Επανέλεγχος όταν ο χρήστης επιστρέφει στην καρτέλα για να αποφύγουμε cache λάθη
+    window.addEventListener('focus', fetchSuppliersData);
+    return () => window.removeEventListener('focus', fetchSuppliersData);
   }, [fetchSuppliersData])
 
   const getSupplierTurnover = (supplierId: string) => {
@@ -85,14 +88,13 @@ function SuppliersContent() {
     .filter(s => showInactive ? true : s.is_active !== false)
     .sort((a, b) => getSupplierTurnover(b.id) - getSupplierTurnover(a.id));
 
-  // 2. ΑΠΟΘΗΚΕΥΣΗ ΜΕ ΔΥΝΑΜΙΚΟ ΕΛΕΓΧΟ ID ΤΗ ΣΤΙΓΜΗ ΤΟΥ CLICK
+  // ΑΠΟΘΗΚΕΥΣΗ ΜΕ ΕΠΙΒΟΛΗ ΤΟΥ ID ΤΗ ΣΤΙΓΜΗ ΤΟΥ CLICK
   async function handleSave() {
-    const currentActiveId = localStorage.getItem('active_store_id');
+    const freshStoreId = localStorage.getItem('active_store_id');
     
     if (!name.trim()) return toast.error('Συμπληρώστε το όνομα');
-    if (!currentActiveId || currentActiveId === 'undefined') {
-        toast.error('Σφάλμα: Δεν βρέθηκε ενεργό κατάστημα. Παρακαλώ επιλέξτε ξανά κατάστημα από την αρχική.');
-        return;
+    if (!freshStoreId || freshStoreId === 'undefined') {
+      return toast.error('Σφάλμα αναγνώρισης καταστήματος. Παρακαλώ επιλέξτε ξανά κατάστημα.');
     }
 
     setIsSaving(true);
@@ -103,10 +105,8 @@ function SuppliersContent() {
         vat_number: afm.trim(),
         iban: iban.trim(),
         category: category,
-        store_id: currentActiveId // Χρησιμοποιεί το ID που διάβασε ΜΟΛΙΣ ΤΩΡΑ
+        store_id: freshStoreId 
       };
-
-      console.log("Saving to store:", currentActiveId);
 
       const { error } = editingId
         ? await supabase.from('suppliers').update(supplierData).eq('id', editingId)
@@ -125,21 +125,22 @@ function SuppliersContent() {
   }
 
   async function toggleActive(supplier: any) {
-    try {
-      const { error } = await supabase.from('suppliers').update({ is_active: !supplier.is_active }).eq('id', supplier.id);
-      if (error) throw error;
+    const { error } = await supabase.from('suppliers').update({ is_active: !supplier.is_active }).eq('id', supplier.id);
+    if (!error) {
       fetchSuppliersData();
-    } catch (err: any) { toast.error('Σφάλμα ενημέρωσης κατάστασης'); }
+      toast.success(supplier.is_active ? 'Απενεργοποιήθηκε' : 'Ενεργοποιήθηκε');
+    }
   }
 
   async function handleDelete(id: string) {
-    if (!confirm('Οριστική διαγραφή προμηθευτή;')) return;
-    try {
-      const { error } = await supabase.from('suppliers').delete().eq('id', id);
-      if (error) throw error;
+    if (!confirm('Θέλετε να διαγράψετε οριστικά αυτόν τον προμηθευτή;')) return;
+    const { error } = await supabase.from('suppliers').delete().eq('id', id);
+    if (!error) {
       fetchSuppliersData();
-      toast.success('Ο προμηθευτής διαγράφηκε');
-    } catch (err: any) { toast.error('Σφάλμα κατά τη διαγραφή'); }
+      toast.success('Διαγράφηκε');
+    } else {
+      toast.error('Αποτυχία διαγραφής: ' + error.message);
+    }
   }
 
   const handleEdit = (s: any) => {
@@ -154,20 +155,11 @@ function SuppliersContent() {
   }
 
   const resetForm = () => {
-    setName(''); 
-    setPhone(''); 
-    setAfm(''); 
-    setIban(''); 
-    setCategory('Εμπορεύματα');
-    setEditingId(null); 
-    setIsFormOpen(false);
+    setName(''); setPhone(''); setAfm(''); setIban(''); setCategory('Εμπορεύματα');
+    setEditingId(null); setIsFormOpen(false);
   }
 
-  if (loading) return (
-    <div style={{padding:'100px 20px', textAlign:'center', color: colors.secondaryText, fontWeight:'800', backgroundColor: colors.bgLight, minHeight: '100vh'}}>
-      ΣΥΓΧΡΟΝΙΣΜΟΣ ΔΕΔΟΜΕΝΩΝ...
-    </div>
-  )
+  if (loading) return <div style={loadingStyle}>ΣΥΓΧΡΟΝΙΣΜΟΣ ΔΕΔΟΜΕΝΩΝ...</div>
 
   return (
     <div style={containerStyle}>
@@ -197,7 +189,6 @@ function SuppliersContent() {
           <div style={formCard}>
             <label style={labelStyle}>ΕΠΩΝΥΜΙΑ</label>
             <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Όνομα..." style={inputStyle} />
-            
             <div style={{ display: 'flex', gap: '12px', marginTop: '12px' }}>
               <div style={{ flex: 1 }}>
                 <label style={labelStyle}>ΤΗΛΕΦΩΝΟ</label>
@@ -208,21 +199,18 @@ function SuppliersContent() {
                 <input maxLength={9} value={afm} onChange={(e) => setAfm(e.target.value)} style={inputStyle} inputMode="numeric" placeholder="9 ψηφία" />
               </div>
             </div>
-
             <div style={{ marginTop: '12px' }}>
               <label style={labelStyle}>IBAN</label>
               <input value={iban} onChange={(e) => setIban(e.target.value.toUpperCase())} placeholder="GR..." style={inputStyle} />
             </div>
-
             <label style={{ ...labelStyle, marginTop: '12px' }}>ΚΑΤΗΓΟΡΙΑ</label>
             <select value={category} onChange={(e) => setCategory(e.target.value)} style={inputStyle}>
               <option value="Εμπορεύματα">🛒 Εμπορεύματα</option>
               <option value="Πάγια">🏢 Πάγια / Λογαριασμοί</option>
               <option value="Λοιπά">📦 Λοιπά Έξοδα</option>
             </select>
-
             <button onClick={handleSave} disabled={isSaving} style={saveBtn}>
-              {isSaving ? 'ΑΠΟΘΗΚΕΥΣΗ...' : (editingId ? 'ΕΝΗΜΕΡΩΣΗ ΣΤΟΙΧΕΙΩΝ' : 'ΚΑΤΑΧΩΡΗΣΗ')}
+              {isSaving ? 'ΑΠΟΘΗΚΕΥΣΗ...' : (editingId ? 'ΕΝΗΜΕΡΩΣΗ' : 'ΚΑΤΑΧΩΡΗΣΗ')}
             </button>
           </div>
         )}
@@ -241,27 +229,21 @@ function SuppliersContent() {
                    <p style={turnoverText}>{getSupplierTurnover(s.id).toFixed(2)}€</p>
                 </div>
               </div>
-              
               {expandedId === s.id && (
                 <div style={actionPanel}>
-                  <button onClick={(e) => { e.stopPropagation(); handleEdit(s); }} style={panelBtnEdit}>
-                    <Edit2 size={14} /> Edit
-                  </button>
-                  <button onClick={(e) => { e.stopPropagation(); toggleActive(s); }} style={panelBtnActive}>
+                  <button onClick={() => handleEdit(s)} style={panelBtnEdit}>✎ Edit</button>
+                  <button onClick={() => toggleActive(s)} style={panelBtnActive}>
                     {s.is_active ? 'Disable' : 'Enable'}
                   </button>
-                  <button onClick={(e) => { e.stopPropagation(); handleDelete(s.id); }} style={panelBtnDelete}>
-                    <Trash2 size={14} /> Delete
-                  </button>
+                  <button onClick={() => handleDelete(s.id)} style={panelBtnDelete}>🗑</button>
                 </div>
               )}
             </div>
           ))}
-          
           {visibleSuppliers.length === 0 && (
-              <div style={{padding:'60px 20px', textAlign:'center', color: colors.secondaryText, fontWeight: '700'}}>
-                  Δεν υπάρχουν προμηθευτές για αυτό το κατάστημα.
-              </div>
+            <div style={{padding:'40px', textAlign:'center', color:colors.secondaryText, fontWeight: '700'}}>
+              Δεν υπάρχουν προμηθευτές για αυτό το κατάστημα.
+            </div>
           )}
         </div>
       </div>
@@ -269,11 +251,12 @@ function SuppliersContent() {
   )
 }
 
-// --- STYLES ---
+// STYLES
+const loadingStyle: any = { padding:'100px 20px', textAlign:'center', color: colors.secondaryText, fontWeight:'800', backgroundColor: colors.bgLight, minHeight: '100vh' };
 const containerStyle: any = { backgroundColor: colors.bgLight, minHeight: '100dvh', padding: '20px' };
 const contentWrapper: any = { maxWidth: '480px', margin: '0 auto', paddingBottom: '100px' };
 const headerStyle: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px' };
-const logoBox: any = { width: '40px', height: '40px', backgroundColor: colors.primaryDark, borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '18px', fontWeight:'800' };
+const logoBox: any = { width: '40px', height: '40px', backgroundColor: colors.primaryDark, borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '18px', fontWeight: '800' };
 const titleStyle: any = { fontSize: '20px', fontWeight: '800', color: colors.primaryDark, margin: 0 };
 const subtitleStyle: any = { fontSize: '10px', fontWeight: '700', color: colors.secondaryText, margin: 0, letterSpacing: '0.5px' };
 const backBtn: any = { textDecoration: 'none', color: colors.secondaryText, fontSize: '18px', fontWeight: 'bold' };
@@ -293,7 +276,7 @@ const rowMeta: any = { display: 'flex', gap: '8px', marginTop: '4px', alignItems
 const categoryBadge: any = { fontSize: '9px', fontWeight: '700', color: colors.secondaryText, backgroundColor: colors.bgLight, padding: '2px 6px', borderRadius: '4px' };
 const turnoverText: any = { fontSize: '16px', fontWeight: '800', color: colors.accentGreen, margin: 0 };
 const actionPanel: any = { display: 'flex', gap: '8px', padding: '12px 16px', backgroundColor: '#f8fafc', borderTop: `1px solid ${colors.border}`, justifyContent: 'space-between' };
-const panelBtnBase: any = { flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', padding: '10px', borderRadius: '10px', fontSize: '11px', fontWeight: '700', border: 'none', cursor: 'pointer' };
+const panelBtnBase: any = { flex: 1, padding: '10px', borderRadius: '10px', fontSize: '11px', fontWeight: '700', border: 'none', cursor: 'pointer' };
 const panelBtnEdit: any = { ...panelBtnBase, backgroundColor: colors.warning, color: colors.warningText };
 const panelBtnActive: any = { ...panelBtnBase, backgroundColor: colors.white, color: colors.primaryDark, border: `1px solid ${colors.border}` };
 const panelBtnDelete: any = { ...panelBtnBase, backgroundColor: '#fee2e2', color: colors.accentRed };
