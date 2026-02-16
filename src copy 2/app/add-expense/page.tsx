@@ -23,13 +23,14 @@ function AddExpenseForm() {
   const searchParams = useSearchParams()
   const dropdownRef = useRef<HTMLDivElement>(null)
 
-  // --- SaaS & URL PARAMS ---
-  const storeId = searchParams.get('store')
+  // Λήψη editId για λειτουργία επεξεργασίας
   const editId = searchParams.get('editId')
   const urlSupId = searchParams.get('supId')
   const urlAssetId = searchParams.get('assetId')
-  const urlEmployeeId = searchParams.get('id') 
   const selectedDate = searchParams.get('date') || new Date().toISOString().split('T')[0]
+  
+  // --- ΑΛΛΑΓΗ 1: Κρατάμε το Store ID από το URL για το κουμπί 'Back' ---
+  const urlStoreId = searchParams.get('store')
   
   const [amount, setAmount] = useState('')
   const [method, setMethod] = useState('Μετρητά')
@@ -44,18 +45,17 @@ function AddExpenseForm() {
 
   const [currentUsername, setCurrentUsername] = useState('Χρήστης')
   const [loading, setLoading] = useState(true)
+  const [storeId, setStoreId] = useState<string | null>(null)
 
   const [suppliers, setSuppliers] = useState<any[]>([])
   const [fixedAssets, setFixedAssets] = useState<any[]>([])
-  const [employees, setEmployees] = useState<any[]>([])
   
   const [dayStats, setDayStats] = useState({ income: 0, expenses: 0 });
 
   const [searchTerm, setSearchTerm] = useState('')
   const [showDropdown, setShowDropdown] = useState(false)
-  const [selectedSup, setSelectedSup] = useState('')
-  const [selectedFixed, setSelectedFixed] = useState('')
-  const [selectedEmployee, setSelectedEmployee] = useState('')
+  const [selectedSup, setSelectedSup] = useState(urlSupId || '')
+  const [selectedFixed, setSelectedFixed] = useState(urlAssetId || '')
 
   const [isSupModalOpen, setIsSupModalOpen] = useState(false)
   const [newSupName, setNewSupName] = useState('')
@@ -71,29 +71,30 @@ function AddExpenseForm() {
   }, [])
 
   const loadFormData = useCallback(async () => {
-    if (!storeId || storeId === 'null') {
-        router.replace('/select-store');
-        return;
-    }
-
     try {
-      setLoading(true)
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) return router.push('/login')
 
+      // Get activeStoreId from localStorage
+      const activeStoreId = typeof window !== 'undefined' ? localStorage.getItem('active_store_id') : null;
+      if (!activeStoreId) {
+        setLoading(false);
+        return;
+      }
+
+      // Fetch username from profile (but ignore profile.store_id)
       const { data: profile } = await supabase.from('profiles').select('username').eq('id', session?.user.id).maybeSingle();
       if (profile) setCurrentUsername(profile.username || 'Admin');
+      setStoreId(activeStoreId);
 
-      const [sRes, fRes, eRes, tRes] = await Promise.all([
-        supabase.from('suppliers').select('*').eq('store_id', storeId).neq('is_active', false).order('name'),
-        supabase.from('fixed_assets').select('id, name').eq('store_id', storeId).order('name'),
-        supabase.from('employees').select('id, full_name').eq('store_id', storeId).eq('is_active', true).order('full_name'),
-        supabase.from('transactions').select('amount, type').eq('store_id', storeId).eq('date', selectedDate)
+      const [sRes, fRes, tRes] = await Promise.all([
+        supabase.from('suppliers').select('*').eq('store_id', activeStoreId).neq('is_active', false).order('name'),
+        supabase.from('fixed_assets').select('id, name').eq('store_id', activeStoreId).order('name'),
+        supabase.from('transactions').select('amount, type').eq('store_id', activeStoreId).eq('date', selectedDate)
       ]);
 
       if (sRes.data) setSuppliers(sRes.data);
       if (fRes.data) setFixedAssets(fRes.data);
-      if (eRes.data) setEmployees(eRes.data);
 
       if (tRes.data) {
         const inc = tRes.data.filter(t => t.type === 'income').reduce((acc, t) => acc + Number(t.amount), 0);
@@ -101,8 +102,9 @@ function AddExpenseForm() {
         setDayStats({ income: inc, expenses: exp });
       }
 
+      // --- ΛΟΓΙΚΗ ΕΠΕΞΕΡΓΑΣΙΑΣ: ΦΟΡΤΩΣΗ ΥΠΑΡΧΟΥΣΑΣ ΚΙΝΗΣΗΣ ---
       if (editId) {
-        const { data: tx } = await supabase.from('transactions').select('*').eq('id', editId).single();
+        const { data: tx } = await supabase.from('transactions').select('*').eq('id', editId).eq('store_id', activeStoreId).single();
         if (tx) {
           setAmount(Math.abs(tx.amount).toString());
           setMethod(tx.method);
@@ -111,31 +113,26 @@ function AddExpenseForm() {
           setIsAgainstDebt(tx.type === 'debt_payment');
           setSelectedSup(tx.supplier_id || '');
           setSelectedFixed(tx.fixed_asset_id || '');
-          setSelectedEmployee(tx.employee_id || '');
+          setNoInvoice(tx.notes?.includes('ΧΩΡΙΣ ΤΙΜΟΛΟΓΙΟ') || false);
+
           if (tx.supplier_id && sRes.data) {
             const found = sRes.data.find((s: any) => s.id === tx.supplier_id);
             if (found) setSearchTerm(found.name);
           }
         }
-      } else {
-        if (urlAssetId) setSelectedFixed(urlAssetId);
-        if (urlEmployeeId) setSelectedEmployee(urlEmployeeId);
-        if (urlSupId && sRes.data) {
-            const found = sRes.data.find((s: any) => s.id === urlSupId);
-            if (found) { setSearchTerm(found.name); setSelectedSup(found.id); }
+      } else if (urlSupId && sRes.data) {
+        const found = sRes.data.find((s: any) => s.id === urlSupId);
+        if (found) {
+          setSearchTerm(found.name);
+          setSelectedSup(found.id);
         }
       }
     } catch (error) { console.error(error) } finally { setLoading(false) }
-  }, [storeId, editId, urlAssetId, urlEmployeeId, urlSupId, selectedDate, router])
+  }, [urlSupId, selectedDate, editId, router])
 
   useEffect(() => { loadFormData() }, [loadFormData])
 
   const currentBalance = useMemo(() => dayStats.income - dayStats.expenses, [dayStats]);
-
-  const filteredSuppliers = useMemo(() => {
-    if (!searchTerm) return []
-    return suppliers.filter(s => s.name.toLowerCase().includes(searchTerm.toLowerCase()))
-  }, [searchTerm, suppliers])
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -145,15 +142,21 @@ function AddExpenseForm() {
     }
   }
 
+  const filteredSuppliers = useMemo(() => {
+    if (!searchTerm) return []
+    return suppliers.filter(s => s.name.toLowerCase().includes(searchTerm.toLowerCase()))
+  }, [searchTerm, suppliers])
+
   const handleSave = async () => {
     if (!amount || Number(amount) <= 0) return toast.error('Συμπληρώστε το ποσό')
-    if (!selectedSup && !selectedFixed && !selectedEmployee) return toast.error('Επιλέξτε Προμηθευτή, Πάγιο ή Υπάλληλο')
-    
+    if (!selectedSup && !selectedFixed) return toast.error('Επιλέξτε Προμηθευτή ή Πάγιο')
     setLoading(true)
     setIsUploading(true)
 
     try {
       const { data: { session } } = await supabase.auth.getSession()
+      // Get activeStoreId from localStorage
+      const activeStoreId = typeof window !== 'undefined' ? localStorage.getItem('active_store_id') : storeId;
 
       const payload: any = {
         amount: -Math.abs(Number(amount)),
@@ -162,37 +165,47 @@ function AddExpenseForm() {
         type: isAgainstDebt ? 'debt_payment' : 'expense',
         date: selectedDate,
         user_id: session?.user.id,
-        store_id: storeId,
+        store_id: activeStoreId,
         supplier_id: selectedSup || null,
         fixed_asset_id: selectedFixed || null,
-        employee_id: selectedEmployee || null,
-        category: isAgainstDebt ? 'Εξόφληση Χρέους' : (selectedEmployee ? 'Προσωπικό' : (selectedFixed ? 'Πάγια' : 'Εμπορεύματα')),
+        category: isAgainstDebt ? 'Εξόφληση Χρέους' : (selectedSup ? 'Εμπορεύματα' : (selectedFixed ? 'Πάγια' : 'Λοιπά')),
         created_by_name: currentUsername,
         notes: noInvoice ? (notes ? `${notes} (ΧΩΡΙΣ ΤΙΜΟΛΟΓΙΟ)` : 'ΧΩΡΙΣ ΤΙΜΟΛΟΓΙΟ') : notes,
       }
 
+      // Image upload logic (if present)
+      let imageUrl = null;
       if (imageFile) {
         const fileExt = imageFile.name.split('.').pop();
         const fileName = `${Date.now()}.${fileExt}`;
-        const filePath = `${storeId}/${fileName}`;
+        const filePath = `${activeStoreId}/${fileName}`;
         const { data: uploadData, error: uploadError } = await supabase.storage.from('invoices').upload(filePath, imageFile);
         if (uploadError) throw uploadError;
-        payload.invoice_image = uploadData?.path || null;
+        imageUrl = uploadData?.path || null;
+        payload.invoice_image = imageUrl;
       }
 
-      const { error } = editId 
-        ? await supabase.from('transactions').update(payload).eq('id', editId)
-        : await supabase.from('transactions').insert([payload])
+      let error;
+      if (editId) {
+        // ΕΝΗΜΕΡΩΣΗ ΑΝΤΙ ΓΙΑ ΝΕΑ ΕΓΓΡΑΦΗ
+        const res = await supabase.from('transactions').update(payload).eq('id', editId)
+        error = res.error
+      } else {
+        const res = await supabase.from('transactions').insert([payload])
+        error = res.error
+      }
 
       if (error) throw error
-      toast.success('Επιτυχής καταχώρηση!')
-      router.push(`/?date=${selectedDate}&store=${storeId}`)
+      toast.success(editId ? 'Η κίνηση ενημερώθηκε!' : 'Η κίνηση καταχωρήθηκε!')
+      
+      // --- ΑΛΛΑΓΗ 2: Προσθήκη του store ID στο URL επιστροφής ---
+      router.push(`/?date=${selectedDate}&store=${activeStoreId}`)
+      
       router.refresh()
+      setIsUploading(false)
     } catch (error: any) { 
-        toast.error(error.message); 
-    } finally {
-        setLoading(false);
-        setIsUploading(false);
+      toast.error(error.message); setLoading(false);
+      setIsUploading(false)
     }
   }
 
@@ -209,7 +222,8 @@ function AddExpenseForm() {
               <p style={{ margin: 0, fontSize: '11px', color: colors.secondaryText, fontWeight: '700' }}>{new Date(selectedDate).toLocaleDateString('el-GR', { day: 'numeric', month: 'long' }).toUpperCase()}</p>
             </div>
           </div>
-          <Link href={`/?store=${storeId}`} style={backBtnStyle}>✕</Link>
+          {/* --- ΑΛΛΑΓΗ 3: Χρήση του urlStoreId για σωστή επιστροφή --- */}
+          <Link href={`/?store=${urlStoreId || storeId}`} style={backBtnStyle}>✕</Link>
         </div>
 
         <div style={formCard}>
@@ -238,20 +252,20 @@ function AddExpenseForm() {
             </div>
           </div>
 
-          <label style={{ ...labelStyle, marginTop: '20px' }}>🏭 ΠΡΟΜΗΘΕΥΤΗΣ</label>
+          <label style={{ ...labelStyle, marginTop: '20px' }}>🏭 ΑΝΑΖΗΤΗΣΗ ΠΡΟΜΗΘΕΥΤΗ</label>
           <div style={{ position: 'relative' }} ref={dropdownRef}>
             <div style={{ display: 'flex', gap: '10px' }}>
               <input 
                 type="text" 
-                placeholder="Αναζήτηση..." 
+                placeholder="Γράψτε για αναζήτηση..." 
                 value={searchTerm} 
                 onFocus={() => setShowDropdown(true)}
-                onChange={(e) => {setSearchTerm(e.target.value); setShowDropdown(true); setSelectedSup(''); setSelectedFixed(''); setSelectedEmployee('');}}
+                onChange={(e) => {setSearchTerm(e.target.value); setShowDropdown(true); setSelectedSup('');}}
                 style={{...inputStyle, border: selectedSup ? `2px solid ${colors.accentGreen}` : `1px solid ${colors.border}`}}
               />
               <button type="button" onClick={() => setIsSupModalOpen(true)} style={plusBtn}>+</button>
             </div>
-            {showDropdown && searchTerm && filteredSuppliers.length > 0 && (
+            {showDropdown && searchTerm && (
               <div style={autocompleteDropdown}>
                 {filteredSuppliers.map(s => (
                   <div key={s.id} style={dropdownRow} onClick={() => { setSelectedSup(s.id); setSearchTerm(s.name); setShowDropdown(false); }}>{s.name}</div>
@@ -260,16 +274,25 @@ function AddExpenseForm() {
             )}
           </div>
 
-          <label style={{ ...labelStyle, marginTop: '20px' }}>🏢 ΠΑΓΙΟ / ΛΟΓΑΡΙΑΣΜΟΣ</label>
-          <select value={selectedFixed} onChange={e => {setSelectedFixed(e.target.value); if(e.target.value) {setSelectedSup(''); setSelectedEmployee(''); setSearchTerm('');}}} style={inputStyle}>
-            <option value="">Επιλογή...</option>
-            {fixedAssets.map(f => <option key={f.id} value={f.id}>{f.name.toUpperCase()}</option>)}
+          <label style={{ ...labelStyle, marginTop: '15px' }}>ΛΙΣΤΑ ΠΡΟΜΗΘΕΥΤΩΝ (SELECT)</label>
+          <select 
+            value={selectedSup} 
+            onChange={(e) => {
+                const found = suppliers.find(s => s.id === e.target.value);
+                setSelectedSup(e.target.value);
+                if(found) setSearchTerm(found.name);
+                setSelectedFixed('');
+            }} 
+            style={inputStyle}
+          >
+            <option value="">Επιλογή από λίστα...</option>
+            {suppliers.map(s => <option key={s.id} value={s.id}>{s.name.toUpperCase()}</option>)}
           </select>
 
-          <label style={{ ...labelStyle, marginTop: '20px' }}>👥 ΥΠΑΛΛΗΛΟΣ</label>
-          <select value={selectedEmployee} onChange={e => {setSelectedEmployee(e.target.value); if(e.target.value) {setSelectedSup(''); setSelectedFixed(''); setSearchTerm('');}}} style={inputStyle}>
+          <label style={{ ...labelStyle, marginTop: '20px' }}>🏢 ΠΑΓΙΟ / ΛΟΓΑΡΙΑΣΜΟΣ</label>
+          <select value={selectedFixed} onChange={e => {setSelectedFixed(e.target.value); if(e.target.value) {setSelectedSup(''); setSearchTerm('');}}} style={inputStyle}>
             <option value="">Επιλογή...</option>
-            {employees.map(e => <option key={e.id} value={e.id}>{e.full_name.toUpperCase()}</option>)}
+            {fixedAssets.map(f => <option key={f.id} value={f.id}>{f.name.toUpperCase()}</option>)}
           </select>
 
           <label style={{ ...labelStyle, marginTop: '20px' }}>ΣΗΜΕΙΩΣΕΙΣ</label>
@@ -277,7 +300,7 @@ function AddExpenseForm() {
 
           {!editId && !noInvoice && (
             <div style={{ marginTop: '20px' }}>
-              <label style={labelStyle}>📸 ΦΩΤΟΓΡΑΦΙΑ</label>
+              <label style={labelStyle}>📸 ΦΩΤΟΓΡΑΦΙΑ ΤΙΜΟΛΟΓΙΟΥ</label>
               <div style={imageUploadContainer}>
                 {imagePreview ? (
                   <div style={{ position: 'relative', width: '100%', height: '120px' }}>
@@ -296,22 +319,55 @@ function AddExpenseForm() {
 
           <div style={{ marginTop: '25px' }}>
             <button onClick={handleSave} disabled={loading} style={{...smartSaveBtn, backgroundColor: editId ? colors.accentBlue : colors.accentRed}}>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
                 <span style={{ fontSize: '15px', fontWeight: '800' }}>
-                  {loading ? 'SYNCING...' : editId ? 'ΕΝΗΜΕΡΩΣΗ' : 'ΚΑΤΑΧΩΡΗΣΗ ΕΞΟΔΟΥ'}
+                  {loading ? 'SYNCING...' : editId ? 'ΕΝΗΜΕΡΩΣΗ ΔΕΔΟΜΕΝΩΝ' : 'ΟΛΟΚΛΗΡΩΣΗ ΕΞΟΔΟΥ'}
                 </span>
+                <span style={{ fontSize: '10px', opacity: 0.8, fontWeight: '600', marginTop: '2px' }}>
+                  ΚΑΘΑΡΟ ΤΑΜΕΙΟ: {currentBalance.toFixed(2)}€
+                </span>
+              </div>
             </button>
           </div>
         </div>
       </div>
+      
+      {isSupModalOpen && (
+        <div style={modalOverlay}>
+          <div style={modalCard}>
+            <h2 style={{fontSize: '18px', margin: '0 0 15px'}}>Νέος Προμηθευτής</h2>
+            <input value={newSupName} onChange={e => setNewSupName(e.target.value)} style={{...inputStyle, marginBottom:'15px'}} placeholder="Όνομα" />
+            <button
+              onClick={async () => {
+                if (!newSupName.trim()) return;
+                const activeStoreId = typeof window !== 'undefined' ? localStorage.getItem('active_store_id') : storeId;
+                const { data, error } = await supabase.from('suppliers').insert([
+                  { name: newSupName.trim(), store_id: activeStoreId }
+                ]).select().single();
+                if (!error && data) {
+                  setSuppliers(prev => [...prev, data]);
+                  setSelectedSup(data.id);
+                  setSearchTerm(data.name);
+                  setIsSupModalOpen(false);
+                  setNewSupName('');
+                }
+              }}
+              style={saveBtn}
+            >
+              ΠΡΟΣΘΗΚΗ
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
 
-// --- STYLES ---
-const smartSaveBtn: any = { width: '100%', padding: '16px', color: 'white', border: 'none', borderRadius: '16px', cursor: 'pointer' };
-const autocompleteDropdown: any = { position: 'absolute', top: '105%', left: 0, right: 0, backgroundColor: 'white', border: `1px solid ${colors.border}`, borderRadius: '14px', zIndex: 1000, maxHeight: '200px', overflowY: 'auto' };
-const dropdownRow = { padding: '12px 15px', fontSize: '14px', fontWeight: '700', cursor: 'pointer' };
-const iphoneWrapper: any = { backgroundColor: colors.bgLight, minHeight: '100dvh', padding: '20px', position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, overflowY: 'auto' };
+// STYLES
+const smartSaveBtn: any = { width: '100%', padding: '16px', color: 'white', border: 'none', borderRadius: '16px', cursor: 'pointer', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' };
+const autocompleteDropdown: any = { position: 'absolute', top: '105%', left: 0, right: 0, backgroundColor: 'white', border: `1px solid ${colors.border}`, borderRadius: '14px', zIndex: 1000, maxHeight: '200px', overflowY: 'auto', boxShadow: '0 10px 20px rgba(0,0,0,0.1)' };
+const dropdownRow = { padding: '12px 15px', fontSize: '14px', fontWeight: '700', cursor: 'pointer', borderBottom: `1px solid ${colors.bgLight}` };
+const iphoneWrapper: any = { backgroundColor: colors.bgLight, minHeight: '100dvh', padding: '20px', overflowY: 'auto', position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 };
 const headerStyle = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' };
 const logoBoxStyle: any = { width: '42px', height: '42px', backgroundColor: colors.primaryDark, borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '20px' };
 const backBtnStyle: any = { textDecoration: 'none', color: colors.secondaryText, padding: '8px 12px', backgroundColor: 'white', borderRadius: '10px', border: `1px solid ${colors.border}` };
@@ -325,9 +381,12 @@ const creditPanel = { backgroundColor: colors.bgLight, padding: '16px', borderRa
 const checkboxStyle = { width: '18px', height: '18px' };
 const checkLabel = { fontSize: '11px', fontWeight: '700', color: colors.primaryDark };
 const plusBtn = { width: '48px', height: '48px', backgroundColor: colors.primaryDark, color: 'white', border: 'none', borderRadius: '12px', fontSize: '20px' };
+const saveBtn: any = { width: '100%', padding: '16px', backgroundColor: colors.accentRed, color: 'white', border: 'none', borderRadius: '14px', fontWeight: '700', marginTop: '20px' };
 const imageUploadContainer = { width: '100%', backgroundColor: colors.bgLight, borderRadius: '14px', border: `2px dashed ${colors.border}`, overflow: 'hidden' };
 const uploadPlaceholder = { display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', cursor: 'pointer' };
 const imagePreviewStyle = { width: '100%', height: '120px', objectFit: 'cover' as const };
 const removeImageBtn: any = { position: 'absolute', top: '5px', right: '5px', backgroundColor: 'rgba(0,0,0,0.5)', color: 'white', border: 'none', borderRadius: '50%', width: '20px', height: '20px' };
+const modalOverlay: any = { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px' };
+const modalCard = { backgroundColor: 'white', padding: '20px', borderRadius: '20px', width: '100%' };
 
-export default function AddExpensePage() { return <Suspense fallback={null}><AddExpenseForm /></Suspense> }
+export default function AddExpensePage() { return <Suspense fallback={<div>Φόρτωση...</div>}><AddExpenseForm /></Suspense> }

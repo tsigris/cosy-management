@@ -4,7 +4,6 @@ export const dynamic = 'force-dynamic'
 import { useEffect, useState, Suspense, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
-import { useRouter, useSearchParams } from 'next/navigation'
 import { toast, Toaster } from 'sonner'
 import { Eye, EyeOff, Coins, Pencil, Trash2 } from 'lucide-react'
 
@@ -22,10 +21,6 @@ const colors = {
 }
 
 function EmployeesContent() {
-  const router = useRouter()
-  const searchParams = useSearchParams()
-  const storeId = searchParams.get('store') // ✅ SaaS context from URL
-
   const [employees, setEmployees] = useState<any[]>([])
   const [transactions, setTransactions] = useState<any[]>([])
   const [overtimes, setOvertimes] = useState<any[]>([])
@@ -34,6 +29,7 @@ function EmployeesContent() {
   const [isAdding, setIsAdding] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [selectedEmpId, setSelectedEmpId] = useState<string | null>(null)
+  const [storeId, setStoreId] = useState<string | null>(null)
 
   const [payBasis, setPayBasis] = useState<'monthly' | 'daily'>('monthly')
   const [viewYear, setViewYear] = useState(new Date().getFullYear())
@@ -92,17 +88,10 @@ function EmployeesContent() {
     start_date: new Date().toISOString().split('T')[0]
   })
 
-  // ✅ Redirect if storeId is missing/invalid
-  useEffect(() => {
-    if (!storeId || storeId === 'null') {
-      router.replace('/select-store')
-    }
-  }, [storeId, router])
-
   // ✅ Tips stats fetcher (month + last 5 of selected month)
   const getTipsStats = useCallback(async () => {
     try {
-      if (!storeId || storeId === 'null') return
+      if (!storeId) return
 
       const { data, error } = await supabase
         .from('transactions')
@@ -165,53 +154,55 @@ function EmployeesContent() {
   const fetchInitialData = useCallback(async () => {
     setLoading(true)
     try {
-      if (!storeId || storeId === 'null') {
-        setLoading(false)
-        return
+      const activeStoreId = typeof window !== 'undefined' ? localStorage.getItem('active_store_id') : null;
+      if (!activeStoreId) {
+        setLoading(false);
+        return;
       }
-
-      const {
-        data: { session }
-      } = await supabase.auth.getSession()
-      if (!session?.user) return
-
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) return;
+      setStoreId(activeStoreId);
       const [empsRes, transRes, otRes] = await Promise.all([
-        supabase.from('employees').select('*').eq('store_id', storeId).order('full_name'),
-        supabase
-          .from('transactions')
+        supabase.from('employees')
           .select('*')
-          .eq('store_id', storeId)
+          .or(`store_id.eq.${activeStoreId},store_id.is.null`)
+          .order('full_name'),
+        supabase.from('transactions')
+          .select('*')
+          .eq('store_id', activeStoreId)
           .not('employee_id', 'is', null)
           .order('date', { ascending: false }),
-        supabase.from('employee_overtimes').select('*').eq('store_id', storeId).eq('is_paid', false)
-      ])
-
-      if (empsRes.data) setEmployees(empsRes.data)
-      if (transRes.data) setTransactions(transRes.data)
-      if (otRes.data) setOvertimes(otRes.data)
+        supabase.from('employee_overtimes')
+          .select('*')
+          .eq('store_id', activeStoreId)
+          .eq('is_paid', false)
+      ]);
+      if (empsRes.data) setEmployees(empsRes.data);
+      if (transRes.data) setTransactions(transRes.data);
+      if (otRes.data) setOvertimes(otRes.data);
     } catch (err) {
-      console.error(err)
+      console.error(err);
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }, [storeId])
+  }, []);
 
   useEffect(() => {
     fetchInitialData()
   }, [fetchInitialData])
 
   useEffect(() => {
-    if (storeId && storeId !== 'null') getTipsStats()
+    if (storeId) getTipsStats()
   }, [storeId, getTipsStats])
 
   // Φιλτράρισμα λίστας βάσει showInactive
   // Hide employees with null store_id if not main store
-  const mainStoreId = 'e50a8803-a262-4303-9e90-c116c965e683'
-  const visibleEmployees = employees.filter((emp) => {
-    if (!showInactive && emp.is_active === false) return false
-    if (storeId && storeId !== mainStoreId && emp.store_id == null) return false
-    return true
-  })
+  const mainStoreId = 'e50a8803-a262-4303-9e90-c116c965e683';
+  const visibleEmployees = employees.filter(emp => {
+    if (!showInactive && emp.is_active === false) return false;
+    if (storeId && storeId !== mainStoreId && emp.store_id == null) return false;
+    return true;
+  });
 
   // ✅ Toggle Active/Inactive (Supabase)
   async function toggleActive(empId: string, currentValue: boolean | null | undefined) {
@@ -237,24 +228,20 @@ function EmployeesContent() {
     return overtimes.filter((ot) => ot.employee_id === empId).reduce((acc, curr) => acc + Number(curr.hours), 0)
   }
 
-  // ✅ Καταγραφή νέας υπερωρίας (store_id from URL)
+  // Καταγραφή νέας υπερωρίας
   async function handleQuickOvertime() {
     if (!otHours || !otModal) return
-    if (!storeId || storeId === 'null') {
-      router.replace('/select-store')
-      return
-    }
-
+    // Ensure storeId is set from state or localStorage
+    const activeStoreId = storeId || (typeof window !== 'undefined' ? localStorage.getItem('active_store_id') : null);
     const { error } = await supabase.from('employee_overtimes').insert([
       {
         employee_id: otModal.empId,
-        store_id: storeId, // ✅ explicit
+        store_id: activeStoreId,
         hours: Number(otHours),
         date: new Date().toISOString().split('T')[0],
         is_paid: false
       }
     ])
-
     if (!error) {
       toast.success(`Προστέθηκαν ${otHours} ώρες στην ${otModal.name}`)
       setOtModal(null)
@@ -263,13 +250,10 @@ function EmployeesContent() {
     }
   }
 
-  // ✅ Καταγραφή νέων Tips σαν transaction (preserve store context)
+  // ✅ Καταγραφή νέων Tips σαν transaction
+  // ✅ amount = amountNum για να φαίνεται σωστά στο ιστορικό
   async function handleQuickTip() {
     if (!tipAmount || !tipModal) return
-    if (!storeId || storeId === 'null') {
-      router.replace('/select-store')
-      return
-    }
 
     const amountNum = Number(tipAmount)
     if (Number.isNaN(amountNum) || amountNum <= 0) {
@@ -278,10 +262,12 @@ function EmployeesContent() {
     }
 
     const today = new Date().toISOString().split('T')[0]
+    // Ensure storeId is set from state or localStorage
+    const activeStoreId = storeId || (typeof window !== 'undefined' ? localStorage.getItem('active_store_id') : null);
 
     const { error } = await supabase.from('transactions').insert([
       {
-        store_id: storeId, // ✅ explicit
+        store_id: activeStoreId,
         employee_id: tipModal.empId,
         amount: amountNum,
         type: 'expense',
@@ -304,26 +290,25 @@ function EmployeesContent() {
     getTipsStats()
   }
 
-  // ✅ Επεξεργασία υπάρχοντος Tip (notes + amount) (preserve store context)
+  // ✅ Επεξεργασία υπάρχοντος Tip (notes + amount)
   async function handleEditTipSave() {
     if (!tipEditModal) return
-    if (!storeId || storeId === 'null') {
-      router.replace('/select-store')
-      return
-    }
-
     const amountNum = Number(tipEditAmount)
+
     if (Number.isNaN(amountNum) || amountNum <= 0) {
       toast.error('Βάλε έγκυρο ποσό tips.')
       return
     }
+
+    // Ensure storeId is set from state or localStorage
+    const activeStoreId = storeId || (typeof window !== 'undefined' ? localStorage.getItem('active_store_id') : null);
 
     const { error } = await supabase
       .from('transactions')
       .update({
         amount: amountNum,
         notes: `Tips: ${amountNum}€ [${tipEditModal.name}]`,
-        store_id: storeId // ✅ explicit
+        store_id: activeStoreId
       })
       .eq('id', tipEditModal.id)
 
@@ -371,7 +356,9 @@ function EmployeesContent() {
   // - tips υπολογίζονται στο stats.tips
   // - tips ΔΕΝ υπολογίζονται στο stats.total (ΣΥΝΟΛΟ ΕΤΟΥΣ)
   const getYearlyStats = (id: string) => {
-    const yearTrans = transactions.filter((t) => t.employee_id === id && new Date(t.date).getFullYear() === viewYear)
+    const yearTrans = transactions.filter(
+      (t) => t.employee_id === id && new Date(t.date).getFullYear() === viewYear
+    )
 
     let stats = { base: 0, overtime: 0, bonus: 0, tips: 0, total: 0 }
     const processedDates = new Set()
@@ -417,13 +404,10 @@ function EmployeesContent() {
   async function handleSave() {
     const isSalaryMissing = payBasis === 'monthly' ? !formData.monthly_salary : !formData.daily_rate
     if (!formData.full_name.trim() || isSalaryMissing) return alert('Συμπληρώστε τα υποχρεωτικά πεδία!')
-    if (!storeId || storeId === 'null') {
-      router.replace('/select-store')
-      return
-    }
 
     setLoading(true)
-
+    // Get activeStoreId from localStorage
+    const activeStoreId = typeof window !== 'undefined' ? localStorage.getItem('active_store_id') : storeId;
     const payload: any = {
       full_name: formData.full_name.trim(),
       position: formData.position.trim() || null,
@@ -434,7 +418,7 @@ function EmployeesContent() {
       monthly_salary: payBasis === 'monthly' ? Number(formData.monthly_salary) : null,
       daily_rate: payBasis === 'daily' ? Number(formData.daily_rate) : null,
       start_date: formData.start_date,
-      store_id: storeId // ✅ explicit from URL
+      store_id: activeStoreId
     }
 
     if (!editingId) payload.is_active = true
@@ -496,9 +480,7 @@ function EmployeesContent() {
             <div style={logoBoxStyle}>👥</div>
             <h1 style={{ fontWeight: '800', fontSize: '22px', margin: 0, color: colors.primaryDark }}>Υπάλληλοι</h1>
           </div>
-
-          {/* ✅ Back link preserves SaaS context */}
-          <Link href={`/?store=${storeId}`} style={backBtnStyle}>
+          <Link href="/" style={backBtnStyle}>
             ✕
           </Link>
         </div>
@@ -828,12 +810,7 @@ function EmployeesContent() {
                       </>
                     )}
 
-                    {/* ✅ Pay link preserves SaaS context */}
-                    <Link
-                      href={`/pay-employee?id=${emp.id}&name=${encodeURIComponent(emp.full_name)}&store=${storeId}`}
-                      onClick={(e) => e.stopPropagation()}
-                      style={payBtnStyle}
-                    >
+                    <Link href={`/pay-employee?id=${emp.id}&name=${emp.full_name}`} onClick={(e) => e.stopPropagation()} style={payBtnStyle}>
                       ΠΛΗΡΩΜΗ
                     </Link>
                   </div>
@@ -895,7 +872,11 @@ function EmployeesContent() {
                         .map((t) => {
                           const isTip = /tips/i.test(t.notes || '')
                           const note = String(t.notes || '')
-                          const noteLabel = isTip ? note.split('[')[0]?.trim() || 'Tips' : note.split('[')[1]?.replace(']', '') || 'Πληρωμή'
+                          // Tips: δείξε το "Tips: XX€"
+                          // Άλλα: δείξε το [ ... ] (όπως πριν)
+                          const noteLabel = isTip
+                            ? (note.split('[')[0]?.trim() || 'Tips')
+                            : (note.split('[')[1]?.replace(']', '') || 'Πληρωμή')
 
                           return (
                             <div key={t.id} style={historyItemExtended}>
