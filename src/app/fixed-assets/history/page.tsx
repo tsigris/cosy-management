@@ -5,7 +5,7 @@ import { useEffect, useState, Suspense, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
-import { ChevronLeft, History, Trash2, Calendar, Receipt } from 'lucide-react'
+import { ChevronLeft, History, Trash2, Calendar } from 'lucide-react'
 import { toast, Toaster } from 'sonner'
 
 const colors = {
@@ -18,19 +18,15 @@ const colors = {
   indigo: '#6366f1'
 }
 
-// Βοηθητική συνάρτηση ελέγχου UUID
 const isValidUUID = (id: any) => {
-  const regex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-  // Σημείωση: Το regex για UUIDv4 είναι ελαφρώς διαφορετικό, αλλά αυτό καλύπτει τα βασικά
-  const simpleRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-  return typeof id === 'string' && simpleRegex.test(id);
+  const regex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  return typeof id === 'string' && regex.test(id);
 }
 
 function HistoryContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   
-  // Λήψη παραμέτρων από το URL
   const storeId = searchParams.get('store')
   const assetId = searchParams.get('id')
   const assetName = searchParams.get('name') || 'Πάγιο'
@@ -39,7 +35,6 @@ function HistoryContent() {
   const [loading, setLoading] = useState(true)
 
   const fetchHistory = useCallback(async () => {
-    // Έλεγχος αν έχουμε έγκυρα IDs
     if (!storeId || !isValidUUID(storeId) || !assetId || !isValidUUID(assetId)) {
       setLoading(false)
       return
@@ -66,8 +61,7 @@ function HistoryContent() {
 
   useEffect(() => {
     if (!storeId || !isValidUUID(storeId) || !assetId || !isValidUUID(assetId)) {
-      toast.error('Λείπουν στοιχεία αναγνώρισης')
-      router.replace(storeId ? `/fixed-assets?store=${storeId}` : '/select-store')
+      router.replace('/select-store')
     } else {
       fetchHistory()
     }
@@ -87,13 +81,10 @@ function HistoryContent() {
 
   const totalSpent = transactions.reduce((acc, t) => acc + Math.abs(Number(t.amount) || 0), 0)
 
-  if (loading) return <div style={{ padding: '50px', textAlign: 'center', color: colors.secondary }}>Φόρτωση ιστορικού...</div>
-
   return (
     <div style={containerStyle}>
       <Toaster position="top-center" richColors />
 
-      {/* HEADER */}
       <header style={headerStyle}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <div style={logoBox}><History size={22} color="white" /></div>
@@ -107,16 +98,16 @@ function HistoryContent() {
         </Link>
       </header>
 
-      {/* SUMMARY CARD */}
       <div style={summaryCard}>
         <span style={summaryLabel}>ΣΥΝΟΛΙΚΑ ΕΞΟΔΑ</span>
         <h2 style={summaryAmount}>-{totalSpent.toFixed(2)}€</h2>
       </div>
 
-      {/* TRANSACTIONS LIST */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-        {transactions.length === 0 ? (
-          <div style={emptyState}>Δεν βρέθηκαν πληρωμές για αυτό το πάγιο.</div>
+        {loading ? (
+           <p style={{textAlign:'center', color:colors.secondary}}>Φόρτωση...</p>
+        ) : transactions.length === 0 ? (
+          <div style={emptyState}>Δεν βρέθηκαν πληρωμές.</div>
         ) : (
           transactions.map((tx) => (
             <div key={tx.id} style={txCard}>
@@ -126,7 +117,6 @@ function HistoryContent() {
                   {new Date(tx.date).toLocaleDateString('el-GR', { day: 'numeric', month: 'long', year: 'numeric' })}
                 </div>
                 <div style={amountStyle}>-{Math.abs(tx.amount).toFixed(2)}€</div>
-                {tx.notes && <div style={notesStyle}>{tx.notes}</div>}
                 <div style={methodBadge}>{tx.method || 'Μετρητά'}</div>
               </div>
               <button onClick={() => handleDelete(tx.id)} style={deleteBtn}>
@@ -147,21 +137,16 @@ const logoBox: any = { width: '45px', height: '45px', backgroundColor: colors.in
 const titleStyle: any = { fontSize: '18px', fontWeight: '800', color: colors.primary, margin: 0 };
 const subtitleStyle: any = { fontSize: '10px', color: colors.secondary, fontWeight: '700', margin: 0, letterSpacing: '1px' };
 const backBtn: any = { width: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface, borderRadius: '12px', border: `1px solid ${colors.border}`, color: colors.primary };
-const summaryCard: any = { backgroundColor: colors.primary, padding: '20px', borderRadius: '20px', marginBottom: '25px', color: 'white', textAlign: 'center', boxShadow: '0 10px 20px rgba(15, 23, 42, 0.1)' };
-const summaryLabel: any = { fontSize: '10px', fontWeight: '700', opacity: 0.7, letterSpacing: '1px' };
+const summaryCard: any = { backgroundColor: colors.primary, padding: '20px', borderRadius: '20px', marginBottom: '25px', color: 'white', textAlign: 'center' };
+const summaryLabel: any = { fontSize: '10px', fontWeight: '700', opacity: 0.7 };
 const summaryAmount: any = { fontSize: '32px', fontWeight: '900', margin: '5px 0 0 0' };
-const txCard: any = { backgroundColor: colors.surface, padding: '16px', borderRadius: '18px', border: `1px solid ${colors.border}`, display: 'flex', alignItems: 'center', gap: '15px' };
+const txCard: any = { backgroundColor: colors.surface, padding: '16px', borderRadius: '18px', border: `1px solid ${colors.border}`, display: 'flex', alignItems: 'center' };
 const dateRow: any = { display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', color: colors.secondary, fontWeight: '700', marginBottom: '5px' };
 const amountStyle: any = { fontSize: '18px', fontWeight: '800', color: colors.danger };
-const notesStyle: any = { fontSize: '12px', color: colors.primary, marginTop: '4px', fontStyle: 'italic' };
-const methodBadge: any = { display: 'inline-block', marginTop: '8px', padding: '3px 8px', backgroundColor: colors.background, borderRadius: '6px', fontSize: '10px', fontWeight: '800', color: colors.secondary, border: `1px solid ${colors.border}` };
+const methodBadge: any = { display: 'inline-block', marginTop: '8px', padding: '3px 8px', backgroundColor: colors.background, borderRadius: '6px', fontSize: '10px', fontWeight: '800', color: colors.secondary };
 const deleteBtn: any = { padding: '10px', color: colors.danger, backgroundColor: '#fff1f2', border: 'none', borderRadius: '12px', cursor: 'pointer' };
-const emptyState: any = { textAlign: 'center', padding: '40px', color: colors.secondary, fontSize: '14px', fontWeight: '600' };
+const emptyState: any = { textAlign: 'center', padding: '40px', color: colors.secondary, fontSize: '14px' };
 
 export default function FixedAssetHistoryPage() {
-  return (
-    <Suspense fallback={null}>
-      <HistoryContent />
-    </Suspense>
-  )
+  return <Suspense fallback={null}><HistoryContent /></Suspense>
 }
