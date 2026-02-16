@@ -8,6 +8,25 @@ import NextLink from 'next/link'
 import { format, addDays, subDays, parseISO } from 'date-fns'
 import { el } from 'date-fns/locale'
 import { Toaster, toast } from 'sonner'
+import { 
+  LayoutDashboard, 
+  PlusCircle, 
+  MinusCircle, 
+  History, 
+  Users, 
+  Settings, 
+  LogOut, 
+  ChevronLeft, 
+  ChevronRight,
+  TrendingUp,
+  TrendingDown,
+  Wallet,
+  Menu,
+  X,
+  CreditCard,
+  Truck,
+  Zap
+} from 'lucide-react'
 
 // --- MODERN PREMIUM PALETTE ---
 const colors = {
@@ -27,11 +46,12 @@ function DashboardContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   
-  // 1. ΛΗΨΗ ID ΑΠΟ URL (Query Param)
+  // 1. Η ΜΟΝΑΔΙΚΗ ΠΗΓΗ ΑΛΗΘΕΙΑΣ: Το ID από το URL
   const storeIdFromUrl = searchParams.get('store')
   
   const getBusinessDate = () => {
     const now = new Date()
+    // Επιχείρηση που κλείνει μετά τα μεσάνυχτα (π.χ. 07:00 το πρωί αλλαγή ημέρας)
     if (now.getHours() < 7) now.setDate(now.getDate() - 1)
     return format(now, 'yyyy-MM-dd')
   }
@@ -46,56 +66,60 @@ function DashboardContent() {
   const [expandedTx, setExpandedTx] = useState<string | null>(null) 
 
   const loadDashboard = useCallback(async () => {
+    // Ασφάλεια: Αν δεν υπάρχει store ID στο URL, γύρνα στην επιλογή
+    if (!storeIdFromUrl) {
+      router.replace('/select-store');
+      return;
+    }
+
     try {
       setLoading(true);
+      // Καθαρισμός προηγούμενων κινήσεων για αποφυγή "flash" δεδομένων άλλου καταστήματος
+      setTransactions([]);
+
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) return router.push('/login');
 
-      // 2. ΠΡΟΤΕΡΑΙΟΤΗΤΑ ΣΤΟ URL ID, ΜΕΤΑ ΣΤΟ LOCALSTORAGE
-      const activeStoreId = storeIdFromUrl || localStorage.getItem('active_store_id');
+      // Επιβεβαίωση καταστήματος και λήψη ονόματος
+      const { data: storeData, error: storeErr } = await supabase
+        .from('stores')
+        .select('name')
+        .eq('id', storeIdFromUrl)
+        .single();
       
-      if (!activeStoreId || activeStoreId === 'undefined') {
+      if (storeErr || !storeData) {
+        toast.error("Μη έγκυρο κατάστημα");
         router.push('/select-store');
         return;
       }
+      
+      setStoreName(storeData.name);
 
-      // Συγχρονισμός αν το βρήκαμε μόνο στο URL
-      if (storeIdFromUrl && localStorage.getItem('active_store_id') !== storeIdFromUrl) {
-        localStorage.setItem('active_store_id', storeIdFromUrl);
-      }
+      // Φόρτωση κινήσεων - ΑΥΣΤΗΡΟ ΦΙΛΤΡΟ ΜΕ ΤΟ URL ID
+      const { data: tx, error: txError } = await supabase
+        .from('transactions')
+        .select('*, suppliers(name), fixed_assets(name)')
+        .eq('store_id', storeIdFromUrl)
+        .eq('date', selectedDate)
+        .order('created_at', { ascending: false });
 
-      // Λήψη προφίλ για έλεγχο admin
+      if (txError) throw txError;
+      setTransactions(tx || []);
+
+      // Έλεγχος δικαιωμάτων Admin
       const { data: profile } = await supabase
         .from('profiles')
-        .select('*')
+        .select('role')
         .eq('id', session.user.id)
         .maybeSingle();
-
+      
       if (profile) {
         setIsAdmin(profile.role === 'admin' || profile.role === 'superadmin');
-
-        // Λήψη ονόματος καταστήματος
-        const { data: storeData } = await supabase
-          .from('stores')
-          .select('name')
-          .eq('id', activeStoreId)
-          .single();
-        
-        setStoreName(storeData?.name || 'Κατάστημα');
-
-        // Φόρτωση κινήσεων
-        const { data: tx, error: txError } = await supabase
-          .from('transactions')
-          .select('*, suppliers(name), fixed_assets(name)')
-          .eq('store_id', activeStoreId)
-          .eq('date', selectedDate)
-          .order('created_at', { ascending: false });
-
-        if (txError) throw txError;
-        setTransactions(tx || []);
       }
+
     } catch (err) {
       console.error("Dashboard error:", err);
+      toast.error("Σφάλμα φόρτωσης");
     } finally {
       setLoading(false);
     }
@@ -106,7 +130,12 @@ function DashboardContent() {
   const handleDelete = async (id: string) => {
     if (!confirm('Οριστική διαγραφή αυτής της κίνησης;')) return
     try {
-      const { error } = await supabase.from('transactions').delete().eq('id', id)
+      const { error } = await supabase
+        .from('transactions')
+        .delete()
+        .eq('id', id)
+        .eq('store_id', storeIdFromUrl); // Επιπλέον ασφάλεια στο delete
+
       if (error) throw error
       setTransactions(prev => prev.filter(t => t.id !== id))
       setExpandedTx(null)
@@ -117,40 +146,36 @@ function DashboardContent() {
   }
 
   const totals = useMemo(() => {
-    const income = transactions.filter(t => t.type === 'income').reduce((acc, t) => acc + Number(t.amount), 0)
-    const expense = transactions.filter(t => (t.type === 'expense' || t.category === 'Προσωπικό' || t.category === 'Εξόφληση Χρέους') && t.is_credit !== true).reduce((acc, t) => acc + Math.abs(Number(t.amount)), 0)
+    const income = transactions
+      .filter(t => t.type === 'income')
+      .reduce((acc, t) => acc + (Number(t.amount) || 0), 0)
+    
+    const expense = transactions
+      .filter(t => (t.type === 'expense' || t.type === 'debt_payment') && t.is_credit !== true)
+      .reduce((acc, t) => acc + (Math.abs(Number(t.amount)) || 0), 0)
+    
     return { income, expense, balance: income - expense }
   }, [transactions])
 
   const changeDate = (days: number) => {
     const current = parseISO(selectedDate)
     const next = days > 0 ? addDays(current, 1) : subDays(current, 1)
-    // ΔΙΑΤΗΡΗΣΗ ΤΟΥ STORE ID ΣΤΟ URL ΚΑΤΑ ΤΗΝ ΑΛΛΑΓΗ ΗΜΕΡΟΜΗΝΙΑΣ
-    router.push(`/?date=${format(next, 'yyyy-MM-dd')}&store=${storeIdFromUrl || ''}`)
+    router.push(`/?date=${format(next, 'yyyy-MM-dd')}&store=${storeIdFromUrl}`)
     setExpandedTx(null)
-  }
-
-  const handleSwitchStore = () => {
-    localStorage.clear();
-    sessionStorage.clear();
-    window.location.replace('/select-store');
   }
 
   return (
     <div style={iphoneWrapper}>
       <Toaster position="top-center" richColors />
-      <style dangerouslySetInnerHTML={{ __html: `
-        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap');
-        body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: ${colors.bgLight}; margin: 0; }
-      `}} />
-
+      
+      {/* HEADER */}
       <header style={headerStyle}>
         <div style={brandArea}>
-          <div style={logoBox}>C</div>
+          <div style={logoBox}>{storeName.charAt(0)}</div>
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <h1 style={storeTitleText}>{storeName.toUpperCase()}</h1>
-                <button onClick={handleSwitchStore} style={switchBtnStyle}>ΑΛΛΑΓΗ</button>
+                <NextLink href="/select-store" style={switchBtnStyle}>ΑΛΛΑΓΗ</NextLink>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
               <span style={dashboardSub}>BUSINESS DASHBOARD</span>
@@ -161,8 +186,7 @@ function DashboardContent() {
 
         <div style={{ position: 'relative' }}>
           <button style={menuToggle} onClick={() => setIsMenuOpen(!isMenuOpen)}>
-            <div style={hamburgerLine} />
-            <div style={{ ...hamburgerLine, width: '12px', marginBottom: 0 }} />
+            {isMenuOpen ? <X size={20} /> : <Menu size={20} />}
           </button>
 
           {isMenuOpen && (
@@ -170,107 +194,98 @@ function DashboardContent() {
               <p style={menuSectionLabel}>ΔΙΑΧΕΙΡΙΣΗ</p>
               {isAdmin && (
                   <>
-                    {/* ΠΡΟΣΘΗΚΗ ΤΟΥ ID ΣΕ ΟΛΑ ΤΑ LINKS ΤΟΥ ΜΕΝΟΥ */}
                     <NextLink href={`/suppliers?store=${storeIdFromUrl}`} style={menuItem} onClick={() => setIsMenuOpen(false)}>🛒 Προμηθευτές</NextLink>
                     <NextLink href={`/fixed-assets?store=${storeIdFromUrl}`} style={menuItem} onClick={() => setIsMenuOpen(false)}>🔌 Πάγια</NextLink>
                     <NextLink href={`/employees?store=${storeIdFromUrl}`} style={menuItem} onClick={() => setIsMenuOpen(false)}>👥 Υπάλληλοι</NextLink>
                     <NextLink href={`/suppliers-balance?store=${storeIdFromUrl}`} style={menuItem} onClick={() => setIsMenuOpen(false)}>🚩 Καρτέλες (Χρέη)</NextLink>
-                    <NextLink href={`/permissions?store=${storeIdFromUrl}`} style={{...menuItem, color: colors.accentBlue}} onClick={() => setIsMenuOpen(false)}>🔑 Δικαιώματα (Admin)</NextLink>
                   </>
               )}
               <NextLink href={`/analysis?store=${storeIdFromUrl}`} style={menuItem} onClick={() => setIsMenuOpen(false)}>📊 Ανάλυση</NextLink>
               
               <div style={menuDivider} />
-              <p style={menuSectionLabel}>ΕΦΑΡΜΟΓΗ</p>
-              <NextLink href="/help" style={menuItem} onClick={() => setIsMenuOpen(false)}>❓ Οδηγίες</NextLink>
-              <button onClick={() => { localStorage.clear(); supabase.auth.signOut().then(() => window.location.href='/login'); }} style={logoutBtnStyle}>ΑΠΟΣΥΝΔΕΣΗ 🚪</button>
+              <button onClick={() => supabase.auth.signOut().then(() => router.push('/login'))} style={logoutBtnStyle}>
+                ΑΠΟΣΥΝΔΕΣΗ 🚪
+              </button>
             </div>
           )}
         </div>
       </header>
 
+      {/* DATE NAVIGATION */}
       <div style={dateCard}>
-        <button onClick={() => changeDate(-1)} style={dateNavBtn}>‹</button>
+        <button onClick={() => changeDate(-1)} style={dateNavBtn}><ChevronLeft size={24} /></button>
         <div style={{ textAlign: 'center' }}>
           <p style={dateText}>{format(parseISO(selectedDate), 'EEEE, d MMMM', { locale: el }).toUpperCase()}</p>
         </div>
-        <button onClick={() => changeDate(1)} style={dateNavBtn}>›</button>
+        <button onClick={() => changeDate(1)} style={dateNavBtn}><ChevronRight size={24} /></button>
       </div>
 
+      {/* HERO CARD (TOTALS) */}
       <div style={heroCardStyle}>
           <p style={heroLabel}>ΔΙΑΘΕΣΙΜΟ ΥΠΟΛΟΙΠΟ ΗΜΕΡΑΣ</p>
           <h2 style={heroAmountText}>{totals.balance.toFixed(2)}€</h2>
           <div style={heroStatsRow}>
               <div style={heroStatItem}>
-                  <span style={statCircle(colors.accentGreen)}>↓</span>
+                  <div style={statCircle(colors.accentGreen)}><TrendingUp size={12} /></div>
                   <span style={heroStatValue}>{totals.income.toFixed(2)}€</span>
               </div>
               <div style={heroStatItem}>
-                  <span style={statCircle(colors.accentRed)}>↑</span>
+                  <div style={statCircle(colors.accentRed)}><TrendingDown size={12} /></div>
                   <span style={heroStatValue}>{totals.expense.toFixed(2)}€</span>
               </div>
           </div>
       </div>
 
+      {/* ACTIONS */}
       <div style={actionGrid}>
-        {/* ΠΡΟΣΘΗΚΗ ΤΟΥ ID ΣΤΑ ΚΟΥΜΠΙΑ ΔΡΑΣΗΣ */}
         <NextLink href={`/add-income?date=${selectedDate}&store=${storeIdFromUrl}`} style={{ ...actionBtn, backgroundColor: colors.accentGreen }}>+ Έσοδο</NextLink>
         <NextLink href={`/add-expense?date=${selectedDate}&store=${storeIdFromUrl}`} style={{ ...actionBtn, backgroundColor: colors.accentRed }}>- Έξοδο</NextLink>
         <NextLink href={`/daily-z?store=${storeIdFromUrl}`} style={{ ...actionBtn, backgroundColor: colors.primaryDark }}>📟 Z</NextLink>
       </div>
 
+      {/* TRANSACTION LIST */}
       <div style={listContainer}>
-        <p style={listHeader}>ΚΙΝΗΣΕΙΣ ΗΜΕΡΑΣ</p>
+        <p style={listHeader}>ΚΙΝΗΣΕΙΣ ΗΜΕΡΑΣ ({transactions.length})</p>
         {loading ? (
-          <p style={{textAlign:'center', padding:'20px', fontWeight: '700', color: colors.secondaryText}}>Ενημέρωση...</p>
+          <div style={{textAlign:'center', padding:'40px'}}><div style={spinnerStyle}></div></div>
+        ) : transactions.length === 0 ? (
+          <div style={emptyStateStyle}>
+            <p>Δεν υπάρχουν κινήσεις για αυτή την ημερομηνία</p>
+          </div>
         ) : (
-          transactions.length === 0 ? (
-            <p style={{textAlign:'center', padding:'30px', color: colors.secondaryText, fontSize:'14px', fontWeight: '600'}}>Δεν υπάρχουν κινήσεις</p>
-          ) : (
-            transactions.map(t => (
-              <div key={t.id} style={{ marginBottom: '12px' }}>
-                <div 
-                  style={{
-                    ...txRow,
-                    borderBottom: expandedTx === t.id ? `1px dashed ${colors.border}` : `1px solid ${colors.bgLight}`,
-                    borderRadius: expandedTx === t.id ? '20px 20px 0 0' : '20px'
-                  }} 
-                  onClick={() => setExpandedTx(expandedTx === t.id ? null : t.id)}
-                >
-                  <div style={txIconContainer(t.type === 'income')}>
-                    {t.type === 'income' ? '↙' : '↗'}
-                  </div>
-                  <div style={{ flex: 1, marginLeft: '12px' }}>
-                    <p style={txTitle}>
-                      {t.suppliers?.name || t.fixed_assets?.name || t.category || 'Συναλλαγή'}
-                      {t.is_credit && <span style={{fontSize: '9px', marginLeft: '5px', color: colors.accentBlue, fontWeight: '800'}}>(ΠΙΣΤΩΣΗ)</span>}
-                    </p>
-                    <p style={txMeta}>{t.method} • {format(parseISO(t.created_at), 'HH:mm')}</p>
-                  </div>
-                  <p style={{ ...txAmount, color: t.type === 'income' ? colors.accentGreen : colors.accentRed }}>
-                    {t.type === 'income' ? '+' : '-'}{Math.abs(t.amount).toFixed(2)}€
-                  </p>
+          transactions.map(t => (
+            <div key={t.id} style={{ marginBottom: '12px' }}>
+              <div 
+                style={{
+                  ...txRow,
+                  borderRadius: expandedTx === t.id ? '20px 20px 0 0' : '20px',
+                  borderBottom: expandedTx === t.id ? `1px dashed ${colors.border}` : `1px solid ${colors.border}`
+                }} 
+                onClick={() => setExpandedTx(expandedTx === t.id ? null : t.id)}
+              >
+                <div style={txIconContainer(t.type === 'income')}>
+                  {t.type === 'income' ? <TrendingUp size={18} /> : <TrendingDown size={18} />}
                 </div>
-
-                {expandedTx === t.id && (
-                  <div style={actionPanel}>
-                    <button 
-                      onClick={() => router.push(`/${t.type === 'income' ? 'add-income' : 'add-expense'}?editId=${t.id}&store=${storeIdFromUrl}`)}
-                      style={editRowBtn}
-                    >
-                      ✎ Επεξεργασία
-                    </button>
-                    <button 
-                      onClick={() => handleDelete(t.id)}
-                      style={deleteRowBtn}
-                    >
-                      🗑 Διαγραφή
-                    </button>
-                  </div>
-                )}
+                <div style={{ flex: 1, marginLeft: '12px' }}>
+                  <p style={txTitle}>
+                    {t.suppliers?.name || t.fixed_assets?.name || t.category || 'Συναλλαγή'}
+                    {t.is_credit && <span style={creditBadgeStyle}>ΠΙΣΤΩΣΗ</span>}
+                  </p>
+                  <p style={txMeta}>{t.method} • {format(parseISO(t.created_at), 'HH:mm')}</p>
+                </div>
+                <p style={{ ...txAmount, color: t.type === 'income' ? colors.accentGreen : colors.accentRed }}>
+                  {t.type === 'income' ? '+' : '-'}{Math.abs(t.amount).toFixed(2)}€
+                </p>
               </div>
-            ))
-          )
+
+              {expandedTx === t.id && (
+                <div style={actionPanel}>
+                  <button onClick={() => router.push(`/add-${t.type === 'income' ? 'income' : 'expense'}?editId=${t.id}&store=${storeIdFromUrl}`)} style={editRowBtn}>Επεξεργασία</button>
+                  <button onClick={() => handleDelete(t.id)} style={deleteRowBtn}>Διαγραφή</button>
+                </div>
+              )}
+            </div>
+          ))
         )}
       </div>
     </div>
@@ -278,44 +293,50 @@ function DashboardContent() {
 }
 
 // --- STYLES ---
-const iphoneWrapper: any = { minHeight: '100dvh', padding: '20px', paddingBottom: '100px', boxSizing: 'border-box' };
+const iphoneWrapper: any = { backgroundColor: colors.bgLight, minHeight: '100dvh', padding: '20px', paddingBottom: '100px' };
 const headerStyle: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px' };
 const brandArea = { display: 'flex', alignItems: 'center', gap: '12px' };
-const logoBox = { width: '40px', height: '40px', backgroundColor: colors.primaryDark, borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', color:'white', fontSize: '18px', fontWeight:'800' };
+const logoBox = { width: '42px', height: '42px', backgroundColor: colors.primaryDark, borderRadius: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', color:'white', fontSize: '18px', fontWeight:'800' };
 const storeTitleText = { fontSize: '16px', fontWeight: '800', margin: 0, color: colors.primaryDark };
-const switchBtnStyle: any = { fontSize: '8px', fontWeight: '800', color: colors.accentBlue, backgroundColor: '#eef2ff', border: 'none', padding: '4px 6px', borderRadius: '6px', cursor: 'pointer' };
-const dashboardSub = { fontSize: '9px', fontWeight: '800', color: colors.secondaryText, letterSpacing: '1px' };
+const switchBtnStyle: any = { fontSize: '9px', fontWeight: '800', color: colors.accentBlue, backgroundColor: '#eef2ff', border: 'none', padding: '4px 8px', borderRadius: '8px', cursor: 'pointer', textDecoration: 'none' };
+const dashboardSub = { fontSize: '9px', fontWeight: '800', color: colors.secondaryText, letterSpacing: '0.5px' };
 const statusDot = { width: '6px', height: '6px', backgroundColor: colors.accentGreen, borderRadius: '50%' };
-const menuToggle: any = { background: 'white', border: `1px solid ${colors.border}`, borderRadius: '10px', padding: '8px', cursor: 'pointer' };
-const hamburgerLine = { width: '18px', height: '2px', backgroundColor: colors.primaryDark, marginBottom: '4px', borderRadius: '2px' };
-const dropdownStyle: any = { position: 'absolute', top: '50px', right: 0, background: 'white', minWidth: '220px', borderRadius: '16px', boxShadow: '0 10px 30px rgba(0,0,0,0.12)', padding: '8px', zIndex: 2000, border: `1px solid ${colors.border}` };
-const menuItem: any = { display: 'block', padding: '12px 14px', textDecoration: 'none', color: colors.primaryDark, fontWeight: '700', fontSize: '14px', borderRadius: '10px' };
-const menuSectionLabel = { fontSize: '10px', fontWeight: '800', color: colors.secondaryText, padding: '8px 14px 4px', letterSpacing: '0.5px' };
-const menuDivider = { height: '1px', backgroundColor: colors.border, margin: '6px 0' };
-const logoutBtnStyle: any = { ...menuItem, width: '100%', textAlign: 'left', background: '#fff1f2', color: colors.accentRed, border: 'none', marginTop: '8px', cursor: 'pointer' };
-const dateCard: any = { backgroundColor: 'white', padding: '12px', borderRadius: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px', border: `1px solid ${colors.border}` };
+const menuToggle: any = { background: 'white', border: `1px solid ${colors.border}`, borderRadius: '12px', width: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: colors.primaryDark };
+const dropdownStyle: any = { position: 'absolute', top: '50px', right: 0, background: 'white', minWidth: '220px', borderRadius: '18px', boxShadow: '0 15px 35px rgba(0,0,0,0.1)', padding: '10px', zIndex: 100, border: `1px solid ${colors.border}` };
+const menuItem: any = { display: 'block', padding: '12px 15px', textDecoration: 'none', color: colors.primaryDark, fontWeight: '700', fontSize: '14px', borderRadius: '12px' };
+const menuSectionLabel = { fontSize: '10px', fontWeight: '800', color: colors.secondaryText, padding: '8px 15px 5px' };
+const menuDivider = { height: '1px', backgroundColor: colors.border, margin: '8px 0' };
+const logoutBtnStyle: any = { width: '100%', textAlign: 'left', padding: '12px 15px', background: '#fff1f2', color: colors.accentRed, border: 'none', borderRadius: '12px', fontWeight: '700', cursor: 'pointer' };
+const dateCard: any = { backgroundColor: 'white', padding: '10px', borderRadius: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px', border: `1px solid ${colors.border}` };
 const dateText = { fontSize: '13px', fontWeight: '800', color: colors.primaryDark, margin: 0 };
-const dateNavBtn = { background: 'none', border: 'none', fontSize: '22px', color: colors.secondaryText, cursor: 'pointer', fontWeight:'bold' };
-const heroCardStyle: any = { background: colors.primaryDark, padding: '28px', borderRadius: '24px', color: 'white', boxShadow: '0 15px 35px rgba(15, 23, 42, 0.25)', marginBottom: '25px', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center' };
-const heroLabel: any = { fontSize: '10px', fontWeight: '700', opacity: 0.6, letterSpacing: '1px', marginBottom: '8px' };
-const heroAmountText: any = { fontSize: '34px', fontWeight: '800', margin: 0, letterSpacing: '-1px' };
-const heroStatsRow: any = { display: 'flex', gap: '16px', marginTop: '20px', paddingTop: '16px', borderTop: '1px solid rgba(255,255,255,0.1)', justifyContent: 'center', width: '100%' };
+const dateNavBtn = { background: 'none', border: 'none', color: colors.secondaryText, cursor: 'pointer', display: 'flex', alignItems: 'center' };
+const heroCardStyle: any = { background: colors.primaryDark, padding: '30px 20px', borderRadius: '28px', color: 'white', boxShadow: '0 20px 40px rgba(15, 23, 42, 0.2)', marginBottom: '30px', textAlign: 'center' };
+const heroLabel: any = { fontSize: '10px', fontWeight: '700', opacity: 0.5, letterSpacing: '1px', marginBottom: '10px' };
+const heroAmountText: any = { fontSize: '38px', fontWeight: '900', margin: 0 };
+const heroStatsRow: any = { display: 'flex', gap: '20px', marginTop: '25px', justifyContent: 'center' };
 const heroStatItem: any = { display: 'flex', alignItems: 'center', gap: '8px' };
-const heroStatValue = { fontSize: '14px', fontWeight: '700' };
-const statCircle = (bg: string): any => ({ width: '22px', height: '22px', borderRadius: '50%', background: bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight:'bold' });
-const actionGrid = { display: 'flex', gap: '10px', marginBottom: '30px' };
-const actionBtn: any = { flex: 1, padding: '16px', borderRadius: '16px', color: 'white', textDecoration: 'none', textAlign: 'center', fontWeight: '800', fontSize: '14px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' };
-const listContainer = { backgroundColor: 'transparent', padding: '0' };
-const listHeader = { fontSize: '11px', fontWeight: '800', color: colors.secondaryText, marginBottom: '16px', letterSpacing: '0.5px' };
-const txRow: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px', backgroundColor: 'white', cursor: 'pointer', border: `1px solid ${colors.border}`, borderBottom: 'none' };
-const txIconContainer = (isInc: boolean): any => ({ width: '40px', height: '40px', borderRadius: '12px', background: isInc ? '#ecfdf5' : '#fff1f2', color: isInc ? colors.accentGreen : colors.accentRed, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: '16px' });
-const txTitle = { fontWeight: '700', fontSize: '14px', margin: 0, color: colors.primaryDark };
+const heroStatValue = { fontSize: '15px', fontWeight: '800' };
+const statCircle = (bg: string): any => ({ width: '24px', height: '24px', borderRadius: '50%', background: bg, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white' });
+const actionGrid = { display: 'flex', gap: '12px', marginBottom: '30px' };
+const actionBtn: any = { flex: 1, padding: '18px', borderRadius: '18px', color: 'white', textDecoration: 'none', textAlign: 'center', fontWeight: '800', fontSize: '14px', boxShadow: '0 8px 15px rgba(0,0,0,0.08)' };
+const listContainer = { backgroundColor: 'transparent' };
+const listHeader = { fontSize: '11px', fontWeight: '900', color: colors.secondaryText, marginBottom: '15px', letterSpacing: '0.5px' };
+const txRow: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px', backgroundColor: 'white', border: `1px solid ${colors.border}`, cursor: 'pointer' };
+const txIconContainer = (isInc: boolean): any => ({ width: '42px', height: '42px', borderRadius: '12px', background: isInc ? '#f0fdf4' : '#fef2f2', color: isInc ? colors.accentGreen : colors.accentRed, display: 'flex', alignItems: 'center', justifyContent: 'center' });
+const txTitle = { fontWeight: '800', fontSize: '14px', margin: 0, color: colors.primaryDark };
 const txMeta = { fontSize: '11px', color: colors.secondaryText, margin: 0, fontWeight: '600' };
-const txAmount = { fontWeight: '800', fontSize: '15px' };
-const actionPanel: any = { display: 'flex', gap: '8px', padding: '12px', backgroundColor: 'white', border: `1px solid ${colors.border}`, borderTop: 'none', borderRadius: '0 0 20px 20px' };
-const editRowBtn: any = { flex: 1, padding: '10px', backgroundColor: colors.warning, color: colors.warningText, border: 'none', borderRadius: '12px', fontWeight: '700', fontSize: '12px', cursor: 'pointer' };
-const deleteRowBtn: any = { flex: 1, padding: '10px', backgroundColor: '#fee2e2', color: colors.accentRed, border: 'none', borderRadius: '12px', fontWeight: '700', fontSize: '12px', cursor: 'pointer' };
+const txAmount = { fontWeight: '900', fontSize: '16px' };
+const creditBadgeStyle = { fontSize: '8px', marginLeft: '6px', color: colors.accentBlue, background: '#eef2ff', padding: '2px 5px', borderRadius: '4px' };
+const actionPanel: any = { display: 'flex', gap: '10px', padding: '15px', backgroundColor: 'white', border: `1px solid ${colors.border}`, borderTop: 'none', borderRadius: '0 0 20px 20px' };
+const editRowBtn: any = { flex: 1, padding: '10px', backgroundColor: colors.bgLight, color: colors.primaryDark, border: `1px solid ${colors.border}`, borderRadius: '10px', fontWeight: '700', fontSize: '12px' };
+const deleteRowBtn: any = { flex: 1, padding: '10px', backgroundColor: '#fee2e2', color: colors.accentRed, border: 'none', borderRadius: '10px', fontWeight: '700', fontSize: '12px' };
+const emptyStateStyle: any = { textAlign: 'center', padding: '40px 20px', color: colors.secondaryText, fontWeight: '600', fontSize: '13px' };
+const spinnerStyle: any = { width: '24px', height: '24px', border: '3px solid #f3f3f3', borderTop: '3px solid #6366f1', borderRadius: '50%', animation: 'spin 1s linear infinite', margin: '0 auto' };
 
 export default function DashboardPage() {
-  return <Suspense fallback={null}><DashboardContent /></Suspense>
+  return (
+    <Suspense fallback={<div style={{padding: '50px', textAlign: 'center'}}>Προετοιμασία Dashboard...</div>}>
+      <DashboardContent />
+    </Suspense>
+  )
 }
