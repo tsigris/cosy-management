@@ -2,9 +2,10 @@
 export const dynamic = 'force-dynamic'
 
 import { useEffect, useState, Suspense, useCallback } from 'react'
+import { useSearchParams, useRouter } from 'next/navigation' // Προσθήκη useRouter
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
-import { Plus, TrendingUp, Phone, CreditCard, Hash, Tag, Trash2, Edit2, X } from 'lucide-react'
+import { Plus, TrendingUp, Phone, CreditCard, Hash, Tag, Trash2, Edit2, X, ChevronLeft } from 'lucide-react'
 import { toast, Toaster } from 'sonner'
 
 const colors = {
@@ -21,11 +22,18 @@ const colors = {
 };
 
 function SuppliersContent() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  
+  // 1. ΤΟ ΚΛΕΙΔΙ: Παίρνουμε το ID από το URL
+  const storeIdFromUrl = searchParams.get('store');
+
   const [suppliers, setSuppliers] = useState<any[]>([])
   const [transactions, setTransactions] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  
+  const [currentStoreName, setCurrentStoreName] = useState('Φορτώνει...')
+
   // Φόρμα Προμηθευτή
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
@@ -35,37 +43,36 @@ function SuppliersContent() {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [isFormOpen, setIsFormOpen] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
-  const [currentStoreName, setCurrentStoreName] = useState('Φορτώνει...')
 
   const fetchSuppliersData = useCallback(async () => {
+    // Αν δεν υπάρχει ID στο URL, γυρνάμε στην επιλογή
+    if (!storeIdFromUrl) {
+      toast.error('Δεν βρέθηκε κατάστημα στο URL');
+      router.push('/select-store');
+      return;
+    }
+
     try {
       setLoading(true)
-      const rawId = localStorage.getItem('active_store_id');
-      const activeStoreId = rawId ? rawId.replace(/['"]+/g, '') : null;
       
-      if (!activeStoreId || activeStoreId === 'undefined') {
-        window.location.href = '/select-store';
-        return;
-      }
-
-      // Λήψη ονόματος καταστήματος για επιβεβαίωση
-      const { data: storeInfo } = await supabase.from('stores').select('name').eq('id', activeStoreId).single();
+      // Λήψη ονόματος καταστήματος βάσει URL ID
+      const { data: storeInfo } = await supabase.from('stores').select('name').eq('id', storeIdFromUrl).single();
       if (storeInfo) setCurrentStoreName(storeInfo.name);
 
       const [sRes, tRes] = await Promise.all([
-        supabase.from('suppliers').select('*').eq('store_id', activeStoreId),
-        supabase.from('transactions').select('amount, supplier_id').eq('store_id', activeStoreId)
+        supabase.from('suppliers').select('*').eq('store_id', storeIdFromUrl),
+        supabase.from('transactions').select('amount, supplier_id').eq('store_id', storeIdFromUrl)
       ]);
 
       if (sRes.error) throw sRes.error;
       setSuppliers(sRes.data || []);
       setTransactions(tRes.data || []);
     } catch (err: any) {
-      toast.error('Σφάλμα φόρτωσης δεδομένων');
+      toast.error('Σφάλμα φόρτωσης');
     } finally {
       setLoading(false);
     }
-  }, [])
+  }, [storeIdFromUrl, router])
 
   useEffect(() => { 
     fetchSuppliersData();
@@ -100,11 +107,9 @@ function SuppliersContent() {
   }
 
   async function handleSave() {
-    const rawId = localStorage.getItem('active_store_id');
-    const freshStoreId = rawId ? rawId.replace(/['"]+/g, '') : null;
-    
     if (!name.trim()) return toast.error('Συμπληρώστε το όνομα');
-    if (!freshStoreId) return toast.error('Σφάλμα: Δεν βρέθηκε ενεργό κατάστημα');
+    // Χρησιμοποιούμε ΠΑΝΤΑ το ID από το URL για την αποθήκευση
+    if (!storeIdFromUrl) return toast.error('Σφάλμα ID καταστήματος');
 
     setIsSaving(true);
     try {
@@ -114,7 +119,7 @@ function SuppliersContent() {
         vat_number: afm.trim(),
         iban: iban.trim(),
         category: category,
-        store_id: freshStoreId
+        store_id: storeIdFromUrl // ΕΔΩ ΕΙΝΑΙ Η ΑΣΦΑΛΕΙΑ
       };
 
       const { error } = editingId
@@ -136,7 +141,7 @@ function SuppliersContent() {
   const getSupplierTurnover = (id: string) => transactions.filter(t => t.supplier_id === id).reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
   const sortedSuppliers = [...suppliers].sort((a, b) => getSupplierTurnover(b.id) - getSupplierTurnover(a.id));
 
-  if (loading) return <div style={loadingStyle}>ΕΝΗΜΕΡΩΣΗ...</div>
+  if (loading) return <div style={loadingStyle}>ΣΥΓΧΡΟΝΙΣΜΟΣ {currentStoreName.toUpperCase()}...</div>
 
   return (
     <div style={containerStyle}>
@@ -148,7 +153,8 @@ function SuppliersContent() {
             <h1 style={titleStyle}>Προμηθευτές</h1>
             <p style={subtitleStyle}>ΕΝΕΡΓΟ: <span style={{color: colors.accentBlue}}>{currentStoreName.toUpperCase()}</span></p>
           </div>
-          <Link href="/" style={closeBtn}><X size={20} /></Link>
+          {/* Επιστροφή στο Dashboard διατηρώντας το ID στο URL */}
+          <Link href={`/?store=${storeIdFromUrl}`} style={closeBtn}><ChevronLeft size={20} /></Link>
         </header>
 
         <button onClick={() => { editingId ? resetForm() : setIsFormOpen(!isFormOpen) }} style={isFormOpen ? cancelBtn : addBtn}>
@@ -232,13 +238,13 @@ function SuppliersContent() {
   )
 }
 
-// --- STYLES ---
+// --- STYLES (Πλήρη) ---
 const containerStyle: any = { backgroundColor: colors.bgLight, minHeight: '100dvh', padding: '20px', fontFamily: 'inherit' };
 const contentWrapper: any = { maxWidth: '480px', margin: '0 auto' };
 const headerStyle: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px' };
 const titleStyle: any = { fontSize: '22px', fontWeight: '800', color: colors.primaryDark, margin: 0 };
 const subtitleStyle: any = { fontSize: '10px', fontWeight: '800', color: colors.secondaryText, marginTop: '4px' };
-const closeBtn: any = { padding: '8px', background: 'white', borderRadius: '12px', border: `1px solid ${colors.border}`, color: colors.primaryDark };
+const closeBtn: any = { padding: '8px', background: 'white', borderRadius: '12px', border: `1px solid ${colors.border}`, color: colors.primaryDark, textDecoration: 'none', display:'flex', alignItems:'center' };
 const addBtn: any = { width: '100%', backgroundColor: colors.primaryDark, color: 'white', padding: '16px', borderRadius: '16px', fontWeight: '800', border: 'none', marginBottom: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', cursor: 'pointer' };
 const cancelBtn: any = { ...addBtn, backgroundColor: '#fee2e2', color: colors.accentRed };
 const formCard: any = { background: 'white', padding: '24px', borderRadius: '24px', marginBottom: '25px', border: `1px solid ${colors.border}`, boxShadow: '0 4px 20px rgba(0,0,0,0.05)' };
@@ -248,7 +254,7 @@ const inputStyle: any = { width: '100%', padding: '14px', borderRadius: '12px', 
 const saveBtn: any = { width: '100%', padding: '16px', backgroundColor: colors.accentGreen, color: 'white', borderRadius: '16px', border: 'none', fontWeight: '800', fontSize: '14px', cursor: 'pointer', marginTop: '10px' };
 const listArea: any = { background: 'white', borderRadius: '24px', border: `1px solid ${colors.border}`, overflow: 'hidden', boxShadow: '0 4px 20px rgba(0,0,0,0.05)' };
 const rankingHeader: any = { padding: '14px 20px', backgroundColor: colors.bgLight, fontSize: '10px', fontWeight: '800', color: colors.secondaryText, display: 'flex', alignItems: 'center', gap: '8px' };
-const rowWrapper: any = { display: 'flex', padding: '18px 20px', alignItems: 'center', cursor: 'pointer', transition: 'background 0.2s' };
+const rowWrapper: any = { display: 'flex', padding: '18px 20px', alignItems: 'center', cursor: 'pointer' };
 const rankNumber: any = { width: '30px', fontWeight: '800', color: colors.secondaryText, fontSize: '14px' };
 const rowName: any = { fontSize: '15px', fontWeight: '800', margin: 0, color: colors.primaryDark };
 const categoryBadge: any = { fontSize: '10px', fontWeight: '700', color: colors.secondaryText, margin: 0 };
@@ -258,7 +264,7 @@ const infoGrid: any = { display: 'grid', gap: '8px' };
 const infoText: any = { fontSize: '12px', margin: 0, color: colors.primaryDark };
 const editBtn: any = { flex: 1, padding: '10px', background: colors.warning, color: colors.warningText, border: 'none', borderRadius: '10px', fontWeight: '700', fontSize: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px', cursor: 'pointer' };
 const delBtn: any = { flex: 1, padding: '10px', background: '#fee2e2', color: colors.accentRed, border: 'none', borderRadius: '10px', fontWeight: '700', fontSize: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px', cursor: 'pointer' };
-const loadingStyle: any = { display: 'flex', height: '100dvh', alignItems: 'center', justifyContent: 'center', fontWeight: '800', color: colors.secondaryText, letterSpacing: '1px' };
+const loadingStyle: any = { display: 'flex', height: '100dvh', alignItems: 'center', justifyContent: 'center', fontWeight: '800', color: colors.secondaryText, letterSpacing: '1px', background: colors.bgLight };
 const emptyText: any = { padding: '40px', textAlign: 'center', color: colors.secondaryText, fontSize: '13px', fontWeight: '600' };
 
 export default function SuppliersPage() {

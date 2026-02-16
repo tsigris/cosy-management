@@ -10,7 +10,7 @@ export default function SelectStorePage() {
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
-    localStorage.clear() // Καθαρίζει το active_store_id και κάθε άλλη παλιά ρύθμιση
+    localStorage.clear() 
     window.location.href = '/login'
   }
 
@@ -19,7 +19,6 @@ export default function SelectStorePage() {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) return router.push('/login')
 
-      // Φέρνουμε τα καταστήματα από τον πίνακα store_access
       const { data: access, error } = await supabase
         .from('store_access')
         .select('store_id, stores(id, name)')
@@ -61,9 +60,11 @@ export default function SelectStorePage() {
     fetchStoresData()
   }, [router])
 
+  // ΔΙΟΡΘΩΣΗ: Προσθήκη του ID στο URL κατά την αναδρομή
   const handleSelect = (storeId: string) => {
     localStorage.setItem('active_store_id', storeId)
-    router.push('/')
+    // Στέλνουμε το ID ως query parameter
+    router.push(`/?store=${storeId}`)
   }
 
   if (loading) return <div style={centerStyle}>Φόρτωση δεδομένων...</div>
@@ -76,7 +77,6 @@ export default function SelectStorePage() {
       {userStores.length === 0 && !loading && (
         <div style={{ textAlign: 'center', padding: '40px', backgroundColor: 'white', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
           <p style={{ fontWeight: '600', color: '#475569' }}>Δεν βρέθηκαν καταστήματα.</p>
-          <p style={{ fontSize: '12px', color: '#64748b' }}>Βεβαιωθείτε ότι είστε συνδεδεμένοι με το σωστό λογαριασμό.</p>
         </div>
       )}
 

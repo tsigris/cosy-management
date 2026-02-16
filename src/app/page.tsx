@@ -27,6 +27,9 @@ function DashboardContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   
+  // 1. ΛΗΨΗ ID ΑΠΟ URL (Query Param)
+  const storeIdFromUrl = searchParams.get('store')
+  
   const getBusinessDate = () => {
     const now = new Date()
     if (now.getHours() < 7) now.setDate(now.getDate() - 1)
@@ -48,10 +51,17 @@ function DashboardContent() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) return router.push('/login');
 
-      const activeStoreId = localStorage.getItem('active_store_id');
+      // 2. ΠΡΟΤΕΡΑΙΟΤΗΤΑ ΣΤΟ URL ID, ΜΕΤΑ ΣΤΟ LOCALSTORAGE
+      const activeStoreId = storeIdFromUrl || localStorage.getItem('active_store_id');
+      
       if (!activeStoreId || activeStoreId === 'undefined') {
         router.push('/select-store');
         return;
+      }
+
+      // Συγχρονισμός αν το βρήκαμε μόνο στο URL
+      if (storeIdFromUrl && localStorage.getItem('active_store_id') !== storeIdFromUrl) {
+        localStorage.setItem('active_store_id', storeIdFromUrl);
       }
 
       // Λήψη προφίλ για έλεγχο admin
@@ -73,7 +83,7 @@ function DashboardContent() {
         
         setStoreName(storeData?.name || 'Κατάστημα');
 
-        // Φόρτωση κινήσεων με αυστηρό eq('store_id')
+        // Φόρτωση κινήσεων
         const { data: tx, error: txError } = await supabase
           .from('transactions')
           .select('*, suppliers(name), fixed_assets(name)')
@@ -89,7 +99,7 @@ function DashboardContent() {
     } finally {
       setLoading(false);
     }
-  }, [selectedDate, router]);
+  }, [selectedDate, router, storeIdFromUrl]);
 
   useEffect(() => { loadDashboard() }, [loadDashboard])
 
@@ -115,17 +125,14 @@ function DashboardContent() {
   const changeDate = (days: number) => {
     const current = parseISO(selectedDate)
     const next = days > 0 ? addDays(current, 1) : subDays(current, 1)
-    router.push(`/?date=${format(next, 'yyyy-MM-dd')}`)
+    // ΔΙΑΤΗΡΗΣΗ ΤΟΥ STORE ID ΣΤΟ URL ΚΑΤΑ ΤΗΝ ΑΛΛΑΓΗ ΗΜΕΡΟΜΗΝΙΑΣ
+    router.push(`/?date=${format(next, 'yyyy-MM-dd')}&store=${storeIdFromUrl || ''}`)
     setExpandedTx(null)
   }
 
-  // ΔΙΟΡΘΩΣΗ: ΣΚΛΗΡΟ RESET ΓΙΑ ΝΑ ΞΕΚΟΛΛΗΣΕΙ Η ΜΝΗΜΗ
   const handleSwitchStore = () => {
-    // 1. Καθαρίζουμε ΟΛΑ τα δεδομένα του browser
     localStorage.clear();
     sessionStorage.clear();
-    
-    // 2. Χρησιμοποιούμε replace για να μην μπορεί να πάει "πίσω" στην παλιά μνήμη
     window.location.replace('/select-store');
   }
 
@@ -163,14 +170,15 @@ function DashboardContent() {
               <p style={menuSectionLabel}>ΔΙΑΧΕΙΡΙΣΗ</p>
               {isAdmin && (
                   <>
-                    <NextLink href="/suppliers" style={menuItem} onClick={() => setIsMenuOpen(false)}>🛒 Προμηθευτές</NextLink>
-                    <NextLink href="/fixed-assets" style={menuItem} onClick={() => setIsMenuOpen(false)}>🔌 Πάγια</NextLink>
-                    <NextLink href="/employees" style={menuItem} onClick={() => setIsMenuOpen(false)}>👥 Υπάλληλοι</NextLink>
-                    <NextLink href="/suppliers-balance" style={menuItem} onClick={() => setIsMenuOpen(false)}>🚩 Καρτέλες (Χρέη)</NextLink>
-                    <NextLink href="/permissions" style={{...menuItem, color: colors.accentBlue}} onClick={() => setIsMenuOpen(false)}>🔑 Δικαιώματα (Admin)</NextLink>
+                    {/* ΠΡΟΣΘΗΚΗ ΤΟΥ ID ΣΕ ΟΛΑ ΤΑ LINKS ΤΟΥ ΜΕΝΟΥ */}
+                    <NextLink href={`/suppliers?store=${storeIdFromUrl}`} style={menuItem} onClick={() => setIsMenuOpen(false)}>🛒 Προμηθευτές</NextLink>
+                    <NextLink href={`/fixed-assets?store=${storeIdFromUrl}`} style={menuItem} onClick={() => setIsMenuOpen(false)}>🔌 Πάγια</NextLink>
+                    <NextLink href={`/employees?store=${storeIdFromUrl}`} style={menuItem} onClick={() => setIsMenuOpen(false)}>👥 Υπάλληλοι</NextLink>
+                    <NextLink href={`/suppliers-balance?store=${storeIdFromUrl}`} style={menuItem} onClick={() => setIsMenuOpen(false)}>🚩 Καρτέλες (Χρέη)</NextLink>
+                    <NextLink href={`/permissions?store=${storeIdFromUrl}`} style={{...menuItem, color: colors.accentBlue}} onClick={() => setIsMenuOpen(false)}>🔑 Δικαιώματα (Admin)</NextLink>
                   </>
               )}
-              <NextLink href="/analysis" style={menuItem} onClick={() => setIsMenuOpen(false)}>📊 Ανάλυση</NextLink>
+              <NextLink href={`/analysis?store=${storeIdFromUrl}`} style={menuItem} onClick={() => setIsMenuOpen(false)}>📊 Ανάλυση</NextLink>
               
               <div style={menuDivider} />
               <p style={menuSectionLabel}>ΕΦΑΡΜΟΓΗ</p>
@@ -205,9 +213,10 @@ function DashboardContent() {
       </div>
 
       <div style={actionGrid}>
-        <NextLink href={`/add-income?date=${selectedDate}`} style={{ ...actionBtn, backgroundColor: colors.accentGreen }}>+ Έσοδο</NextLink>
-        <NextLink href={`/add-expense?date=${selectedDate}`} style={{ ...actionBtn, backgroundColor: colors.accentRed }}>- Έξοδο</NextLink>
-        <NextLink href="/daily-z" style={{ ...actionBtn, backgroundColor: colors.primaryDark }}>📟 Z</NextLink>
+        {/* ΠΡΟΣΘΗΚΗ ΤΟΥ ID ΣΤΑ ΚΟΥΜΠΙΑ ΔΡΑΣΗΣ */}
+        <NextLink href={`/add-income?date=${selectedDate}&store=${storeIdFromUrl}`} style={{ ...actionBtn, backgroundColor: colors.accentGreen }}>+ Έσοδο</NextLink>
+        <NextLink href={`/add-expense?date=${selectedDate}&store=${storeIdFromUrl}`} style={{ ...actionBtn, backgroundColor: colors.accentRed }}>- Έξοδο</NextLink>
+        <NextLink href={`/daily-z?store=${storeIdFromUrl}`} style={{ ...actionBtn, backgroundColor: colors.primaryDark }}>📟 Z</NextLink>
       </div>
 
       <div style={listContainer}>
@@ -246,7 +255,7 @@ function DashboardContent() {
                 {expandedTx === t.id && (
                   <div style={actionPanel}>
                     <button 
-                      onClick={() => router.push(`/${t.type === 'income' ? 'add-income' : 'add-expense'}?editId=${t.id}`)}
+                      onClick={() => router.push(`/${t.type === 'income' ? 'add-income' : 'add-expense'}?editId=${t.id}&store=${storeIdFromUrl}`)}
                       style={editRowBtn}
                     >
                       ✎ Επεξεργασία
