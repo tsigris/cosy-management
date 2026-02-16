@@ -1,9 +1,8 @@
 'use client'
-import React from 'react';
+import React, { Suspense } from 'react'; // Προσθήκη Suspense
 import Link from 'next/link';
-import { usePathname, useSearchParams } from 'next/navigation'; // Προσθήκη useSearchParams
+import { usePathname, useSearchParams } from 'next/navigation';
 
-// --- PREMIUM PALETTE ---
 const colors = {
   primary: '#0f172a',    
   secondary: '#94a3b8',
@@ -20,11 +19,11 @@ const navItems = [
   { label: 'Προμηθευτές', icon: '🛒', path: '/suppliers' },
 ];
 
-export default function BottomNav() {
+// 1. Δημιουργούμε ένα εσωτερικό component για τη λογική
+function NavContent() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
-  // 1. ΠΑΙΡΝΟΥΜΕ ΤΟ ID ΑΠΟ ΤΟ URL Η ΤΟ LOCALSTORAGE
   const storeId = searchParams.get('store') || (typeof window !== 'undefined' ? localStorage.getItem('active_store_id') : null);
 
   const hideOnPaths = ['/login', '/register', '/signup', '/select-store'];
@@ -42,8 +41,6 @@ export default function BottomNav() {
 
       {navItems.map((item) => {
         const isActive = pathname === item.path;
-        
-        // 2. ΔΗΜΙΟΥΡΓΟΥΜΕ ΤΟ URL ΜΕ ΤΟ STORE ID (αν υπάρχει)
         const fullPath = storeId ? `${item.path}?store=${storeId}` : item.path;
 
         return (
@@ -79,23 +76,17 @@ export default function BottomNav() {
   );
 }
 
-// --- MODERN STYLES --- (Παραμένουν τα ίδια)
-const navWrapper: React.CSSProperties = {
-  position: 'fixed',
-  bottom: 0, left: 0, right: 0, 
-  height: '85px',
-  backgroundColor: colors.background,
-  backdropFilter: 'blur(15px)', 
-  WebkitBackdropFilter: 'blur(15px)',
-  borderTop: `1px solid ${colors.border}`, 
-  display: 'flex',
-  justifyContent: 'space-around', 
-  alignItems: 'center',
-  paddingBottom: '20px', 
-  zIndex: 1000,
-  boxShadow: '0 -10px 30px rgba(0,0,0,0.03)',
-};
+// 2. Το κύριο component απλώς τυλίγει το NavContent σε Suspense
+export default function BottomNav() {
+  return (
+    <Suspense fallback={null}>
+      <NavContent />
+    </Suspense>
+  );
+}
 
+// --- STYLES (Τα ίδια ακριβώς) ---
+const navWrapper: React.CSSProperties = { position: 'fixed', bottom: 0, left: 0, right: 0, height: '85px', backgroundColor: colors.background, backdropFilter: 'blur(15px)', WebkitBackdropFilter: 'blur(15px)', borderTop: `1px solid ${colors.border}`, display: 'flex', justifyContent: 'space-around', alignItems: 'center', paddingBottom: '20px', zIndex: 1000, boxShadow: '0 -10px 30px rgba(0,0,0,0.03)' };
 const navLink: React.CSSProperties = { display: 'flex', flexDirection: 'column', alignItems: 'center', textDecoration: 'none', position: 'relative', flex: 1, height: '100%', justifyContent: 'center' };
 const iconBox: React.CSSProperties = { width: '40px', height: '32px', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background-color 0.3s ease' };
 const activeIndicator: React.CSSProperties = { position: 'absolute', bottom: '10px', width: '4px', height: '4px', backgroundColor: colors.indigo, borderRadius: '50%', boxShadow: `0 0 10px ${colors.indigo}` };
