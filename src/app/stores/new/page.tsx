@@ -20,6 +20,10 @@ export default function NewStorePage() {
       if (!session?.user?.id) throw new Error('Δεν βρέθηκε ενεργή συνεδρία χρήστη.');
 
       // 1. Δημιουργία Καταστήματος
+      // ΣΗΜΕΙΩΣΗ: Μόλις δημιουργηθεί το κατάστημα, το SQL Trigger στη βάση 
+      // θα τρέξει αυτόματα και:
+      // α) Θα σε ορίσει ως ADMIN.
+      // β) Θα δημιουργήσει τα Πάγια (Ενοίκιο, ΔΕΗ κλπ).
       const { data: store, error: sErr } = await supabase
         .from('stores')
         .insert([{ 
@@ -31,24 +35,20 @@ export default function NewStorePage() {
 
       if (sErr) throw sErr;
 
-      // 2. Σύνδεση Χρήστη με το Κατάστημα (store_access)
-      const { error: aErr } = await supabase
-        .from('store_access')
-        .insert([{ 
-          user_id: session.user.id, 
-          store_id: store.id, 
-          role: 'admin' 
-        }]);
-
-      if (aErr) throw aErr;
+      // --- [ΑΦΑΙΡΕΣΑΜΕ ΤΟ ΒΗΜΑ 2] ---
+      // Δεν προσπαθούμε πλέον να γράψουμε στο store_access από εδώ,
+      // γιατί το κάνει η βάση μόνη της. Έτσι αποφεύγουμε το "infinite recursion".
 
       toast.success('Το κατάστημα δημιουργήθηκε με επιτυχία!');
       
       // Καθαρίζουμε το localStorage για να αναγκάσουμε τον χρήστη να επιλέξει το νέο μαγαζί
       localStorage.removeItem('active_store_id');
       
+      // Μικρή καθυστέρηση για να προλάβει το Trigger να ολοκληρώσει τις εγγραφές
       setTimeout(() => router.push('/select-store'), 1000);
+
     } catch (err: any) {
+      console.error(err);
       toast.error(err.message || 'Κάτι πήγε στραβά');
     } finally {
       setLoading(false);
@@ -99,7 +99,7 @@ export default function NewStorePage() {
   )
 }
 
-// --- STYLES (Ευθυγραμμισμένα με το globals.css) ---
+// --- STYLES (ΙΔΙΑ ΜΕ ΠΡΙΝ) ---
 const containerStyle: any = { 
   padding: '40px 20px', 
   backgroundColor: '#f8fafc', 
