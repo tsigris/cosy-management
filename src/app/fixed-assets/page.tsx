@@ -5,14 +5,8 @@ import { useEffect, useState, Suspense, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
-import { Trash2, Plus, X, CreditCard, CheckCircle2 } from 'lucide-react'
+import { Trash2, Plus, X, CreditCard, History } from 'lucide-react'
 import { toast, Toaster } from 'sonner'
-
-// SaaS Helper: Έλεγχος αν το ID είναι σωστό UUID
-const isValidUUID = (id: any) => {
-  const regex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-  return id && id !== 'null' && regex.test(id);
-}
 
 function FixedAssetsContent() {
   const searchParams = useSearchParams()
@@ -25,7 +19,7 @@ function FixedAssetsContent() {
   const [isSaving, setIsSaving] = useState(false)
 
   const fetchData = useCallback(async () => {
-    if (!isValidUUID(storeId)) return;
+    if (!storeId || storeId === 'null') return;
     try {
       setLoading(true)
       const { data, error } = await supabase
@@ -39,14 +33,14 @@ function FixedAssetsContent() {
   }, [storeId])
 
   useEffect(() => {
-    if (isValidUUID(storeId)) fetchData()
+    if (storeId && storeId !== 'null') fetchData()
     else setLoading(false)
   }, [fetchData, storeId])
 
   const handleSave = async () => {
-    // SaaS Guard: Αν το ID είναι NULL, ακυρώνουμε την εγγραφή αμέσως
-    if (!isValidUUID(storeId)) {
-      return toast.error("Κρίσιμο σφάλμα SaaS: Το ID του καταστήματος λείπει.");
+    const currentStoreId = searchParams.get('store');
+    if (!currentStoreId || currentStoreId === 'null') {
+      return toast.error("Σφάλμα: Λείπει το ID καταστήματος.");
     }
 
     if (!name.trim()) return toast.error('Δώστε ένα όνομα');
@@ -55,17 +49,17 @@ function FixedAssetsContent() {
     try {
       const { error } = await supabase.from('fixed_assets').insert([{ 
         name: name.trim().toUpperCase(), 
-        store_id: storeId // Ρητή ανάθεση του ID
+        store_id: currentStoreId 
       }])
       
       if (error) throw error
       
-      toast.success('Αποθηκεύτηκε επιτυχώς!');
+      toast.success('Αποθηκεύτηκε!');
       setName('');
       setIsFormOpen(false);
       fetchData(); 
     } catch (err: any) {
-      toast.error("Σφάλμα SaaS: " + err.message)
+      toast.error("Αποτυχία: " + err.message)
     } finally {
       setIsSaving(false)
     }
@@ -75,19 +69,7 @@ function FixedAssetsContent() {
     <div style={{ maxWidth: '500px', margin: '0 auto', padding: '20px', minHeight: '100vh', backgroundColor: '#f8fafc' }}>
       <Toaster position="top-center" richColors />
       
-      {/* SaaS Context Status */}
-      <div style={{ 
-        padding: '12px', borderRadius: '12px', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '10px',
-        backgroundColor: isValidUUID(storeId) ? '#dcfce7' : '#fee2e2',
-        border: `2px solid ${isValidUUID(storeId) ? '#22c55e' : '#ef4444'}`
-      }}>
-        <CheckCircle2 color={isValidUUID(storeId) ? "#22c55e" : "#ef4444"} size={20} />
-        <div style={{ fontSize: '11px', fontWeight: 'bold' }}>
-          {isValidUUID(storeId) ? `STORE ACTIVE: ${storeId}` : "ΣΦΑΛΜΑ ΣΥΝΔΕΣΗΣ: ΕΠΙΛΕΞΤΕ ΚΑΤΑΣΤΗΜΑ"}
-        </div>
-      </div>
-
-      <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px' }}>
+      <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px', paddingTop: '10px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <div style={{ width: '45px', height: '45px', backgroundColor: '#0f172a', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px' }}>🔌</div>
           <h1 style={{ fontSize: '20px', fontWeight: '800', margin: 0 }}>Πάγια</h1>
@@ -103,29 +85,35 @@ function FixedAssetsContent() {
         <div style={formCardStyle}>
           <input 
             value={name} onChange={e => setName(e.target.value)} 
-            style={inputStyle} placeholder="Όνομα π.χ. ΕΝΟΙΚΙΟ" autoFocus 
+            style={inputStyle} placeholder="Όνομα π.χ. ΔΕΗ" autoFocus 
           />
-          <button onClick={handleSave} disabled={isSaving || !isValidUUID(storeId)} style={saveBtnStyle}>
-            {isSaving ? 'ΚΑΤΑΧΩΡΗΣΗ...' : 'ΑΠΟΘΗΚΕΥΣΗ'}
+          <button onClick={handleSave} disabled={isSaving} style={saveBtnStyle}>
+            {isSaving ? 'ΑΠΟΘΗΚΕΥΣΗ...' : 'ΚΑΤΑΧΩΡΗΣΗ'}
           </button>
         </div>
       )}
 
       <div style={{ marginTop: '20px' }}>
         {loading ? <p style={{textAlign:'center'}}>Φόρτωση...</p> : assets.length === 0 ? (
-          <div style={emptyCardStyle}><p>Δεν βρέθηκαν πάγια.</p></div>
+          <div style={emptyCardStyle}><p>Η λίστα είναι κενή.</p></div>
         ) : (
           assets.map(asset => (
             <div key={asset.id} style={assetCardStyle}>
               <div style={{ flex: 1 }}>
                 <h3 style={{ fontSize: '15px', fontWeight: '800', margin: '0 0 5px 0' }}>{asset.name}</h3>
+                {/* Το Link στέλνει ήδη το assetId στο URL */}
                 <Link href={`/add-expense?store=${storeId}&assetId=${asset.id}`} style={payLinkStyle}>
                   <CreditCard size={14} /> ΠΛΗΡΩΜΗ →
                 </Link>
               </div>
-              <button onClick={async () => { await supabase.from('fixed_assets').delete().eq('id', asset.id); fetchData(); }} style={delBtnStyle}>
-                <Trash2 size={18} />
-              </button>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                 <Link href={`/fixed-assets/history?store=${storeId}&id=${asset.id}&name=${asset.name}`} style={{ color: '#6366f1' }}>
+                    <History size={18} />
+                 </Link>
+                 <button onClick={async () => { if(confirm('Διαγραφή;')) { await supabase.from('fixed_assets').delete().eq('id', asset.id); fetchData(); } }} style={delBtnStyle}>
+                   <Trash2 size={18} />
+                 </button>
+              </div>
             </div>
           ))
         )}
@@ -134,14 +122,13 @@ function FixedAssetsContent() {
   )
 }
 
-// STYLES
 const addBtnStyle: any = { width: '100%', padding: '16px', backgroundColor: '#0f172a', color: 'white', border: 'none', borderRadius: '14px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' };
 const formCardStyle: any = { marginTop: '15px', padding: '15px', backgroundColor: 'white', borderRadius: '15px', border: '1px solid #e2e8f0' };
-const inputStyle: any = { width: '100%', padding: '12px', borderRadius: '10px', border: '1px solid #e2e8f0', marginBottom: '10px', boxSizing: 'border-box' };
-const saveBtnStyle: any = { width: '100%', padding: '12px', backgroundColor: '#10b981', color: 'white', border: 'none', borderRadius: '10px', fontWeight: 'bold' };
+const inputStyle: any = { width: '100%', padding: '12px', borderRadius: '10px', border: '1px solid #e2e8f0', marginBottom: '10px', boxSizing: 'border-box', fontWeight: 'bold' };
+const saveBtnStyle: any = { width: '100%', padding: '12px', backgroundColor: '#10b981', color: 'white', border: 'none', borderRadius: '10px', fontWeight: 'bold', cursor: 'pointer' };
 const assetCardStyle: any = { display: 'flex', justifyContent: 'space-between', padding: '15px', backgroundColor: 'white', borderRadius: '12px', border: '1px solid #e2e8f0', marginBottom: '10px' };
 const payLinkStyle: any = { display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '11px', fontWeight: 'bold', color: '#10b981', textDecoration: 'none' };
 const delBtnStyle: any = { background: 'none', border: 'none', color: '#f43f5e', cursor: 'pointer' };
-const emptyCardStyle: any = { textAlign: 'center', padding: '40px', backgroundColor: 'white', borderRadius: '15px', color: '#64748b' };
+const emptyCardStyle: any = { textAlign: 'center', padding: '40px', backgroundColor: 'white', borderRadius: '15px', color: '#64748b', border: '1px dashed #cbd5e1' };
 
 export default function FixedAssetsPage() { return <Suspense fallback={null}><FixedAssetsContent /></Suspense> }
