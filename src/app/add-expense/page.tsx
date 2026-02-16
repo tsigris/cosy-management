@@ -29,6 +29,9 @@ function AddExpenseForm() {
   const urlAssetId = searchParams.get('assetId')
   const selectedDate = searchParams.get('date') || new Date().toISOString().split('T')[0]
   
+  // --- ΑΛΛΑΓΗ 1: Κρατάμε το Store ID από το URL για το κουμπί 'Back' ---
+  const urlStoreId = searchParams.get('store')
+  
   const [amount, setAmount] = useState('')
   const [method, setMethod] = useState('Μετρητά')
   const [notes, setNotes] = useState('')
@@ -194,7 +197,10 @@ function AddExpenseForm() {
 
       if (error) throw error
       toast.success(editId ? 'Η κίνηση ενημερώθηκε!' : 'Η κίνηση καταχωρήθηκε!')
-      router.push(`/?date=${selectedDate}`)
+      
+      // --- ΑΛΛΑΓΗ 2: Προσθήκη του store ID στο URL επιστροφής ---
+      router.push(`/?date=${selectedDate}&store=${activeStoreId}`)
+      
       router.refresh()
       setIsUploading(false)
     } catch (error: any) { 
@@ -216,7 +222,8 @@ function AddExpenseForm() {
               <p style={{ margin: 0, fontSize: '11px', color: colors.secondaryText, fontWeight: '700' }}>{new Date(selectedDate).toLocaleDateString('el-GR', { day: 'numeric', month: 'long' }).toUpperCase()}</p>
             </div>
           </div>
-          <Link href="/" style={backBtnStyle}>✕</Link>
+          {/* --- ΑΛΛΑΓΗ 3: Χρήση του urlStoreId για σωστή επιστροφή --- */}
+          <Link href={`/?store=${urlStoreId || storeId}`} style={backBtnStyle}>✕</Link>
         </div>
 
         <div style={formCard}>
