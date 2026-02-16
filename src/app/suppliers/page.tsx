@@ -39,47 +39,34 @@ function SuppliersContent() {
   const fetchSuppliersData = useCallback(async () => {
     try {
       setLoading(true)
-      const activeStoreId = localStorage.getItem('active_store_id')
-      if (!activeStoreId) return
-      setStoreId(activeStoreId)
-
-      // 1. ΛΟΓΙΚΗ ΔΙΑΧΩΡΙΣΜΟΥ:
-      // Φέρνουμε προμηθευτές που έχουν το ID του καταστήματος.
-      // ΑΝ είμαστε στο Cosy (το παλιό), φέρνουμε και όσους έχουν NULL για να μη χαθούν.
-      // Αν είμαστε στο CFU, το NULL φίλτρο θα τους κρύψει αυτόματα.
-      
-      const { data: sData, error: sErr } = await supabase
-        .from('suppliers')
-        .select('*')
-        .or(`store_id.eq.${activeStoreId},store_id.is.null`)
-
-      // 2. Φέρνουμε κινήσεις ΜΟΝΟ για το ενεργό κατάστημα
+      const activeStoreId = typeof window !== 'undefined' ? localStorage.getItem('active_store_id') : null;
+      if (!activeStoreId) return;
+      setStoreId(activeStoreId);
+      const MAIN_STORE_ID = 'e50a8803-a262-4303-9e90-c116c965e683';
+      // Multi-tenant: .or() for main store, strict for others
+      let supsQuery = supabase.from('suppliers').select('*');
+      if (activeStoreId === MAIN_STORE_ID) {
+        supsQuery = supsQuery.or(`store_id.eq.${activeStoreId},store_id.is.null`);
+      } else {
+        supsQuery = supsQuery.eq('store_id', activeStoreId);
+      }
+      const { data: sData, error: sErr } = await supsQuery;
+      // Transactions only for current store
       const { data: tData, error: tErr } = await supabase
         .from('transactions')
         .select('amount, supplier_id')
-        .eq('store_id', activeStoreId)
-
-      if (!sErr) {
-        // Επιπλέον φιλτράρισμα στην πλευρά του κώδικα (Client-side) για απόλυτη σιγουριά:
-        // Αν το activeStoreId ΔΕΝ είναι του Cosy, κρύψε τα NULL.
-        // (Εδώ θεωρούμε ότι το CFU είναι το "νέο" οπότε δεν πρέπει να βλέπει NULL)
-        const filteredSuppliers = sData?.filter(s => {
-          if (!s.store_id) {
-             // Αν θες να βλέπεις τα παλιά ΜΟΝΟ στο Cosy, εδώ θα έμπαινε έλεγχος ID.
-             // Προς το παρόν, αν είσαι στο CFU, δείχνουμε μόνο όσα έχουν store_id = CFU.
-             return activeStoreId !== 'ID_TOU_CFU_EDO' // Θα το ανιχνεύσει αυτόματα η SQL
-          }
-          return s.store_id === activeStoreId
-        }) || []
-        
-        setSuppliers(sData || []) 
+        .eq('store_id', activeStoreId);
+      // Client-side filter: hide nulls if not main store
+      let filteredSuppliers = sData || [];
+      if (activeStoreId !== MAIN_STORE_ID) {
+        filteredSuppliers = filteredSuppliers.filter(s => s.store_id === activeStoreId);
       }
-      
-      setTransactions(tData || [])
-    } catch (err) { 
-      console.error(err) 
-    } finally { 
-      setLoading(false) 
+      setSuppliers(filteredSuppliers);
+      setTransactions(tData || []);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
     }
   }, [])
 
@@ -108,26 +95,25 @@ function SuppliersContent() {
     .sort((a, b) => getSupplierTurnover(b.id) - getSupplierTurnover(a.id));
 
   async function handleSave() {
-    if (!name || !storeId) return toast.error('Συμπληρώστε τα απαραίτητα')
-    setIsSaving(true)
+    const activeStoreId = typeof window !== 'undefined' ? localStorage.getItem('active_store_id') : null;
+    if (!name || !activeStoreId) return toast.error('Συμπληρώστε τα απαραίτητα');
+    setIsSaving(true);
     try {
-      const supplierData = { 
-        name, 
-        phone, 
-        vat_number: afm, 
-        iban, 
-        category, 
-        store_id: storeId // Πάντα σφραγίζουμε με το ενεργό ID
-      }
-
-      const { error } = editingId 
+      const supplierData = {
+        name,
+        phone,
+        vat_number: afm,
+        iban,
+        category,
+        store_id: activeStoreId // Always set to current store
+      };
+      const { error } = editingId
         ? await supabase.from('suppliers').update(supplierData).eq('id', editingId)
-        : await supabase.from('suppliers').insert([{ ...supplierData, is_active: true }])
-      
+        : await supabase.from('suppliers').insert([{ ...supplierData, is_active: true }]);
       if (error) throw error;
       toast.success('Επιτυχής αποθήκευση');
       resetForm(); fetchSuppliersData();
-    } catch (error: any) { toast.error(error.message) } finally { setIsSaving(false) }
+    } catch (error: any) { toast.error(error.message); } finally { setIsSaving(false); }
   }
 
   // --- Υπόλοιπες συναρτήσεις (toggleActive, handleDelete, κλπ) ίδιες με πριν ---
