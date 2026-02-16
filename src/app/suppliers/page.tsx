@@ -23,7 +23,6 @@ function SuppliersContent() {
   const [suppliers, setSuppliers] = useState<any[]>([])
   const [transactions, setTransactions] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [storeId, setStoreId] = useState<string | null>(null)
   const [showInactive, setShowInactive] = useState(false)
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
@@ -36,23 +35,24 @@ function SuppliersContent() {
   const [isFormOpen, setIsFormOpen] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
 
-  // 1. ΑΥΣΤΗΡΗ ΦΟΡΤΩΣΗ ΔΕΔΟΜΕΝΩΝ
+  // 1. ΦΟΡΤΩΣΗ ΔΕΔΟΜΕΝΩΝ ΜΕ ΑΥΣΤΗΡΟ ΦΙΛΤΡΟ STORE_ID
   const fetchSuppliersData = useCallback(async () => {
     try {
       setLoading(true)
-      const activeStoreId = typeof window !== 'undefined' ? localStorage.getItem('active_store_id') : null;
+      const activeStoreId = localStorage.getItem('active_store_id');
       
       if (!activeStoreId) {
         setLoading(false)
         return
       }
-      
-      setStoreId(activeStoreId);
 
-      // Φέρνουμε ΜΟΝΟ όσα ανήκουν στο ID του localStorage
       const [sRes, tRes] = await Promise.all([
-        supabase.from('suppliers').select('*').eq('store_id', activeStoreId),
-        supabase.from('transactions').select('amount, supplier_id').eq('store_id', activeStoreId)
+        supabase.from('suppliers')
+          .select('*')
+          .eq('store_id', activeStoreId),
+        supabase.from('transactions')
+          .select('amount, supplier_id')
+          .eq('store_id', activeStoreId)
       ]);
 
       if (sRes.error) throw sRes.error;
@@ -81,13 +81,13 @@ function SuppliersContent() {
     .filter(s => showInactive ? true : s.is_active !== false)
     .sort((a, b) => getSupplierTurnover(b.id) - getSupplierTurnover(a.id));
 
-  // 2. ΑΥΣΤΗΡΗ ΑΠΟΘΗΚΕΥΣΗ (ΚΛΕΙΔΩΜΑ ΣΤΟ STORE_ID)
+  // 2. ΑΠΟΘΗΚΕΥΣΗ ΜΕ ΔΥΝΑΜΙΚΟ STORE_ID
   async function handleSave() {
-    const activeStoreId = typeof window !== 'undefined' ? localStorage.getItem('active_store_id') : null;
+    const currentStoreId = localStorage.getItem('active_store_id');
     
     if (!name.trim()) return toast.error('Συμπληρώστε το όνομα');
-    if (!activeStoreId) {
-        toast.error('Δεν βρέθηκε ID καταστήματος. Παρακαλώ κάντε ξανά επιλογή καταστήματος.');
+    if (!currentStoreId) {
+        toast.error('Σφάλμα: Δεν βρέθηκε ενεργό κατάστημα. Παρακαλώ ξαναεπιλέξτε κατάστημα από την αρχική.');
         return;
     }
 
@@ -99,9 +99,9 @@ function SuppliersContent() {
         vat_number: afm.trim(),
         iban: iban.trim(),
         category: category,
-        store_id: activeStoreId // ΕΔΩ ΕΙΝΑΙ ΤΟ ΚΛΕΙΔΙ
+        store_id: currentStoreId // Χρησιμοποιεί το ID τη στιγμή της καταχώρησης
       };
-      console.log('Saving supplier data:', supplierData);
+
       const { error } = editingId
         ? await supabase.from('suppliers').update(supplierData).eq('id', editingId)
         : await supabase.from('suppliers').insert([{ ...supplierData, is_active: true }]);
