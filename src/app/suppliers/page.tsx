@@ -5,10 +5,9 @@ import { useEffect, useState, Suspense, useCallback } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
-import { Plus, TrendingUp, Phone, CreditCard, Hash, Tag, Trash2, Edit2, ChevronLeft } from 'lucide-react'
+import { Plus, TrendingUp, Phone, CreditCard, Hash, Tag, Trash2, Edit2, ChevronLeft, AlertCircle } from 'lucide-react'
 import { toast, Toaster } from 'sonner'
 
-// --- MODERN PREMIUM PALETTE ---
 const colors = {
   primaryDark: '#0f172a',
   secondaryText: '#64748b',
@@ -25,8 +24,6 @@ const colors = {
 function SuppliersContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
-  
-  // Η ΜΟΝΑΔΙΚΗ ΠΗΓΗ ΑΛΗΘΕΙΑΣ - Διαβάζεται απευθείας από το URL
   const storeIdFromUrl = searchParams.get('store');
 
   const [suppliers, setSuppliers] = useState<any[]>([])
@@ -35,7 +32,7 @@ function SuppliersContent() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [currentStoreName, setCurrentStoreName] = useState('Φορτώνει...')
 
-  // Καταστάσεις Φόρμας
+  // Form State
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
   const [afm, setAfm] = useState('') 
@@ -46,15 +43,10 @@ function SuppliersContent() {
   const [isSaving, setIsSaving] = useState(false)
 
   const fetchSuppliersData = useCallback(async () => {
-    if (!storeIdFromUrl) {
-      toast.error('Λείπει το Store ID από το URL');
-      return;
-    }
+    if (!storeIdFromUrl) return;
 
     try {
       setLoading(true)
-      
-      // Λήψη ονόματος καταστήματος βάσει URL ID
       const { data: storeInfo } = await supabase
         .from('stores')
         .select('name')
@@ -63,65 +55,33 @@ function SuppliersContent() {
       
       if (storeInfo) setCurrentStoreName(storeInfo.name);
 
-      // Φιλτράρισμα ΑΠΟΚΛΕΙΣΤΙΚΑ βάσει του ID στο URL για να μη βλέπεις του άλλου μαγαζιού
+      // LOCK: Φέρνουμε ΜΟΝΟ όσα ανήκουν στο store του URL
       const [sRes, tRes] = await Promise.all([
         supabase.from('suppliers').select('*').eq('store_id', storeIdFromUrl),
         supabase.from('transactions').select('amount, supplier_id').eq('store_id', storeIdFromUrl)
       ]);
 
-      if (sRes.error) throw sRes.error;
       setSuppliers(sRes.data || []);
       setTransactions(tRes.data || []);
-    } catch (err: any) {
+    } catch (err) {
       toast.error('Σφάλμα συγχρονισμού');
     } finally {
       setLoading(false);
     }
   }, [storeIdFromUrl])
 
-  useEffect(() => { 
-    fetchSuppliersData();
-  }, [fetchSuppliersData])
+  useEffect(() => { fetchSuppliersData(); }, [fetchSuppliersData])
 
   const resetForm = () => {
     setName(''); setPhone(''); setAfm(''); setIban(''); setCategory('Εμπορεύματα');
     setEditingId(null); setIsFormOpen(false);
   }
 
-  const handleEdit = (s: any) => {
-    setName(s.name);
-    setPhone(s.phone || '');
-    setAfm(s.vat_number || '');
-    setIban(s.iban || '');
-    setCategory(s.category || 'Εμπορεύματα');
-    setEditingId(s.id);
-    setIsFormOpen(true);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  }
-
-  const handleDelete = async (id: string) => {
-    if (!confirm('Οριστική διαγραφή προμηθευτή;')) return;
-    try {
-      const { error } = await supabase.from('suppliers').delete().eq('id', id);
-      if (error) throw error;
-      toast.success('Διαγράφηκε επιτυχώς');
-      fetchSuppliersData();
-    } catch (err: any) {
-      toast.error('Σφάλμα διαγραφής');
-    }
-  }
-
-  // --- Η ΚΡΙΣΙΜΗ ΣΥΝΑΡΤΗΣΗ ΑΠΟΘΗΚΕΥΣΗΣ (ΔΙΟΡΘΩΜΕΝΗ) ---
-  async function handleSave() {
+  const handleSave = async () => {
     if (!name.trim()) return toast.error('Συμπληρώστε το όνομα');
-    
-    // ΠΡΟΣΟΧΗ: Χρησιμοποιούμε ΜΟΝΟ το storeIdFromUrl
-    if (!storeIdFromUrl) return toast.error('Σφάλμα: Δεν βρέθηκε ID στο URL');
+    if (!storeIdFromUrl) return toast.error('Σφάλμα: Δεν βρέθηκε το κατάστημα στο URL');
 
     setIsSaving(true);
-    // Log για να βλέπεις στην κονσόλα τι στέλνει
-    console.log("Saving to store ID:", storeIdFromUrl);
-
     try {
       const supplierData = {
         name: name.trim().toUpperCase(),
@@ -129,16 +89,27 @@ function SuppliersContent() {
         vat_number: afm.trim(),
         iban: iban.trim().toUpperCase(),
         category: category,
-        store_id: storeIdFromUrl // ΕΠΙΒΟΛΗ ΑΠΟ ΤΟ URL
+        store_id: storeIdFromUrl // ΑΠΟΛΥΤΟΣ ΕΛΕΓΧΟΣ
       };
 
-      const { error } = editingId
-        ? await supabase.from('suppliers').update(supplierData).eq('id', editingId)
-        : await supabase.from('suppliers').insert([{ ...supplierData, is_active: true }]);
+      let error;
+      if (editingId) {
+        const { error: err } = await supabase
+          .from('suppliers')
+          .update(supplierData)
+          .eq('id', editingId)
+          .eq('store_id', storeIdFromUrl); // Επιπλέον ασφάλεια στο update
+        error = err;
+      } else {
+        const { error: err } = await supabase
+          .from('suppliers')
+          .insert([{ ...supplierData, is_active: true }]);
+        error = err;
+      }
 
       if (error) throw error;
       
-      toast.success(`Καταχωρήθηκε επιτυχώς στο ${currentStoreName.toUpperCase()}`);
+      toast.success('Αποθηκεύτηκε επιτυχώς');
       resetForm(); 
       fetchSuppliersData();
     } catch (error: any) { 
@@ -148,12 +119,38 @@ function SuppliersContent() {
     }
   }
 
+  const handleDelete = async (id: string) => {
+    if (!confirm('Οριστική διαγραφή;')) return;
+    try {
+      // LOCK: Διαγραφή μόνο αν ανήκει στο τρέχον store
+      const { error } = await supabase
+        .from('suppliers')
+        .delete()
+        .eq('id', id)
+        .eq('store_id', storeIdFromUrl);
+      
+      if (error) throw error;
+      toast.success('Διαγράφηκε');
+      fetchSuppliersData();
+    } catch (err) {
+      toast.error('Αποτυχία διαγραφής');
+    }
+  }
+
   const getSupplierTurnover = (id: string) => 
     transactions.filter(t => t.supplier_id === id).reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
   
   const sortedSuppliers = [...suppliers].sort((a, b) => getSupplierTurnover(b.id) - getSupplierTurnover(a.id));
 
-  if (loading) return <div style={loadingStyle}>ΣΥΓΧΡΟΝΙΣΜΟΣ {currentStoreName.toUpperCase()}...</div>
+  if (!storeIdFromUrl) {
+    return (
+      <div style={errorScreenStyle}>
+        <AlertCircle size={48} color={colors.accentRed} />
+        <p>Δεν βρέθηκε αναγνωριστικό καταστήματος.</p>
+        <Link href="/select-store" style={backLinkStyle}>Επιστροφή στην επιλογή</Link>
+      </div>
+    )
+  }
 
   return (
     <div style={containerStyle}>
@@ -178,23 +175,11 @@ function SuppliersContent() {
               <label style={labelStyle}><Hash size={12} /> ΕΠΩΝΥΜΙΑ / ΟΝΟΜΑ</label>
               <input value={name} onChange={(e) => setName(e.target.value)} style={inputStyle} placeholder="π.χ. COCA COLA" />
             </div>
-
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-              <div style={inputGroup}>
-                <label style={labelStyle}><Phone size={12} /> ΤΗΛΕΦΩΝΟ</label>
-                <input value={phone} onChange={(e) => setPhone(e.target.value)} style={inputStyle} placeholder="210..." />
-              </div>
-              <div style={inputGroup}>
-                <label style={labelStyle}><Tag size={12} /> ΑΦΜ</label>
-                <input value={afm} onChange={(e) => setAfm(e.target.value)} style={inputStyle} placeholder="000000000" />
-              </div>
+              <div style={inputGroup}><label style={labelStyle}><Phone size={12} /> ΤΗΛΕΦΩΝΟ</label><input value={phone} onChange={(e) => setPhone(e.target.value)} style={inputStyle} /></div>
+              <div style={inputGroup}><label style={labelStyle}><Tag size={12} /> ΑΦΜ</label><input value={afm} onChange={(e) => setAfm(e.target.value)} style={inputStyle} /></div>
             </div>
-
-            <div style={inputGroup}>
-              <label style={labelStyle}><CreditCard size={12} /> IBAN</label>
-              <input value={iban} onChange={(e) => setIban(e.target.value)} style={inputStyle} placeholder="GR..." />
-            </div>
-
+            <div style={inputGroup}><label style={labelStyle}><CreditCard size={12} /> IBAN</label><input value={iban} onChange={(e) => setIban(e.target.value)} style={inputStyle} /></div>
             <div style={inputGroup}>
               <label style={labelStyle}>ΚΑΤΗΓΟΡΙΑ</label>
               <select value={category} onChange={(e) => setCategory(e.target.value)} style={inputStyle}>
@@ -204,52 +189,45 @@ function SuppliersContent() {
                 <option value="Άλλο">❓ Άλλο</option>
               </select>
             </div>
-
             <button onClick={handleSave} disabled={isSaving} style={saveBtn}>
-              {isSaving ? 'ΑΠΟΘΗΚΕΥΣΗ...' : (editingId ? 'ΕΝΗΜΕΡΩΣΗ' : `ΚΑΤΑΧΩΡΗΣΗ ΣΤΟ ${currentStoreName.toUpperCase()}`)}
+              {isSaving ? 'ΑΠΟΘΗΚΕΥΣΗ...' : (editingId ? 'ΕΝΗΜΕΡΩΣΗ' : 'ΚΑΤΑΧΩΡΗΣΗ')}
             </button>
           </div>
         )}
 
         <div style={listArea}>
-          <div style={rankingHeader}><TrendingUp size={14} /> ΚΑΤΑΤΑΞΗ ΤΖΙΡΟΥ ({currentStoreName})</div>
-          {sortedSuppliers.length === 0 ? (
-            <p style={emptyText}>Δεν βρέθηκαν προμηθευτές</p>
-          ) : (
+          <div style={rankingHeader}><TrendingUp size={14} /> ΚΑΤΑΤΑΞΗ ΤΖΙΡΟΥ</div>
+          {sortedSuppliers.length === 0 ? <p style={emptyText}>Δεν βρέθηκαν προμηθευτές στο {currentStoreName}</p> : 
             sortedSuppliers.map((s, idx) => (
               <div key={s.id} style={{ borderBottom: `1px solid ${colors.border}` }}>
                 <div style={rowWrapper} onClick={() => setExpandedId(expandedId === s.id ? null : s.id)}>
                   <div style={rankNumber}>{idx + 1}</div>
-                  <div style={{ flex: 1 }}>
-                    <p style={rowName}>{s.name.toUpperCase()}</p>
-                    <p style={categoryBadge}>{s.category}</p>
-                  </div>
+                  <div style={{ flex: 1 }}><p style={rowName}>{s.name.toUpperCase()}</p><p style={categoryBadge}>{s.category}</p></div>
                   <p style={turnoverText}>{getSupplierTurnover(s.id).toFixed(2)}€</p>
                 </div>
-
                 {expandedId === s.id && (
                   <div style={actionPanel}>
                     <div style={infoGrid}>
                       <p style={infoText}><strong>Τηλ:</strong> {s.phone || '-'}</p>
                       <p style={infoText}><strong>ΑΦΜ:</strong> {s.vat_number || '-'}</p>
-                      <p style={infoText}><strong style={{display:'block'}}>IBAN:</strong> {s.iban || '-'}</p>
+                      <p style={infoText}><strong>IBAN:</strong> {s.iban || '-'}</p>
                     </div>
                     <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
-                      <button onClick={(e) => { e.stopPropagation(); handleEdit(s); }} style={editBtn}><Edit2 size={14} /> Edit</button>
-                      <button onClick={(e) => { e.stopPropagation(); handleDelete(s.id); }} style={delBtn}><Trash2 size={14} /> Delete</button>
+                      <button onClick={() => { setName(s.name); setPhone(s.phone||''); setAfm(s.vat_number||''); setIban(s.iban||''); setCategory(s.category); setEditingId(s.id); setIsFormOpen(true); }} style={editBtn}><Edit2 size={14} /> Edit</button>
+                      <button onClick={() => handleDelete(s.id)} style={delBtn}><Trash2 size={14} /> Delete</button>
                     </div>
                   </div>
                 )}
               </div>
             ))
-          )}
+          }
         </div>
       </div>
     </div>
   )
 }
 
-// --- STYLES (Διατηρήθηκαν όλα) ---
+// --- STYLES ---
 const containerStyle: any = { backgroundColor: colors.bgLight, minHeight: '100dvh', padding: '20px' };
 const contentWrapper: any = { maxWidth: '480px', margin: '0 auto', paddingBottom: '100px' };
 const headerStyle: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px' };
@@ -275,8 +253,9 @@ const infoGrid: any = { display: 'grid', gap: '8px' };
 const infoText: any = { fontSize: '12px', margin: 0, color: colors.primaryDark };
 const editBtn: any = { flex: 1, padding: '10px', background: colors.warning, color: colors.warningText, border: 'none', borderRadius: '10px', fontWeight: '700', fontSize: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px', cursor: 'pointer' };
 const delBtn: any = { flex: 1, padding: '10px', background: '#fee2e2', color: colors.accentRed, border: 'none', borderRadius: '10px', fontWeight: '700', fontSize: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px', cursor: 'pointer' };
-const loadingStyle: any = { display: 'flex', height: '100dvh', alignItems: 'center', justifyContent: 'center', fontWeight: '800', color: colors.secondaryText, background: colors.bgLight };
 const emptyText: any = { padding: '40px', textAlign: 'center', color: colors.secondaryText, fontSize: '13px', fontWeight: '600' };
+const errorScreenStyle: any = { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100vh', gap: '20px', color: colors.primaryDark, fontWeight: '700' };
+const backLinkStyle: any = { padding: '10px 20px', backgroundColor: colors.primaryDark, color: 'white', borderRadius: '12px', textDecoration: 'none' };
 
 export default function SuppliersPage() {
   return <main><Suspense fallback={null}><SuppliersContent /></Suspense></main>
