@@ -1,5 +1,5 @@
 'use client'
-import React, { Suspense } from 'react'; // Προσθήκη Suspense
+import React, { Suspense } from 'react';
 import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
 
@@ -19,13 +19,19 @@ const navItems = [
   { label: 'Προμηθευτές', icon: '🛒', path: '/suppliers' },
 ];
 
-// 1. Δημιουργούμε ένα εσωτερικό component για τη λογική
 function NavContent() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
-  const storeId = searchParams.get('store') || (typeof window !== 'undefined' ? localStorage.getItem('active_store_id') : null);
+  // 🛠️ Η ΔΙΟΡΘΩΣΗ: Απόλυτη προτεραιότητα στο URL
+  const storeInUrl = searchParams.get('store');
+  const storeInStorage = typeof window !== 'undefined' ? localStorage.getItem('active_store_id') : null;
+  
+  // Αν υπάρχει ID στο URL (π.χ. CFU), χρησιμοποιούμε αυτό. 
+  // Το Storage το κοιτάμε μόνο αν το URL είναι άδειο.
+  const storeId = storeInUrl || storeInStorage;
 
+  // Σελίδες όπου το BottomNav πρέπει να κρύβεται
   const hideOnPaths = ['/login', '/register', '/signup', '/select-store'];
   const isFormPage = pathname.includes('/add-');
   
@@ -35,12 +41,14 @@ function NavContent() {
     <nav style={navWrapper}>
       <style dangerouslySetInnerHTML={{ __html: `
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@700;800&display=swap');
-        .nav-item { transition: transform 0.2s ease; }
+        .nav-item { transition: transform 0.2s ease; -webkit-tap-highlight-color: transparent; }
         .nav-item:active { transform: scale(0.9); }
       `}} />
 
       {navItems.map((item) => {
         const isActive = pathname === item.path;
+        
+        // ✨ ΔΥΝΑΜΙΚΟ LINK: Προσθέτουμε πάντα το τρέχον store ID
         const fullPath = storeId ? `${item.path}?store=${storeId}` : item.path;
 
         return (
@@ -76,7 +84,7 @@ function NavContent() {
   );
 }
 
-// 2. Το κύριο component απλώς τυλίγει το NavContent σε Suspense
+// Κύριο Component με Suspense
 export default function BottomNav() {
   return (
     <Suspense fallback={null}>
@@ -85,8 +93,52 @@ export default function BottomNav() {
   );
 }
 
-// --- STYLES (Τα ίδια ακριβώς) ---
-const navWrapper: React.CSSProperties = { position: 'fixed', bottom: 0, left: 0, right: 0, height: '85px', backgroundColor: colors.background, backdropFilter: 'blur(15px)', WebkitBackdropFilter: 'blur(15px)', borderTop: `1px solid ${colors.border}`, display: 'flex', justifyContent: 'space-around', alignItems: 'center', paddingBottom: '20px', zIndex: 1000, boxShadow: '0 -10px 30px rgba(0,0,0,0.03)' };
-const navLink: React.CSSProperties = { display: 'flex', flexDirection: 'column', alignItems: 'center', textDecoration: 'none', position: 'relative', flex: 1, height: '100%', justifyContent: 'center' };
-const iconBox: React.CSSProperties = { width: '40px', height: '32px', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background-color 0.3s ease' };
-const activeIndicator: React.CSSProperties = { position: 'absolute', bottom: '10px', width: '4px', height: '4px', backgroundColor: colors.indigo, borderRadius: '50%', boxShadow: `0 0 10px ${colors.indigo}` };
+// --- STYLES ---
+const navWrapper: React.CSSProperties = { 
+  position: 'fixed', 
+  bottom: 0, 
+  left: 0, 
+  right: 0, 
+  height: '85px', 
+  backgroundColor: colors.background, 
+  backdropFilter: 'blur(15px)', 
+  WebkitBackdropFilter: 'blur(15px)', 
+  borderTop: `1px solid ${colors.border}`, 
+  display: 'flex', 
+  justifyContent: 'space-around', 
+  alignItems: 'center', 
+  paddingBottom: '20px', 
+  zIndex: 1000, 
+  boxShadow: '0 -10px 30px rgba(0,0,0,0.03)' 
+};
+
+const navLink: React.CSSProperties = { 
+  display: 'flex', 
+  flexDirection: 'column', 
+  alignItems: 'center', 
+  textDecoration: 'none', 
+  position: 'relative', 
+  flex: 1, 
+  height: '100%', 
+  justifyContent: 'center' 
+};
+
+const iconBox: React.CSSProperties = { 
+  width: '40px', 
+  height: '32px', 
+  borderRadius: '12px', 
+  display: 'flex', 
+  alignItems: 'center', 
+  justifyContent: 'center', 
+  transition: 'background-color 0.3s ease' 
+};
+
+const activeIndicator: React.CSSProperties = { 
+  position: 'absolute', 
+  bottom: '10px', 
+  width: '4px', 
+  height: '4px', 
+  backgroundColor: colors.indigo, 
+  borderRadius: '50%', 
+  boxShadow: `0 0 10px ${colors.indigo}` 
+};

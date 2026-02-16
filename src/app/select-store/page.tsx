@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
+import { LogOut, Plus, ArrowRight, TrendingUp, TrendingDown, Wallet } from 'lucide-react'
 
 export default function SelectStorePage() {
   const [userStores, setUserStores] = useState<any[]>([])
@@ -19,6 +20,7 @@ export default function SelectStorePage() {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) return router.push('/login')
 
+      // Παίρνουμε τα καταστήματα στα οποία έχει πρόσβαση ο χρήστης
       const { data: access, error } = await supabase
         .from('store_access')
         .select('store_id, stores(id, name)')
@@ -42,8 +44,8 @@ export default function SelectStorePage() {
           .eq('store_id', store.id)
           .gte('date', firstDay)
 
-        const income = trans?.filter(t => t.type === 'income').reduce((acc, curr) => acc + curr.amount, 0) || 0
-        const expenses = trans?.filter(t => t.type === 'expense' || t.type === 'debt_payment').reduce((acc, curr) => acc + curr.amount, 0) || 0
+        const income = trans?.filter(t => t.type === 'income').reduce((acc, curr) => acc + (Number(curr.amount) || 0), 0) || 0
+        const expenses = trans?.filter(t => t.type === 'expense' || t.type === 'debt_payment').reduce((acc, curr) => acc + (Number(curr.amount) || 0), 0) || 0
         
         return { 
           id: store.id, 
@@ -60,70 +62,87 @@ export default function SelectStorePage() {
     fetchStoresData()
   }, [router])
 
-  // ΔΙΟΡΘΩΣΗ: Προσθήκη του ID στο URL κατά την αναδρομή
   const handleSelect = (storeId: string) => {
+    // 1. Ενημερώνουμε το localStorage ως δευτερεύουσα πηγή
     localStorage.setItem('active_store_id', storeId)
-    // Στέλνουμε το ID ως query parameter
-    router.push(`/?store=${storeId}`)
+    
+    // 2. Στέλνουμε το ID στο URL (Η ΚΥΡΙΑ ΠΗΓΗ ΑΛΗΘΕΙΑΣ)
+    // Χρησιμοποιούμε window.location για να κάνουμε ένα γρήγορο "σκληρό" refresh 
+    // ώστε να καθαρίσουν όλα τα παλιά states του προηγούμενου μαγαζιού
+    window.location.href = `/?store=${storeId}`;
   }
 
-  if (loading) return <div style={centerStyle}>Φόρτωση δεδομένων...</div>
+  if (loading) return <div style={centerStyle}>ΑΝΑΚΤΗΣΗ ΚΑΤΑΣΤΗΜΑΤΩΝ...</div>
 
   return (
-    <div style={{ padding: '20px', backgroundColor: '#f8fafc', minHeight: '100dvh', paddingBottom: '50px' }}>
-      <h1 style={{ textAlign: 'center', fontWeight: '800', fontSize: '24px', marginBottom: '5px' }}>Τα Καταστήματά μου</h1>
-      <p style={{ textAlign: 'center', color: '#64748b', fontSize: '13px', marginBottom: '30px' }}>Σύνοψη Φεβρουαρίου 2026</p>
+    <div style={containerStyle}>
+      <header style={{ marginBottom: '30px', textAlign: 'center' }}>
+        <h1 style={{ fontWeight: '900', fontSize: '28px', color: '#0f172a', margin: 0 }}>Τα Καταστήματά μου</h1>
+        <p style={{ color: '#64748b', fontSize: '14px', fontWeight: '600', marginTop: '5px' }}>Σύνοψη Φεβρουαρίου 2026</p>
+      </header>
 
       {userStores.length === 0 && !loading && (
-        <div style={{ textAlign: 'center', padding: '40px', backgroundColor: 'white', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
-          <p style={{ fontWeight: '600', color: '#475569' }}>Δεν βρέθηκαν καταστήματα.</p>
+        <div style={emptyStateStyle}>
+          <p style={{ fontWeight: '700', color: '#64748b' }}>Δεν βρέθηκαν καταστήματα στο λογαριασμό σας.</p>
         </div>
       )}
 
-      {userStores.map(store => (
-        <div key={store.id} onClick={() => handleSelect(store.id)} style={cardStyle}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <h2 style={{ fontSize: '18px', fontWeight: '800', margin: 0 }}>{store.name.toUpperCase()}</h2>
-            <div style={arrowStyle}>→</div>
-          </div>
-          
-          <div style={{ height: '1px', backgroundColor: '#e2e8f0', margin: '15px 0' }} />
-          
-          <div style={statRow}>
-            <span style={labelStyle}>📈 Έσοδα Μήνα</span>
-            <span style={{ fontWeight: '700', color: '#059669' }}>{store.income.toFixed(2)} €</span>
-          </div>
-          
-          <div style={statRow}>
-            <span style={labelStyle}>📉 Έξοδα Μήνα</span>
-            <span style={{ fontWeight: '700', color: '#dc2626' }}>{store.expenses.toFixed(2)} €</span>
-          </div>
+      <div style={{ display: 'grid', gap: '15px' }}>
+        {userStores.map(store => (
+          <div key={store.id} onClick={() => handleSelect(store.id)} style={cardStyle}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+              <h2 style={{ fontSize: '18px', fontWeight: '900', margin: 0, color: '#0f172a' }}>{store.name.toUpperCase()}</h2>
+              <div style={arrowCircle}><ArrowRight size={16} /></div>
+            </div>
+            
+            <div style={statsGrid}>
+              <div style={statBox}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '5px', color: '#059669', marginBottom: '4px' }}>
+                  <TrendingUp size={14} /> <span style={statLabel}>ΕΣΟΔΑ</span>
+                </div>
+                <span style={statValue}>{store.income.toFixed(2)} €</span>
+              </div>
+              
+              <div style={statBox}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '5px', color: '#dc2626', marginBottom: '4px' }}>
+                  <TrendingDown size={14} /> <span style={statLabel}>ΕΞΟΔΑ</span>
+                </div>
+                <span style={statValue}>{store.expenses.toFixed(2)} €</span>
+              </div>
+            </div>
 
-          <div style={{ ...statRow, marginTop: '12px', paddingTop: '10px', borderTop: '1px dashed #cbd5e1' }}>
-            <span style={{ fontWeight: '800' }}>🔄 Καθαρό Κέρδος</span>
-            <span style={{ fontWeight: '900', fontSize: '16px' }}>{store.profit.toFixed(2)} €</span>
+            <div style={profitRow}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Wallet size={18} color="#6366f1" />
+                <span style={{ fontWeight: '800', color: '#1e293b', fontSize: '14px' }}>ΚΑΘΑΡΟ ΚΕΡΔΟΣ</span>
+              </div>
+              <span style={{ fontWeight: '900', fontSize: '18px', color: '#0f172a' }}>{store.profit.toFixed(2)} €</span>
+            </div>
           </div>
-        </div>
-      ))}
+        ))}
+      </div>
 
       <button onClick={() => router.push('/stores/new')} style={addBtnStyle}>
-        + Προσθήκη Νέου Καταστήματος
+        <Plus size={20} /> ΠΡΟΣΘΗΚΗ ΝΕΟΥ ΚΑΤΑΣΤΗΜΑΤΟΣ
       </button>
 
-      <div style={{ marginTop: '40px', textAlign: 'center', borderTop: '1px solid #e2e8f0', paddingTop: '20px' }}>
-        <button onClick={handleLogout} style={logoutBtnStyle}>
-          ΑΠΟΣΥΝΔΕΣΗ (LOGOUT) 🚪
-        </button>
-      </div>
+      <button onClick={handleLogout} style={logoutBtnStyle}>
+        <LogOut size={16} /> ΑΠΟΣΥΝΔΕΣΗ ΧΡΗΣΤΗ
+      </button>
     </div>
   )
 }
 
 // STYLES
-const centerStyle: any = { display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', fontWeight: '600', color: '#64748b' };
-const cardStyle: any = { backgroundColor: 'white', padding: '20px', borderRadius: '20px', border: '1px solid #e2e8f0', marginBottom: '15px', cursor: 'pointer', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' };
-const statRow = { display: 'flex', justifyContent: 'space-between', marginBottom: '6px' };
-const labelStyle = { color: '#64748b', fontSize: '14px', fontWeight: '600' };
-const arrowStyle = { backgroundColor: '#1e293b', color: 'white', width: '28px', height: '28px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px' };
-const addBtnStyle: any = { width: '100%', padding: '16px', border: '2px dashed #cbd5e1', backgroundColor: 'white', color: '#64748b', borderRadius: '15px', fontWeight: '700', marginTop: '10px', cursor: 'pointer' };
-const logoutBtnStyle: any = { backgroundColor: '#fff1f2', color: '#f43f5e', border: '1px solid #fecaca', padding: '12px 24px', borderRadius: '12px', fontWeight: '800', fontSize: '13px', cursor: 'pointer', width: '100%' };
+const containerStyle: any = { padding: '30px 20px', backgroundColor: '#f8fafc', minHeight: '100dvh', paddingBottom: '60px' };
+const centerStyle: any = { display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', fontWeight: '800', color: '#94a3b8', letterSpacing: '1px' };
+const cardStyle: any = { backgroundColor: 'white', padding: '24px', borderRadius: '24px', border: '1px solid #e2e8f0', cursor: 'pointer', transition: 'transform 0.2s', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.02)' };
+const statsGrid = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' };
+const statBox = { padding: '12px', backgroundColor: '#f8fafc', borderRadius: '16px', border: '1px solid #f1f5f9' };
+const statLabel = { fontSize: '10px', fontWeight: '800' };
+const statValue = { fontSize: '15px', fontWeight: '900', color: '#1e293b' };
+const profitRow = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '15px', paddingTop: '15px', borderTop: '1px dashed #e2e8f0' };
+const arrowCircle = { width: '32px', height: '32px', backgroundColor: '#0f172a', color: 'white', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' };
+const addBtnStyle: any = { width: '100%', padding: '18px', border: '2px dashed #cbd5e1', backgroundColor: 'transparent', color: '#64748b', borderRadius: '20px', fontWeight: '800', marginTop: '20px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px' };
+const logoutBtnStyle: any = { backgroundColor: '#fff', color: '#f43f5e', border: '1px solid #fee2e2', padding: '14px', borderRadius: '16px', fontWeight: '800', fontSize: '13px', cursor: 'pointer', width: '100%', marginTop: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' };
+const emptyStateStyle: any = { textAlign: 'center', padding: '50px 20px', backgroundColor: 'white', borderRadius: '24px', border: '1px solid #e2e8f0' };

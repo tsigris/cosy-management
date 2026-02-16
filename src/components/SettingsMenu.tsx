@@ -1,10 +1,10 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 
-// Επαγγελματική παλέτα για ομοιομορφία
+// --- MODERN PROFESSIONAL PALETTE ---
 const colors = {
   primaryDark: '#1e293b',
   secondaryText: '#64748b',
@@ -19,45 +19,37 @@ export default function SettingsMenu() {
   const [isOpen, setIsOpen] = useState(false)
   const [isSecure, setIsSecure] = useState(false)
   const router = useRouter()
+  const searchParams = useSearchParams()
+  
+  // ΔΙΑΒΑΖΟΥΜΕ ΤΟ ΤΡΕΧΟΝ ID ΑΠΟ ΤΟ URL ΓΙΑ ΝΑ ΤΟ ΜΕΤΑΦΕΡΟΥΜΕ ΣΤΑ LINKS
+  const currentStoreId = searchParams.get('store')
 
-  // Έλεγχος κατάστασης ασφαλείας όταν ανοίγει το μενού
+  // Έλεγχος κατάστασης ασφαλείας (PIN)
   useEffect(() => {
     const pinEnabled = localStorage.getItem('fleet_track_pin_enabled') === 'true'
     const bioEnabled = localStorage.getItem('fleet_track_biometrics') === 'true'
     setIsSecure(pinEnabled || bioEnabled)
   }, [isOpen])
 
-  // ΑΥΤΟΜΑΤΙΣΜΟΣ: Σιωπηλό φρεσκάρισμα συνεδρίας
-  useEffect(() => {
-    if (isOpen) {
-      supabase.auth.getSession().then(({ data: { session } }) => {
-        if (!session) {
-          router.refresh();
-        }
-      });
-    }
-  }, [isOpen, router]);
-
   const toggleSecurity = async () => {
     const currentStatus = localStorage.getItem('fleet_track_pin_enabled') === 'true'
     
     if (!currentStatus) {
-      // Ενεργοποίηση
+      // ΕΝΕΡΓΟΠΟΙΗΣΗ PIN
       const pin = prompt("Ορίστε ένα 4ψήφιο PIN για αυτή τη συσκευή:");
       if (pin && pin.length === 4) {
         localStorage.setItem('fleet_track_pin', pin);
         localStorage.setItem('fleet_track_pin_enabled', 'true');
-        // Προαιρετικά ενεργοποιούμε και τα βιομετρικά αν υποστηρίζονται
         if (window.PublicKeyCredential) {
           localStorage.setItem('fleet_track_biometrics', 'true');
         }
         setIsSecure(true);
-        alert('Η γρήγορη είσοδος ενεργοποιήθηκε!');
+        alert('Η γρήγορη είσοδος (PIN) ενεργοποιήθηκε!');
       } else {
-        alert('Ακυρώθηκε. Το PIN πρέπει να είναι 4 ψηφία.');
+        alert('Ακυρώθηκε. Το PIN πρέπει να είναι ακριβώς 4 ψηφία.');
       }
     } else {
-      // Απενεργοποίηση
+      // ΑΠΕΝΕΡΓΟΠΟΙΗΣΗ PIN
       if (confirm('Απενεργοποίηση γρήγορης εισόδου;')) {
         localStorage.removeItem('fleet_track_pin');
         localStorage.removeItem('fleet_track_pin_enabled');
@@ -69,12 +61,12 @@ export default function SettingsMenu() {
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
-    // Διατηρούμε τα κλειδιά ασφαλείας, σβήνουμε μόνο τα session δεδομένα
-    localStorage.removeItem('supabase.auth.token')
+    localStorage.removeItem('active_store_id')
     sessionStorage.clear()
     window.location.href = '/login'
   }
 
+  // ΛΙΣΤΑ ΜΕΝΟΥ
   const menuItems = [
     { label: 'Υπάλληλοι', icon: '👥', path: '/employees' },
     { label: 'Προμηθευτές', icon: '🛒', path: '/suppliers' },
@@ -97,6 +89,7 @@ export default function SettingsMenu() {
 
       {isOpen && (
         <>
+          {/* Backdrop για κλείσιμο του μενού */}
           <div 
             style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 998 }} 
             onClick={() => setIsOpen(false)} 
@@ -105,23 +98,31 @@ export default function SettingsMenu() {
           <div style={dropdownStyle}>
             <p style={sectionLabel}>Διαχείριση</p>
 
-            {menuItems.map((item, index) => (
-              <div key={item.label}>
-                <Link 
-                  href={item.path}
-                  onClick={() => setIsOpen(false)}
-                  style={linkStyle}
-                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = colors.hoverBg}
-                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                >
-                  <span style={{ fontSize: '18px', width: '24px', textAlign: 'center' }}>{item.icon}</span>
-                  {item.label}
-                </Link>
-                {(index === 2 || index === 4) && (
-                  <div style={dividerStyle} />
-                )}
-              </div>
-            ))}
+            {menuItems.map((item, index) => {
+              // ΠΡΟΣΘΗΚΗ ΤΟΥ STORE ID ΣΤΟ LINK ΓΙΑ ΝΑ ΜΗ ΧΑΝΕΤΑΙ ΤΟ ΚΑΤΑΣΤΗΜΑ
+              const fullPath = currentStoreId 
+                ? `${item.path}?store=${currentStoreId}` 
+                : item.path;
+
+              return (
+                <div key={item.label}>
+                  <Link 
+                    href={fullPath}
+                    onClick={() => setIsOpen(false)}
+                    style={linkStyle}
+                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = colors.hoverBg}
+                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                  >
+                    <span style={{ fontSize: '18px', width: '24px', textAlign: 'center' }}>{item.icon}</span>
+                    {item.label}
+                  </Link>
+                  {/* Διαχωριστικά για οργάνωση */}
+                  {(index === 2 || index === 4) && (
+                    <div style={dividerStyle} />
+                  )}
+                </div>
+              )
+            })}
 
             <div style={dividerStyle} />
             <p style={sectionLabel}>Ασφάλεια Συσκευής</p>
@@ -144,6 +145,7 @@ export default function SettingsMenu() {
               {isSecure ? 'Αλλαγή/Απενεργ. PIN' : 'Ενεργοποίηση PIN'}
             </button>
 
+            <div style={dividerStyle} />
             <div style={{ padding: '10px 15px' }}>
               <button 
                 onClick={handleLogout}
@@ -159,7 +161,7 @@ export default function SettingsMenu() {
   )
 }
 
-// --- CSS IN JS STYLES ---
+// --- CSS-IN-JS STYLES ---
 const btnStyle: any = {
   backgroundColor: colors.cardBg,
   border: `1px solid ${colors.border}`,
@@ -209,7 +211,11 @@ const linkStyle: any = {
   color: colors.primaryDark,
   fontSize: '14px',
   fontWeight: '600',
-  transition: 'background 0.2s'
+  transition: 'background 0.2s',
+  border: 'none',
+  background: 'none',
+  width: '100%',
+  cursor: 'pointer'
 };
 
 const dividerStyle: any = { 

@@ -1,159 +1,160 @@
 'use client'
 export const dynamic = 'force-dynamic'
 
-import { useEffect, useState, Suspense } from 'react'
+import { useEffect, useState, Suspense, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
+import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { toast, Toaster } from 'sonner'
+import { ShieldCheck, X, Settings, UserPlus, Trash2, ChevronUp } from 'lucide-react'
 
 function PermissionsContent() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const storeId = searchParams.get('store')
+
   const [users, setUsers] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedUser, setSelectedUser] = useState<any>(null)
-  const [storeId, setStoreId] = useState<string | null>(null)
+  const [myId, setMyId] = useState('')
 
-  useEffect(() => {
-    fetchUsers()
-  }, [])
-
-  async function fetchUsers() {
+  // 1. ΦΟΡΤΩΣΗ ΔΕΔΟΜΕΝΩΝ
+  const fetchPermissionsData = useCallback(async () => {
+    if (!storeId) return;
     try {
       setLoading(true)
       const { data: { user } } = await supabase.auth.getUser()
-      if (!user) return
+      if (!user) return router.push('/login')
+      setMyId(user.id)
 
-      // Παίρνουμε το store_id του Admin
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('store_id, role')
-        .eq('id', user.id)
-        .single()
-
-      if (profile?.role !== 'admin') {
-        router.push('/')
-        return
-      }
-
-      setStoreId(profile.store_id)
-
-      // Φέρνουμε ΜΟΝΟ τους χρήστες του ίδιου καταστήματος
-      const { data } = await supabase
-        .from('profiles')
+      const { data: accessData, error: accErr } = await supabase
+        .from('store_access')
         .select('*')
-        .eq('store_id', profile.store_id)
-        .order('username')
-      
-      if (data) setUsers(data)
-    } catch (err) {
-      console.error(err)
+        .eq('store_id', storeId);
+
+      if (accErr) throw accErr;
+
+      const userIds = accessData.map(a => a.user_id);
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('id, username, email')
+        .in('id', userIds);
+
+      const profileMap = Object.fromEntries(profiles?.map(p => [p.id, p]) || []);
+
+      const combinedData = accessData.map(entry => ({
+        ...entry,
+        username: profileMap[entry.user_id]?.username || 'Χρήστης',
+        email: profileMap[entry.user_id]?.email || '---'
+      }));
+
+      setUsers(combinedData);
+    } catch (err: any) {
+      toast.error('Αποτυχία συγχρονισμού');
     } finally {
       setLoading(false)
     }
-  }
+  }, [storeId, router])
 
-  async function togglePermission(field: string) {
-    if (!selectedUser) return
+  useEffect(() => {
+    fetchPermissionsData()
+  }, [fetchPermissionsData])
 
-    const newValue = !selectedUser[field]
+  // 2. ΕΝΗΜΕΡΩΣΗ ΔΙΚΑΙΩΜΑΤΩΝ
+  const togglePermission = async (field: string) => {
+    if (!selectedUser || !storeId) return;
+    const newValue = !selectedUser[field];
+    
     const { error } = await supabase
-      .from('profiles')
+      .from('store_access')
       .update({ [field]: newValue })
-      .eq('id', selectedUser.id)
+      .eq('user_id', selectedUser.user_id)
+      .eq('store_id', storeId);
+
+    if (error) {
+      toast.error("Σφάλμα στην ενημέρωση");
+    } else {
+      setSelectedUser({ ...selectedUser, [field]: newValue });
+      setUsers(users.map(u => u.user_id === selectedUser.user_id ? { ...u, [field]: newValue } : u));
+      toast.success("Η αλλαγή αποθηκεύτηκε");
+    }
+  };
+
+  // 3. ΔΙΑΓΡΑΦΗ ΧΡΗΣΤΗ
+  const removeAccess = async (userId: string) => {
+    if (userId === myId) return toast.error("Δεν μπορείτε να αφαιρέσετε τον εαυτό σας");
+    if (!confirm('Οριστική αφαίρεση πρόσβασης;')) return;
+
+    const { error } = await supabase
+      .from('store_access')
+      .delete()
+      .eq('user_id', userId)
+      .eq('store_id', storeId);
 
     if (!error) {
-      setSelectedUser({ ...selectedUser, [field]: newValue })
-      // Ενημερώνουμε τοπικά τη λίστα για να μη χρειάζεται full reload
-      setUsers(users.map(u => u.id === selectedUser.id ? { ...u, [field]: newValue } : u))
+      setUsers(users.filter(u => u.user_id !== userId));
+      toast.success("Ο χρήστης αφαιρέθηκε");
     }
-  }
+  };
 
-  const admins = users.filter(u => u.role === 'admin')
-  const businessUsers = users.filter(u => u.role === 'user')
+  const admins = users.filter(u => u.role === 'admin');
+  const staff = users.filter(u => u.role !== 'admin');
 
   return (
-    <div style={{ maxWidth: '500px', margin: '0 auto', fontFamily: 'sans-serif' }}>
+    <div style={containerStyle}>
+      <Toaster position="top-center" richColors />
       
-      {/* PROFESSIONAL HEADER */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '25px', paddingTop: '15px' }}>
+      <header style={headerStyle}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <div style={logoBoxStyle}>
-            <span style={{ fontSize: '20px' }}>🔐</span>
-          </div>
+          <div style={logoBoxStyle}><ShieldCheck size={24} color="#b45309" /></div>
           <div>
-            <h1 style={{ fontWeight: '900', fontSize: '20px', margin: 0, color: '#0f172a', lineHeight: '1.1' }}>
-              Δικαιώματα
-            </h1>
-            <p style={{ margin: '2px 0 0', fontSize: '10px', color: '#94a3b8', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '1px' }}>
-              ΔΙΑΧΕΙΡΙΣΗ ΠΡΟΣΒΑΣΗΣ
-            </p>
+            <h1 style={titleStyle}>Δικαιώματα</h1>
+            <p style={subtitleStyle}>ΔΙΑΧΕΙΡΙΣΗ ΠΡΟΣΒΑΣΗΣ</p>
           </div>
         </div>
-        <Link href="/" style={backBtnStyle}>✕</Link>
-      </div>
+        <Link href={`/?store=${storeId}`} style={closeBtnStyle}><X size={20} /></Link>
+      </header>
 
       {loading ? (
-        <div style={{ textAlign: 'center', padding: '50px', color: '#94a3b8' }}>Φόρτωση χρηστών...</div>
+        <div style={loadingTextStyle}>ΣΥΓΧΡΟΝΙΣΜΟΣ ΧΡΗΣΤΩΝ...</div>
       ) : (
         <>
-          {/* ΔΙΑΧΕΙΡΙΣΤΕΣ */}
-          <section style={sectionCard}>
-            <h3 style={sectionTitle}>🏢 Διαχειριστές εταιρείας</h3>
-            <table style={tableStyle}>
-              <thead>
-                <tr style={thRow}>
-                  <th style={thStyle}>Όνομα</th>
-                  <th style={thStyle}>Email</th>
-                </tr>
-              </thead>
-              <tbody>
-                {admins.map(u => (
-                  <tr key={u.id} style={trStyle}>
-                    <td style={tdStyle}><b>{u.username?.toUpperCase() || '—'}</b></td>
-                    <td style={tdStyle}>{u.email || '—'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {/* ΔΙΟΡΘΩΣΗ: Προσθήκη ?role=admin */}
-            <Link href="/admin/invite?role=admin" style={inviteLinkStyle}>+ Πρόσκληση διαχειριστή</Link>
-          </section>
-
-          {/* ΧΡΗΣΤΕΣ ΕΠΙΧΕΙΡΗΣΗΣ */}
-          <section style={sectionCard}>
-            <h3 style={sectionTitle}>🏨 Χρήστες επιχείρησης</h3>
-            <div style={legendBox}>
-              <p style={legendItem}>📊: Ανάλυση | 🏠: Αρχική | ✏️: Edit</p>
+          <p style={sectionLabel}>ΔΙΑΧΕΙΡΙΣΤΕΣ</p>
+          {admins.map(u => (
+            <div key={u.user_id} style={adminCard}>
+              <div style={{ flex: 1 }}>
+                <p style={adminNameText}>{u.username.toUpperCase()} {u.user_id === myId ? '(ΕΣΕΙΣ)' : ''}</p>
+                <p style={adminEmailText}>{u.email}</p>
+              </div>
+              <span style={adminBadge}>FULL ACCESS</span>
             </div>
-            <table style={tableStyle}>
-              <thead>
-                <tr style={thRow}>
-                  <th style={thStyle}>Όνομα</th>
-                  <th style={thStyle}>Πρόσβαση</th>
-                  <th style={{...thStyle, textAlign: 'right'}}>Ρύθμιση</th>
-                </tr>
-              </thead>
-              <tbody>
-                {businessUsers.map(u => (
-                  <tr key={u.id} style={trStyle}>
-                    <td style={tdStyle}>{u.username || u.email}</td>
-                    <td style={tdStyle}>
-                      <div style={{ display: 'flex', gap: '5px', fontSize: '16px' }}>
-                        {u.can_view_analysis && '📊'} 
-                        {u.can_view_history && '🏠'}
-                        {u.can_edit_transactions && '✏️'}
-                      </div>
-                    </td>
-                    <td style={{...tdStyle, textAlign: 'right'}}>
-                      <button onClick={() => setSelectedUser(u)} style={editBtn}>⚙️</button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {/* ΔΙΟΡΘΩΣΗ: Προσθήκη ?role=user */}
-            <Link href="/admin/invite?role=user" style={inviteBtnPrimary}>+ ΠΡΟΣΚΛΗΣΗ ΝΕΟΥ ΧΡΗΣΤΗ</Link>
-          </section>
+          ))}
+
+          <div style={{ height: '30px' }} />
+
+          <p style={sectionLabel}>ΠΡΟΣΩΠΙΚΟ / ΣΥΝΕΡΓΑΤΕΣ ({staff.length})</p>
+          <div style={listContainer}>
+            {staff.map(u => (
+              <div key={u.user_id} style={staffRow}>
+                <div style={{ flex: 1 }}>
+                  <p style={{fontWeight:'900', margin:0, fontSize:'15px', color:'#0f172a'}}>{u.username}</p>
+                  <div style={{display:'flex', gap:'5px', marginTop:'4px'}}>
+                    {u.can_view_analysis && <span>📊</span>}
+                    {u.can_view_history && <span>🏠</span>}
+                    {u.can_edit_transactions && <span>✏️</span>}
+                  </div>
+                </div>
+                <div style={{display:'flex', gap:'10px'}}>
+                    <button onClick={() => setSelectedUser(u)} style={editBtnStyle}><Settings size={18} /></button>
+                    <button onClick={() => removeAccess(u.user_id)} style={delBtnStyle}><Trash2 size={18} /></button>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <Link href={`/admin/invite?store=${storeId}`} style={inviteBtn}>
+            <UserPlus size={20} /> ΠΡΟΣΚΛΗΣΗ ΣΥΝΕΡΓΑΤΗ
+          </Link>
         </>
       )}
 
@@ -161,31 +162,14 @@ function PermissionsContent() {
       {selectedUser && (
         <div style={modalOverlay}>
           <div style={modalContent}>
-            <h3 style={{ marginBottom: '5px', fontWeight: '900' }}>Ρύθμιση Δικαιωμάτων</h3>
-            <p style={{ fontSize: '13px', color: '#64748b', marginBottom: '20px' }}>Χρήστης: <b>{selectedUser.username}</b></p>
+            <h3 style={{margin:0, fontWeight:'900'}}>Δικαιώματα</h3>
+            <p style={{fontSize:'12px', color:'#64748b', marginBottom:'20px'}}>{selectedUser.username}</p>
             
-            <div style={toggleRow}>
-              <span style={toggleLabel}>📊 Πρόσβαση στην Ανάλυση</span>
-              <button onClick={() => togglePermission('can_view_analysis')} style={{ ...toggleBtn, backgroundColor: selectedUser.can_view_analysis ? '#10b981' : '#cbd5e1' }}>
-                {selectedUser.can_view_analysis ? 'ΝΑΙ' : 'ΟΧΙ'}
-              </button>
-            </div>
+            <PermissionToggle label="📊 Ανάλυση" active={selectedUser.can_view_analysis} onClick={() => togglePermission('can_view_analysis')} />
+            <PermissionToggle label="🏠 Ιστορικό" active={selectedUser.can_view_history} onClick={() => togglePermission('can_view_history')} />
+            <PermissionToggle label="✏️ Επεξεργασία" active={selectedUser.can_edit_transactions} onClick={() => togglePermission('can_edit_transactions')} />
 
-            <div style={toggleRow}>
-              <span style={toggleLabel}>🏠 Πρόσβαση στην Αρχική</span>
-              <button onClick={() => togglePermission('can_view_history')} style={{ ...toggleBtn, backgroundColor: selectedUser.can_view_history ? '#10b981' : '#cbd5e1' }}>
-                {selectedUser.can_view_history ? 'ΝΑΙ' : 'ΟΧΙ'}
-              </button>
-            </div>
-
-            <div style={toggleRow}>
-              <span style={toggleLabel}>✏️ Δικαίωμα Επεξεργασίας</span>
-              <button onClick={() => togglePermission('can_edit_transactions')} style={{ ...toggleBtn, backgroundColor: selectedUser.can_edit_transactions ? '#10b981' : '#cbd5e1' }}>
-                {selectedUser.can_edit_transactions ? 'ΝΑΙ' : 'ΟΧΙ'}
-              </button>
-            </div>
-
-            <button onClick={() => setSelectedUser(null)} style={closeBtn}>ΑΠΟΘΗΚΕΥΣΗ & ΚΛΕΙΣΙΜΟ</button>
+            <button onClick={() => setSelectedUser(null)} style={closeModalBtn}>ΚΛΕΙΣΙΜΟ</button>
           </div>
         </div>
       )}
@@ -193,36 +177,41 @@ function PermissionsContent() {
   )
 }
 
-// STYLES
-const logoBoxStyle: any = { width: '42px', height: '42px', backgroundColor: '#fef3c7', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' };
-const backBtnStyle: any = { textDecoration: 'none', color: '#94a3b8', fontSize: '18px', fontWeight: 'bold', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#fff', borderRadius: '10px', border: '1px solid #e2e8f0' };
-const sectionCard: any = { backgroundColor: 'white', borderRadius: '22px', padding: '20px', marginBottom: '20px', border: '1px solid #f1f5f9' };
-const sectionTitle: any = { fontSize: '15px', fontWeight: '900', marginBottom: '15px', color: '#0f172a' };
-const legendBox: any = { backgroundColor: '#f8fafc', padding: '10px', borderRadius: '10px', marginBottom: '15px' };
-const legendItem: any = { fontSize: '10px', margin: 0, color: '#64748b', fontWeight: '700' };
-const tableStyle: any = { width: '100%', borderCollapse: 'collapse' };
-const thRow: any = { borderBottom: '2px solid #f8fafc' };
-const thStyle: any = { textAlign: 'left', padding: '10px', fontSize: '10px', fontWeight: '900', color: '#94a3b8', textTransform: 'uppercase' };
-const tdStyle: any = { padding: '15px 10px', fontSize: '14px', borderBottom: '1px solid #f8fafc', color: '#334155' };
-const trStyle: any = { transition: '0.2s' };
-const inviteLinkStyle: any = { display: 'block', textAlign: 'center', color: '#2563eb', fontWeight: '800', fontSize: '12px', textDecoration: 'none', marginTop: '15px' };
-const inviteBtnPrimary: any = { display: 'block', width: '100%', padding: '16px', backgroundColor: '#0f172a', color: 'white', borderRadius: '14px', fontWeight: '900', fontSize: '13px', textAlign: 'center', textDecoration: 'none', marginTop: '20px' };
-const editBtn: any = { padding: '8px', backgroundColor: '#f1f5f9', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '14px' };
-
-// MODAL STYLES
-const modalOverlay: any = { position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000, backdropFilter: 'blur(4px)' };
-const modalContent: any = { backgroundColor: 'white', padding: '30px', borderRadius: '28px', width: '90%', maxWidth: '400px', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' };
-const toggleRow: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px 0', borderBottom: '1px solid #f1f5f9' };
-const toggleLabel: any = { fontSize: '14px', fontWeight: '700', color: '#1e293b' };
-const toggleBtn: any = { border: 'none', color: 'white', padding: '8px 15px', borderRadius: '10px', fontWeight: '900', cursor: 'pointer', minWidth: '70px', fontSize: '12px' };
-const closeBtn: any = { width: '100%', padding: '16px', backgroundColor: '#0f172a', color: 'white', border: 'none', borderRadius: '14px', marginTop: '25px', fontWeight: '900', cursor: 'pointer' };
-
-export default function PermissionsPage() {
+function PermissionToggle({ label, active, onClick }: any) {
   return (
-    <main style={{ backgroundColor: '#f8fafc', minHeight: '100vh', padding: '15px' }}>
-      <Suspense fallback={<div>Φόρτωση...</div>}>
-        <PermissionsContent />
-      </Suspense>
-    </main>
+    <div style={toggleRow}>
+      <span style={{fontSize:'14px', fontWeight:'700'}}>{label}</span>
+      <button onClick={onClick} style={{...toggleBtn, backgroundColor: active ? '#10b981' : '#e2e8f0'}}>
+        {active ? 'ΝΑΙ' : 'ΟΧΙ'}
+      </button>
+    </div>
   )
 }
+
+export default function PermissionsPage() {
+  return <main style={{backgroundColor:'#f8fafc', minHeight:'100vh'}}><Suspense fallback={null}><PermissionsContent /></Suspense></main>
+}
+
+// --- STYLES ---
+const containerStyle: any = { maxWidth: '480px', margin: '0 auto', padding: '20px' };
+const headerStyle: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px' };
+const logoBoxStyle: any = { width: '45px', height: '45px', backgroundColor: '#fef3c7', borderRadius: '15px', display: 'flex', alignItems: 'center', justifyContent: 'center' };
+const titleStyle = { fontWeight: '900', fontSize: '22px', margin: 0, color: '#0f172a' };
+const subtitleStyle = { fontSize: '10px', color: '#94a3b8', fontWeight: '800', margin: 0 };
+const closeBtnStyle: any = { padding: '8px', backgroundColor: 'white', borderRadius: '12px', border: '1px solid #e2e8f0', color: '#94a3b8' };
+const loadingTextStyle: any = { textAlign: 'center', padding: '100px 0', fontWeight: '800', color: '#cbd5e1' };
+const sectionLabel = { fontSize: '11px', fontWeight: '900', color: '#94a3b8', marginBottom: '12px', textTransform: 'uppercase' as const };
+const adminCard: any = { backgroundColor: '#1e293b', padding: '20px', borderRadius: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' };
+const adminNameText = { color: 'white', fontWeight: '900', margin: 0, fontSize: '15px' };
+const adminEmailText = { color: '#94a3b8', fontSize: '11px', margin: 0, fontWeight: '700' };
+const adminBadge = { color: '#4ade80', fontSize: '10px', fontWeight: '900', border: '1px solid #166534', padding: '5px 10px', borderRadius: '10px' };
+const listContainer: any = { backgroundColor: 'white', borderRadius: '24px', border: '1px solid #e2e8f0', overflow: 'hidden' };
+const staffRow: any = { padding: '18px 20px', display: 'flex', alignItems: 'center', borderBottom: '1px solid #f1f5f9' };
+const editBtnStyle: any = { backgroundColor: '#f1f5f9', border: 'none', padding: '10px', borderRadius: '12px', cursor: 'pointer' };
+const delBtnStyle: any = { ...editBtnStyle, backgroundColor: '#fee2e2', color: '#ef4444' };
+const inviteBtn: any = { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', marginTop: '30px', padding: '18px', backgroundColor: '#0f172a', color: 'white', borderRadius: '20px', fontWeight: '900', textDecoration: 'none' };
+const modalOverlay: any = { position: 'fixed', top:0, left:0, width:'100%', height:'100%', backgroundColor:'rgba(0,0,0,0.5)', display:'flex', justifyContent:'center', alignItems:'center', zIndex: 1000, backdropFilter: 'blur(4px)' };
+const modalContent: any = { backgroundColor:'white', padding:'30px', borderRadius:'28px', width:'90%', maxWidth:'350px' };
+const toggleRow = { display:'flex', justifyContent:'space-between', alignItems:'center', padding:'15px 0', borderBottom:'1px solid #f1f5f9' };
+const toggleBtn: any = { border:'none', color:'white', padding:'8px 15px', borderRadius:'10px', fontWeight:'900', cursor:'pointer', minWidth:'65px', fontSize:'11px' };
+const closeModalBtn: any = { width:'100%', padding:'16px', backgroundColor:'#0f172a', color:'white', borderRadius:'15px', border:'none', fontWeight:'900', marginTop:'20px', cursor:'pointer' };

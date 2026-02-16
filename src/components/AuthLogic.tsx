@@ -1,15 +1,20 @@
 'use client'
 import { useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
-import { useRouter, usePathname } from 'next/navigation'
+import { useRouter, usePathname, useSearchParams } from 'next/navigation'
 
 export function AuthLogic() {
   const router = useRouter()
   const pathname = usePathname()
+  const searchParams = useSearchParams()
 
   useEffect(() => {
-    // Λίστα σελίδων που επιτρέπονται ΧΩΡΙΣ επιλεγμένο κατάστημα
     const allowedPaths = ['/select-store', '/login', '/stores/new']
+    
+    // Ελέγχουμε αν υπάρχει το store ID στο URL ή στο localStorage
+    const storeInUrl = searchParams.get('store')
+    const storeInStorage = localStorage.getItem('active_store_id')
+    const activeStoreId = storeInUrl || storeInStorage
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (event === 'SIGNED_OUT' || (event === 'TOKEN_REFRESHED' && !session)) {
@@ -19,7 +24,6 @@ export function AuthLogic() {
       }
 
       if (session && !allowedPaths.includes(pathname)) {
-        const activeStoreId = localStorage.getItem('active_store_id')
         if (!activeStoreId) {
           router.push('/select-store')
         }
@@ -38,8 +42,7 @@ export function AuthLogic() {
           return
         }
 
-        const activeStoreId = localStorage.getItem('active_store_id')
-        // Έλεγχος αν η τρέχουσα σελίδα είναι στις εξαιρέσεις
+        // Αν δεν είμαστε σε allowed path και δεν έχουμε ID πουθενά, στείλε τον χρήστη στην επιλογή
         if (!activeStoreId && !allowedPaths.includes(pathname)) {
           router.push('/select-store')
         }
@@ -56,7 +59,7 @@ export function AuthLogic() {
       document.removeEventListener('visibilitychange', handleGlobalResilience)
       window.removeEventListener('focus', handleGlobalResilience)
     }
-  }, [router, pathname])
+  }, [router, pathname, searchParams]) // Προστέθηκε το searchParams στα dependencies
 
   return null;
 }

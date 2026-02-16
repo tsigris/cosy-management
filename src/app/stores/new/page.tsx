@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import { toast, Toaster } from 'sonner'
+import { Home, ArrowLeft, Store } from 'lucide-react'
 
 export default function NewStorePage() {
   const [name, setName] = useState('')
@@ -11,52 +12,161 @@ export default function NewStorePage() {
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name) return toast.error('Δώστε όνομα');
+    if (!name.trim()) return toast.error('Παρακαλώ δώστε ένα όνομα');
+    
     setLoading(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.user?.id) throw new Error('Δεν βρέθηκε χρήστης.');
-      // 1. Δημιουργία Καταστήματος με owner_id
+      if (!session?.user?.id) throw new Error('Δεν βρέθηκε ενεργή συνεδρία χρήστη.');
+
+      // 1. Δημιουργία Καταστήματος
       const { data: store, error: sErr } = await supabase
         .from('stores')
-        .insert([{ name: name.toUpperCase(), owner_id: session.user.id }])
-        .select().single();
+        .insert([{ 
+          name: name.trim().toUpperCase(), 
+          owner_id: session.user.id 
+        }])
+        .select()
+        .single();
+
       if (sErr) throw sErr;
-      // 2. Σύνδεση με τον χρήστη (store_access)
+
+      // 2. Σύνδεση Χρήστη με το Κατάστημα (store_access)
       const { error: aErr } = await supabase
         .from('store_access')
-        .insert([{ user_id: session.user.id, store_id: store.id, role: 'admin' }]);
+        .insert([{ 
+          user_id: session.user.id, 
+          store_id: store.id, 
+          role: 'admin' 
+        }]);
+
       if (aErr) throw aErr;
-      toast.success('Το κατάστημα δημιουργήθηκε!');
-      setTimeout(() => router.push('/select-store'), 1500);
+
+      toast.success('Το κατάστημα δημιουργήθηκε με επιτυχία!');
+      
+      // Καθαρίζουμε το localStorage για να αναγκάσουμε τον χρήστη να επιλέξει το νέο μαγαζί
+      localStorage.removeItem('active_store_id');
+      
+      setTimeout(() => router.push('/select-store'), 1000);
     } catch (err: any) {
-      toast.error(err.message);
+      toast.error(err.message || 'Κάτι πήγε στραβά');
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <div style={{ padding: '40px 20px', backgroundColor: '#f8fafc', minHeight: '100dvh' }}>
+    <div style={containerStyle}>
       <Toaster richColors position="top-center" />
-      <div style={{ backgroundColor: 'white', padding: '25px', borderRadius: '24px', boxShadow: '0 10px 20px rgba(0,0,0,0.05)' }}>
-        <h1 style={{ fontSize: '22px', fontWeight: '800', marginBottom: '10px' }}>🏠 Νέο Κατάστημα</h1>
-        <form onSubmit={handleCreate}>
+      
+      <div style={cardStyle}>
+        <div style={iconContainer}>
+          <Store size={32} color="#1e293b" />
+        </div>
+        
+        <h1 style={titleStyle}>Νέο Κατάστημα</h1>
+        <p style={descStyle}>Δημιουργήστε έναν νέο χώρο διαχείρισης για την επιχείρησή σας.</p>
+
+        <form onSubmit={handleCreate} style={{ marginTop: '25px' }}>
+          <label htmlFor="store-name">ΟΝΟΜΑ ΚΑΤΑΣΤΗΜΑΤΟΣ</label>
           <input 
-            style={{ width: '100%', padding: '15px', borderRadius: '12px', border: '1px solid #e2e8f0', marginBottom: '15px' }}
-            placeholder="Όνομα Καταστήματος"
+            id="store-name"
+            autoFocus
+            placeholder="π.χ. COSY CAFE 2"
             value={name}
             onChange={e => setName(e.target.value)}
-          />
-          <button 
             disabled={loading}
-            style={{ width: '100%', padding: '16px', backgroundColor: '#1e293b', color: 'white', borderRadius: '12px', fontWeight: '700', border: 'none' }}
+          />
+          
+          <button 
+            type="submit"
+            disabled={loading}
+            style={submitBtnStyle}
           >
-            {loading ? 'ΓΙΝΕΤΑΙ ΔΗΜΙΟΥΡΓΙΑ...' : 'ΔΗΜΙΟΥΡΓΙΑ'}
+            {loading ? 'ΔΗΜΙΟΥΡΓΙΑ...' : 'ΕΠΙΒΕΒΑΙΩΣΗ'}
           </button>
         </form>
-        <button onClick={() => router.push('/select-store')} style={{ width: '100%', marginTop: '15px', color: '#64748b', background: 'none', border: 'none', fontWeight: '600' }}>Ακύρωση</button>
+
+        <button 
+          onClick={() => router.push('/select-store')} 
+          style={cancelBtnStyle}
+          disabled={loading}
+        >
+          <ArrowLeft size={16} /> Επιστροφή στην επιλογή
+        </button>
       </div>
     </div>
   )
 }
+
+// --- STYLES (Ευθυγραμμισμένα με το globals.css) ---
+const containerStyle: any = { 
+  padding: '40px 20px', 
+  backgroundColor: '#f8fafc', 
+  minHeight: '100dvh', 
+  display: 'flex', 
+  alignItems: 'center', 
+  justifyContent: 'center' 
+};
+
+const cardStyle: any = { 
+  backgroundColor: 'white', 
+  padding: '30px', 
+  borderRadius: '24px', 
+  boxShadow: '0 10px 25px rgba(0,0,0,0.05)', 
+  width: '100%', 
+  maxWidth: '400px',
+  textAlign: 'center'
+};
+
+const iconContainer: any = {
+  width: '64px',
+  height: '64px',
+  backgroundColor: '#f1f5f9',
+  borderRadius: '20px',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  margin: '0 auto 20px'
+};
+
+const titleStyle: any = { 
+  fontSize: '24px', 
+  fontWeight: '800', 
+  color: '#1e293b',
+  margin: '0 0 8px 0'
+};
+
+const descStyle: any = {
+  fontSize: '14px',
+  color: '#64748b',
+  fontWeight: '500',
+  lineHeight: '1.5'
+};
+
+const submitBtnStyle: any = { 
+  width: '100%', 
+  padding: '16px', 
+  backgroundColor: '#1e293b', 
+  color: 'white', 
+  borderRadius: '12px', 
+  fontWeight: '700', 
+  border: 'none', 
+  marginTop: '10px',
+  cursor: 'pointer'
+};
+
+const cancelBtnStyle: any = { 
+  width: '100%', 
+  marginTop: '20px', 
+  color: '#64748b', 
+  background: 'none', 
+  border: 'none', 
+  fontWeight: '700', 
+  fontSize: '13px',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: '8px',
+  cursor: 'pointer'
+};

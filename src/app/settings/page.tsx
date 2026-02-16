@@ -1,14 +1,18 @@
 'use client'
 export const dynamic = 'force-dynamic'
 
-import { useEffect, useState, Suspense } from 'react'
+import { useEffect, useState, Suspense, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
-import { useRouter } from 'next/navigation'
+import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import * as XLSX from 'xlsx'
+import { toast, Toaster } from 'sonner'
+import { Settings, X, Download, Save, MessageCircle, Info } from 'lucide-react'
 
 function SettingsContent() {
-  const router = useRouter()
+  const searchParams = useSearchParams()
+  const storeId = searchParams.get('store')
+
   const [loading, setLoading] = useState(true)
   const [isExporting, setIsExporting] = useState(false)
   const [showContact, setShowContact] = useState(false)
@@ -18,55 +22,53 @@ function SettingsContent() {
   const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0])
 
   const [formData, setFormData] = useState({
-    store_name: '',
+    name: '', // Store Name
     company_name: '',
-    username: '', 
     afm: '',
     phone: '',
     address: '',
-    initial_amount: 0,
-    email: ''
+    email: '' // User Email
   })
 
-  useEffect(() => {
-    fetchProfile()
-    localStorage.removeItem('fleet_track_pin')
-    localStorage.removeItem('fleet_track_pin_enabled')
-    localStorage.removeItem('fleet_track_biometrics')
-  }, [])
-
-  async function fetchProfile() {
+  const fetchStoreSettings = useCallback(async () => {
+    if (!storeId) return;
     try {
+      setLoading(true)
       const { data: { user } } = await supabase.auth.getUser()
-      if (user) {
-        const { data } = await supabase.from('profiles').select('*').eq('id', user.id).maybeSingle()
-        if (data) {
-          setFormData({
-            store_name: data.store_name || '',
-            company_name: data.company_name || '',
-            username: data.username || '', 
-            afm: data.afm || '',
-            phone: data.phone || '',
-            address: data.address || '',
-            initial_amount: data.initial_amount || 0,
-            email: user.email || ''
-          })
-        } else {
-          setFormData(prev => ({ ...prev, email: user.email || '' }))
-        }
+      
+      // Παίρνουμε τα στοιχεία απευθείας από τον πίνακα STORES
+      const { data: store, error } = await supabase
+        .from('stores')
+        .select('*')
+        .eq('id', storeId)
+        .single()
+
+      if (store) {
+        setFormData({
+          name: store.name || '',
+          company_name: store.company_name || '',
+          afm: store.afm || '',
+          phone: store.phone || '',
+          address: store.address || '',
+          email: user?.email || ''
+        })
       }
-    } catch (err) { console.error(err) } finally { setLoading(false) }
-  }
+    } catch (err) {
+      toast.error('Αποτυχία φόρτωσης ρυθμίσεων')
+    } finally {
+      setLoading(false)
+    }
+  }, [storeId])
+
+  useEffect(() => {
+    fetchStoreSettings()
+  }, [fetchStoreSettings])
 
   const handleExportAll = async () => {
+    if (!storeId) return toast.error('Δεν βρέθηκε ID καταστήματος')
     setIsExporting(true)
     try {
-      const { data: { user } } = await supabase.auth.getUser()
-      const { data: profile } = await supabase.from('profiles').select('store_id').eq('id', user?.id).single()
-
-      if (!profile?.store_id) throw new Error('Δεν βρέθηκε κατάστημα')
-
-      let transQuery = supabase.from('transactions').select('*').eq('store_id', profile.store_id)
+      let transQuery = supabase.from('transactions').select('*').eq('store_id', storeId)
       
       if (!exportAllData) {
         transQuery = transQuery.gte('date', startDate).lte('date', endDate)
@@ -74,9 +76,9 @@ function SettingsContent() {
 
       const [trans, sups, assets, emps] = await Promise.all([
         transQuery.order('date', { ascending: false }),
-        supabase.from('suppliers').select('id, name').eq('store_id', profile.store_id),
-        supabase.from('fixed_assets').select('id, name').eq('store_id', profile.store_id),
-        supabase.from('employees').select('id, name').eq('store_id', profile.store_id)
+        supabase.from('suppliers').select('*').eq('store_id', storeId),
+        supabase.from('fixed_assets').select('*').eq('store_id', storeId),
+        supabase.from('employees').select('*').eq('store_id', storeId)
       ])
 
       const supplierMap = Object.fromEntries(sups.data?.map(s => [s.id, s.name]) || [])
@@ -90,10 +92,9 @@ function SettingsContent() {
         'Κατηγορία': t.category,
         'Μέθοδος': t.method,
         'Προμηθευτής': supplierMap[t.supplier_id] || '-',
-        'Πάγιο/Λογαριασμός': assetMap[t.fixed_asset_id] || '-',
+        'Πάγιο': assetMap[t.fixed_asset_id] || '-',
         'Υπάλληλος': employeeMap[t.employee_id] || '-',
-        'Σημειώσεις': t.notes,
-        'Καταχώρηση από': t.created_by_name
+        'Σημειώσεις': t.notes
       })) || []
 
       const wb = XLSX.utils.book_new()
@@ -105,81 +106,66 @@ function SettingsContent() {
         if (emps.data?.length) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(emps.data), "Υπάλληλοι")
       }
 
-      const fileName = exportAllData ? `Full_Backup_${new Date().toISOString().split('T')[0]}.xlsx` : `Export_${startDate}_to_${endDate}.xlsx`
-      XLSX.writeFile(wb, fileName)
-      alert('Η εξαγωγή ολοκληρώθηκε!')
+      XLSX.writeFile(wb, `Backup_${formData.name}_${new Date().toISOString().split('T')[0]}.xlsx`)
+      toast.success('Η εξαγωγή ολοκληρώθηκε!')
     } catch (error: any) {
-      alert('Σφάλμα εξαγωγής: ' + error.message)
+      toast.error('Σφάλμα εξαγωγής')
     } finally {
       setIsExporting(false)
     }
   }
 
   async function handleSave() {
+    if (!storeId) return
     setLoading(true)
     try {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (user) {
-        const { error } = await supabase.from('profiles').upsert({ 
-          id: user.id, 
-          ...formData,
-          updated_at: new Date().toISOString()
+      const { error } = await supabase
+        .from('stores')
+        .update({
+          name: formData.name.toUpperCase(),
+          company_name: formData.company_name,
+          afm: formData.afm,
+          phone: formData.phone,
+          address: formData.address,
         })
-        if (!error) alert('Οι αλλαγές αποθηκεύτηκαν επιτυχώς!')
-        else throw error
-      }
+        .eq('id', storeId)
+
+      if (error) throw error
+      toast.success('Οι αλλαγές αποθηκεύτηκαν στο κατάστημα!')
     } catch (error: any) {
-      alert('Σφάλμα: ' + error.message)
+      toast.error('Σφάλμα κατά την αποθήκευση')
     } finally {
       setLoading(false)
     }
   }
 
-  const handleWhatsAppRedirect = () => {
-    const message = `Γεια σας, θα ήθελα να διαγράψω την επιχείρηση: ${formData.company_name || formData.store_name || 'Χωρίς Όνομα'}. \nEmail χρήστη: ${formData.email}`;
-    const encodedMessage = encodeURIComponent(message);
-    window.open(`https://wa.me/306942216191?text=${encodedMessage}`, '_blank');
-  }
-
   return (
     <div style={iphoneWrapper}>
-      <div style={{ maxWidth: '500px', margin: '0 auto', paddingBottom: '120px' }}>
+      <Toaster richColors position="top-center" />
+      <div style={containerNarrow}>
         
-        <div style={headerRowStyle}>
+        <header style={headerRowStyle}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div style={logoBoxStyle}>⚙️</div>
+            <div style={logoBoxStyle}><Settings size={20} color="#64748b" /></div>
             <div>
-              <h1 style={{ fontWeight: '900', fontSize: '22px', margin: 0, color: '#0f172a' }}>Ρυθμίσεις</h1>
-              <p style={{ margin: '2px 0 0', fontSize: '10px', color: '#94a3b8', fontWeight: '800', textTransform: 'uppercase' }}>ΔΙΑΧΕΙΡΙΣΗ ΠΡΟΦΙΛ</p>
+              <h1 style={titleStyle}>Ρυθμίσεις</h1>
+              <p style={subtitleStyle}>{formData.name || 'ΚΑΤΑΣΤΗΜΑ'}</p>
             </div>
           </div>
-          <Link href="/" style={backBtnStyle}>✕</Link>
-        </div>
+          <Link href={`/?store=${storeId}`} style={backBtnStyle}><X size={20} /></Link>
+        </header>
 
         <div style={mainCardStyle}>
-          <p style={sectionLabel}>ΠΡΟΣΩΠΙΚΑ ΣΤΟΙΧΕΙΑ</p>
-          <div style={infoBoxStyle}>
-            <label style={labelStyle}>👤 ΤΟ ΟΝΟΜΑ ΣΑΣ (ΥΠΟΓΡΑΦΗ)</label>
-            <input style={inputStyle} value={formData.username} onChange={e => setFormData({...formData, username: e.target.value})} placeholder="π.χ. ΓΙΑΝΝΗΣ Π." />
-          </div>
-
-          <div style={{ marginBottom: '25px' }}>
-            <label style={labelStyle}>EMAIL ΛΟΓΑΡΙΑΣΜΟΥ</label>
-            <input style={{ ...inputStyle, backgroundColor: '#f1f5f9', color: '#64748b' }} value={formData.email} readOnly />
-          </div>
-
-          <div style={divider} />
-
           <p style={sectionLabel}>ΣΤΟΙΧΕΙΑ ΕΠΙΧΕΙΡΗΣΗΣ</p>
-          <div style={gridStyle}>
-            <div>
-              <label style={labelStyle}>ΟΝΟΜΑ ΕΤΑΙΡΕΙΑΣ</label>
-              <input style={inputStyle} value={formData.company_name} onChange={e => setFormData({...formData, company_name: e.target.value})} />
-            </div>
-            <div>
-              <label style={labelStyle}>ΤΙΤΛΟΣ ΚΑΤ/ΤΟΣ</label>
-              <input style={inputStyle} value={formData.store_name} onChange={e => setFormData({...formData, store_name: e.target.value})} />
-            </div>
+          
+          <div style={inputGroup}>
+            <label style={labelStyle}>ΤΙΤΛΟΣ ΚΑΤΑΣΤΗΜΑΤΟΣ (ΕΜΦΑΝΙΣΗ)</label>
+            <input style={inputStyle} value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} />
+          </div>
+
+          <div style={inputGroup}>
+            <label style={labelStyle}>ΕΠΩΝΥΜΙΑ ΕΤΑΙΡΕΙΑΣ</label>
+            <input style={inputStyle} value={formData.company_name} onChange={e => setFormData({...formData, company_name: e.target.value})} placeholder="π.χ. ΑΦΟΙ ΠΑΠΑΔΟΠΟΥΛΟΙ Ο.Ε." />
           </div>
 
           <div style={gridStyle}>
@@ -188,71 +174,53 @@ function SettingsContent() {
               <input style={inputStyle} value={formData.afm} onChange={e => setFormData({...formData, afm: e.target.value})} />
             </div>
             <div>
-              <label style={labelStyle}>ΑΡΧΙΚΟ ΠΟΣΟ (€)</label>
-              <input type="number" style={inputStyle} value={formData.initial_amount} onChange={e => setFormData({...formData, initial_amount: Number(e.target.value)})} />
+              <label style={labelStyle}>ΤΗΛΕΦΩΝΟ</label>
+              <input style={inputStyle} value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} />
             </div>
           </div>
 
-          <div style={{ marginBottom: '15px' }}>
-            <label style={labelStyle}>ΤΗΛΕΦΩΝΟ ΕΠΙΚΟΙΝΩΝΙΑΣ</label>
-            <input style={inputStyle} value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} />
-          </div>
-
-          <div style={{ marginBottom: '30px' }}>
+          <div style={inputGroup}>
             <label style={labelStyle}>ΔΙΕΥΘΥΝΣΗ</label>
-            <textarea style={{ ...inputStyle, height: '70px', resize: 'none', paddingTop: '10px' }} value={formData.address} onChange={e => setFormData({...formData, address: e.target.value})} />
+            <textarea style={textareaStyle} value={formData.address} onChange={e => setFormData({...formData, address: e.target.value})} />
           </div>
 
           <button onClick={handleSave} disabled={loading} style={saveBtnStyle}>
-            {loading ? 'ΑΠΟΘΗΚΕΥΣΗ...' : 'ΕΝΗΜΕΡΩΣΗ ΡΥΘΜΙΣΕΩΝ'}
+            <Save size={18} /> {loading ? 'ΑΠΟΘΗΚΕΥΣΗ...' : 'ΕΝΗΜΕΡΩΣΗ ΚΑΤΑΣΤΗΜΑΤΟΣ'}
           </button>
 
           <div style={divider} />
 
-          <p style={sectionLabel}>ΕΞΑΓΩΓΗ ΔΕΔΟΜΕΝΩΝ (EXCEL)</p>
+          <p style={sectionLabel}>ΕΞΑΓΩΓΗ ΔΕΔΟΜΕΝΩΝ (BACKUP)</p>
           
           <div style={checkboxContainer}>
-            <input 
-              type="checkbox" 
-              id="exportAll" 
-              checked={exportAllData} 
-              onChange={(e) => setExportAllData(e.target.checked)}
-              style={{ width: '20px', height: '20px' }}
-            />
-            <label htmlFor="exportAll" style={{ fontSize: '13px', fontWeight: '700', color: '#0f172a' }}>
-              Εξαγωγή όλων των δεδομένων (Backup)
-            </label>
+            <input type="checkbox" id="exportAll" checked={exportAllData} onChange={(e) => setExportAllData(e.target.checked)} />
+            <label htmlFor="exportAll" style={{ fontSize: '13px', fontWeight: '700' }}>Πλήρες Backup (Όλες οι εγγραφές)</label>
           </div>
 
           {!exportAllData && (
             <div style={gridStyle}>
-              <div>
-                <label style={labelStyle}>📅 ΑΠΟ</label>
-                <input type="date" style={inputStyle} value={startDate} onChange={e => setStartDate(e.target.value)} />
-              </div>
-              <div>
-                <label style={labelStyle}>📅 ΕΩΣ</label>
-                <input type="date" style={inputStyle} value={endDate} onChange={e => setEndDate(e.target.value)} />
-              </div>
+              <input type="date" style={inputStyle} value={startDate} onChange={e => setStartDate(e.target.value)} />
+              <input type="date" style={inputStyle} value={endDate} onChange={e => setEndDate(e.target.value)} />
             </div>
           )}
 
-          <button 
-            onClick={handleExportAll} 
-            disabled={isExporting} 
-            style={{ ...saveBtnStyle, backgroundColor: '#059669', marginTop: '10px' }}
-          >
-            {isExporting ? 'ΠΡΟΕΤΟΙΜΑΣΙΑ...' : exportAllData ? '📥 ΕΞΑΓΩΓΗ ΟΛΩΝ (BACKUP)' : '📥 ΕΞΑΓΩΓΗ ΕΠΙΛΕΓΜΕΝΩΝ'}
+          <button onClick={handleExportAll} disabled={isExporting} style={exportBtnStyle}>
+            <Download size={18} /> {isExporting ? 'ΕΞΑΓΩΓΗ...' : 'ΛΗΨΗ ΑΡΧΕΙΟΥ EXCEL'}
           </button>
         </div>
 
-        {!showContact ? (
-          <button onClick={() => setShowContact(true)} style={deleteLinkStyle}>Υποστήριξη & Διαγραφή Επιχείρησης</button>
-        ) : (
+        <div style={{ textAlign: 'center', marginTop: '20px' }}>
+            <button onClick={() => setShowContact(!showContact)} style={supportToggleStyle}>
+                <Info size={14} /> Υποστήριξη & Διαγραφή
+            </button>
+        </div>
+
+        {showContact && (
           <div style={supportCardStyle}>
-            <h2 style={{ fontSize: '18px', fontWeight: '900', textAlign: 'center', marginBottom: '15px', color: '#991b1b' }}>Υποστήριξη</h2>
-            <button onClick={handleWhatsAppRedirect} style={waBtnStyle}>ΕΠΙΚΟΙΝΩΝΙΑ ΜΕΣΩ WHATSAPP 💬</button>
-            <button onClick={() => setShowContact(false)} style={cancelLinkStyle}>Επιστροφή στις ρυθμίσεις</button>
+            <p style={{ fontSize: '13px', color: '#64748b', marginBottom: '15px' }}>Για προβλήματα ή οριστική διαγραφή του καταστήματος <b>{formData.name}</b>, επικοινωνήστε μαζί μας.</p>
+            <button onClick={() => window.open(`https://wa.me/306942216191`, '_blank')} style={waBtnStyle}>
+              <MessageCircle size={18} /> WHATSAPP SUPPORT
+            </button>
           </div>
         )}
       </div>
@@ -261,34 +229,28 @@ function SettingsContent() {
 }
 
 // --- STYLES ---
-const iphoneWrapper: any = { 
-  backgroundColor: '#f8fafc', 
-  minHeight: '100dvh', 
-  padding: '20px', 
-  overflowY: 'auto', 
-  position: 'absolute', 
-  top: 0, 
-  left: 0, 
-  right: 0, 
-  bottom: 0 
-};
-const headerRowStyle = { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '25px', paddingTop: '15px' };
-const logoBoxStyle: any = { width: '42px', height: '42px', backgroundColor: '#f1f5f9', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' };
-const backBtnStyle: any = { textDecoration: 'none', color: '#94a3b8', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#fff', borderRadius: '10px', border: '1px solid #e2e8f0' };
-const mainCardStyle: any = { backgroundColor: 'white', padding: '24px', borderRadius: '28px', border: '1px solid #f1f5f9', boxShadow: '0 4px 12px rgba(0,0,0,0.02)', marginBottom: '20px' };
-const sectionLabel: any = { fontSize: '11px', fontWeight: '900', color: '#0f172a', marginBottom: '15px' };
-const infoBoxStyle: any = { marginBottom: '20px', padding: '15px', backgroundColor: '#f0f9ff', borderRadius: '16px', border: '1px solid #e0f2fe' };
+const iphoneWrapper: any = { backgroundColor: '#f8fafc', minHeight: '100dvh', padding: '20px' };
+const containerNarrow = { maxWidth: '480px', margin: '0 auto', paddingBottom: '100px' };
+const headerRowStyle = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px' };
+const logoBoxStyle: any = { width: '42px', height: '42px', backgroundColor: '#fff', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid #e2e8f0' };
+const titleStyle = { fontWeight: '800', fontSize: '20px', margin: 0, color: '#0f172a' };
+const subtitleStyle = { margin: 0, fontSize: '10px', color: '#6366f1', fontWeight: '800' };
+const backBtnStyle: any = { backgroundColor: '#fff', padding: '8px', borderRadius: '12px', border: '1px solid #e2e8f0', color: '#94a3b8' };
+const mainCardStyle: any = { backgroundColor: 'white', padding: '24px', borderRadius: '24px', border: '1px solid #e2e8f0', boxShadow: '0 4px 10px rgba(0,0,0,0.03)' };
+const sectionLabel: any = { fontSize: '11px', fontWeight: '800', color: '#64748b', marginBottom: '15px', letterSpacing: '0.5px' };
 const labelStyle: any = { fontSize: '10px', color: '#94a3b8', fontWeight: '800', marginBottom: '6px', display: 'block' };
-const inputStyle: any = { width: '100%', padding: '14px', borderRadius: '12px', border: '1px solid #e2e8f0', fontSize: '15px', fontWeight: '700', boxSizing: 'border-box', backgroundColor: '#f8fafc' };
-const gridStyle = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginBottom: '15px' };
-const checkboxContainer: any = { display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '15px', padding: '12px', backgroundColor: '#f8fafc', borderRadius: '12px', border: '1px solid #e2e8f0' };
-const divider: any = { height: '1px', backgroundColor: '#f1f5f9', margin: '25px 0' };
-const saveBtnStyle: any = { width: '100%', backgroundColor: '#0f172a', color: 'white', padding: '18px', borderRadius: '16px', border: 'none', fontWeight: '900', cursor: 'pointer' };
-const deleteLinkStyle: any = { width: '100%', background: 'none', border: 'none', color: '#ef4444', textDecoration: 'underline', cursor: 'pointer', fontSize: '12px', fontWeight: '700', marginTop: '15px' };
-const supportCardStyle: any = { backgroundColor: 'white', padding: '25px', borderRadius: '28px', border: '1px solid #fee2e2' };
-const waBtnStyle: any = { width: '100%', backgroundColor: '#25d366', color: 'white', padding: '16px', borderRadius: '14px', border: 'none', fontWeight: '900', fontSize: '13px', cursor: 'pointer' };
-const cancelLinkStyle: any = { width: '100%', background: 'none', border: 'none', color: '#94a3b8', marginTop: '20px', fontSize: '13px', fontWeight: '800', cursor: 'pointer' };
+const inputStyle: any = { width: '100%', padding: '12px', borderRadius: '10px', border: '1px solid #e2e8f0', fontSize: '14px', fontWeight: '600', backgroundColor: '#f8fafc' };
+const textareaStyle: any = { ...inputStyle, height: '60px', resize: 'none' };
+const inputGroup = { marginBottom: '15px' };
+const gridStyle = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '15px' };
+const divider = { height: '1px', backgroundColor: '#f1f5f9', margin: '25px 0' };
+const saveBtnStyle: any = { width: '100%', backgroundColor: '#0f172a', color: 'white', padding: '16px', borderRadius: '14px', border: 'none', fontWeight: '800', cursor: 'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:'10px' };
+const exportBtnStyle: any = { ...saveBtnStyle, backgroundColor: '#059669', marginTop: '10px' };
+const checkboxContainer: any = { display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '15px', padding: '12px', backgroundColor: '#f0fdf4', borderRadius: '10px' };
+const supportToggleStyle: any = { background: 'none', border: 'none', color: '#94a3b8', fontSize: '12px', fontWeight: '700', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '5px' };
+const supportCardStyle: any = { marginTop: '15px', padding: '20px', backgroundColor: 'white', borderRadius: '20px', border: '1px solid #fee2e2', textAlign: 'center' };
+const waBtnStyle: any = { width: '100%', backgroundColor: '#25d366', color: 'white', padding: '14px', borderRadius: '12px', border: 'none', fontWeight: '800', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' };
 
 export default function SettingsPage() {
-  return <main><Suspense fallback={<div>Φόρτωση...</div>}><SettingsContent /></Suspense></main>
+  return <main><Suspense fallback={null}><SettingsContent /></Suspense></main>
 }

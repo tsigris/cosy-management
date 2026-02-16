@@ -5,6 +5,7 @@ import "./globals.css";
 import { AuthLogic } from "../components/AuthLogic"; 
 import BottomNav from "../components/BottomNav";
 import { Toaster } from 'sonner';
+import { Suspense } from 'react'; // Απαραίτητο για τα searchParams
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
@@ -32,23 +33,31 @@ export default function RootLayout({
   return (
     <html lang="el">
       <head>
+        {/* Meta tags για σωστή εμφάνιση σε iPhone/Android ως App */}
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
       </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-        style={{ overscrollBehavior: 'none', backgroundColor: '#f8fafc' }}
+        style={{ 
+          overscrollBehavior: 'none', 
+          backgroundColor: '#f8fafc',
+          minHeight: '100dvh' 
+        }}
       >
-        <AuthLogic /> 
-        <Toaster richColors position="top-center" />
-        
-        {/* Ενεργοποιούμε ξανά τα components. 
-            Η λογική "πότε κρύβονται" βρίσκεται πλέον μέσα σε αυτά. */}
-        <main>
-          {children}
-        </main>
+        {/* Το Suspense επιτρέπει στα AuthLogic και BottomNav να διαβάζουν 
+          σωστά το ?store=ID από το URL χωρίς να μπερδεύονται 
+        */}
+        <Suspense fallback={<div style={{padding: '20px', textAlign: 'center'}}>Φορτώνει...</div>}>
+          <AuthLogic /> 
+          <Toaster richColors position="top-center" />
+          
+          <main style={{ paddingBottom: '80px' }}> {/* Padding για να μη κρύβεται το περιεχόμενο πίσω από το Nav */}
+            {children}
+          </main>
 
-        <BottomNav />
+          <BottomNav />
+        </Suspense>
       </body>
     </html>
   );
