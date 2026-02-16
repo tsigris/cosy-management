@@ -72,7 +72,6 @@ function DashboardContent() {
       
       if (storeData) setStoreName(storeData.name);
 
-      // Φόρτωση κινήσεων - Χρήση safe join (χωρίς το !left) για αποφυγή σφαλμάτων schema
       const { data: tx, error: txError } = await supabase
         .from('transactions')
         .select('*, suppliers(name), fixed_assets(name)') 
@@ -95,7 +94,6 @@ function DashboardContent() {
 
     } catch (err) {
       console.error("Dashboard error:", err);
-      // Αφαιρούμε το toast.error για να μην ενοχλεί αν απλά η βάση κάνει refresh
     } finally {
       setLoading(false);
     }
@@ -173,9 +171,17 @@ function DashboardContent() {
                     <NextLink href={`/fixed-assets?store=${storeIdFromUrl}`} style={menuItem} onClick={() => setIsMenuOpen(false)}>🔌 Πάγια</NextLink>
                     <NextLink href={`/employees?store=${storeIdFromUrl}`} style={menuItem} onClick={() => setIsMenuOpen(false)}>👥 Υπάλληλοι</NextLink>
                     <NextLink href={`/suppliers-balance?store=${storeIdFromUrl}`} style={menuItem} onClick={() => setIsMenuOpen(false)}>🚩 Καρτέλες (Χρέη)</NextLink>
+                    <NextLink href={`/permissions?store=${storeIdFromUrl}`} style={menuItem} onClick={() => setIsMenuOpen(false)}>🔑 Δικαιώματα</NextLink>
                   </>
               )}
               <NextLink href={`/analysis?store=${storeIdFromUrl}`} style={menuItem} onClick={() => setIsMenuOpen(false)}>📊 Ανάλυση</NextLink>
+              
+              <div style={menuDivider} />
+
+              <p style={menuSectionLabel}>ΥΠΟΣΤΗΡΙΞΗ & ΡΥΘΜΙΣΕΙΣ</p>
+              <NextLink href={`/settings?store=${storeIdFromUrl}`} style={menuItem} onClick={() => setIsMenuOpen(false)}>⚙️ Ρυθμίσεις</NextLink>
+              <NextLink href={`/instructions?store=${storeIdFromUrl}`} style={menuItem} onClick={() => setIsMenuOpen(false)}>📖 Οδηγίες Χρήσης</NextLink>
+
               <div style={menuDivider} />
               <button onClick={() => supabase.auth.signOut().then(() => router.push('/login'))} style={logoutBtnStyle}>
                 ΑΠΟΣΥΝΔΕΣΗ 🚪
@@ -260,7 +266,6 @@ function DashboardContent() {
   )
 }
 
-// ... (Τα styles παραμένουν ίδια)
 const iphoneWrapper: any = { backgroundColor: colors.bgLight, minHeight: '100dvh', padding: '20px', paddingBottom: '100px' };
 const headerStyle: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px' };
 const brandArea = { display: 'flex', alignItems: 'center', gap: '12px' };
