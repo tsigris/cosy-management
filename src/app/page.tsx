@@ -19,13 +19,13 @@ import {
 
 // --- MODERN PREMIUM PALETTE ---
 const colors = {
-  primaryDark: '#0f172a', 
-  secondaryText: '#64748b', 
-  accentRed: '#f43f5e',   
-  accentBlue: '#6366f1',  
+  primaryDark: '#0f172a',
+  secondaryText: '#64748b',
+  accentRed: '#f43f5e',
+  accentBlue: '#6366f1',
   accentGreen: '#10b981',
-  bgLight: '#f8fafc',     
-  border: '#e2e8f0',      
+  bgLight: '#f8fafc',
+  border: '#e2e8f0',
   white: '#ffffff',
   warning: '#fffbeb',
   warningText: '#92400e'
@@ -72,10 +72,10 @@ function DashboardContent() {
         .maybeSingle();
       if (storeData) setStoreName(storeData.name);
 
-      // Φόρτωση κινήσεων (συμπεριλαμβανομένου του created_by_name)
+      // ✅ Φόρτωση κινήσεων (φέρνουμε και revenue_sources(name))
       const { data: tx, error: txError } = await supabase
         .from('transactions')
-        .select('*, suppliers(name), fixed_assets(name)')
+        .select('*, suppliers(name), fixed_assets(name), revenue_sources(name)')
         .eq('store_id', storeIdFromUrl)
         .eq('date', selectedDate)
         .order('created_at', { ascending: false });
@@ -147,14 +147,14 @@ function DashboardContent() {
   return (
     <div style={iphoneWrapper}>
       <Toaster position="top-center" richColors />
-      
+
       <header style={headerStyle}>
         <div style={brandArea}>
           <div style={logoBox}>{storeName?.charAt(0) || '?'}</div>
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <h1 style={storeTitleText}>{storeName?.toUpperCase() || 'ΦΟΡΤΩΣΗ...'}</h1>
-                <NextLink href="/select-store" style={switchBtnStyle}>ΑΛΛΑΓΗ</NextLink>
+              <h1 style={storeTitleText}>{storeName?.toUpperCase() || 'ΦΟΡΤΩΣΗ...'}</h1>
+              <NextLink href="/select-store" style={switchBtnStyle}>ΑΛΛΑΓΗ</NextLink>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
               <span style={dashboardSub}>BUSINESS DASHBOARD</span>
@@ -176,7 +176,6 @@ function DashboardContent() {
                   <NextLink href={`/manage-lists?store=${storeIdFromUrl}`} style={menuItem} onClick={() => setIsMenuOpen(false)}>⚙️ Διαχείριση Καταλόγων</NextLink>
                 </>
               )}
-              {/* Divider before Analysis */}
               {(isStoreAdmin || canViewAnalysis) && <div style={menuDivider} />}
               {canViewAnalysis && (
                 <NextLink href={`/analysis?store=${storeIdFromUrl}`} style={menuItem} onClick={() => setIsMenuOpen(false)}>📊 Ανάλυση</NextLink>
@@ -203,18 +202,18 @@ function DashboardContent() {
       </div>
 
       <div style={heroCardStyle}>
-          <p style={heroLabel}>ΔΙΑΘΕΣΙΜΟ ΥΠΟΛΟΙΠΟ ΗΜΕΡΑΣ</p>
-          <h2 style={heroAmountText}>{totals.balance.toFixed(2)}€</h2>
-          <div style={heroStatsRow}>
-              <div style={heroStatItem}>
-                  <div style={statCircle(colors.accentGreen)}><TrendingUp size={12} /></div>
-                  <span style={heroStatValue}>{totals.income.toFixed(2)}€</span>
-              </div>
-              <div style={heroStatItem}>
-                  <div style={statCircle(colors.accentRed)}><TrendingDown size={12} /></div>
-                  <span style={heroStatValue}>{totals.expense.toFixed(2)}€</span>
-              </div>
+        <p style={heroLabel}>ΔΙΑΘΕΣΙΜΟ ΥΠΟΛΟΙΠΟ ΗΜΕΡΑΣ</p>
+        <h2 style={heroAmountText}>{totals.balance.toFixed(2)}€</h2>
+        <div style={heroStatsRow}>
+          <div style={heroStatItem}>
+            <div style={statCircle(colors.accentGreen)}><TrendingUp size={12} /></div>
+            <span style={heroStatValue}>{totals.income.toFixed(2)}€</span>
           </div>
+          <div style={heroStatItem}>
+            <div style={statCircle(colors.accentRed)}><TrendingDown size={12} /></div>
+            <span style={heroStatValue}>{totals.expense.toFixed(2)}€</span>
+          </div>
+        </div>
       </div>
 
       <div style={actionGrid}>
@@ -226,46 +225,55 @@ function DashboardContent() {
       <div style={listContainer}>
         <p style={listHeader}>ΚΙΝΗΣΕΙΣ ΗΜΕΡΑΣ ({transactions.length})</p>
         {loading ? (
-          <div style={{textAlign:'center', padding:'40px'}}><div style={spinnerStyle}></div></div>
+          <div style={{ textAlign: 'center', padding: '40px' }}><div style={spinnerStyle}></div></div>
         ) : transactions.length === 0 ? (
           <div style={emptyStateStyle}>Δεν υπάρχουν κινήσεις</div>
         ) : (
-          transactions.map(t => (
-            <div key={t.id} style={{ marginBottom: '12px' }}>
-              <div 
-                style={{
-                  ...txRow,
-                  borderRadius: expandedTx === t.id ? '20px 20px 0 0' : '20px',
-                  borderBottom: expandedTx === t.id ? `1px dashed ${colors.border}` : `1px solid ${colors.border}`
-                }} 
-                onClick={() => setExpandedTx(expandedTx === t.id ? null : t.id)}
-              >
-                <div style={txIconContainer(t.type === 'income')}>
-                  {t.type === 'income' ? <TrendingUp size={18} /> : <TrendingDown size={18} />}
-                </div>
-                <div style={{ flex: 1, marginLeft: '12px' }}>
-                  <p style={txTitle}>
-                    {t.suppliers?.name || t.fixed_assets?.name || t.category || 'Συναλλαγή'}
-                    {t.is_credit && <span style={creditBadgeStyle}>ΠΙΣΤΩΣΗ</span>}
-                  </p>
-                  {/* ΕΔΩ ΕΙΝΑΙ Η ΠΡΟΣΘΗΚΗ ΤΟΥ ΧΡΗΣΤΗ */}
-                  <p style={txMeta}>
-                    {t.method} • {t.created_at ? format(parseISO(t.created_at), 'HH:mm') : '--:--'} • {t.created_by_name || 'Admin'}
-                  </p>
-                </div>
-                <p style={{ ...txAmount, color: t.type === 'income' ? colors.accentGreen : colors.accentRed }}>
-                  {t.type === 'income' ? '+' : '-'}{Math.abs(Number(t.amount) || 0).toFixed(2)}€
-                </p>
-              </div>
+          transactions.map(t => {
+            // ✅ ΝΕΑ προτεραιότητα τίτλου κίνησης
+            const txTitleText =
+              t.revenue_sources?.name ||
+              t.suppliers?.name ||
+              t.fixed_assets?.name ||
+              t.category ||
+              'Συναλλαγή'
 
-              {expandedTx === t.id && (
-                <div style={actionPanel}>
-                  <button onClick={() => router.push(`/add-${t.type === 'income' ? 'income' : 'expense'}?editId=${t.id}&store=${storeIdFromUrl}`)} style={editRowBtn}>Επεξεργασία</button>
-                  <button onClick={() => handleDelete(t.id)} style={deleteRowBtn}>Διαγραφή</button>
+            return (
+              <div key={t.id} style={{ marginBottom: '12px' }}>
+                <div
+                  style={{
+                    ...txRow,
+                    borderRadius: expandedTx === t.id ? '20px 20px 0 0' : '20px',
+                    borderBottom: expandedTx === t.id ? `1px dashed ${colors.border}` : `1px solid ${colors.border}`
+                  }}
+                  onClick={() => setExpandedTx(expandedTx === t.id ? null : t.id)}
+                >
+                  <div style={txIconContainer(t.type === 'income')}>
+                    {t.type === 'income' ? <TrendingUp size={18} /> : <TrendingDown size={18} />}
+                  </div>
+                  <div style={{ flex: 1, marginLeft: '12px' }}>
+                    <p style={txTitle}>
+                      {txTitleText}
+                      {t.is_credit && <span style={creditBadgeStyle}>ΠΙΣΤΩΣΗ</span>}
+                    </p>
+                    <p style={txMeta}>
+                      {t.method} • {t.created_at ? format(parseISO(t.created_at), 'HH:mm') : '--:--'} • {t.created_by_name || 'Admin'}
+                    </p>
+                  </div>
+                  <p style={{ ...txAmount, color: t.type === 'income' ? colors.accentGreen : colors.accentRed }}>
+                    {t.type === 'income' ? '+' : '-'}{Math.abs(Number(t.amount) || 0).toFixed(2)}€
+                  </p>
                 </div>
-              )}
-            </div>
-          ))
+
+                {expandedTx === t.id && (
+                  <div style={actionPanel}>
+                    <button onClick={() => router.push(`/add-${t.type === 'income' ? 'income' : 'expense'}?editId=${t.id}&store=${storeIdFromUrl}`)} style={editRowBtn}>Επεξεργασία</button>
+                    <button onClick={() => handleDelete(t.id)} style={deleteRowBtn}>Διαγραφή</button>
+                  </div>
+                )}
+              </div>
+            )
+          })
         )}
       </div>
     </div>
@@ -273,18 +281,18 @@ function DashboardContent() {
 }
 
 // --- STYLES ΔΙΟΡΘΩΜΕΝΑ ΓΙΑ ΠΟΝΤΙΚΙ ΚΑΙ REDMI ---
-const iphoneWrapper: any = { 
-  backgroundColor: colors.bgLight, 
+const iphoneWrapper: any = {
+  backgroundColor: colors.bgLight,
   minHeight: '100%', // Απαραίτητο για το PC scroll
   width: '100%',
-  padding: '20px', 
+  padding: '20px',
   paddingBottom: '120px',
   touchAction: 'pan-y' // Απαραίτητο για το Redmi scroll με ένα δάχτυλο
 };
 
 const headerStyle: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px' };
 const brandArea = { display: 'flex', alignItems: 'center', gap: '12px' };
-const logoBox = { width: '42px', height: '42px', backgroundColor: colors.primaryDark, borderRadius: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', color:'white', fontSize: '18px', fontWeight:'800' };
+const logoBox = { width: '42px', height: '42px', backgroundColor: colors.primaryDark, borderRadius: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '18px', fontWeight: '800' };
 const storeTitleText = { fontSize: '16px', fontWeight: '800', margin: 0, color: colors.primaryDark };
 const switchBtnStyle: any = { fontSize: '9px', fontWeight: '800', color: colors.accentBlue, backgroundColor: '#eef2ff', border: 'none', padding: '4px 8px', borderRadius: '8px', cursor: 'pointer', textDecoration: 'none' };
 const dashboardSub = { fontSize: '9px', fontWeight: '800', color: colors.secondaryText, letterSpacing: '0.5px' };
