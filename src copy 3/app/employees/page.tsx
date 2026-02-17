@@ -21,6 +21,7 @@ const colors = {
 }
 
 function EmployeesContent() {
+  // employees = staff από fixed_assets
   const [employees, setEmployees] = useState<any[]>([])
   const [transactions, setTransactions] = useState<any[]>([])
   const [overtimes, setOvertimes] = useState<any[]>([])
@@ -89,13 +90,14 @@ function EmployeesContent() {
   })
 
   // ✅ Tips stats fetcher (month + last 5 of selected month)
+  // ✅ UPDATED: join fixed_assets(name) + fixed_asset_id
   const getTipsStats = useCallback(async () => {
     try {
       if (!storeId) return
 
       const { data, error } = await supabase
         .from('transactions')
-        .select('id,date,notes,employee_id,amount,employees(full_name)')
+        .select('id,date,notes,fixed_asset_id,amount,fixed_assets(name)')
         .eq('store_id', storeId)
         .ilike('notes', '%tips%')
         .order('date', { ascending: false })
@@ -122,7 +124,7 @@ function EmployeesContent() {
 
           return {
             id: t.id,
-            name: t?.employees?.full_name || '—',
+            name: t?.fixed_assets?.name || '—',
             date: t.date,
             amount,
             note
@@ -151,41 +153,50 @@ function EmployeesContent() {
     }
   }, [storeId, tipsMonth])
 
+  // ✅ UPDATED DATA FETCHING:
+  // - employees -> fixed_assets (sub_category='staff')
+  // - transactions -> όσα έχουν fixed_asset_id
   const fetchInitialData = useCallback(async () => {
     setLoading(true)
     try {
-      const activeStoreId = typeof window !== 'undefined' ? localStorage.getItem('active_store_id') : null;
+      const activeStoreId = typeof window !== 'undefined' ? localStorage.getItem('active_store_id') : null
       if (!activeStoreId) {
-        setLoading(false);
-        return;
+        setLoading(false)
+        return
       }
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.user) return;
-      setStoreId(activeStoreId);
+
+      const {
+        data: { session }
+      } = await supabase.auth.getSession()
+      if (!session?.user) return
+
+      setStoreId(activeStoreId)
+
       const [empsRes, transRes, otRes] = await Promise.all([
-        supabase.from('employees')
+        supabase
+          .from('fixed_assets')
           .select('*')
+          .eq('sub_category', 'staff')
           .or(`store_id.eq.${activeStoreId},store_id.is.null`)
-          .order('full_name'),
-        supabase.from('transactions')
+          .order('name'),
+        supabase
+          .from('transactions')
           .select('*')
           .eq('store_id', activeStoreId)
-          .not('employee_id', 'is', null)
+          .not('fixed_asset_id', 'is', null)
           .order('date', { ascending: false }),
-        supabase.from('employee_overtimes')
-          .select('*')
-          .eq('store_id', activeStoreId)
-          .eq('is_paid', false)
-      ]);
-      if (empsRes.data) setEmployees(empsRes.data);
-      if (transRes.data) setTransactions(transRes.data);
-      if (otRes.data) setOvertimes(otRes.data);
+        supabase.from('employee_overtimes').select('*').eq('store_id', activeStoreId).eq('is_paid', false)
+      ])
+
+      if (empsRes.data) setEmployees(empsRes.data)
+      if (transRes.data) setTransactions(transRes.data)
+      if (otRes.data) setOvertimes(otRes.data)
     } catch (err) {
-      console.error(err);
+      console.error(err)
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
-  }, []);
+  }, [])
 
   useEffect(() => {
     fetchInitialData()
@@ -197,21 +208,22 @@ function EmployeesContent() {
 
   // Φιλτράρισμα λίστας βάσει showInactive
   // Hide employees with null store_id if not main store
-  const mainStoreId = 'e50a8803-a262-4303-9e90-c116c965e683';
-  const visibleEmployees = employees.filter(emp => {
-    if (!showInactive && emp.is_active === false) return false;
-    if (storeId && storeId !== mainStoreId && emp.store_id == null) return false;
-    return true;
-  });
+  const mainStoreId = 'e50a8803-a262-4303-9e90-c116c965e683'
+  const visibleEmployees = employees.filter((emp) => {
+    if (!showInactive && emp.is_active === false) return false
+    if (storeId && storeId !== mainStoreId && emp.store_id == null) return false
+    return true
+  })
 
   // ✅ Toggle Active/Inactive (Supabase)
+  // ✅ UPDATED: fixed_assets
   async function toggleActive(empId: string, currentValue: boolean | null | undefined) {
     const nextValue = currentValue === false ? true : false
 
     // optimistic UI
     setEmployees((prev) => prev.map((e) => (e.id === empId ? { ...e, is_active: nextValue } : e)))
 
-    const { error } = await supabase.from('employees').update({ is_active: nextValue }).eq('id', empId)
+    const { error } = await supabase.from('fixed_assets').update({ is_active: nextValue }).eq('id', empId)
 
     if (error) {
       // rollback
@@ -223,35 +235,39 @@ function EmployeesContent() {
     toast.success(nextValue ? 'Ο υπάλληλος ενεργοποιήθηκε ✅' : 'Ο υπάλληλος απενεργοποιήθηκε 🚫')
   }
 
-  // Υπολογισμός εκκρεμών ωρών
+  // ✅ Υπολογισμός εκκρεμών ωρών (μόνο fixed_asset_id)
   const getPendingOtHours = (empId: string) => {
-    return overtimes.filter((ot) => ot.employee_id === empId).reduce((acc, curr) => acc + Number(curr.hours), 0)
+    return overtimes.filter((ot: any) => ot.fixed_asset_id === empId).reduce((acc: number, curr: any) => acc + Number(curr.hours), 0)
   }
 
-  // Καταγραφή νέας υπερωρίας
+  // ✅ Καταγραφή νέας υπερωρίας (insert με fixed_asset_id)
   async function handleQuickOvertime() {
     if (!otHours || !otModal) return
-    // Ensure storeId is set from state or localStorage
-    const activeStoreId = storeId || (typeof window !== 'undefined' ? localStorage.getItem('active_store_id') : null);
+
+    const activeStoreId =
+      storeId || (typeof window !== 'undefined' ? localStorage.getItem('active_store_id') : null)
+
     const { error } = await supabase.from('employee_overtimes').insert([
       {
-        employee_id: otModal.empId,
+        fixed_asset_id: otModal.empId,
         store_id: activeStoreId,
         hours: Number(otHours),
         date: new Date().toISOString().split('T')[0],
         is_paid: false
       }
     ])
+
     if (!error) {
       toast.success(`Προστέθηκαν ${otHours} ώρες στην ${otModal.name}`)
       setOtModal(null)
       setOtHours('')
       fetchInitialData()
+    } else {
+      toast.error('Αποτυχία καταγραφής υπερωρίας.')
     }
   }
 
-  // ✅ Καταγραφή νέων Tips σαν transaction
-  // ✅ amount = amountNum για να φαίνεται σωστά στο ιστορικό
+  // ✅ Καταγραφή νέων Tips σαν transaction (fixed_asset_id)
   async function handleQuickTip() {
     if (!tipAmount || !tipModal) return
 
@@ -262,13 +278,12 @@ function EmployeesContent() {
     }
 
     const today = new Date().toISOString().split('T')[0]
-    // Ensure storeId is set from state or localStorage
-    const activeStoreId = storeId || (typeof window !== 'undefined' ? localStorage.getItem('active_store_id') : null);
+    const activeStoreId = storeId || (typeof window !== 'undefined' ? localStorage.getItem('active_store_id') : null)
 
     const { error } = await supabase.from('transactions').insert([
       {
         store_id: activeStoreId,
-        employee_id: tipModal.empId,
+        fixed_asset_id: tipModal.empId,
         amount: amountNum,
         type: 'expense',
         category: 'Προσωπικό',
@@ -300,8 +315,7 @@ function EmployeesContent() {
       return
     }
 
-    // Ensure storeId is set from state or localStorage
-    const activeStoreId = storeId || (typeof window !== 'undefined' ? localStorage.getItem('active_store_id') : null);
+    const activeStoreId = storeId || (typeof window !== 'undefined' ? localStorage.getItem('active_store_id') : null)
 
     const { error } = await supabase
       .from('transactions')
@@ -352,18 +366,16 @@ function EmployeesContent() {
     return Math.ceil(diffTime / (1000 * 60 * 60 * 24))
   }
 
-  // ✅ UPDATED getYearlyStats:
-  // - tips υπολογίζονται στο stats.tips
-  // - tips ΔΕΝ υπολογίζονται στο stats.total (ΣΥΝΟΛΟ ΕΤΟΥΣ)
+  // ✅ Stats based on fixed_asset_id
   const getYearlyStats = (id: string) => {
     const yearTrans = transactions.filter(
-      (t) => t.employee_id === id && new Date(t.date).getFullYear() === viewYear
+      (t: any) => t.fixed_asset_id === id && new Date(t.date).getFullYear() === viewYear
     )
 
     let stats = { base: 0, overtime: 0, bonus: 0, tips: 0, total: 0 }
     const processedDates = new Set()
 
-    yearTrans.forEach((t) => {
+    yearTrans.forEach((t: any) => {
       const note = String(t.notes || '')
       const isTip = /tips/i.test(note)
 
@@ -401,31 +413,24 @@ function EmployeesContent() {
     return stats
   }
 
+  // ✅ Save staff to fixed_assets
   async function handleSave() {
     const isSalaryMissing = payBasis === 'monthly' ? !formData.monthly_salary : !formData.daily_rate
     if (!formData.full_name.trim() || isSalaryMissing) return alert('Συμπληρώστε τα υποχρεωτικά πεδία!')
 
     setLoading(true)
-    // Get activeStoreId from localStorage
-    const activeStoreId = typeof window !== 'undefined' ? localStorage.getItem('active_store_id') : storeId;
+    const activeStoreId = typeof window !== 'undefined' ? localStorage.getItem('active_store_id') : storeId
+
     const payload: any = {
-      full_name: formData.full_name.trim(),
-      position: formData.position.trim() || null,
-      amka: formData.amka.trim() || null,
-      iban: formData.iban.trim() || null,
-      bank_name: formData.bank_name,
-      pay_basis: payBasis,
-      monthly_salary: payBasis === 'monthly' ? Number(formData.monthly_salary) : null,
-      daily_rate: payBasis === 'daily' ? Number(formData.daily_rate) : null,
-      start_date: formData.start_date,
-      store_id: activeStoreId
+      name: formData.full_name.trim(),
+      sub_category: 'staff',
+      store_id: activeStoreId,
+      is_active: true
     }
 
-    if (!editingId) payload.is_active = true
-
     const { error } = editingId
-      ? await supabase.from('employees').update(payload).eq('id', editingId)
-      : await supabase.from('employees').insert([payload])
+      ? await supabase.from('fixed_assets').update(payload).eq('id', editingId)
+      : await supabase.from('fixed_assets').insert([payload])
 
     if (!error) {
       setEditingId(null)
@@ -438,11 +443,12 @@ function EmployeesContent() {
     }
   }
 
+  // ✅ Delete staff from fixed_assets + delete history linked by fixed_asset_id
   async function deleteEmployee(id: string, name: string) {
     if (!confirm(`Οριστική διαγραφή του/της ${name}; Θα σβηστεί και το ιστορικό.`)) return
     setLoading(true)
-    await supabase.from('transactions').delete().eq('employee_id', id)
-    const { error } = await supabase.from('employees').delete().eq('id', id)
+    await supabase.from('transactions').delete().eq('fixed_asset_id', id)
+    const { error } = await supabase.from('fixed_assets').delete().eq('id', id)
     if (!error) fetchInitialData()
     else alert(error.message)
     setLoading(false)
@@ -769,7 +775,11 @@ function EmployeesContent() {
                   style={{ padding: '18px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
                 >
                   <div style={{ flex: 1 }}>
-                    <p style={{ fontWeight: '700', color: colors.primaryDark, fontSize: '16px', margin: 0 }}>{emp.full_name.toUpperCase()}</p>
+                    {/* ✅ Name από fixed_assets */}
+                    <p style={{ fontWeight: '700', color: colors.primaryDark, fontSize: '16px', margin: 0 }}>
+                      {String(emp.name || '—').toUpperCase()}
+                    </p>
+
                     <div style={{ marginTop: '6px', display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
                       <span
                         style={{
@@ -791,7 +801,7 @@ function EmployeesContent() {
                         <button
                           onClick={(e) => {
                             e.stopPropagation()
-                            setOtModal({ empId: emp.id, name: emp.full_name })
+                            setOtModal({ empId: emp.id, name: emp.name })
                           }}
                           style={quickOtBtn}
                         >
@@ -801,7 +811,7 @@ function EmployeesContent() {
                         <button
                           onClick={(e) => {
                             e.stopPropagation()
-                            setTipModal({ empId: emp.id, name: emp.full_name })
+                            setTipModal({ empId: emp.id, name: emp.name })
                           }}
                           style={quickTipBtn}
                         >
@@ -810,7 +820,11 @@ function EmployeesContent() {
                       </>
                     )}
 
-                    <Link href={`/pay-employee?id=${emp.id}&name=${emp.full_name}`} onClick={(e) => e.stopPropagation()} style={payBtnStyle}>
+                    <Link
+                      href={`/pay-employee?id=${emp.id}&name=${encodeURIComponent(emp.name)}`}
+                      onClick={(e) => e.stopPropagation()}
+                      style={payBtnStyle}
+                    >
                       ΠΛΗΡΩΜΗ
                     </Link>
                   </div>
@@ -868,15 +882,11 @@ function EmployeesContent() {
                     <p style={historyTitle}>ΙΣΤΟΡΙΚΟ ΠΛΗΡΩΜΩΝ {viewYear}</p>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '20px' }}>
                       {transactions
-                        .filter((t) => t.employee_id === emp.id && new Date(t.date).getFullYear() === viewYear)
-                        .map((t) => {
+                        .filter((t: any) => t.fixed_asset_id === emp.id && new Date(t.date).getFullYear() === viewYear)
+                        .map((t: any) => {
                           const isTip = /tips/i.test(t.notes || '')
                           const note = String(t.notes || '')
-                          // Tips: δείξε το "Tips: XX€"
-                          // Άλλα: δείξε το [ ... ] (όπως πριν)
-                          const noteLabel = isTip
-                            ? (note.split('[')[0]?.trim() || 'Tips')
-                            : (note.split('[')[1]?.replace(']', '') || 'Πληρωμή')
+                          const noteLabel = isTip ? note.split('[')[0]?.trim() || 'Tips' : note.split('[')[1]?.replace(']', '') || 'Πληρωμή'
 
                           return (
                             <div key={t.id} style={historyItemExtended}>
@@ -914,7 +924,7 @@ function EmployeesContent() {
                         onClick={() => {
                           setPayBasis(emp.pay_basis || 'monthly')
                           setFormData({
-                            full_name: emp.full_name,
+                            full_name: emp.name || '',
                             position: emp.position || '',
                             amka: emp.amka || '',
                             iban: emp.iban || '',
@@ -932,7 +942,7 @@ function EmployeesContent() {
                         ΕΠΕΞΕΡΓΑΣΙΑ ✎
                       </button>
 
-                      <button onClick={() => deleteEmployee(emp.id, emp.full_name)} style={deleteBtn}>
+                      <button onClick={() => deleteEmployee(emp.id, emp.name)} style={deleteBtn}>
                         ΔΙΑΓΡΑΦΗ 🗑️
                       </button>
 
