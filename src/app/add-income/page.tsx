@@ -6,18 +6,17 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
 import { toast, Toaster } from 'sonner'
-import { Wallet, Landmark, CreditCard, Plus, ArrowUpCircle } from 'lucide-react'
+import { Wallet, ArrowUpCircle, CreditCard, Search, Plus } from 'lucide-react'
 
 const colors = {
-  primaryDark: '#0f172a', 
-  secondaryText: '#64748b', 
+  primaryDark: '#0f172a',
+  secondaryText: '#64748b',
   accentGreen: '#10b981',
   accentBlue: '#6366f1',
-  bgLight: '#f8fafc',     
-  border: '#e2e8f0',      
+  bgLight: '#f8fafc',
+  border: '#e2e8f0',
   white: '#ffffff',
-  accentRed: '#f43f5e'
-};
+}
 
 function AddIncomeForm() {
   const router = useRouter()
@@ -25,73 +24,80 @@ function AddIncomeForm() {
 
   const editId = searchParams.get('editId')
   const selectedDate = searchParams.get('date') || new Date().toISOString().split('T')[0]
-  const storeIdFromUrl = searchParams.get('store')
-  
+  const urlStoreId = searchParams.get('store')
+  const urlSourceId = searchParams.get('sourceId') // Deep link από καρτέλες εσόδων
+
   const [amount, setAmount] = useState('')
-  const [method, setMethod] = useState('Μετρητά')
+  const [method, setMethod] = useState<'Μετρητά' | 'Τράπεζα'>('Μετρητά')
   const [notes, setNotes] = useState('')
-  const [isCredit, setIsCredit] = useState(false) // ✅ ΝΕΟ: Επί πιστώσει έσοδο
-  const [selectedSourceId, setSelectedSourceId] = useState('')
-  const [sources, setSources] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
-  const [isSaving, setIsSaving] = useState(false)
+  const [isCredit, setIsCredit] = useState(false) // Αναμονή είσπραξης
+  const [isAgainstDebt, setIsAgainstDebt] = useState(searchParams.get('mode') === 'debt')
+  
   const [currentUsername, setCurrentUsername] = useState('Χρήστης')
-  const [storeId, setStoreId] = useState<string | null>(storeIdFromUrl)
+  const [loading, setLoading] = useState(true)
+  const [storeId, setStoreId] = useState<string | null>(urlStoreId)
+  const [sources, setSources] = useState<any[]>([])
+  const [selectedSourceId, setSelectedSourceId] = useState<string>('')
 
   const loadFormData = useCallback(async () => {
     try {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) return router.push('/login')
 
-      const activeStoreId = storeIdFromUrl || (typeof window !== 'undefined' ? localStorage.getItem('active_store_id') : null);
-      if (!activeStoreId) return router.replace('/select-store')
-      setStoreId(activeStoreId);
+      const activeStoreId = urlStoreId || (typeof window !== 'undefined' ? localStorage.getItem('active_store_id') : null)
+      if (!activeStoreId) return setLoading(false)
+      setStoreId(activeStoreId)
 
-      // Φόρτωση Πηγών Εσόδων & Προφίλ
       const [sourcesRes, profileRes] = await Promise.all([
         supabase.from('revenue_sources').select('*').eq('store_id', activeStoreId).order('name'),
         supabase.from('profiles').select('username').eq('id', session.user.id).maybeSingle()
-      ]);
+      ])
 
       if (sourcesRes.data) setSources(sourcesRes.data)
       if (profileRes.data) setCurrentUsername(profileRes.data.username || 'Admin')
 
       if (editId) {
-        const { data: tx } = await supabase.from('transactions').select('*').eq('id', editId).single();
+        const { data: tx } = await supabase.from('transactions').select('*').eq('id', editId).single()
         if (tx) {
-          setAmount(Math.abs(tx.amount).toString());
-          setMethod(tx.method || 'Μετρητά');
-          setNotes(tx.notes || '');
-          setIsCredit(!!tx.is_credit);
-          setSelectedSourceId(tx.revenue_source_id || '');
+          setAmount(Math.abs(tx.amount).toString())
+          setMethod(tx.method === 'Τράπεζα' ? 'Τράπεζα' : 'Μετρητά')
+          setNotes(tx.notes || '')
+          setIsCredit(!!tx.is_credit)
+          setIsAgainstDebt(tx.type === 'debt_payment')
+          setSelectedSourceId(tx.revenue_source_id || '')
         }
+      } else if (urlSourceId) {
+        setSelectedSourceId(urlSourceId)
       }
     } catch (error) {
       console.error(error)
     } finally {
       setLoading(false)
     }
-  }, [editId, router, storeIdFromUrl])
+  }, [editId, router, urlStoreId, urlSourceId])
 
   useEffect(() => { loadFormData() }, [loadFormData])
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!amount || !selectedSourceId) return toast.error('Συμπληρώστε ποσό και πηγή εσόδου')
-    setIsSaving(true)
+  const handleSave = async () => {
+    if (!amount || Number(amount) <= 0) return toast.error('Συμπληρώστε το ποσό')
+    if (!selectedSourceId) return toast.error('Επιλέξτε πηγή εσόδου')
 
+    setLoading(true)
     try {
-      const payload = {
-        amount: Math.abs(parseFloat(amount)),
-        type: 'income',
-        category: 'income',
+      const { data: { session } } = await supabase.auth.getSession()
+      
+      const payload: any = {
+        amount: Math.abs(Number(amount)),
         method: isCredit ? 'Πίστωση' : method,
         is_credit: isCredit,
-        revenue_source_id: selectedSourceId,
-        notes: notes,
+        type: isAgainstDebt ? 'debt_payment' : 'income', // Αν είναι εξόφληση χρέους πλατφόρμας
+        category: 'income',
         date: selectedDate,
+        user_id: session?.user.id,
         store_id: storeId,
-        created_by_name: currentUsername
+        revenue_source_id: selectedSourceId,
+        created_by_name: currentUsername,
+        notes: notes
       }
 
       const { error } = editId 
@@ -99,133 +105,159 @@ function AddIncomeForm() {
         : await supabase.from('transactions').insert([payload])
 
       if (error) throw error
-      
       toast.success('Το έσοδο καταχωρήθηκε!')
       router.push(`/?date=${selectedDate}&store=${storeId}`)
-    } catch (err: any) {
-      toast.error(err.message)
-    } finally {
-      setIsSaving(false)
+    } catch (error: any) {
+      toast.error(error.message)
+      setLoading(false)
     }
   }
 
-  if (loading) return <div style={loaderStyle}>Φόρτωση...</div>
+  const selectedLabel = useMemo(() => {
+    return sources.find(s => s.id === selectedSourceId)?.name || ''
+  }, [sources, selectedSourceId])
 
   return (
-    <main style={iphoneWrapper}>
+    <div style={iphoneWrapper}>
       <Toaster position="top-center" richColors />
-      <div style={formCardStyle}>
+      <div style={{ maxWidth: '500px', margin: '0 auto', paddingBottom: '120px' }}>
         
-        <div style={headerLayout}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div style={logoBoxStyle}><ArrowUpCircle color={colors.accentGreen} size={24} /></div>
+        <div style={headerStyle}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+            <div style={logoBoxStyle}><ArrowUpCircle color="white" size={24} /></div>
             <div>
-              <h1 style={titleStyle}>{editId ? 'Επεξεργασία' : 'Νέο Έσοδο'}</h1>
-              <p style={dateSubtitle}>{new Date(selectedDate).toLocaleDateString('el-GR', { day: 'numeric', month: 'long' }).toUpperCase()}</p>
+              <h1 style={{ fontWeight: 800, fontSize: 16, margin: 0 }}>{editId ? 'Διόρθωση' : 'Έσοδο'}</h1>
+              <p style={{ margin: 0, fontSize: 16, color: colors.secondaryText, fontWeight: 700 }}>
+                {new Date(selectedDate).toLocaleDateString('el-GR', { day: 'numeric', month: 'long' }).toUpperCase()}
+              </p>
             </div>
           </div>
-          <Link href={`/?date=${selectedDate}&store=${storeId}`} style={backBtnStyle}>✕</Link>
+          <Link href={`/?store=${storeId}`} style={backBtnStyle}>✕</Link>
         </div>
 
-        <form onSubmit={handleSubmit}>
-          
-          <div style={{ marginBottom: '20px' }}>
-            <label style={labelStyle}>ΠΗΓΗ ΕΣΟΔΟΥ (AIRBNB, BOOKING κλπ)</label>
-            <select 
-              value={selectedSourceId} 
-              onChange={(e) => setSelectedSourceId(e.target.value)} 
-              style={inputStyle}
-              required
+        <div style={formCard}>
+          <label style={labelStyle}>ΠΟΣΟ (€)</label>
+          <input
+            type="number"
+            inputMode="decimal"
+            autoFocus
+            value={amount}
+            onChange={e => setAmount(e.target.value)}
+            style={amountInput}
+            placeholder="0.00"
+          />
+
+          <label style={{ ...labelStyle, marginTop: 20 }}>ΜΕΘΟΔΟΣ ΕΙΣΠΡΑΞΗΣ</label>
+          <div style={{ display: 'flex', gap: 12, marginTop: 8 }}>
+            <button
+              type="button"
+              onClick={() => { setMethod('Μετρητά'); setIsCredit(false); }}
+              style={{
+                ...methodBtn,
+                backgroundColor: method === 'Μετρητά' && !isCredit ? colors.primaryDark : 'white',
+                color: method === 'Μετρητά' && !isCredit ? 'white' : colors.secondaryText,
+              }}
             >
-              <option value="">Επιλογή Πηγής...</option>
-              {sources.map(s => <option key={s.id} value={s.id}>{s.name.toUpperCase()}</option>)}
-            </select>
+              💵 Μετρητά
+            </button>
+            <button
+              type="button"
+              onClick={() => { setMethod('Τράπεζα'); setIsCredit(false); }}
+              style={{
+                ...methodBtn,
+                backgroundColor: method === 'Τράπεζα' && !isCredit ? colors.primaryDark : 'white',
+                color: method === 'Τράπεζα' && !isCredit ? 'white' : colors.secondaryText,
+              }}
+            >
+              🏛️ Τράπεζα
+            </button>
           </div>
 
-          <div style={inputRow}>
-            <div style={{ flex: 1.5 }}>
-              <label style={labelStyle}>ΠΟΣΟ (€)</label>
-              <input 
-                type="number" 
-                inputMode="decimal"
-                value={amount} 
-                onChange={(e) => setAmount(e.target.value)} 
-                style={amountInput} 
-                placeholder="0.00"
-                required
+          <div style={creditPanel}>
+            <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 10 }}>
+              <input
+                type="checkbox"
+                checked={isCredit}
+                onChange={e => { setIsCredit(e.target.checked); if (e.target.checked) setIsAgainstDebt(false); }}
+                id="credit"
+                style={checkboxStyle}
               />
+              <label htmlFor="credit" style={checkLabel}>ΑΝΑΜΟΝΗ ΕΙΣΠΡΑΞΗΣ (ΠΙΣΤΩΣΗ)</label>
             </div>
-            <div style={{ flex: 1 }}>
-              <label style={labelStyle}>ΤΡΟΠΟΣ</label>
-              <select value={method} onChange={(e) => setMethod(e.target.value)} style={inputStyle} disabled={isCredit}>
-                <option value="Μετρητά">Μετρητά</option>
-                <option value="Κάρτα">Κάρτα</option>
-                <option value="Τράπεζα">Τράπεζα</option>
-              </select>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <input
+                type="checkbox"
+                checked={isAgainstDebt}
+                onChange={e => { setIsAgainstDebt(e.target.checked); if (e.target.checked) setIsCredit(false); }}
+                id="against"
+                style={checkboxStyle}
+              />
+              <label htmlFor="against" style={{ ...checkLabel, color: isAgainstDebt ? colors.accentBlue : colors.primaryDark }}>
+                ΕΞΟΦΛΗΣΗ ΠΑΛΑΙΟΥ ΧΡΕΟΥ
+              </label>
             </div>
           </div>
 
-          {/* ✅ ΝΕΟ: Toggle Επί Πιστώσει (Mirror του Expense) */}
-          <div 
-            onClick={() => { setIsCredit(!isCredit); if(!isCredit) setMethod('Πίστωση') }}
-            style={{
-              ...creditToggle,
-              backgroundColor: isCredit ? '#ecfdf5' : colors.bgLight,
-              border: `1px solid ${isCredit ? colors.accentGreen : colors.border}`
-            }}
-          >
-            <div style={{...checkbox, backgroundColor: isCredit ? colors.accentGreen : 'white'}}>
-              {isCredit && '✓'}
+          <label style={{ ...labelStyle, marginTop: 20 }}>ΠΗΓΗ ΕΣΟΔΟΥ (AIRBNB, ΠΕΛΑΤΗΣ κλπ)</label>
+          <select value={selectedSourceId} onChange={e => setSelectedSourceId(e.target.value)} style={inputStyle}>
+            <option value="">Επιλογή από λίστα...</option>
+            {sources.map(s => (
+              <option key={s.id} value={s.id}>{s.name.toUpperCase()}</option>
+            ))}
+          </select>
+
+          {!!selectedLabel && (
+            <div style={selectionBadge}>
+              Πηγή: <span style={{ fontWeight: 900 }}>{selectedLabel.toUpperCase()}</span>
             </div>
-            <span style={{ fontSize: '14px', fontWeight: '800', color: isCredit ? colors.accentGreen : colors.primaryDark }}>
-              ΑΝΑΜΟΝΗ ΕΙΣΠΡΑΞΗΣ (ΠΙΣΤΩΣΗ)
-            </span>
-          </div>
+          )}
 
-          <div style={{ marginBottom: '25px', marginTop: '20px' }}>
-            <label style={labelStyle}>ΣΗΜΕΙΩΣΕΙΣ / ΑΙΤΙΟΛΟΓΙΑ</label>
-            <textarea 
-              value={notes} 
-              onChange={(e) => setNotes(e.target.value)} 
-              style={textareaStyle} 
-              placeholder="π.χ. Κράτηση #12345..." 
-            />
-          </div>
+          <label style={{ ...labelStyle, marginTop: 20 }}>ΣΗΜΕΙΩΣΕΙΣ</label>
+          <textarea value={notes} onChange={e => setNotes(e.target.value)} style={{ ...inputStyle, height: 80 }} placeholder="Λεπτομέρειες εσόδου..." />
 
-          <button 
-            type="submit" 
-            disabled={isSaving} 
-            style={{ 
-              ...submitBtn, 
-              backgroundColor: isSaving ? colors.secondaryText : colors.accentGreen 
-            }}
-          >
-            {isSaving ? 'ΚΑΤΑΧΩΡΗΣΗ...' : (editId ? 'ΕΝΗΜΕΡΩΣΗ' : 'ΟΛΟΚΛΗΡΩΣΗ ΕΙΣΠΡΑΞΗΣ')}
-          </button>
-        </form>
+          <div style={{ marginTop: 25 }}>
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={loading}
+              style={{
+                ...smartSaveBtn,
+                backgroundColor: colors.accentGreen,
+                opacity: loading ? 0.75 : 1,
+              }}
+            >
+              <span style={{ fontSize: 16, fontWeight: 900 }}>
+                {loading ? 'SYNCING...' : editId ? 'ΕΝΗΜΕΡΩΣΗ ΕΣΟΔΟΥ' : 'ΟΛΟΚΛΗΡΩΣΗ ΕΙΣΠΡΑΞΗΣ'}
+              </span>
+            </button>
+          </div>
+        </div>
       </div>
-    </main>
+    </div>
   )
 }
 
-// --- STYLES ---
-const iphoneWrapper: any = { backgroundColor: colors.bgLight, minHeight: '100dvh', padding: '16px' };
-const formCardStyle: any = { maxWidth: '500px', margin: '0 auto', backgroundColor: colors.white, borderRadius: '24px', padding: '24px', border: `1px solid ${colors.border}` };
-const headerLayout = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px' };
-const titleStyle = { fontWeight: '900', fontSize: '20px', margin: 0, color: colors.primaryDark };
-const dateSubtitle = { margin: 0, fontSize: '10px', color: colors.accentGreen, fontWeight: '800' };
-const logoBoxStyle: any = { width: '42px', height: '42px', backgroundColor: '#f0fdf4', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' };
-const backBtnStyle: any = { textDecoration: 'none', color: colors.secondaryText, fontSize: '18px', width: '36px', height: '36px', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bgLight, borderRadius: '10px', border: `1px solid ${colors.border}` };
-const labelStyle: any = { fontSize: '10px', fontWeight: '800', color: colors.secondaryText, marginBottom: '6px', display: 'block' };
-const inputStyle: any = { width: '100%', padding: '14px', borderRadius: '12px', border: `1px solid ${colors.border}`, fontSize: '16px', fontWeight: '700', backgroundColor: colors.bgLight, boxSizing: 'border-box' };
+// STYLES
+const iphoneWrapper: any = { backgroundColor: colors.bgLight, minHeight: '100dvh', padding: 20, overflowY: 'auto' };
+const headerStyle: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 };
+const logoBoxStyle: any = { width: 42, height: 42, backgroundColor: colors.accentGreen, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center' };
+const backBtnStyle: any = { textDecoration: 'none', color: colors.secondaryText, padding: '10px 12px', backgroundColor: 'white', borderRadius: 10, border: `1px solid ${colors.border}`, fontSize: 16, fontWeight: 900 };
+const formCard: any = { backgroundColor: 'white', padding: 20, borderRadius: 24, border: `1px solid ${colors.border}`, boxShadow: '0 4px 12px rgba(0,0,0,0.03)' };
+const labelStyle: any = { fontSize: 16, fontWeight: 900, color: colors.secondaryText, display: 'block', marginBottom: 8 };
+const inputStyle: any = { width: '100%', padding: 14, borderRadius: 12, border: `1px solid ${colors.border}`, fontSize: 16, fontWeight: 700, backgroundColor: colors.bgLight, boxSizing: 'border-box' };
 const amountInput: any = { ...inputStyle, fontSize: '24px', color: colors.accentGreen };
-const textareaStyle: any = { ...inputStyle, height: '80px', fontWeight: '500' };
-const inputRow = { display: 'flex', gap: '12px', marginBottom: '20px' };
-const submitBtn: any = { width: '100%', padding: '18px', border: 'none', borderRadius: '16px', color: 'white', fontWeight: '900', fontSize: '16px', cursor: 'pointer' };
-const creditToggle: any = { display: 'flex', alignItems: 'center', gap: '12px', padding: '14px', borderRadius: '12px', cursor: 'pointer' };
-const checkbox: any = { width: '20px', height: '20px', borderRadius: '6px', border: `2px solid ${colors.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '12px' };
-const loaderStyle: any = { padding: '50px', textAlign: 'center', color: colors.secondaryText };
+const methodBtn: any = { flex: 1, padding: 14, borderRadius: 12, border: `1px solid ${colors.border}`, cursor: 'pointer', fontWeight: 900, fontSize: 16 };
+const creditPanel: any = { backgroundColor: colors.bgLight, padding: 16, borderRadius: 14, border: `1px solid ${colors.border}`, marginTop: 20 };
+const checkboxStyle: any = { width: 20, height: 20 };
+const checkLabel: any = { fontSize: 16, fontWeight: 900, color: colors.primaryDark };
+const selectionBadge: any = { marginTop: 10, padding: 12, borderRadius: 12, backgroundColor: '#f0fdf4', border: '1px solid #bbf7d0', fontSize: 16, fontWeight: 700, color: colors.accentGreen };
+const smartSaveBtn: any = { width: '100%', padding: 18, color: 'white', border: 'none', borderRadius: 16, cursor: 'pointer', boxShadow: '0 4px 12px rgba(16, 185, 129, 0.2)' };
 
 export default function AddIncomePage() {
-  return <Suspense fallback={null}><AddIncomeForm /></Suspense>
+  return (
+    <Suspense fallback={<div style={{ fontSize: 16, padding: 20 }}>Φόρτωση...</div>}>
+      <AddIncomeForm />
+    </Suspense>
+  )
 }
