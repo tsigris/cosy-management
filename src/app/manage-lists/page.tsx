@@ -73,7 +73,7 @@ function ManageListsInner() {
   const [suppliers, setSuppliers] = useState<any[]>([])
   const [fixedAssets, setFixedAssets] = useState<any[]>([])
 
-  // Common form fields (suppliers + fixed_assets depending tab)
+  // Form fields (shared)
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
   const [vatNumber, setVatNumber] = useState('')
@@ -82,16 +82,17 @@ function ManageListsInner() {
 
   // Staff fields
   const [payBasis, setPayBasis] = useState<PayBasis>('monthly')
-  const [monthlySalary, setMonthlySalary] = useState<string>('') // stored to monthly_salary
-  const [dailyRate, setDailyRate] = useState<string>('') // stored to daily_rate
-  const [monthlyDays, setMonthlyDays] = useState<string>('') // stored to monthly_days
-  const [startDate, setStartDate] = useState<string>('') // stored to start_date (YYYY-MM-DD)
+  const [monthlySalary, setMonthlySalary] = useState<string>('')
+  const [dailyRate, setDailyRate] = useState<string>('')
+  const [monthlyDays, setMonthlyDays] = useState<string>('')
+  const [startDate, setStartDate] = useState<string>('')
 
   // Utility fields
-  const [rfCode, setRfCode] = useState('') // stored to rf_code (and also name for utility)
+  const [rfCode, setRfCode] = useState<string>('')
 
   const [search, setSearch] = useState('')
 
+  // Edit mode
   const [editingId, setEditingId] = useState<string | null>(null)
 
   const currentTab = useMemo(() => TABS.find(t => t.key === activeTab)!, [activeTab])
@@ -123,7 +124,8 @@ function ManageListsInner() {
         const n = String(x.name || '').toLowerCase()
         const v = String(x.vat_number || '').toLowerCase()
         const p = String(x.phone || '').toLowerCase()
-        return n.includes(q) || v.includes(q) || p.includes(q)
+        const b = String(x.bank_name || '').toLowerCase()
+        return n.includes(q) || v.includes(q) || p.includes(q) || b.includes(q)
       })
     }
 
@@ -135,7 +137,8 @@ function ManageListsInner() {
       const rf = String(x.rf_code || '').toLowerCase()
       const v = String(x.vat_number || '').toLowerCase()
       const p = String(x.phone || '').toLowerCase()
-      return n.includes(q) || rf.includes(q) || v.includes(q) || p.includes(q)
+      const b = String(x.bank_name || '').toLowerCase()
+      return n.includes(q) || rf.includes(q) || v.includes(q) || p.includes(q) || b.includes(q)
     })
   }, [activeTab, suppliers, fixedAssets, search, currentTab.subCategory])
 
@@ -202,7 +205,6 @@ function ManageListsInner() {
       setBankName(String(item.bank_name || ''))
       setIban(String(item.iban || ''))
 
-      // reset non-supplier specific
       setPayBasis('monthly')
       setMonthlySalary('')
       setDailyRate('')
@@ -212,7 +214,6 @@ function ManageListsInner() {
     } else {
       const sub = String(item.sub_category || '')
 
-      // Defaults
       setName(String(item.name || ''))
       setPhone(String(item.phone || ''))
       setVatNumber(String(item.vat_number || ''))
@@ -227,9 +228,11 @@ function ManageListsInner() {
 
       setRfCode(String(item.rf_code || ''))
 
-      // If utility: we show ONLY RF code, so use that as main editable value.
+      // Utility: we edit Name + RF + Bank
       if (sub === 'utility') {
-        setRfCode(String(item.rf_code || item.name || ''))
+        setName(String(item.name || ''))
+        setRfCode(String(item.rf_code || ''))
+        setBankName(String(item.bank_name || ''))
       }
     }
 
@@ -286,9 +289,7 @@ function ManageListsInner() {
 
           if (error) throw error
 
-          setSuppliers(prev =>
-            [...prev, data].sort((a, b) => String(a.name).localeCompare(String(b.name))),
-          )
+          setSuppliers(prev => [...prev, data].sort((a, b) => String(a.name).localeCompare(String(b.name))))
           toast.success('Προστέθηκε!')
         }
 
@@ -299,16 +300,19 @@ function ManageListsInner() {
       // -------------------- FIXED_ASSETS --------------------
       const subCategoryToSave = activeTab === 'maintenance' ? 'Maintenance' : currentTab.subCategory
 
-      // Utility: show ONLY RF Code, so store it in rf_code and also name for identification
+      // -------------------- UTILITY (Λογαριασμοί): Name + RF + Bank --------------------
       if (activeTab === 'utility') {
-        const code = rfCode.trim()
-        if (!code) return toast.error('Γράψε Κωδικό RF')
+        const trimmedName = name.trim()
+        const trimmedRf = rfCode.trim()
+        if (!trimmedName) return toast.error('Γράψε Όνομα (π.χ. Ενοίκιο)')
+        if (!trimmedRf) return toast.error('Γράψε Κωδικό RF')
 
         const payload: any = {
-          name: code, // keeps it usable in list/title
-          rf_code: code || null,
-          // keep only required fields; still allowed by requirement list
-          bank_name: null,
+          name: trimmedName,
+          rf_code: trimmedRf || null,
+          bank_name: bankName || null,
+
+          // keep required fields present (per your requirement list)
           iban: null,
           monthly_days: null,
           monthly_salary: null,
@@ -349,9 +353,7 @@ function ManageListsInner() {
 
           if (error) throw error
 
-          setFixedAssets(prev =>
-            [...prev, data].sort((a, b) => String(a.name).localeCompare(String(b.name))),
-          )
+          setFixedAssets(prev => [...prev, data].sort((a, b) => String(a.name).localeCompare(String(b.name))))
           toast.success('Προστέθηκε!')
         }
 
@@ -359,14 +361,13 @@ function ManageListsInner() {
         return
       }
 
-      // Staff validation + payload
+      // -------------------- STAFF --------------------
       if (activeTab === 'staff') {
         const trimmed = name.trim()
         if (!trimmed) return toast.error('Γράψε Ονοματεπώνυμο')
 
         const md = monthlyDays.trim()
         const sd = startDate.trim()
-
         const mSalary = monthlySalary.trim()
         const dRate = dailyRate.trim()
 
@@ -379,7 +380,7 @@ function ManageListsInner() {
           daily_rate: payBasis === 'daily' && dRate ? Number(dRate) : null,
           start_date: sd || null,
           pay_basis: payBasis,
-          // keep these fields available (even if not used)
+
           rf_code: null,
           vat_number: null,
           phone: null,
@@ -415,9 +416,7 @@ function ManageListsInner() {
 
           if (error) throw error
 
-          setFixedAssets(prev =>
-            [...prev, data].sort((a, b) => String(a.name).localeCompare(String(b.name))),
-          )
+          setFixedAssets(prev => [...prev, data].sort((a, b) => String(a.name).localeCompare(String(b.name))))
           toast.success('Προστέθηκε!')
         }
 
@@ -425,7 +424,7 @@ function ManageListsInner() {
         return
       }
 
-      // Maintenance + Other: add phone, vat_number, bank dropdown, iban
+      // -------------------- MAINTENANCE + OTHER --------------------
       if (activeTab === 'maintenance' || activeTab === 'other') {
         const trimmed = name.trim()
         if (!trimmed) return toast.error('Γράψε όνομα')
@@ -436,7 +435,7 @@ function ManageListsInner() {
           vat_number: vatNumber.trim() || null,
           bank_name: bankName || null,
           iban: iban.trim() || null,
-          // keep required fields present (per request)
+
           monthly_days: null,
           monthly_salary: null,
           daily_rate: null,
@@ -475,9 +474,7 @@ function ManageListsInner() {
 
           if (error) throw error
 
-          setFixedAssets(prev =>
-            [...prev, data].sort((a, b) => String(a.name).localeCompare(String(b.name))),
-          )
+          setFixedAssets(prev => [...prev, data].sort((a, b) => String(a.name).localeCompare(String(b.name))))
           toast.success('Προστέθηκε!')
         }
 
@@ -485,7 +482,6 @@ function ManageListsInner() {
         return
       }
 
-      // Fallback (should not happen)
       toast.error('Άγνωστη καρτέλα')
     } catch (e: any) {
       toast.error(e?.message || 'Αποτυχία καταχώρησης')
@@ -510,19 +506,11 @@ function ManageListsInner() {
       setSaving(true)
 
       if (activeTab === 'suppliers') {
-        const { error } = await supabase
-          .from('suppliers')
-          .delete()
-          .eq('id', item.id)
-          .eq('store_id', activeStoreId)
+        const { error } = await supabase.from('suppliers').delete().eq('id', item.id).eq('store_id', activeStoreId)
         if (error) throw error
         setSuppliers(prev => prev.filter(x => x.id !== item.id))
       } else {
-        const { error } = await supabase
-          .from('fixed_assets')
-          .delete()
-          .eq('id', item.id)
-          .eq('store_id', activeStoreId)
+        const { error } = await supabase.from('fixed_assets').delete().eq('id', item.id).eq('store_id', activeStoreId)
         if (error) throw error
         setFixedAssets(prev => prev.filter(x => x.id !== item.id))
       }
@@ -548,7 +536,7 @@ function ManageListsInner() {
   }, [editingId, currentTab.label])
 
   const renderFormFields = () => {
-    // ---------------- SUPPLIERS (unchanged behavior) ----------------
+    // SUPPLIERS
     if (activeTab === 'suppliers') {
       return (
         <>
@@ -559,7 +547,6 @@ function ManageListsInner() {
               placeholder={`Όνομα για "${currentTab.label}"`}
               style={inputStyle}
             />
-
             <button
               type="button"
               onClick={handleSave}
@@ -576,42 +563,22 @@ function ManageListsInner() {
             <div style={grid2}>
               <div>
                 <label style={{ ...miniLabel, color: colors.labelGreen }}>ΤΗΛΕΦΩΝΟ</label>
-                <input
-                  value={phone}
-                  onChange={e => setPhone(e.target.value)}
-                  placeholder="π.χ. 6970000000"
-                  style={inputStyle}
-                />
+                <input value={phone} onChange={e => setPhone(e.target.value)} placeholder="π.χ. 6970000000" style={inputStyle} />
               </div>
               <div>
                 <label style={{ ...miniLabel, color: colors.labelGray }}>ΑΦΜ</label>
-                <input
-                  value={vatNumber}
-                  onChange={e => setVatNumber(e.target.value)}
-                  placeholder="π.χ. 123456789"
-                  style={inputStyle}
-                />
+                <input value={vatNumber} onChange={e => setVatNumber(e.target.value)} placeholder="π.χ. 123456789" style={inputStyle} />
               </div>
             </div>
 
             <div style={grid2}>
               <div>
                 <label style={{ ...miniLabel, color: colors.labelGray }}>ΤΡΑΠΕΖΑ</label>
-                <input
-                  value={bankName}
-                  onChange={e => setBankName(e.target.value)}
-                  placeholder="π.χ. Alpha / Eurobank"
-                  style={inputStyle}
-                />
+                <input value={bankName} onChange={e => setBankName(e.target.value)} placeholder="π.χ. Alpha / Eurobank" style={inputStyle} />
               </div>
               <div>
                 <label style={{ ...miniLabel, color: colors.labelBlue }}>IBAN</label>
-                <input
-                  value={iban}
-                  onChange={e => setIban(e.target.value)}
-                  placeholder="π.χ. GR12 3456 ...."
-                  style={inputStyle}
-                />
+                <input value={iban} onChange={e => setIban(e.target.value)} placeholder="π.χ. GR12 3456 ...." style={inputStyle} />
               </div>
             </div>
 
@@ -626,40 +593,58 @@ function ManageListsInner() {
       )
     }
 
-    // ---------------- UTILITY: ONLY RF CODE ----------------
+    // UTILITY (Λογαριασμοί): Name + RF + Bank dropdown
     if (activeTab === 'utility') {
       return (
         <>
-          <div style={{ display: 'flex', gap: 10 }}>
+          <div>
+            <label style={{ ...miniLabel, color: colors.labelGray }}>ΟΝΟΜΑ</label>
+            <input
+              value={name}
+              onChange={e => setName(e.target.value)}
+              placeholder="π.χ. Ενοίκιο"
+              style={inputStyle}
+            />
+          </div>
+
+          <div style={{ marginTop: 12 }}>
+            <label style={{ ...miniLabel, color: colors.labelGray }}>ΚΩΔΙΚΟΣ RF</label>
             <input
               value={rfCode}
               onChange={e => setRfCode(e.target.value)}
-              placeholder="ΚΩΔΙΚΟΣ RF"
+              placeholder="RF..."
               style={inputStyle}
             />
+          </div>
 
+          <div style={{ marginTop: 12 }}>
+            <label style={{ ...miniLabel, color: colors.labelGray }}>ΤΡΑΠΕΖΑ</label>
+            <select value={bankName} onChange={e => setBankName(e.target.value)} style={selectStyle}>
+              <option value="">Επιλογή...</option>
+              {BANK_OPTIONS.map(b => (
+                <option key={b} value={b}>
+                  {b}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div style={{ marginTop: 14, display: 'flex', justifyContent: 'flex-end' }}>
             <button
               type="button"
               onClick={handleSave}
               disabled={saving || loading}
-              style={{ ...iconBtn, opacity: saving || loading ? 0.7 : 1 }}
-              aria-label={editingId ? 'Update' : 'Add'}
-              title={editingId ? 'Update' : 'Add'}
+              style={{ ...primaryBtnWide, opacity: saving || loading ? 0.7 : 1 }}
             >
               {editingId ? <Save size={16} /> : <Plus size={16} />}
+              <span style={{ fontSize: 16, fontWeight: 900 }}>{editingId ? 'ΑΠΟΘΗΚΕΥΣΗ' : 'ΠΡΟΣΘΗΚΗ'}</span>
             </button>
-          </div>
-
-          <div style={{ marginTop: 10, ...hintPill }}>
-            <span style={{ fontSize: 16, fontWeight: 900, color: colors.secondaryText }}>
-              * Στους <b>Λογαριασμούς</b> αποθηκεύουμε μόνο τον <b>Κωδικό RF</b>.
-            </span>
           </div>
         </>
       )
     }
 
-    // ---------------- STAFF: rebuilt layout like photo ----------------
+    // STAFF: rebuilt layout
     if (activeTab === 'staff') {
       const salaryLabel = payBasis === 'monthly' ? 'ΜΙΣΘΟΣ' : 'ΗΜΕΡΟΜΙΣΘΙΟ'
       const salaryValue = payBasis === 'monthly' ? monthlySalary : dailyRate
@@ -667,18 +652,11 @@ function ManageListsInner() {
 
       return (
         <>
-          {/* a) Full width name */}
           <div>
             <label style={{ ...miniLabel, color: colors.labelGray }}>ΟΝΟΜΑΤΕΠΩΝΥΜΟ</label>
-            <input
-              value={name}
-              onChange={e => setName(e.target.value)}
-              placeholder="π.χ. Γιάννης Παπαδόπουλος"
-              style={inputStyle}
-            />
+            <input value={name} onChange={e => setName(e.target.value)} placeholder="π.χ. Γιάννης Παπαδόπουλος" style={inputStyle} />
           </div>
 
-          {/* b) Segmented control */}
           <div style={{ marginTop: 12 }}>
             <label style={{ ...miniLabel, color: colors.labelGray }}>ΤΥΠΟΣ ΣΥΜΦΩΝΙΑΣ</label>
             <div style={segWrap}>
@@ -709,7 +687,6 @@ function ManageListsInner() {
             </div>
           </div>
 
-          {/* c) Salary + Days + Start date in one row (grid) */}
           <div style={{ marginTop: 12, ...grid3 }}>
             <div>
               <label style={{ ...miniLabel, color: colors.labelGreen }}>{salaryLabel}</label>
@@ -724,13 +701,7 @@ function ManageListsInner() {
 
             <div>
               <label style={{ ...miniLabel, color: colors.labelGray }}>ΜΕΡΕΣ ΜΗΝΑ</label>
-              <input
-                value={monthlyDays}
-                onChange={e => setMonthlyDays(e.target.value)}
-                placeholder="π.χ. 26"
-                inputMode="numeric"
-                style={inputStyle}
-              />
+              <input value={monthlyDays} onChange={e => setMonthlyDays(e.target.value)} placeholder="π.χ. 26" inputMode="numeric" style={inputStyle} />
             </div>
 
             <div>
@@ -739,7 +710,6 @@ function ManageListsInner() {
             </div>
           </div>
 
-          {/* d) Bank dropdown */}
           <div style={{ marginTop: 12 }}>
             <label style={{ ...miniLabel, color: colors.labelGray }}>ΤΡΑΠΕΖΑ ΥΠΑΛΛΗΛΟΥ</label>
             <select value={bankName} onChange={e => setBankName(e.target.value)} style={selectStyle}>
@@ -752,25 +722,13 @@ function ManageListsInner() {
             </select>
           </div>
 
-          {/* e) IBAN full width */}
           <div style={{ marginTop: 12 }}>
             <label style={{ ...miniLabel, color: colors.labelBlue }}>IBAN ΥΠΑΛΛΗΛΟΥ</label>
-            <input
-              value={iban}
-              onChange={e => setIban(e.target.value)}
-              placeholder="π.χ. GR12 3456 ...."
-              style={inputStyle}
-            />
+            <input value={iban} onChange={e => setIban(e.target.value)} placeholder="π.χ. GR12 3456 ...." style={inputStyle} />
           </div>
 
-          {/* SAVE row */}
           <div style={{ marginTop: 14, display: 'flex', justifyContent: 'flex-end' }}>
-            <button
-              type="button"
-              onClick={handleSave}
-              disabled={saving || loading}
-              style={{ ...primaryBtnWide, opacity: saving || loading ? 0.7 : 1 }}
-            >
+            <button type="button" onClick={handleSave} disabled={saving || loading} style={{ ...primaryBtnWide, opacity: saving || loading ? 0.7 : 1 }}>
               {editingId ? <Save size={16} /> : <Plus size={16} />}
               <span style={{ fontSize: 16, fontWeight: 900 }}>{editingId ? 'ΑΠΟΘΗΚΕΥΣΗ' : 'ΠΡΟΣΘΗΚΗ'}</span>
             </button>
@@ -779,18 +737,12 @@ function ManageListsInner() {
       )
     }
 
-    // ---------------- MAINTENANCE + OTHER: extra fields + bank dropdown ----------------
+    // MAINTENANCE + OTHER: extra fields + bank dropdown
     if (activeTab === 'maintenance' || activeTab === 'other') {
       return (
         <>
           <div style={{ display: 'flex', gap: 10 }}>
-            <input
-              value={name}
-              onChange={e => setName(e.target.value)}
-              placeholder={`Όνομα για "${currentTab.label}"`}
-              style={inputStyle}
-            />
-
+            <input value={name} onChange={e => setName(e.target.value)} placeholder={`Όνομα για "${currentTab.label}"`} style={inputStyle} />
             <button
               type="button"
               onClick={handleSave}
@@ -807,21 +759,11 @@ function ManageListsInner() {
             <div style={grid2}>
               <div>
                 <label style={{ ...miniLabel, color: colors.labelGreen }}>ΤΗΛΕΦΩΝΟ</label>
-                <input
-                  value={phone}
-                  onChange={e => setPhone(e.target.value)}
-                  placeholder="π.χ. 6970000000"
-                  style={inputStyle}
-                />
+                <input value={phone} onChange={e => setPhone(e.target.value)} placeholder="π.χ. 6970000000" style={inputStyle} />
               </div>
               <div>
                 <label style={{ ...miniLabel, color: colors.labelGray }}>ΑΦΜ</label>
-                <input
-                  value={vatNumber}
-                  onChange={e => setVatNumber(e.target.value)}
-                  placeholder="π.χ. 123456789"
-                  style={inputStyle}
-                />
+                <input value={vatNumber} onChange={e => setVatNumber(e.target.value)} placeholder="π.χ. 123456789" style={inputStyle} />
               </div>
             </div>
 
@@ -839,12 +781,7 @@ function ManageListsInner() {
               </div>
               <div>
                 <label style={{ ...miniLabel, color: colors.labelBlue }}>IBAN</label>
-                <input
-                  value={iban}
-                  onChange={e => setIban(e.target.value)}
-                  placeholder="π.χ. GR12 3456 ...."
-                  style={inputStyle}
-                />
+                <input value={iban} onChange={e => setIban(e.target.value)} placeholder="π.χ. GR12 3456 ...." style={inputStyle} />
               </div>
             </div>
           </div>
@@ -852,12 +789,7 @@ function ManageListsInner() {
       )
     }
 
-    // ---------------- Fallback (should not hit) ----------------
-    return (
-      <div style={hintBox}>
-        <span style={{ fontSize: 16, fontWeight: 900 }}>Δεν υπάρχει φόρμα για αυτή την καρτέλα.</span>
-      </div>
-    )
+    return <div style={hintBox}>Δεν υπάρχει φόρμα για αυτή την καρτέλα.</div>
   }
 
   const renderListMeta = (item: any) => {
@@ -868,17 +800,14 @@ function ManageListsInner() {
             <span style={{ ...metaLabel, color: colors.labelGreen }}>Τηλέφωνο:</span>
             <span style={metaValue}>{String(item.phone || '-')}</span>
           </div>
-
           <div style={metaRow}>
             <span style={{ ...metaLabel, color: colors.labelGray }}>ΑΦΜ:</span>
             <span style={metaValue}>{String(item.vat_number || '-')}</span>
           </div>
-
           <div style={metaRow}>
             <span style={{ ...metaLabel, color: colors.labelGray }}>Τράπεζα:</span>
             <span style={metaValue}>{String(item.bank_name || '-')}</span>
           </div>
-
           <div style={metaRow}>
             <span style={{ ...metaLabel, color: colors.labelBlue }}>IBAN:</span>
             <span style={metaValue}>{String(item.iban || '-')}</span>
@@ -894,17 +823,22 @@ function ManageListsInner() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           <div style={metaRow}>
             <span style={{ ...metaLabel, color: colors.labelGray }}>ΚΩΔΙΚΟΣ RF:</span>
-            <span style={metaValue}>{String(item.rf_code || item.name || '-')}</span>
+            <span style={metaValue}>{String(item.rf_code || '-')}</span>
           </div>
+          <div style={metaRow}>
+            <span style={{ ...metaLabel, color: colors.labelGray }}>Τράπεζα:</span>
+            <span style={metaValue}>{String(item.bank_name || '-')}</span>
+          </div>
+          <span style={{ fontSize: 16, fontWeight: 800, color: colors.secondaryText }}>
+            sub_category: Λογαριασμοί
+          </span>
         </div>
       )
     }
 
     if (sub === 'staff') {
       const pb = item.pay_basis === 'daily' ? 'ΗΜΕΡΟΜΙΣΘΙΟ' : 'ΜΗΝΙΑΙΟΣ'
-      const amount =
-        item.pay_basis === 'daily' ? item.daily_rate ?? '-' : item.monthly_salary ?? '-'
-
+      const amount = item.pay_basis === 'daily' ? item.daily_rate ?? '-' : item.monthly_salary ?? '-'
       return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           <div style={metaRow}>
@@ -942,22 +876,18 @@ function ManageListsInner() {
           <span style={{ ...metaLabel, color: colors.labelGreen }}>Τηλέφωνο:</span>
           <span style={metaValue}>{String(item.phone || '-')}</span>
         </div>
-
         <div style={metaRow}>
           <span style={{ ...metaLabel, color: colors.labelGray }}>ΑΦΜ:</span>
           <span style={metaValue}>{String(item.vat_number || '-')}</span>
         </div>
-
         <div style={metaRow}>
           <span style={{ ...metaLabel, color: colors.labelGray }}>Τράπεζα:</span>
           <span style={metaValue}>{String(item.bank_name || '-')}</span>
         </div>
-
         <div style={metaRow}>
           <span style={{ ...metaLabel, color: colors.labelBlue }}>IBAN:</span>
           <span style={metaValue}>{String(item.iban || '-')}</span>
         </div>
-
         <span style={{ fontSize: 16, fontWeight: 800, color: colors.secondaryText }}>
           sub_category: {String(sub === 'Maintenance' ? 'Συντήρηση' : sub || '')}
         </span>
@@ -1034,7 +964,6 @@ function ManageListsInner() {
             )}
           </div>
 
-          {/* Dynamic form fields */}
           {renderFormFields()}
 
           {/* SEARCH */}
@@ -1044,13 +973,7 @@ function ManageListsInner() {
             <input
               value={search}
               onChange={e => setSearch(e.target.value)}
-              placeholder={
-                activeTab === 'suppliers'
-                  ? 'Όνομα / ΑΦΜ / Τηλέφωνο...'
-                  : activeTab === 'utility'
-                    ? 'Αναζήτηση (RF)...'
-                    : 'Γράψτε για αναζήτηση...'
-              }
+              placeholder={activeTab === 'suppliers' ? 'Όνομα / ΑΦΜ / Τηλέφωνο...' : 'Γράψτε για αναζήτηση...'}
               style={{ ...inputStyle, paddingLeft: 38 }}
             />
           </div>
@@ -1068,7 +991,6 @@ function ManageListsInner() {
             <div style={listWrap}>
               {visibleItems.map((item: any) => {
                 const isEditingThis = editingId && String(editingId) === String(item.id)
-
                 return (
                   <div
                     key={item.id}
@@ -1132,7 +1054,7 @@ function ManageListsInner() {
   )
 }
 
-// ✅ 16px everywhere for mobile stability
+// ✅ 16px everywhere + premium style
 const pageWrap: any = {
   backgroundColor: colors.bgLight,
   minHeight: '100dvh',
@@ -1211,7 +1133,7 @@ const miniLabel: any = {
 const inputStyle: any = {
   width: '100%',
   padding: 14,
-  borderRadius: 14, // ✅ as requested
+  borderRadius: 14,
   border: `1px solid ${colors.border}`,
   fontSize: 16,
   fontWeight: 800,
@@ -1223,7 +1145,7 @@ const inputStyle: any = {
 const selectStyle: any = {
   width: '100%',
   padding: 14,
-  borderRadius: 14, // ✅ as requested
+  borderRadius: 14,
   border: `1px solid ${colors.border}`,
   fontSize: 16,
   fontWeight: 800,
@@ -1295,24 +1217,10 @@ const hintPill: any = {
   border: `1px solid ${colors.border}`,
 }
 
-const grid2: any = {
-  display: 'grid',
-  gridTemplateColumns: '1fr 1fr',
-  gap: 10,
-}
+const grid2: any = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }
+const grid3: any = { display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }
 
-const grid3: any = {
-  display: 'grid',
-  gridTemplateColumns: '1fr 1fr 1fr',
-  gap: 10,
-}
-
-const listWrap: any = {
-  display: 'flex',
-  flexDirection: 'column',
-  gap: 12,
-  marginTop: 10,
-}
+const listWrap: any = { display: 'flex', flexDirection: 'column', gap: 12, marginTop: 10 }
 
 const listRowPremium: any = {
   display: 'flex',
@@ -1337,24 +1245,9 @@ const editingBadge: any = {
   color: colors.accentBlue,
 }
 
-const metaRow: any = {
-  display: 'flex',
-  alignItems: 'center',
-  gap: 8,
-  flexWrap: 'wrap',
-}
-
-const metaLabel: any = {
-  fontSize: 16,
-  fontWeight: 900,
-}
-
-const metaValue: any = {
-  fontSize: 16,
-  fontWeight: 800,
-  color: colors.primaryDark,
-  wordBreak: 'break-word',
-}
+const metaRow: any = { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }
+const metaLabel: any = { fontSize: 16, fontWeight: 900 }
+const metaValue: any = { fontSize: 16, fontWeight: 800, color: colors.primaryDark, wordBreak: 'break-word' }
 
 const editBtn: any = {
   width: 46,
@@ -1384,12 +1277,7 @@ const dangerBtn: any = {
   color: colors.accentRed,
 }
 
-const segWrap: any = {
-  display: 'grid',
-  gridTemplateColumns: '1fr 1fr',
-  gap: 10,
-}
-
+const segWrap: any = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }
 const segBtn: any = {
   borderRadius: 14,
   border: `1px solid ${colors.border}`,
