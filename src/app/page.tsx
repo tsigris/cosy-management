@@ -1,4 +1,3 @@
-
 'use client'
 export const dynamic = 'force-dynamic'
 
@@ -31,7 +30,6 @@ const colors = {
   warning: '#fffbeb',
   warningText: '#92400e'
 };
-
 
 function DashboardContent() {
   const router = useRouter()
@@ -66,7 +64,7 @@ function DashboardContent() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) return router.push('/login');
 
-      // Fetch store name
+      // Φόρτωση ονόματος καταστήματος
       const { data: storeData } = await supabase
         .from('stores')
         .select('name')
@@ -74,7 +72,7 @@ function DashboardContent() {
         .maybeSingle();
       if (storeData) setStoreName(storeData.name);
 
-      // Fetch transactions
+      // Φόρτωση κινήσεων (συμπεριλαμβανομένου του created_by_name)
       const { data: tx, error: txError } = await supabase
         .from('transactions')
         .select('*, suppliers(name), fixed_assets(name)')
@@ -84,7 +82,7 @@ function DashboardContent() {
       if (txError) throw txError;
       setTransactions(tx || []);
 
-      // Fetch store_access for RBAC
+      // Έλεγχος δικαιωμάτων (RBAC)
       const { data: access } = await supabase
         .from('store_access')
         .select('role, can_view_analysis')
@@ -172,7 +170,6 @@ function DashboardContent() {
 
           {isMenuOpen && (
             <div style={dropdownStyle}>
-              {/* Management Section: Only for Store Admins */}
               {isStoreAdmin && (
                 <>
                   <p style={menuSectionLabel}>ΔΙΑΧΕΙΡΙΣΗ</p>
@@ -183,17 +180,13 @@ function DashboardContent() {
                   <NextLink href={`/permissions?store=${storeIdFromUrl}`} style={menuItem} onClick={() => setIsMenuOpen(false)}>🔑 Δικαιώματα</NextLink>
                 </>
               )}
-              {/* Analysis Link: Only for those with permission */}
               {canViewAnalysis && (
                 <NextLink href={`/analysis?store=${storeIdFromUrl}`} style={menuItem} onClick={() => setIsMenuOpen(false)}>📊 Ανάλυση</NextLink>
               )}
-
               <div style={menuDivider} />
-
               <p style={menuSectionLabel}>ΥΠΟΣΤΗΡΙΞΗ & ΡΥΘΜΙΣΕΙΣ</p>
               <NextLink href={`/settings?store=${storeIdFromUrl}`} style={menuItem} onClick={() => setIsMenuOpen(false)}>⚙️ Ρυθμίσεις</NextLink>
               <NextLink href={`/instructions?store=${storeIdFromUrl}`} style={menuItem} onClick={() => setIsMenuOpen(false)}>📖 Οδηγίες Χρήσης</NextLink>
-
               <div style={menuDivider} />
               <button onClick={() => supabase.auth.signOut().then(() => router.push('/login'))} style={logoutBtnStyle}>
                 ΑΠΟΣΥΝΔΕΣΗ 🚪
@@ -257,7 +250,10 @@ function DashboardContent() {
                     {t.suppliers?.name || t.fixed_assets?.name || t.category || 'Συναλλαγή'}
                     {t.is_credit && <span style={creditBadgeStyle}>ΠΙΣΤΩΣΗ</span>}
                   </p>
-                  <p style={txMeta}>{t.method} • {t.created_at ? format(parseISO(t.created_at), 'HH:mm') : '--:--'}</p>
+                  {/* ΕΔΩ ΕΙΝΑΙ Η ΠΡΟΣΘΗΚΗ ΤΟΥ ΧΡΗΣΤΗ */}
+                  <p style={txMeta}>
+                    {t.method} • {t.created_at ? format(parseISO(t.created_at), 'HH:mm') : '--:--'} • {t.created_by_name || 'Admin'}
+                  </p>
                 </div>
                 <p style={{ ...txAmount, color: t.type === 'income' ? colors.accentGreen : colors.accentRed }}>
                   {t.type === 'income' ? '+' : '-'}{Math.abs(Number(t.amount) || 0).toFixed(2)}€
@@ -278,7 +274,16 @@ function DashboardContent() {
   )
 }
 
-const iphoneWrapper: any = { backgroundColor: colors.bgLight, minHeight: '100dvh', padding: '20px', paddingBottom: '100px' };
+// --- STYLES ΔΙΟΡΘΩΜΕΝΑ ΓΙΑ ΠΟΝΤΙΚΙ ΚΑΙ REDMI ---
+const iphoneWrapper: any = { 
+  backgroundColor: colors.bgLight, 
+  minHeight: '100%', // Απαραίτητο για το PC scroll
+  width: '100%',
+  padding: '20px', 
+  paddingBottom: '120px',
+  touchAction: 'pan-y' // Απαραίτητο για το Redmi scroll με ένα δάχτυλο
+};
+
 const headerStyle: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px' };
 const brandArea = { display: 'flex', alignItems: 'center', gap: '12px' };
 const logoBox = { width: '42px', height: '42px', backgroundColor: colors.primaryDark, borderRadius: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', color:'white', fontSize: '18px', fontWeight:'800' };
