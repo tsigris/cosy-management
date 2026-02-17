@@ -139,10 +139,8 @@ function AddExpenseForm() {
       }
 
       // FORCE DATA FETCH χωρίς φίλτρα/τάξεις
-      const [sRes, fRes] = await Promise.all([
-        supabase.from('suppliers').select('*').eq('store_id', storeId),
-        supabase.from('fixed_assets').select('*').eq('store_id', storeId)
-      ]);
+      const sRes = await supabase.from('suppliers').select('id, name').eq('store_id', storeId).order('name');
+      const fRes = await supabase.from('fixed_assets').select('*').eq('store_id', storeId);
       if (sRes.error) alert("DATABASE ERROR: " + sRes.error.message);
       console.log("DEBUG - StoreID:", storeId);
       console.log("DEBUG - Suppliers:", sRes.data);
@@ -271,7 +269,7 @@ function AddExpenseForm() {
           setSuppliers(prev => [...prev, sup]);
           handleSupplierSelect(sup.id);
         }}
-        storeId={storeId || ''}
+        storeId={storeId}
       />
 
       <div style={{ maxWidth: 500, margin: '0 auto', paddingBottom: 120 }}>
@@ -398,7 +396,7 @@ function AddExpenseForm() {
             style={{ ...inputStyle, marginBottom: 10, fontSize: '16px' }} // FIX: ensure select has 16px
           >
             <option value="">Επιλέξτε από τη λίστα...</option>
-            {suppliers.map(s => (
+            {suppliers.map((s: {id: string, name: string}) => (
               <option key={s.id} value={s.id}>{s.name?.toUpperCase?.() || ''}</option>
             ))}
           </select>
