@@ -75,12 +75,13 @@ function SuppliersContent() {
 
   // --- ΛΟΓΙΚΗ ΤΑΞΙΝΟΜΗΣΗΣ (SORTING BY TURNOVER) ---
   
-  // 1. Υπολογισμός συνολικού τζίρου ανά προμηθευτή
+  // 1. Υπολογισμός συνολικού τζίρου ανά προμηθευτή με χρήση Math.abs
   const supplierTotals = useMemo(() => {
     const totals: Record<string, number> = {};
     transactions.forEach(t => {
       if (t.supplier_id) {
-        const amount = Number(t.amount) || 0;
+        // ✅ Χρησιμοποιούμε Math.abs ώστε τα αρνητικά ποσά να μετράνε ως θετικός όγκος (τζίρος)
+        const amount = Math.abs(Number(t.amount)) || 0;
         totals[t.supplier_id] = (totals[t.supplier_id] || 0) + amount;
       }
     });
