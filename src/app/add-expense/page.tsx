@@ -179,7 +179,7 @@ function AddExpenseForm() {
     try {
       const { data: { session } } = await supabase.auth.getSession();
       const payload: any = {
-        amount: -Math.abs(Number(amount)),
+        amount: Math.abs(Number(amount)), // Always positive
         method: isCredit ? 'Πίστωση' : method,
         is_credit: isCredit,
         type: isAgainstDebt ? 'debt_payment' : 'expense',
@@ -370,6 +370,7 @@ const dropdownRow = {
 const iphoneWrapper: any = {
   backgroundColor: colors.bgLight,
   minHeight: '100%',
+  width: '100%',
   padding: 20,
   touchAction: 'pan-y'
 };
