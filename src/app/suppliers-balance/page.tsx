@@ -60,13 +60,14 @@ function BalancesContent() {
       const suppliers = supsRes.data || []
       const transactions = transRes.data || []
 
-      // --- ΥΠΟΛΟΓΙΣΜΟΣ ΥΠΟΛΟΙΠΩΝ & ΤΖΙΡΟΥ (ΜΕ MATH.ABS) ---
+      // --- ΥΠΟΛΟΓΙΣΜΟΣ ΥΠΟΛΟΙΠΩΝ & ΤΖΙΡΟΥ ---
       const balanceList = suppliers.map(s => {
         const sTrans = transactions.filter(t => t.supplier_id === s.id)
         
-        // ✅ ΔΙΟΡΘΩΣΗ: Χρησιμοποιούμε Math.abs για να μετράει ο όγκος συναλλαγών σωστά
+        // Συνολικός Τζίρος (Όγκος - χρησιμοποιούμε Math.abs για να μετράνε όλα ως θετικά)
         const turnover = sTrans.reduce((acc, t) => acc + Math.abs(Number(t.amount) || 0), 0)
 
+        // Υπολογισμός Υπολοίπου (Πιστώσεις - Πληρωμές)
         const totalCredit = sTrans
           .filter(t => t.is_credit === true)
           .reduce((acc, t) => acc + Math.abs(Number(t.amount) || 0), 0)
@@ -82,7 +83,7 @@ function BalancesContent() {
         }
       })
       .filter(s => Math.abs(s.balance) > 0.1)
-      // ✅ ΤΑΞΙΝΟΜΗΣΗ: Μεγαλύτερος Τζίρος -> Πρώτος
+      // ΤΑΞΙΝΟΜΗΣΗ: Πρώτοι αυτοί με τον μεγαλύτερο ΤΖΙΡΟ
       .sort((a, b) => b.turnover - a.turnover)
 
       setData(balanceList)
@@ -138,6 +139,7 @@ function BalancesContent() {
       <Toaster position="top-center" richColors />
       <div style={{ maxWidth: '500px', margin: '0 auto', paddingBottom: '120px' }}>
         
+        {/* HEADER */}
         <div style={headerFlexStyle}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <div style={logoBoxStyle}><Receipt size={22} color="#f97316" /></div>
@@ -151,6 +153,7 @@ function BalancesContent() {
           </Link>
         </div>
 
+        {/* SELECT FILTER */}
         <div style={{ marginBottom: '20px' }}>
           <div style={{position: 'relative'}}>
             <Filter size={16} style={filterIconStyle} />
@@ -167,6 +170,7 @@ function BalancesContent() {
           </div>
         </div>
 
+        {/* TOTAL CARD */}
         <div style={totalCardStyle}>
           <p style={totalLabelStyle}>
             {selectedSupplierId === 'all' ? 'ΣΥΝΟΛΙΚΟ ΑΝΟΙΧΤΟ ΥΠΟΛΟΙΠΟ' : 'ΥΠΟΛΟΙΠΟ ΠΡΟΜΗΘΕΥΤΗ'}
@@ -176,6 +180,7 @@ function BalancesContent() {
           </p>
         </div>
 
+        {/* LIST */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
           <p style={listHeaderStyle}>ΛΙΣΤΑ ΟΦΕΙΛΩΝ ({filteredData.length})</p>
           
@@ -243,20 +248,43 @@ function BalancesContent() {
   )
 }
 
-// --- STYLES ---
+// --- ΟΛΑ ΤΑ STYLES (ΠΛΗΡΗ) ---
 const iphoneWrapper: any = { backgroundColor: colors.bgLight, minHeight: '100dvh', padding: '20px' };
 const headerFlexStyle: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px' };
 const logoBoxStyle: any = { width: '45px', height: '45px', backgroundColor: '#fff7ed', borderRadius: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center' };
 const mainTitleStyle: any = { fontWeight: '800', fontSize: '20px', margin: 0, color: colors.primaryDark };
 const subTitleLabelStyle: any = { margin: 0, fontSize: '10px', color: colors.secondaryText, fontWeight: '700', letterSpacing: '1px' };
 const backBtnStyle: any = { textDecoration: 'none', color: colors.secondaryText, backgroundColor: colors.white, width: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '12px', border: `1px solid ${colors.border}` };
-const filterIconStyle: any = { position: 'absolute', left: '12px', top: '16px', color: colors.secondaryText };
-const selectStyle: any = { width: '100%', padding: '14px 14px 14px 40px', borderRadius: '14px', border: `1px solid ${colors.border}`, fontSize: '13px', fontWeight: '700', backgroundColor: colors.white, outline: 'none', color: colors.primaryDark, appearance: 'none' };
+
+const filterIconStyle: any = { 
+  position: 'absolute', 
+  left: '15px', 
+  top: '50%', 
+  transform: 'translateY(-50%)', 
+  color: colors.secondaryText, 
+  pointerEvents: 'none',
+  zIndex: 10
+};
+
+const selectStyle: any = { 
+  width: '100%', 
+  padding: '14px 14px 14px 48px', // Εδώ είναι η διόρθωση για το κείμενο
+  borderRadius: '14px', 
+  border: `1px solid ${colors.border}`, 
+  fontSize: '14px', 
+  fontWeight: '700', 
+  backgroundColor: colors.white, 
+  outline: 'none', 
+  color: colors.primaryDark, 
+  appearance: 'none',
+  boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
+};
+
 const totalCardStyle: any = { backgroundColor: colors.primaryDark, padding: '30px 20px', borderRadius: '24px', marginBottom: '30px', textAlign: 'center', color: 'white', boxShadow: '0 15px 30px rgba(30, 41, 59, 0.15)' };
 const totalLabelStyle: any = { margin: 0, fontSize: '11px', fontWeight: '700', color: '#fed7aa', letterSpacing: '1px' };
 const totalAmountStyle: any = { margin: '8px 0 0 0', fontSize: '38px', fontWeight: '900', color: '#ffffff' };
 const listHeaderStyle: any = { fontSize: '11px', fontWeight: '800', color: colors.secondaryText, textTransform: 'uppercase', letterSpacing: '0.5px', marginLeft: '5px' };
-const supplierCardStyle: any = { backgroundColor: colors.white, padding: '18px', borderRadius: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'stretch', border: `1px solid ${colors.border}` };
+const supplierCardStyle: any = { backgroundColor: colors.white, padding: '18px', borderRadius: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'stretch', border: `1px solid ${colors.border}`, marginBottom: '12px' };
 const rankBadgeStyle: any = { fontSize: '10px', color: colors.accentOrange, fontWeight: '900' };
 const supplierNameStyle: any = { fontWeight: '800', margin: 0, fontSize: '15px', color: colors.primaryDark };
 const categoryBadgeStyle: any = { fontSize: '9px', fontWeight: '800', backgroundColor: '#f1f5f9', color: colors.secondaryText, padding: '4px 8px', borderRadius: '6px', marginTop: '6px', display: 'inline-block', textTransform: 'uppercase' };
