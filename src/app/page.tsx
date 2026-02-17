@@ -1,3 +1,4 @@
+
 'use client'
 export const dynamic = 'force-dynamic'
 
@@ -8,13 +9,13 @@ import NextLink from 'next/link'
 import { format, addDays, subDays, parseISO } from 'date-fns'
 import { el } from 'date-fns/locale'
 import { Toaster, toast } from 'sonner'
-import { 
-  TrendingUp, 
-  TrendingDown, 
-  Menu, 
-  X, 
-  ChevronLeft, 
-  ChevronRight 
+import {
+  TrendingUp,
+  TrendingDown,
+  Menu,
+  X,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react'
 
 // --- MODERN PREMIUM PALETTE ---
@@ -31,12 +32,13 @@ const colors = {
   warningText: '#92400e'
 };
 
+
 function DashboardContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  
+
   const storeIdFromUrl = searchParams.get('store')
-  
+
   const getBusinessDate = () => {
     const now = new Date()
     if (now.getHours() < 7) now.setDate(now.getDate() - 1)
@@ -44,13 +46,14 @@ function DashboardContent() {
   }
 
   const selectedDate = searchParams.get('date') || getBusinessDate()
-  
+
   const [isMenuOpen, setIsMenuOpen] = useState(false)
-  const [isAdmin, setIsAdmin] = useState(false)
+  const [isStoreAdmin, setIsStoreAdmin] = useState(false)
+  const [canViewAnalysis, setCanViewAnalysis] = useState(false)
   const [storeName, setStoreName] = useState('Φορτώνει...')
   const [transactions, setTransactions] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [expandedTx, setExpandedTx] = useState<string | null>(null) 
+  const [expandedTx, setExpandedTx] = useState<string | null>(null)
 
   const loadDashboard = useCallback(async () => {
     if (!storeIdFromUrl) {
@@ -63,37 +66,42 @@ function DashboardContent() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) return router.push('/login');
 
-      // Λήψη ονόματος με ασφάλεια
+      // Fetch store name
       const { data: storeData } = await supabase
         .from('stores')
         .select('name')
         .eq('id', storeIdFromUrl)
         .maybeSingle();
-      
       if (storeData) setStoreName(storeData.name);
 
+      // Fetch transactions
       const { data: tx, error: txError } = await supabase
         .from('transactions')
-        .select('*, suppliers(name), fixed_assets(name)') 
+        .select('*, suppliers(name), fixed_assets(name)')
         .eq('store_id', storeIdFromUrl)
         .eq('date', selectedDate)
         .order('created_at', { ascending: false });
-
       if (txError) throw txError;
       setTransactions(tx || []);
 
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('role')
-        .eq('id', session.user.id)
+      // Fetch store_access for RBAC
+      const { data: access } = await supabase
+        .from('store_access')
+        .select('role, can_view_analysis')
+        .eq('user_id', session.user.id)
+        .eq('store_id', storeIdFromUrl)
         .maybeSingle();
-      
-      if (profile) {
-        setIsAdmin(profile.role === 'admin' || profile.role === 'superadmin');
+
+      if (access) {
+        setIsStoreAdmin(access.role === 'admin');
+        setCanViewAnalysis(access.role === 'admin' || access.can_view_analysis === true);
+      } else {
+        setIsStoreAdmin(false);
+        setCanViewAnalysis(false);
       }
 
     } catch (err) {
-      console.error("Dashboard error:", err);
+      console.error('Dashboard error:', err);
     } finally {
       setLoading(false);
     }
@@ -123,11 +131,11 @@ function DashboardContent() {
     const income = transactions
       .filter(t => t.type === 'income')
       .reduce((acc, t) => acc + (Number(t.amount) || 0), 0)
-    
+
     const expense = transactions
       .filter(t => (t.type === 'expense' || t.type === 'debt_payment') && t.is_credit !== true)
       .reduce((acc, t) => acc + (Math.abs(Number(t.amount)) || 0), 0)
-    
+
     return { income, expense, balance: income - expense }
   }, [transactions])
 
@@ -164,18 +172,22 @@ function DashboardContent() {
 
           {isMenuOpen && (
             <div style={dropdownStyle}>
-              <p style={menuSectionLabel}>ΔΙΑΧΕΙΡΙΣΗ</p>
-              {isAdmin && (
-                  <>
-                    <NextLink href={`/suppliers?store=${storeIdFromUrl}`} style={menuItem} onClick={() => setIsMenuOpen(false)}>🛒 Προμηθευτές</NextLink>
-                    <NextLink href={`/fixed-assets?store=${storeIdFromUrl}`} style={menuItem} onClick={() => setIsMenuOpen(false)}>🔌 Πάγια</NextLink>
-                    <NextLink href={`/employees?store=${storeIdFromUrl}`} style={menuItem} onClick={() => setIsMenuOpen(false)}>👥 Υπάλληλοι</NextLink>
-                    <NextLink href={`/suppliers-balance?store=${storeIdFromUrl}`} style={menuItem} onClick={() => setIsMenuOpen(false)}>🚩 Καρτέλες (Χρέη)</NextLink>
-                    <NextLink href={`/permissions?store=${storeIdFromUrl}`} style={menuItem} onClick={() => setIsMenuOpen(false)}>🔑 Δικαιώματα</NextLink>
-                  </>
+              {/* Management Section: Only for Store Admins */}
+              {isStoreAdmin && (
+                <>
+                  <p style={menuSectionLabel}>ΔΙΑΧΕΙΡΙΣΗ</p>
+                  <NextLink href={`/suppliers?store=${storeIdFromUrl}`} style={menuItem} onClick={() => setIsMenuOpen(false)}>🛒 Προμηθευτές</NextLink>
+                  <NextLink href={`/fixed-assets?store=${storeIdFromUrl}`} style={menuItem} onClick={() => setIsMenuOpen(false)}>🔌 Πάγια</NextLink>
+                  <NextLink href={`/employees?store=${storeIdFromUrl}`} style={menuItem} onClick={() => setIsMenuOpen(false)}>👥 Υπάλληλοι</NextLink>
+                  <NextLink href={`/suppliers-balance?store=${storeIdFromUrl}`} style={menuItem} onClick={() => setIsMenuOpen(false)}>🚩 Καρτέλες (Χρέη)</NextLink>
+                  <NextLink href={`/permissions?store=${storeIdFromUrl}`} style={menuItem} onClick={() => setIsMenuOpen(false)}>🔑 Δικαιώματα</NextLink>
+                </>
               )}
-              <NextLink href={`/analysis?store=${storeIdFromUrl}`} style={menuItem} onClick={() => setIsMenuOpen(false)}>📊 Ανάλυση</NextLink>
-              
+              {/* Analysis Link: Only for those with permission */}
+              {canViewAnalysis && (
+                <NextLink href={`/analysis?store=${storeIdFromUrl}`} style={menuItem} onClick={() => setIsMenuOpen(false)}>📊 Ανάλυση</NextLink>
+              )}
+
               <div style={menuDivider} />
 
               <p style={menuSectionLabel}>ΥΠΟΣΤΗΡΙΞΗ & ΡΥΘΜΙΣΕΙΣ</p>
