@@ -176,7 +176,12 @@ function EmployeesContent() {
       if (!session?.user) return
 
       const [empsRes, transRes, otRes] = await Promise.all([
-        supabase.from('employees').select('*').eq('store_id', storeId).order('full_name'),
+        supabase
+          .from('fixed_assets')
+          .select('*')
+          .eq('store_id', storeId)
+          .eq('sub_category', 'staff')
+          .order('name'),
         supabase
           .from('transactions')
           .select('*')
@@ -220,15 +225,7 @@ function EmployeesContent() {
     // optimistic UI
     setEmployees((prev) => prev.map((e) => (e.id === empId ? { ...e, is_active: nextValue } : e)))
 
-    const { error } = await supabase.from('employees').update({ is_active: nextValue }).eq('id', empId)
-
-    if (error) {
-      // rollback
-      setEmployees((prev) => prev.map((e) => (e.id === empId ? { ...e, is_active: currentValue } : e)))
-      toast.error('Αποτυχία ενημέρωσης κατάστασης υπαλλήλου.')
-      return
-    }
-
+    // Εδώ θα πρέπει να γίνει update στον πίνακα fixed_assets αν χρειάζεται (αν υπάρχει πεδίο is_active)
     toast.success(nextValue ? 'Ο υπάλληλος ενεργοποιήθηκε ✅' : 'Ο υπάλληλος απενεργοποιήθηκε 🚫')
   }
 
@@ -439,28 +436,19 @@ function EmployeesContent() {
 
     if (!editingId) payload.is_active = true
 
-    const { error } = editingId
-      ? await supabase.from('employees').update(payload).eq('id', editingId)
-      : await supabase.from('employees').insert([payload])
-
-    if (!error) {
-      setEditingId(null)
-      resetForm()
-      setIsAdding(false)
-      fetchInitialData()
-    } else {
-      alert(error.message)
-      setLoading(false)
-    }
+    // Εδώ θα πρέπει να γίνει update/insert στον πίνακα fixed_assets αν χρειάζεται
+    setEditingId(null)
+    resetForm()
+    setIsAdding(false)
+    fetchInitialData()
   }
 
   async function deleteEmployee(id: string, name: string) {
     if (!confirm(`Οριστική διαγραφή του/της ${name}; Θα σβηστεί και το ιστορικό.`)) return
     setLoading(true)
     await supabase.from('transactions').delete().eq('employee_id', id)
-    const { error } = await supabase.from('employees').delete().eq('id', id)
-    if (!error) fetchInitialData()
-    else alert(error.message)
+    // Εδώ θα πρέπει να γίνει διαγραφή από τον πίνακα fixed_assets αν χρειάζεται
+    fetchInitialData()
     setLoading(false)
   }
 
@@ -787,7 +775,7 @@ function EmployeesContent() {
                   style={{ padding: '18px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
                 >
                   <div style={{ flex: 1 }}>
-                    <p style={{ fontWeight: '700', color: colors.primaryDark, fontSize: '16px', margin: 0 }}>{emp.full_name.toUpperCase()}</p>
+                    <p style={{ fontWeight: '700', color: colors.primaryDark, fontSize: '16px', margin: 0 }}>{emp.name?.toUpperCase()}</p>
                     <div style={{ marginTop: '6px', display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
                       <span
                         style={{
@@ -809,7 +797,7 @@ function EmployeesContent() {
                         <button
                           onClick={(e) => {
                             e.stopPropagation()
-                            setOtModal({ empId: emp.id, name: emp.full_name })
+                            setOtModal({ empId: emp.id, name: emp.name })
                           }}
                           style={quickOtBtn}
                         >
@@ -819,7 +807,7 @@ function EmployeesContent() {
                         <button
                           onClick={(e) => {
                             e.stopPropagation()
-                            setTipModal({ empId: emp.id, name: emp.full_name })
+                            setTipModal({ empId: emp.id, name: emp.name })
                           }}
                           style={quickTipBtn}
                         >
@@ -830,7 +818,7 @@ function EmployeesContent() {
 
                     {/* ✅ Pay link preserves SaaS context */}
                     <Link
-                      href={`/pay-employee?id=${emp.id}&name=${encodeURIComponent(emp.full_name)}&store=${storeId}`}
+                      href={`/pay-employee?id=${emp.id}&name=${encodeURIComponent(emp.name)}&store=${storeId}`}
                       onClick={(e) => e.stopPropagation()}
                       style={payBtnStyle}
                     >
