@@ -6,13 +6,11 @@ import { supabase } from '@/lib/supabase'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { toast, Toaster } from 'sonner'
-import { ShieldCheck, UserPlus, Trash2, X, ChevronUp, Users } from 'lucide-react'
+import { ShieldCheck, UserPlus, Trash2, X, ChevronUp, ChevronDown, Users } from 'lucide-react'
 
 function PermissionsContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  
-  // Η ΜΟΝΑΔΙΚΗ ΠΗΓΗ ΑΛΗΘΕΙΑΣ
   const storeId = searchParams.get('store')
 
   const [users, setUsers] = useState<any[]>([])
@@ -32,7 +30,6 @@ function PermissionsContent() {
       if (!user) return router.push('/login')
       setMyId(user.id)
 
-      // ΕΛΕΓΧΟΣ: Έχει ο τρέχων χρήστης δικαιώματα Admin σε ΑΥΤΟ το storeId;
       const { data: access, error: accessError } = await supabase
         .from('store_access')
         .select('role')
@@ -41,7 +38,7 @@ function PermissionsContent() {
         .maybeSingle()
 
       if (accessError || !access || access.role !== 'admin') {
-        toast.error("Δεν έχετε δικαιώματα διαχειριστή για αυτό το κατάστημα!")
+        toast.error("Δεν έχετε δικαιώματα διαχειριστή!")
         router.push(`/?store=${storeId}`)
         return
       }
@@ -59,7 +56,6 @@ function PermissionsContent() {
   }, [checkAdminAndFetchUsers])
 
   async function fetchUsersList(sId: string) {
-    // Παίρνουμε όλους τους χρήστες που έχουν πρόσβαση στο συγκεκριμένο store
     const { data: accessData, error: accessError } = await supabase
       .from('store_access')
       .select('*')
@@ -67,7 +63,6 @@ function PermissionsContent() {
 
     if (accessError) throw accessError
 
-    // Παίρνουμε τα profiles μαζικά (πιο γρήγορο)
     const userIds = accessData.map(a => a.user_id)
     const { data: profiles } = await supabase
       .from('profiles')
@@ -86,6 +81,7 @@ function PermissionsContent() {
   }
 
   async function updatePermission(userId: string, field: string, newValue: any) {
+    // Προστασία εαυτού
     if (userId === myId && field === 'role' && newValue !== 'admin') {
       toast.error("Δεν μπορείτε να αφαιρέσετε τον εαυτό σας από Admin!");
       return;
@@ -108,7 +104,7 @@ function PermissionsContent() {
 
   async function removeUser(userId: string) {
     if (userId === myId) return;
-    if (!confirm('Οριστική αφαίρεση πρόσβασης για αυτόν τον χρήστη;')) return;
+    if (!confirm('Οριστική αφαίρεση πρόσβασης;')) return;
 
     try {
       const { error } = await supabase
@@ -147,7 +143,7 @@ function PermissionsContent() {
         <div style={loadingTextStyle}>ΣΥΓΧΡΟΝΙΣΜΟΣ ΧΡΗΣΤΩΝ...</div>
       ) : (
         <>
-          <p style={sectionLabelStyle}>ΔΙΑΧΕΙΡΙΣΤΕΣ</p>
+          <p style={sectionLabelStyle}>ΔΙΑΧΕΙΡΙΣΤΕΣ ({admins.length})</p>
           {admins.map(u => (
             <div key={u.user_id} style={adminCardStyle}>
               <div style={{ flex: 1 }}>
@@ -155,6 +151,16 @@ function PermissionsContent() {
                   {u.username.toUpperCase()} {u.user_id === myId ? '(ΕΣΕΙΣ)' : ''}
                 </p>
                 <p style={adminEmailStyle}>{u.email}</p>
+                
+                {/* Κουμπί Υποβιβασμού μόνο για άλλους Admins */}
+                {u.user_id !== myId && (
+                  <button 
+                    onClick={() => updatePermission(u.user_id, 'role', 'staff')}
+                    style={demoteBtnStyle}
+                  >
+                    <ChevronDown size={12} /> ΥΠΟΒΙΒΑΣΜΟΣ ΣΕ ΠΡΟΣΩΠΙΚΟ
+                  </button>
+                )}
               </div>
               <span style={adminBadgeStyle}>FULL ACCESS</span>
             </div>
@@ -203,7 +209,7 @@ function PermissionsContent() {
           {staff.length === 0 && (
             <div style={emptyStateStyle}>
               <Users size={32} color="#cbd5e1" style={{marginBottom: '10px'}} />
-              <p>Δεν υπάρχουν συνεργάτες σε αυτό το κατάστημα.</p>
+              <p>Δεν υπάρχουν συνεργάτες.</p>
             </div>
           )}
 
@@ -247,10 +253,11 @@ const subtitleStyle: any = { margin: 0, fontSize: '10px', color: '#64748b', font
 const backBtnStyle: any = { backgroundColor: 'white', borderRadius: '12px', border: '1px solid #e2e8f0', width: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b' };
 const loadingTextStyle: any = { textAlign: 'center', padding: '100px 0', fontWeight: '800', color: '#cbd5e1', letterSpacing: '1px' };
 const sectionLabelStyle: any = { fontSize: '11px', fontWeight: '900', color: '#94a3b8', marginBottom: '15px', letterSpacing: '1px' };
-const adminCardStyle: any = { backgroundColor: '#1e293b', padding: '20px', borderRadius: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' };
+const adminCardStyle: any = { backgroundColor: '#1e293b', padding: '20px', borderRadius: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap' };
 const adminNameStyle: any = { fontWeight: '900', margin: 0, fontSize: '14px', color: 'white' };
 const adminEmailStyle: any = { fontSize: '11px', color: '#94a3b8', margin: 0, fontWeight: '700' };
 const adminBadgeStyle: any = { color: '#4ade80', fontSize: '10px', fontWeight: '900', backgroundColor: 'rgba(74, 222, 128, 0.1)', padding: '6px 10px', borderRadius: '10px' };
+const demoteBtnStyle: any = { background: 'none', border: 'none', color: '#f87171', fontSize: '9px', fontWeight: '800', cursor: 'pointer', padding: 0, marginTop: '8px', display: 'flex', alignItems: 'center', gap: '4px' };
 const userCardStyle: any = { backgroundColor: 'white', padding: '24px', borderRadius: '28px', border: '1px solid #e2e8f0', marginBottom: '15px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.02)' };
 const userCardHeaderStyle: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' };
 const userNameStyle: any = { fontWeight: '900', margin: 0, fontSize: '16px', color: '#0f172a' };
