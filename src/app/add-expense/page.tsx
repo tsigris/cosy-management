@@ -48,6 +48,10 @@ function AddExpenseForm() {
   // ✅ MUST read storeId from URL searchParams
   const urlStoreId = searchParams.get('store')
 
+  // ✅ NEW: deep-link params from Cards
+  const urlSupId = searchParams.get('supId')
+  const urlAssetId = searchParams.get('assetId')
+
   const [amount, setAmount] = useState('')
   const [method, setMethod] = useState<'Μετρητά' | 'Τράπεζα'>('Μετρητά')
   const [notes, setNotes] = useState('')
@@ -94,6 +98,16 @@ function AddExpenseForm() {
     return 'other'
   }, [])
 
+  // ✅ maps fixed_assets.sub_category -> UI key (for urlAssetId deep link)
+  const keyFromFixedAssetSubCategory = useCallback((subCategory: any): ExpenseCategoryKey => {
+    const sub = String(subCategory || '').trim().toLowerCase()
+    if (sub === 'maintenance') return 'worker'
+    if (sub === 'worker') return 'worker'
+    if (sub === 'staff') return 'staff'
+    if (sub === 'utility' || sub === 'utilities') return 'utility'
+    return 'other'
+  }, [])
+
   const loadFormData = useCallback(async () => {
     try {
       const {
@@ -136,6 +150,9 @@ function AddExpenseForm() {
         supabase.from('transactions').select('amount, type').eq('store_id', activeStoreId).eq('date', selectedDate),
       ])
 
+      const supData = sRes.data || []
+      const faData = fRes.data || []
+
       if (sRes.data) setSuppliers(sRes.data)
       if (fRes.data) setFixedAssets(fRes.data)
 
@@ -173,19 +190,41 @@ function AddExpenseForm() {
 
           // choose selected item by category
           const itemId = inferredKey === 'suppliers' ? tx.supplier_id || '' : tx.fixed_asset_id || ''
-
           setSelectedItemId(itemId)
         }
       } else {
-        // NEW record: clear selection
-        setSelectedItemId('')
+        // ✅ NEW record: allow deep-link preselect AFTER data loads
+        // 1) supId => suppliers
+        if (urlSupId) {
+          setExpenseCategory('suppliers')
+          setSelectedItemId(urlSupId)
+        }
+        // 2) assetId => infer category from fixed_assets.sub_category
+        else if (urlAssetId) {
+          const found = faData.find((x: any) => x.id === urlAssetId)
+          const inferredKey = keyFromFixedAssetSubCategory(found?.sub_category)
+          setExpenseCategory(inferredKey)
+          setSelectedItemId(urlAssetId)
+        } else {
+          // no deep-link: clear selection
+          setSelectedItemId('')
+        }
       }
     } catch (error) {
       console.error(error)
     } finally {
       setLoading(false)
     }
-  }, [editId, keyFromDbCategory, router, selectedDate, urlStoreId])
+  }, [
+    editId,
+    keyFromDbCategory,
+    keyFromFixedAssetSubCategory,
+    router,
+    selectedDate,
+    urlStoreId,
+    urlSupId,
+    urlAssetId,
+  ])
 
   useEffect(() => {
     loadFormData()
@@ -461,7 +500,9 @@ function AddExpenseForm() {
             })}
           </div>
 
-          <label style={{ ...labelStyle, marginTop: 20 }}>{expenseCategory === 'suppliers' ? 'ΠΡΟΜΗΘΕΥΤΗΣ' : 'ΠΑΓΙΟ / ΚΑΤΑΧΩΡΗΣΗ'}</label>
+          <label style={{ ...labelStyle, marginTop: 20 }}>
+            {expenseCategory === 'suppliers' ? 'ΠΡΟΜΗΘΕΥΤΗΣ' : 'ΠΑΓΙΟ / ΚΑΤΑΧΩΡΗΣΗ'}
+          </label>
 
           <select value={selectedItemId} onChange={e => setSelectedItemId(e.target.value)} style={inputStyle}>
             <option value="">Επιλογή από λίστα...</option>
@@ -521,7 +562,13 @@ function AddExpenseForm() {
                 ) : (
                   <label style={uploadPlaceholder}>
                     <span style={{ fontSize: 16 }}>📷 Επιλογή φωτογραφίας</span>
-                    <input type="file" accept="image/*" capture="environment" onChange={handleImageChange} style={{ display: 'none' }} />
+                    <input
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      onChange={handleImageChange}
+                      style={{ display: 'none' }}
+                    />
                   </label>
                 )}
               </div>
@@ -540,7 +587,9 @@ function AddExpenseForm() {
               }}
             >
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                <span style={{ fontSize: 16, fontWeight: 900 }}>{loading ? 'SYNCING...' : editId ? 'ΕΝΗΜΕΡΩΣΗ ΔΕΔΟΜΕΝΩΝ' : 'ΟΛΟΚΛΗΡΩΣΗ ΕΞΟΔΟΥ'}</span>
+                <span style={{ fontSize: 16, fontWeight: 900 }}>
+                  {loading ? 'SYNCING...' : editId ? 'ΕΝΗΜΕΡΩΣΗ ΔΕΔΟΜΕΝΩΝ' : 'ΟΛΟΚΛΗΡΩΣΗ ΕΞΟΔΟΥ'}
+                </span>
                 <span style={{ fontSize: 16, opacity: 0.85, fontWeight: 800, marginTop: 6 }}>
                   ΚΑΘΑΡΟ ΤΑΜΕΙΟ: {currentBalance.toFixed(2)}€
                 </span>
