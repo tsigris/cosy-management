@@ -6,7 +6,7 @@ import { supabase } from '@/lib/supabase'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { toast, Toaster } from 'sonner'
-import { ShieldCheck, UserPlus, Trash2, X, ChevronUp, ChevronDown, Users } from 'lucide-react'
+import { ShieldCheck, UserPlus, Trash2, X, ChevronUp, ChevronDown, Users, Check } from 'lucide-react'
 
 function PermissionsContent() {
   const router = useRouter()
@@ -16,6 +16,13 @@ function PermissionsContent() {
   const [users, setUsers] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [myId, setMyId] = useState('')
+  
+  // States για τη μαζική διαχείριση ρόλων
+  const [allStores, setAllStores] = useState<any[]>([])
+  const [isRoleModalOpen, setIsRoleModalOpen] = useState(false)
+  const [selectedUserForRole, setSelectedUserForRole] = useState<any>(null)
+  const [selectedStores, setSelectedStores] = useState<string[]>([])
+  const [massUpdateLoading, setMassUpdateLoading] = useState(false)
 
   const checkAdminAndFetchUsers = useCallback(async () => {
     if (!storeId) {
@@ -44,6 +51,11 @@ function PermissionsContent() {
       }
 
       await fetchUsersList(storeId)
+      
+      // Φόρτωση όλων των καταστημάτων για το Modal
+      const { data: stores } = await supabase.from('stores').select('id, name')
+      if (stores) setAllStores(stores)
+
     } catch (err) {
       console.error(err)
     } finally {
@@ -80,10 +92,36 @@ function PermissionsContent() {
     setUsers(formattedUsers)
   }
 
+  // Μαζική αναβάθμιση σε Admin
+  async function handleMassRoleUpdate() {
+    if (selectedStores.length === 0) {
+      toast.error("Επιλέξτε τουλάχιστον ένα κατάστημα");
+      return;
+    }
+
+    setMassUpdateLoading(true);
+    try {
+      const { error } = await supabase
+        .from('store_access')
+        .update({ role: 'admin' })
+        .eq('user_id', selectedUserForRole.user_id)
+        .in('store_id', selectedStores);
+
+      if (error) throw error;
+      
+      toast.success(`Ο χρήστης αναβαθμίστηκε σε ${selectedStores.length} κατάστημα/τα`);
+      setIsRoleModalOpen(false);
+      await fetchUsersList(storeId!);
+    } catch (err) {
+      toast.error("Αποτυχία ενημέρωσης");
+    } finally {
+      setMassUpdateLoading(false);
+    }
+  }
+
   async function updatePermission(userId: string, field: string, newValue: any) {
-    // Προστασία εαυτού
     if (userId === myId && field === 'role' && newValue !== 'admin') {
-      toast.error("Δεν μπορείτε να αφαιρέσετε τον εαυτό σας από Admin!");
+      toast.error("Δεν μπορείτε να υποβαθμίσετε τον εαυτό σας!");
       return;
     }
 
@@ -151,8 +189,6 @@ function PermissionsContent() {
                   {u.username.toUpperCase()} {u.user_id === myId ? '(ΕΣΕΙΣ)' : ''}
                 </p>
                 <p style={adminEmailStyle}>{u.email}</p>
-                
-                {/* Κουμπί Υποβιβασμού μόνο για άλλους Admins */}
                 {u.user_id !== myId && (
                   <button 
                     onClick={() => updatePermission(u.user_id, 'role', 'staff')}
@@ -198,10 +234,14 @@ function PermissionsContent() {
               </div>
               
               <button 
-                onClick={() => updatePermission(u.user_id, 'role', 'admin')}
+                onClick={() => {
+                  setSelectedUserForRole(u);
+                  setSelectedStores([storeId!]);
+                  setIsRoleModalOpen(true);
+                }}
                 style={promoteBtnStyle}
               >
-                <ChevronUp size={14} /> ΑΝΑΒΑΘΜΙΣΗ ΣΕ ΔΙΑΧΕΙΡΙΣΤΗ
+                <ChevronUp size={14} /> ΑΝΑΒΑΘΜΙΣΗ ΣΕ ADMIN
               </button>
             </div>
           ))}
@@ -217,6 +257,58 @@ function PermissionsContent() {
             <UserPlus size={20} /> ΠΡΟΣΚΛΗΣΗ ΣΥΝΕΡΓΑΤΗ
           </Link>
         </>
+      )}
+
+      {/* MODAL ΕΠΙΛΟΓΗΣ ΚΑΤΑΣΤΗΜΑΤΩΝ ΓΙΑ ADMIN */}
+      {isRoleModalOpen && (
+        <div style={modalOverlayStyle}>
+          <div style={modalContentStyle}>
+            <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '15px' }}>
+              <div style={{ padding: '15px', backgroundColor: '#f0f9ff', borderRadius: '50%' }}>
+                <ShieldCheck size={32} color="#0369a1" />
+              </div>
+            </div>
+            <h3 style={{ fontSize: '18px', fontWeight: '900', color: '#0f172a', marginBottom: '8px' }}>Αναβάθμιση Ρόλου</h3>
+            <p style={{ fontSize: '13px', color: '#64748b', marginBottom: '20px' }}>
+              Επιλέξτε σε ποια καταστήματα ο <b>{selectedUserForRole?.username}</b> θα έχει δικαιώματα Admin:
+            </p>
+            
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '200px', overflowY: 'auto', padding: '5px' }}>
+              {allStores.map(s => (
+                <label key={s.id} style={{ 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'space-between',
+                  padding: '14px', 
+                  backgroundColor: selectedStores.includes(s.id) ? '#f0fdf4' : '#f8fafc', 
+                  borderRadius: '14px',
+                  cursor: 'pointer',
+                  border: '2px solid',
+                  borderColor: selectedStores.includes(s.id) ? '#bbf7d0' : 'transparent',
+                  transition: 'all 0.2s'
+                }}>
+                  <span style={{ fontSize: '14px', fontWeight: '800', color: selectedStores.includes(s.id) ? '#166534' : '#475569' }}>{s.name}</span>
+                  <input 
+                    type="checkbox" 
+                    style={{ width: '20px', height: '20px' }}
+                    checked={selectedStores.includes(s.id)}
+                    onChange={(e) => {
+                      if (e.target.checked) setSelectedStores([...selectedStores, s.id]);
+                      else setSelectedStores(selectedStores.filter(id => id !== s.id));
+                    }}
+                  />
+                </label>
+              ))}
+            </div>
+
+            <div style={{ display: 'flex', gap: '12px', marginTop: '25px' }}>
+              <button onClick={() => setIsRoleModalOpen(false)} style={cancelBtnStyle}>ΑΚΥΡΩΣΗ</button>
+              <button onClick={handleMassRoleUpdate} disabled={massUpdateLoading} style={confirmBtnStyle}>
+                {massUpdateLoading ? 'ΕΝΗΜΕΡΩΣΗ...' : 'ΑΠΟΘΗΚΕΥΣΗ'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )
@@ -266,6 +358,12 @@ const deleteBtnStyle: any = { background: 'none', border: 'none', cursor: 'point
 const promoteBtnStyle: any = { width: '100%', padding: '14px', borderRadius: '16px', backgroundColor: '#f1f5f9', color: '#475569', fontSize: '11px', fontWeight: '900', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' };
 const inviteBtnStyle: any = { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', marginTop: '30px', padding: '18px', backgroundColor: '#0f172a', color: 'white', borderRadius: '20px', textDecoration: 'none', fontWeight: '900', fontSize: '15px' };
 const emptyStateStyle: any = { textAlign: 'center', padding: '60px 20px', border: '2px dashed #e2e8f0', borderRadius: '28px', color: '#94a3b8', fontSize: '14px', fontWeight: '700' };
+
+// --- MODAL STYLES ---
+const modalOverlayStyle: any = { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px' };
+const modalContentStyle: any = { backgroundColor: 'white', padding: '30px', borderRadius: '32px', width: '100%', maxWidth: '400px', textAlign: 'center', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' };
+const cancelBtnStyle: any = { flex: 1, padding: '16px', borderRadius: '16px', border: '1px solid #e2e8f0', backgroundColor: 'white', fontWeight: '800', color: '#64748b', cursor: 'pointer', fontSize: '13px' };
+const confirmBtnStyle: any = { flex: 1, padding: '16px', borderRadius: '16px', border: 'none', backgroundColor: '#0f172a', color: 'white', fontWeight: '800', cursor: 'pointer', fontSize: '13px' };
 
 export default function PermissionsPage() {
   return (
