@@ -10,6 +10,58 @@ import { toast, Toaster } from 'sonner'
 import { Settings, X, Download, Save, MessageCircle, Info } from 'lucide-react'
 
 function SettingsContent() {
+    // --- Personal Profile State ---
+    const [profileLoading, setProfileLoading] = useState(true);
+    const [profileName, setProfileName] = useState('');
+    const [profileSaveLoading, setProfileSaveLoading] = useState(false);
+    const [profileError, setProfileError] = useState('');
+    const [profileSuccess, setProfileSuccess] = useState('');
+    const [userId, setUserId] = useState<string | null>(null);
+
+    // Fetch current user's profile
+    useEffect(() => {
+      (async () => {
+        setProfileLoading(true);
+        setProfileError('');
+        setProfileSuccess('');
+        try {
+          const { data: { user }, error: userError } = await supabase.auth.getUser();
+          if (userError || !user) throw new Error('Δεν βρέθηκε χρήστης');
+          setUserId(user.id);
+          const { data: profile, error: profileError } = await supabase
+            .from('profiles')
+            .select('username')
+            .eq('id', user.id)
+            .maybeSingle();
+          if (profileError) throw profileError;
+          setProfileName(profile?.username || '');
+        } catch (err: any) {
+          setProfileError('Σφάλμα φόρτωσης προφίλ');
+        } finally {
+          setProfileLoading(false);
+        }
+      })();
+    }, []);
+
+    // Save profile username
+    const handleProfileSave = async () => {
+      if (!userId) return;
+      setProfileSaveLoading(true);
+      setProfileError('');
+      setProfileSuccess('');
+      try {
+        const { error } = await supabase
+          .from('profiles')
+          .update({ username: profileName.trim() })
+          .eq('id', userId);
+        if (error) throw error;
+        setProfileSuccess('Το όνομα ενημερώθηκε!');
+      } catch (err: any) {
+        setProfileError('Σφάλμα αποθήκευσης');
+      } finally {
+        setProfileSaveLoading(false);
+      }
+    };
   const searchParams = useSearchParams()
   const storeId = searchParams.get('store')
 
@@ -155,6 +207,31 @@ function SettingsContent() {
           <Link href={`/?store=${storeId}`} style={backBtnStyle}><X size={20} /></Link>
         </header>
 
+        {/* --- PERSONAL PROFILE SECTION --- */}
+        <div style={mainCardStyle}>
+          <p style={sectionLabel}>ΠΡΟΣΩΠΙΚΟ ΠΡΟΦΙΛ</p>
+          <div style={inputGroup}>
+            <label style={labelStyle}>Το όνομά μου (username)</label>
+            <input
+              style={{ ...inputStyle, fontSize: '16px' }}
+              value={profileName}
+              onChange={e => setProfileName(e.target.value)}
+              disabled={profileLoading || profileSaveLoading}
+              placeholder="Το όνομά σας..."
+            />
+          </div>
+          <button
+            onClick={handleProfileSave}
+            disabled={profileLoading || profileSaveLoading}
+            style={{ ...saveBtnStyle, marginBottom: 10 }}
+          >
+            <Save size={18} /> {profileSaveLoading ? 'ΑΠΟΘΗΚΕΥΣΗ...' : 'ΑΠΟΘΗΚΕΥΣΗ ΟΝΟΜΑΤΟΣ'}
+          </button>
+          {profileError && <div style={{ color: '#dc2626', fontSize: 13, marginBottom: 8 }}>{profileError}</div>}
+          {profileSuccess && <div style={{ color: '#059669', fontSize: 13, marginBottom: 8 }}>{profileSuccess}</div>}
+        </div>
+
+        {/* --- STORE SETTINGS SECTION --- */}
         <div style={mainCardStyle}>
           <p style={sectionLabel}>ΣΤΟΙΧΕΙΑ ΕΠΙΧΕΙΡΗΣΗΣ</p>
           
