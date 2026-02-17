@@ -18,20 +18,25 @@ import {
   Pencil,
   XCircle,
   Save,
+  ChevronLeft,
+  Building2,
+  Hash,
+  Phone,
+  CreditCard,
+  Tag,
 } from 'lucide-react'
 
 const colors = {
-  primaryDark: '#1e293b',
+  primaryDark: '#0f172a',
   secondaryText: '#64748b',
-  accentRed: '#dc2626',
-  accentBlue: '#2563eb',
-  accentGreen: '#059669',
+  accentGreen: '#10b981',
+  accentRed: '#f43f5e',
+  accentBlue: '#6366f1',
   bgLight: '#f8fafc',
   border: '#e2e8f0',
   white: '#ffffff',
-  labelGray: '#334155',
-  labelBlue: '#1d4ed8',
-  labelGreen: '#047857',
+  warning: '#fffbeb',
+  warningText: '#92400e',
 }
 
 const BANK_OPTIONS = [
@@ -42,28 +47,32 @@ const BANK_OPTIONS = [
   'Τράπεζα Πειραιώς',
 ] as const
 
-type TabKey = 'suppliers' | 'maintenance' | 'utility' | 'staff' | 'other'
-const TABS: Array<{
+type TabKey = 'suppliers' | 'utility' | 'staff' | 'maintenance' | 'other'
+
+const MENU: Array<{
   key: TabKey
   label: string
   icon: any
   subCategory: 'Maintenance' | 'utility' | 'staff' | 'other' | null
+  addLabel: string
 }> = [
-  { key: 'suppliers', label: 'Προμηθευτές', icon: Users, subCategory: null },
-  { key: 'maintenance', label: 'Συντήρηση', icon: Wrench, subCategory: 'Maintenance' },
-  { key: 'utility', label: 'Λογαριασμοί', icon: Lightbulb, subCategory: 'utility' },
-  { key: 'staff', label: 'Προσωπικό', icon: User, subCategory: 'staff' },
-  { key: 'other', label: 'Λοιπά', icon: Package, subCategory: 'other' },
+  { key: 'suppliers', label: 'Προμηθευτές', icon: Users, subCategory: null, addLabel: 'ΝΕΟΣ ΠΡΟΜΗΘΕΥΤΗΣ' },
+  { key: 'utility', label: 'Λογαριασμοί', icon: Lightbulb, subCategory: 'utility', addLabel: 'ΝΕΟΣ ΛΟΓΑΡΙΑΣΜΟΣ' },
+  { key: 'staff', label: 'Προσωπικό', icon: User, subCategory: 'staff', addLabel: 'ΝΕΟΣ ΥΠΑΛΛΗΛΟΣ' },
+  { key: 'maintenance', label: 'Συντήρηση', icon: Wrench, subCategory: 'Maintenance', addLabel: 'ΝΕΟΣ ΤΕΧΝΙΚΟΣ' },
+  { key: 'other', label: 'Λοιπά', icon: Package, subCategory: 'other', addLabel: 'ΝΕΟ ΠΑΓΙΟ' },
 ]
 
 type PayBasis = 'monthly' | 'daily'
 
-function ManageListsInner() {
+function ManageListsContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
 
   const urlStoreId = searchParams.get('store')
   const [storeId, setStoreId] = useState<string | null>(urlStoreId)
+
+  const [currentStoreName, setCurrentStoreName] = useState('Φορτώνει...')
 
   const [activeTab, setActiveTab] = useState<TabKey>('suppliers')
 
@@ -72,30 +81,31 @@ function ManageListsInner() {
 
   const [suppliers, setSuppliers] = useState<any[]>([])
   const [fixedAssets, setFixedAssets] = useState<any[]>([])
+  const [search, setSearch] = useState('')
 
-  // Form fields (shared)
+  // UI like Suppliers page
+  const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [isFormOpen, setIsFormOpen] = useState(false)
+
+  // Shared fields
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
   const [vatNumber, setVatNumber] = useState('')
   const [bankName, setBankName] = useState('')
   const [iban, setIban] = useState('')
 
-  // Staff fields
+  // Staff
   const [payBasis, setPayBasis] = useState<PayBasis>('monthly')
   const [monthlySalary, setMonthlySalary] = useState<string>('')
   const [dailyRate, setDailyRate] = useState<string>('')
   const [monthlyDays, setMonthlyDays] = useState<string>('')
   const [startDate, setStartDate] = useState<string>('')
 
-  // Utility fields
+  // Utility
   const [rfCode, setRfCode] = useState<string>('')
 
-  const [search, setSearch] = useState('')
-
-  // Edit mode
-  const [editingId, setEditingId] = useState<string | null>(null)
-
-  const currentTab = useMemo(() => TABS.find(t => t.key === activeTab)!, [activeTab])
+  const currentTab = useMemo(() => MENU.find(t => t.key === activeTab)!, [activeTab])
 
   const resetForm = useCallback(() => {
     setName('')
@@ -111,7 +121,10 @@ function ManageListsInner() {
     setStartDate('')
 
     setRfCode('')
+
     setEditingId(null)
+    setExpandedId(null)
+    setIsFormOpen(false)
   }, [])
 
   const visibleItems = useMemo(() => {
@@ -125,7 +138,8 @@ function ManageListsInner() {
         const v = String(x.vat_number || '').toLowerCase()
         const p = String(x.phone || '').toLowerCase()
         const b = String(x.bank_name || '').toLowerCase()
-        return n.includes(q) || v.includes(q) || p.includes(q) || b.includes(q)
+        const i = String(x.iban || '').toLowerCase()
+        return n.includes(q) || v.includes(q) || p.includes(q) || b.includes(q) || i.includes(q)
       })
     }
 
@@ -138,7 +152,8 @@ function ManageListsInner() {
       const v = String(x.vat_number || '').toLowerCase()
       const p = String(x.phone || '').toLowerCase()
       const b = String(x.bank_name || '').toLowerCase()
-      return n.includes(q) || rf.includes(q) || v.includes(q) || p.includes(q) || b.includes(q)
+      const i = String(x.iban || '').toLowerCase()
+      return n.includes(q) || rf.includes(q) || v.includes(q) || p.includes(q) || b.includes(q) || i.includes(q)
     })
   }, [activeTab, suppliers, fixedAssets, search, currentTab.subCategory])
 
@@ -164,7 +179,8 @@ function ManageListsInner() {
 
       setStoreId(activeStoreId)
 
-      const [sRes, fRes] = await Promise.all([
+      const [storeRes, sRes, fRes] = await Promise.all([
+        supabase.from('stores').select('name').eq('id', activeStoreId).single(),
         supabase
           .from('suppliers')
           .select('id, name, phone, vat_number, bank_name, iban, is_active, created_at')
@@ -178,6 +194,8 @@ function ManageListsInner() {
           .eq('store_id', activeStoreId)
           .order('name'),
       ])
+
+      if (storeRes.data?.name) setCurrentStoreName(String(storeRes.data.name))
 
       if (sRes.error) throw sRes.error
       if (fRes.error) throw fRes.error
@@ -195,8 +213,15 @@ function ManageListsInner() {
     loadData()
   }, [loadData])
 
+  const backHref = useMemo(() => {
+    const s = urlStoreId || storeId || ''
+    return s ? `/?store=${s}` : '/'
+  }, [storeId, urlStoreId])
+
   const handleEdit = (item: any) => {
     setEditingId(String(item.id))
+    setExpandedId(String(item.id))
+    setIsFormOpen(true)
 
     if (activeTab === 'suppliers') {
       setName(String(item.name || ''))
@@ -228,7 +253,6 @@ function ManageListsInner() {
 
       setRfCode(String(item.rf_code || ''))
 
-      // Utility: we edit Name + RF + Bank
       if (sub === 'utility') {
         setName(String(item.name || ''))
         setRfCode(String(item.rf_code || ''))
@@ -300,7 +324,7 @@ function ManageListsInner() {
       // -------------------- FIXED_ASSETS --------------------
       const subCategoryToSave = activeTab === 'maintenance' ? 'Maintenance' : currentTab.subCategory
 
-      // -------------------- UTILITY (Λογαριασμοί): Name + RF + Bank --------------------
+      // -------------------- UTILITY --------------------
       if (activeTab === 'utility') {
         const trimmedName = name.trim()
         const trimmedRf = rfCode.trim()
@@ -312,7 +336,6 @@ function ManageListsInner() {
           rf_code: trimmedRf || null,
           bank_name: bankName || null,
 
-          // keep required fields present (per your requirement list)
           iban: null,
           monthly_days: null,
           monthly_salary: null,
@@ -482,7 +505,7 @@ function ManageListsInner() {
         return
       }
 
-      toast.error('Άγνωστη καρτέλα')
+      toast.error('Άγνωστη επιλογή')
     } catch (e: any) {
       toast.error(e?.message || 'Αποτυχία καταχώρησης')
     } finally {
@@ -490,9 +513,8 @@ function ManageListsInner() {
     }
   }
 
-  const handleDelete = async (item: any) => {
-    const label = String(item?.name || '').trim()
-    const ok = confirm(`Να διαγραφεί το "${label}"?`)
+  const handleDelete = async (id: string) => {
+    const ok = confirm('Οριστική διαγραφή;')
     if (!ok) return
 
     const activeStoreId =
@@ -506,16 +528,16 @@ function ManageListsInner() {
       setSaving(true)
 
       if (activeTab === 'suppliers') {
-        const { error } = await supabase.from('suppliers').delete().eq('id', item.id).eq('store_id', activeStoreId)
+        const { error } = await supabase.from('suppliers').delete().eq('id', id).eq('store_id', activeStoreId)
         if (error) throw error
-        setSuppliers(prev => prev.filter(x => x.id !== item.id))
+        setSuppliers(prev => prev.filter(x => String(x.id) !== String(id)))
       } else {
-        const { error } = await supabase.from('fixed_assets').delete().eq('id', item.id).eq('store_id', activeStoreId)
+        const { error } = await supabase.from('fixed_assets').delete().eq('id', id).eq('store_id', activeStoreId)
         if (error) throw error
-        setFixedAssets(prev => prev.filter(x => x.id !== item.id))
+        setFixedAssets(prev => prev.filter(x => String(x.id) !== String(id)))
       }
 
-      if (editingId && String(item.id) === String(editingId)) resetForm()
+      if (editingId && String(id) === String(editingId)) resetForm()
 
       toast.success('Διαγράφηκε!')
     } catch (e: any) {
@@ -525,141 +547,113 @@ function ManageListsInner() {
     }
   }
 
-  const backHref = useMemo(() => {
-    const s = urlStoreId || storeId || ''
-    return s ? `/?store=${s}` : '/'
-  }, [storeId, urlStoreId])
+  const onChangeCategory = (key: TabKey) => {
+    setActiveTab(key)
+    setSearch('')
+    resetForm()
+  }
 
-  const formTitle = useMemo(() => {
-    if (editingId) return `EDIT: ${currentTab.label}`
-    return `ΝΕΑ ΚΑΤΑΧΩΡΗΣΗ: ${currentTab.label}`
-  }, [editingId, currentTab.label])
+  const fillFromRowToForm = (item: any) => {
+    // same as edit but keeps UX simple
+    handleEdit(item)
+  }
 
-  const renderFormFields = () => {
-    // SUPPLIERS
+  // ---------------------- UI ----------------------
+  // Segment button style for pay basis selection
+  const segBtn: any = {
+    padding: '12px',
+    borderRadius: '12px',
+    border: `2px solid ${colors.border}`,
+    fontWeight: '700',
+    fontSize: '14px',
+    cursor: 'pointer',
+    transition: 'all 0.2s',
+    background: colors.white,
+    color: colors.primaryDark,
+  }
+  const renderForm = () => {
     if (activeTab === 'suppliers') {
       return (
-        <>
-          <div style={{ display: 'flex', gap: 10 }}>
-            <input
-              value={name}
-              onChange={e => setName(e.target.value)}
-              placeholder={`Όνομα για "${currentTab.label}"`}
-              style={inputStyle}
-            />
-            <button
-              type="button"
-              onClick={handleSave}
-              disabled={saving || loading}
-              style={{ ...iconBtn, opacity: saving || loading ? 0.7 : 1 }}
-              aria-label={editingId ? 'Update' : 'Add'}
-              title={editingId ? 'Update' : 'Add'}
-            >
-              {editingId ? <Save size={16} /> : <Plus size={16} />}
-            </button>
+        <div style={formCard}>
+          <div style={inputGroup}>
+            <label style={labelStyle}><Hash size={12} /> ΕΠΩΝΥΜΙΑ</label>
+            <input value={name} onChange={(e) => setName(e.target.value)} style={inputStyle} placeholder="π.χ. COCA COLA" />
           </div>
 
-          <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <div style={grid2}>
-              <div>
-                <label style={{ ...miniLabel, color: colors.labelGreen }}>ΤΗΛΕΦΩΝΟ</label>
-                <input value={phone} onChange={e => setPhone(e.target.value)} placeholder="π.χ. 6970000000" style={inputStyle} />
-              </div>
-              <div>
-                <label style={{ ...miniLabel, color: colors.labelGray }}>ΑΦΜ</label>
-                <input value={vatNumber} onChange={e => setVatNumber(e.target.value)} placeholder="π.χ. 123456789" style={inputStyle} />
-              </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+            <div style={inputGroup}>
+              <label style={labelStyle}><Phone size={12} /> ΤΗΛΕΦΩΝΟ</label>
+              <input value={phone} onChange={(e) => setPhone(e.target.value)} style={inputStyle} />
             </div>
-
-            <div style={grid2}>
-              <div>
-                <label style={{ ...miniLabel, color: colors.labelGray }}>ΤΡΑΠΕΖΑ</label>
-                <input value={bankName} onChange={e => setBankName(e.target.value)} placeholder="π.χ. Alpha / Eurobank" style={inputStyle} />
-              </div>
-              <div>
-                <label style={{ ...miniLabel, color: colors.labelBlue }}>IBAN</label>
-                <input value={iban} onChange={e => setIban(e.target.value)} placeholder="π.χ. GR12 3456 ...." style={inputStyle} />
-              </div>
-            </div>
-
-            <div style={hintPill}>
-              <span style={{ fontSize: 16, fontWeight: 900, color: colors.secondaryText }}>
-                * Η αναζήτηση ψάχνει και σε <span style={{ color: colors.labelGray }}>ΑΦΜ</span> /{' '}
-                <span style={{ color: colors.labelGreen }}>Τηλέφωνο</span>.
-              </span>
+            <div style={inputGroup}>
+              <label style={labelStyle}><Tag size={12} /> ΑΦΜ</label>
+              <input value={vatNumber} onChange={(e) => setVatNumber(e.target.value)} style={inputStyle} />
             </div>
           </div>
-        </>
-      )
-    }
 
-    // UTILITY (Λογαριασμοί): Name + RF + Bank dropdown
-    if (activeTab === 'utility') {
-      return (
-        <>
-          <div>
-            <label style={{ ...miniLabel, color: colors.labelGray }}>ΟΝΟΜΑ</label>
-            <input
-              value={name}
-              onChange={e => setName(e.target.value)}
-              placeholder="π.χ. Ενοίκιο"
-              style={inputStyle}
-            />
-          </div>
-
-          <div style={{ marginTop: 12 }}>
-            <label style={{ ...miniLabel, color: colors.labelGray }}>ΚΩΔΙΚΟΣ RF</label>
-            <input
-              value={rfCode}
-              onChange={e => setRfCode(e.target.value)}
-              placeholder="RF..."
-              style={inputStyle}
-            />
-          </div>
-
-          <div style={{ marginTop: 12 }}>
-            <label style={{ ...miniLabel, color: colors.labelGray }}>ΤΡΑΠΕΖΑ</label>
-            <select value={bankName} onChange={e => setBankName(e.target.value)} style={selectStyle}>
-              <option value="">Επιλογή...</option>
-              {BANK_OPTIONS.map(b => (
-                <option key={b} value={b}>
-                  {b}
-                </option>
-              ))}
+          <div style={inputGroup}>
+            <label style={labelStyle}><Building2 size={12} /> ΤΡΑΠΕΖΑ</label>
+            <select value={bankName} onChange={(e) => setBankName(e.target.value)} style={inputStyle}>
+              <option value="">Επιλέξτε Τράπεζα...</option>
+              {BANK_OPTIONS.map(b => <option key={b} value={b}>{b}</option>)}
             </select>
           </div>
 
-          <div style={{ marginTop: 14, display: 'flex', justifyContent: 'flex-end' }}>
-            <button
-              type="button"
-              onClick={handleSave}
-              disabled={saving || loading}
-              style={{ ...primaryBtnWide, opacity: saving || loading ? 0.7 : 1 }}
-            >
-              {editingId ? <Save size={16} /> : <Plus size={16} />}
-              <span style={{ fontSize: 16, fontWeight: 900 }}>{editingId ? 'ΑΠΟΘΗΚΕΥΣΗ' : 'ΠΡΟΣΘΗΚΗ'}</span>
-            </button>
+          <div style={inputGroup}>
+            <label style={labelStyle}><CreditCard size={12} /> IBAN</label>
+            <input value={iban} onChange={(e) => setIban(e.target.value)} style={inputStyle} placeholder="GR..." />
           </div>
-        </>
+
+          <button onClick={handleSave} disabled={saving || loading} style={saveBtn}>
+            {saving ? 'ΑΠΟΘΗΚΕΥΣΗ...' : (editingId ? 'ΕΝΗΜΕΡΩΣΗ' : 'ΚΑΤΑΧΩΡΗΣΗ')}
+          </button>
+        </div>
       )
     }
 
-    // STAFF: rebuilt layout
+    if (activeTab === 'utility') {
+      return (
+        <div style={formCard}>
+          <div style={inputGroup}>
+            <label style={labelStyle}><Hash size={12} /> ΟΝΟΜΑ</label>
+            <input value={name} onChange={(e) => setName(e.target.value)} style={inputStyle} placeholder="π.χ. Ενοίκιο" />
+          </div>
+
+          <div style={inputGroup}>
+            <label style={labelStyle}><Tag size={12} /> ΚΩΔΙΚΟΣ RF</label>
+            <input value={rfCode} onChange={(e) => setRfCode(e.target.value)} style={inputStyle} placeholder="RF..." />
+          </div>
+
+          <div style={inputGroup}>
+            <label style={labelStyle}><Building2 size={12} /> ΤΡΑΠΕΖΑ</label>
+            <select value={bankName} onChange={(e) => setBankName(e.target.value)} style={inputStyle}>
+              <option value="">Επιλέξτε Τράπεζα...</option>
+              {BANK_OPTIONS.map(b => <option key={b} value={b}>{b}</option>)}
+            </select>
+          </div>
+
+          <button onClick={handleSave} disabled={saving || loading} style={saveBtn}>
+            {saving ? 'ΑΠΟΘΗΚΕΥΣΗ...' : (editingId ? 'ΕΝΗΜΕΡΩΣΗ' : 'ΚΑΤΑΧΩΡΗΣΗ')}
+          </button>
+        </div>
+      )
+    }
+
     if (activeTab === 'staff') {
       const salaryLabel = payBasis === 'monthly' ? 'ΜΙΣΘΟΣ' : 'ΗΜΕΡΟΜΙΣΘΙΟ'
       const salaryValue = payBasis === 'monthly' ? monthlySalary : dailyRate
       const setSalaryValue = (v: string) => (payBasis === 'monthly' ? setMonthlySalary(v) : setDailyRate(v))
 
       return (
-        <>
-          <div>
-            <label style={{ ...miniLabel, color: colors.labelGray }}>ΟΝΟΜΑΤΕΠΩΝΥΜΟ</label>
-            <input value={name} onChange={e => setName(e.target.value)} placeholder="π.χ. Γιάννης Παπαδόπουλος" style={inputStyle} />
+        <div style={formCard}>
+          <div style={inputGroup}>
+            <label style={labelStyle}><Hash size={12} /> ΟΝΟΜΑΤΕΠΩΝΥΜΟ</label>
+            <input value={name} onChange={(e) => setName(e.target.value)} style={inputStyle} placeholder="π.χ. Γιάννης Παπαδόπουλος" />
           </div>
 
-          <div style={{ marginTop: 12 }}>
-            <label style={{ ...miniLabel, color: colors.labelGray }}>ΤΥΠΟΣ ΣΥΜΦΩΝΙΑΣ</label>
-            <div style={segWrap}>
+          <div style={inputGroup}>
+            <label style={labelStyle}>ΤΥΠΟΣ ΣΥΜΦΩΝΙΑΣ</label>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
               <button
                 type="button"
                 onClick={() => setPayBasis('monthly')}
@@ -687,151 +681,99 @@ function ManageListsInner() {
             </div>
           </div>
 
-          <div style={{ marginTop: 12, ...grid3 }}>
-            <div>
-              <label style={{ ...miniLabel, color: colors.labelGreen }}>{salaryLabel}</label>
-              <input
-                value={salaryValue}
-                onChange={e => setSalaryValue(e.target.value)}
-                placeholder={payBasis === 'monthly' ? 'π.χ. 1200' : 'π.χ. 50'}
-                inputMode="decimal"
-                style={inputStyle}
-              />
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
+            <div style={inputGroup}>
+              <label style={labelStyle}>{salaryLabel}</label>
+              <input value={salaryValue} onChange={(e) => setSalaryValue(e.target.value)} style={inputStyle} placeholder={payBasis === 'monthly' ? 'π.χ. 1200' : 'π.χ. 50'} inputMode="decimal" />
             </div>
-
-            <div>
-              <label style={{ ...miniLabel, color: colors.labelGray }}>ΜΕΡΕΣ ΜΗΝΑ</label>
-              <input value={monthlyDays} onChange={e => setMonthlyDays(e.target.value)} placeholder="π.χ. 26" inputMode="numeric" style={inputStyle} />
+            <div style={inputGroup}>
+              <label style={labelStyle}>ΜΕΡΕΣ ΜΗΝΑ</label>
+              <input value={monthlyDays} onChange={(e) => setMonthlyDays(e.target.value)} style={inputStyle} placeholder="π.χ. 26" inputMode="numeric" />
             </div>
-
-            <div>
-              <label style={{ ...miniLabel, color: colors.labelGray }}>ΗΜ. ΠΡΟΣΛΗΨΗΣ</label>
-              <input value={startDate} onChange={e => setStartDate(e.target.value)} type="date" style={inputStyle} />
+            <div style={inputGroup}>
+              <label style={labelStyle}>ΗΜ. ΠΡΟΣΛΗΨΗΣ</label>
+              <input value={startDate} onChange={(e) => setStartDate(e.target.value)} style={inputStyle} type="date" />
             </div>
           </div>
 
-          <div style={{ marginTop: 12 }}>
-            <label style={{ ...miniLabel, color: colors.labelGray }}>ΤΡΑΠΕΖΑ ΥΠΑΛΛΗΛΟΥ</label>
-            <select value={bankName} onChange={e => setBankName(e.target.value)} style={selectStyle}>
-              <option value="">Επιλογή...</option>
-              {BANK_OPTIONS.map(b => (
-                <option key={b} value={b}>
-                  {b}
-                </option>
-              ))}
+          <div style={inputGroup}>
+            <label style={labelStyle}><Building2 size={12} /> ΤΡΑΠΕΖΑ</label>
+            <select value={bankName} onChange={(e) => setBankName(e.target.value)} style={inputStyle}>
+              <option value="">Επιλέξτε Τράπεζα...</option>
+              {BANK_OPTIONS.map(b => <option key={b} value={b}>{b}</option>)}
             </select>
           </div>
 
-          <div style={{ marginTop: 12 }}>
-            <label style={{ ...miniLabel, color: colors.labelBlue }}>IBAN ΥΠΑΛΛΗΛΟΥ</label>
-            <input value={iban} onChange={e => setIban(e.target.value)} placeholder="π.χ. GR12 3456 ...." style={inputStyle} />
+          <div style={inputGroup}>
+            <label style={labelStyle}><CreditCard size={12} /> IBAN</label>
+            <input value={iban} onChange={(e) => setIban(e.target.value)} style={inputStyle} placeholder="GR..." />
           </div>
 
-          <div style={{ marginTop: 14, display: 'flex', justifyContent: 'flex-end' }}>
-            <button type="button" onClick={handleSave} disabled={saving || loading} style={{ ...primaryBtnWide, opacity: saving || loading ? 0.7 : 1 }}>
-              {editingId ? <Save size={16} /> : <Plus size={16} />}
-              <span style={{ fontSize: 16, fontWeight: 900 }}>{editingId ? 'ΑΠΟΘΗΚΕΥΣΗ' : 'ΠΡΟΣΘΗΚΗ'}</span>
-            </button>
-          </div>
-        </>
+          <button onClick={handleSave} disabled={saving || loading} style={saveBtn}>
+            {saving ? 'ΑΠΟΘΗΚΕΥΣΗ...' : (editingId ? 'ΕΝΗΜΕΡΩΣΗ' : 'ΚΑΤΑΧΩΡΗΣΗ')}
+          </button>
+        </div>
       )
     }
 
-    // MAINTENANCE + OTHER: extra fields + bank dropdown
-    if (activeTab === 'maintenance' || activeTab === 'other') {
-      return (
-        <>
-          <div style={{ display: 'flex', gap: 10 }}>
-            <input value={name} onChange={e => setName(e.target.value)} placeholder={`Όνομα για "${currentTab.label}"`} style={inputStyle} />
-            <button
-              type="button"
-              onClick={handleSave}
-              disabled={saving || loading}
-              style={{ ...iconBtn, opacity: saving || loading ? 0.7 : 1 }}
-              aria-label={editingId ? 'Update' : 'Add'}
-              title={editingId ? 'Update' : 'Add'}
-            >
-              {editingId ? <Save size={16} /> : <Plus size={16} />}
-            </button>
+    // maintenance & other share same form (like your current logic)
+    return (
+      <div style={formCard}>
+        <div style={inputGroup}>
+          <label style={labelStyle}><Hash size={12} /> ΟΝΟΜΑ</label>
+          <input value={name} onChange={(e) => setName(e.target.value)} style={inputStyle} placeholder="π.χ. ΤΖΗΛΙΟΣ" />
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+          <div style={inputGroup}>
+            <label style={labelStyle}><Phone size={12} /> ΤΗΛΕΦΩΝΟ</label>
+            <input value={phone} onChange={(e) => setPhone(e.target.value)} style={inputStyle} />
           </div>
-
-          <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <div style={grid2}>
-              <div>
-                <label style={{ ...miniLabel, color: colors.labelGreen }}>ΤΗΛΕΦΩΝΟ</label>
-                <input value={phone} onChange={e => setPhone(e.target.value)} placeholder="π.χ. 6970000000" style={inputStyle} />
-              </div>
-              <div>
-                <label style={{ ...miniLabel, color: colors.labelGray }}>ΑΦΜ</label>
-                <input value={vatNumber} onChange={e => setVatNumber(e.target.value)} placeholder="π.χ. 123456789" style={inputStyle} />
-              </div>
-            </div>
-
-            <div style={grid2}>
-              <div>
-                <label style={{ ...miniLabel, color: colors.labelGray }}>ΤΡΑΠΕΖΑ</label>
-                <select value={bankName} onChange={e => setBankName(e.target.value)} style={selectStyle}>
-                  <option value="">Επιλογή...</option>
-                  {BANK_OPTIONS.map(b => (
-                    <option key={b} value={b}>
-                      {b}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label style={{ ...miniLabel, color: colors.labelBlue }}>IBAN</label>
-                <input value={iban} onChange={e => setIban(e.target.value)} placeholder="π.χ. GR12 3456 ...." style={inputStyle} />
-              </div>
-            </div>
+          <div style={inputGroup}>
+            <label style={labelStyle}><Tag size={12} /> ΑΦΜ</label>
+            <input value={vatNumber} onChange={(e) => setVatNumber(e.target.value)} style={inputStyle} />
           </div>
-        </>
-      )
-    }
+        </div>
 
-    return <div style={hintBox}>Δεν υπάρχει φόρμα για αυτή την καρτέλα.</div>
+        <div style={inputGroup}>
+          <label style={labelStyle}><Building2 size={12} /> ΤΡΑΠΕΖΑ</label>
+          <select value={bankName} onChange={(e) => setBankName(e.target.value)} style={inputStyle}>
+            <option value="">Επιλέξτε Τράπεζα...</option>
+            {BANK_OPTIONS.map(b => <option key={b} value={b}>{b}</option>)}
+          </select>
+        </div>
+
+        <div style={inputGroup}>
+          <label style={labelStyle}><CreditCard size={12} /> IBAN</label>
+          <input value={iban} onChange={(e) => setIban(e.target.value)} style={inputStyle} placeholder="GR..." />
+        </div>
+
+        <button onClick={handleSave} disabled={saving || loading} style={saveBtn}>
+          {saving ? 'ΑΠΟΘΗΚΕΥΣΗ...' : (editingId ? 'ΕΝΗΜΕΡΩΣΗ' : 'ΚΑΤΑΧΩΡΗΣΗ')}
+        </button>
+      </div>
+    )
   }
 
-  const renderListMeta = (item: any) => {
+  const renderExpandedMeta = (item: any) => {
     if (activeTab === 'suppliers') {
       return (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <div style={metaRow}>
-            <span style={{ ...metaLabel, color: colors.labelGreen }}>Τηλέφωνο:</span>
-            <span style={metaValue}>{String(item.phone || '-')}</span>
-          </div>
-          <div style={metaRow}>
-            <span style={{ ...metaLabel, color: colors.labelGray }}>ΑΦΜ:</span>
-            <span style={metaValue}>{String(item.vat_number || '-')}</span>
-          </div>
-          <div style={metaRow}>
-            <span style={{ ...metaLabel, color: colors.labelGray }}>Τράπεζα:</span>
-            <span style={metaValue}>{String(item.bank_name || '-')}</span>
-          </div>
-          <div style={metaRow}>
-            <span style={{ ...metaLabel, color: colors.labelBlue }}>IBAN:</span>
-            <span style={metaValue}>{String(item.iban || '-')}</span>
-          </div>
+        <div style={infoGrid}>
+          <p style={infoText}><strong>Τηλ:</strong> {item.phone || '-'}</p>
+          <p style={infoText}><strong>ΑΦΜ:</strong> {item.vat_number || '-'}</p>
+          <p style={infoText}><strong>Τράπεζα:</strong> {item.bank_name || '-'}</p>
+          <p style={infoText}><strong>IBAN:</strong> {item.iban || '-'}</p>
         </div>
       )
     }
 
     const sub = String(item.sub_category || '')
-
     if (sub === 'utility') {
       return (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <div style={metaRow}>
-            <span style={{ ...metaLabel, color: colors.labelGray }}>ΚΩΔΙΚΟΣ RF:</span>
-            <span style={metaValue}>{String(item.rf_code || '-')}</span>
-          </div>
-          <div style={metaRow}>
-            <span style={{ ...metaLabel, color: colors.labelGray }}>Τράπεζα:</span>
-            <span style={metaValue}>{String(item.bank_name || '-')}</span>
-          </div>
-          <span style={{ fontSize: 16, fontWeight: 800, color: colors.secondaryText }}>
-            sub_category: Λογαριασμοί
-          </span>
+        <div style={infoGrid}>
+          <p style={infoText}><strong>RF:</strong> {item.rf_code || '-'}</p>
+          <p style={infoText}><strong>Τράπεζα:</strong> {item.bank_name || '-'}</p>
+          <p style={infoText}><strong>Κατηγορία:</strong> Λογαριασμοί</p>
         </div>
       )
     }
@@ -840,134 +782,85 @@ function ManageListsInner() {
       const pb = item.pay_basis === 'daily' ? 'ΗΜΕΡΟΜΙΣΘΙΟ' : 'ΜΗΝΙΑΙΟΣ'
       const amount = item.pay_basis === 'daily' ? item.daily_rate ?? '-' : item.monthly_salary ?? '-'
       return (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <div style={metaRow}>
-            <span style={{ ...metaLabel, color: colors.labelGray }}>Συμφωνία:</span>
-            <span style={metaValue}>{pb}</span>
-          </div>
-          <div style={metaRow}>
-            <span style={{ ...metaLabel, color: colors.labelGreen }}>Ποσό:</span>
-            <span style={metaValue}>{String(amount)}</span>
-          </div>
-          <div style={metaRow}>
-            <span style={{ ...metaLabel, color: colors.labelGray }}>Μέρες:</span>
-            <span style={metaValue}>{String(item.monthly_days ?? '-')}</span>
-          </div>
-          <div style={metaRow}>
-            <span style={{ ...metaLabel, color: colors.labelGray }}>Ημ. πρόσληψης:</span>
-            <span style={metaValue}>{String(item.start_date ? String(item.start_date).slice(0, 10) : '-')}</span>
-          </div>
-          <div style={metaRow}>
-            <span style={{ ...metaLabel, color: colors.labelGray }}>Τράπεζα:</span>
-            <span style={metaValue}>{String(item.bank_name || '-')}</span>
-          </div>
-          <div style={metaRow}>
-            <span style={{ ...metaLabel, color: colors.labelBlue }}>IBAN:</span>
-            <span style={metaValue}>{String(item.iban || '-')}</span>
-          </div>
+        <div style={infoGrid}>
+          <p style={infoText}><strong>Συμφωνία:</strong> {pb}</p>
+          <p style={infoText}><strong>Ποσό:</strong> {String(amount)}</p>
+          <p style={infoText}><strong>Μέρες:</strong> {String(item.monthly_days ?? '-')}</p>
+          <p style={infoText}><strong>Ημ. πρόσληψης:</strong> {item.start_date ? String(item.start_date).slice(0, 10) : '-'}</p>
+          <p style={infoText}><strong>Τράπεζα:</strong> {item.bank_name || '-'}</p>
+          <p style={infoText}><strong>IBAN:</strong> {item.iban || '-'}</p>
         </div>
       )
     }
 
-    // Maintenance / Other
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        <div style={metaRow}>
-          <span style={{ ...metaLabel, color: colors.labelGreen }}>Τηλέφωνο:</span>
-          <span style={metaValue}>{String(item.phone || '-')}</span>
-        </div>
-        <div style={metaRow}>
-          <span style={{ ...metaLabel, color: colors.labelGray }}>ΑΦΜ:</span>
-          <span style={metaValue}>{String(item.vat_number || '-')}</span>
-        </div>
-        <div style={metaRow}>
-          <span style={{ ...metaLabel, color: colors.labelGray }}>Τράπεζα:</span>
-          <span style={metaValue}>{String(item.bank_name || '-')}</span>
-        </div>
-        <div style={metaRow}>
-          <span style={{ ...metaLabel, color: colors.labelBlue }}>IBAN:</span>
-          <span style={metaValue}>{String(item.iban || '-')}</span>
-        </div>
-        <span style={{ fontSize: 16, fontWeight: 800, color: colors.secondaryText }}>
-          sub_category: {String(sub === 'Maintenance' ? 'Συντήρηση' : sub || '')}
-        </span>
+      <div style={infoGrid}>
+        <p style={infoText}><strong>Τηλ:</strong> {item.phone || '-'}</p>
+        <p style={infoText}><strong>ΑΦΜ:</strong> {item.vat_number || '-'}</p>
+        <p style={infoText}><strong>Τράπεζα:</strong> {item.bank_name || '-'}</p>
+        <p style={infoText}><strong>IBAN:</strong> {item.iban || '-'}</p>
+        <p style={infoText}><strong>Κατηγορία:</strong> {sub === 'Maintenance' ? 'Συντήρηση' : sub || '-'}</p>
       </div>
     )
   }
 
   return (
-    <div style={pageWrap}>
+    <div style={containerStyle}>
       <Toaster position="top-center" richColors />
-
-      <div style={{ maxWidth: 560, margin: '0 auto', paddingBottom: 120 }}>
-        <div style={headerStyle}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <div style={logoBoxStyle}>📋</div>
-            <div>
-              <h1 style={{ margin: 0, fontSize: 16, fontWeight: 900, color: colors.primaryDark }}>Manage Lists</h1>
-              <p style={{ margin: 0, fontSize: 16, fontWeight: 800, color: colors.secondaryText }}>
-                Διαχείριση Προμηθευτών &amp; Παγίων
-              </p>
-            </div>
+      <div style={contentWrapper}>
+        <header style={headerStyle}>
+          <div>
+            <h1 style={titleStyle}>Manage Lists</h1>
+            <p style={subtitleStyle}>
+              ΚΑΤΑΣΤΗΜΑ:{' '}
+              <span style={{ color: colors.accentBlue }}>{currentStoreName.toUpperCase()}</span>
+            </p>
           </div>
+          <Link href={backHref} style={closeBtn}><ChevronLeft size={20} /></Link>
+        </header>
 
-          <Link href={backHref} style={backBtnStyle}>
-            ✕
-          </Link>
+        {/* ✅ DROPDOWN MENU (replace tabs) */}
+        <div style={{ marginBottom: 14 }}>
+          <label style={labelStyle}>ΚΑΤΗΓΟΡΙΑ</label>
+          <select
+            value={activeTab}
+            onChange={(e) => onChangeCategory(e.target.value as TabKey)}
+            style={inputStyle}
+          >
+            {MENU.map(m => (
+              <option key={m.key} value={m.key}>{m.label}</option>
+            ))}
+          </select>
         </div>
 
-        {/* TABS */}
-        <div style={tabsRow}>
-          {TABS.map(t => {
-            const ActiveIcon = t.icon
-            const active = activeTab === t.key
-            return (
-              <button
-                key={t.key}
-                type="button"
-                onClick={() => {
-                  setActiveTab(t.key)
-                  setSearch('')
-                  resetForm()
-                }}
-                style={{
-                  ...tabBtn,
-                  backgroundColor: active ? colors.primaryDark : colors.white,
-                  border: `1px solid ${active ? colors.primaryDark : colors.border}`,
-                  color: active ? 'white' : colors.primaryDark,
-                }}
-              >
-                <ActiveIcon size={16} />
-                <span style={{ fontSize: 16, fontWeight: 900 }}>{t.label}</span>
-              </button>
-            )
-          })}
-        </div>
+        {/* ✅ ADD BUTTON like Suppliers */}
+        <button
+          onClick={() => { editingId ? resetForm() : setIsFormOpen(!isFormOpen) }}
+          style={isFormOpen ? cancelBtn : addBtn}
+        >
+          {isFormOpen ? 'ΑΚΥΡΩΣΗ' : <><Plus size={16} /> {currentTab.addLabel}</>}
+        </button>
 
-        {/* FORM CARD */}
-        <div style={cardPremium}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-            <label style={labelStyle}>{formTitle}</label>
-
+        {/* FORM */}
+        {isFormOpen && (
+          <>
             {editingId && (
               <button
                 type="button"
                 onClick={resetForm}
-                style={ghostBtn}
+                style={miniCancel}
                 disabled={saving || loading}
-                title="Cancel edit"
-                aria-label="Cancel edit"
               >
-                <XCircle size={16} />
-                <span style={{ fontSize: 16, fontWeight: 900 }}>Cancel</span>
+                <XCircle size={14} /> Ακύρωση Επεξεργασίας
               </button>
             )}
-          </div>
+            {renderForm()}
+          </>
+        )}
 
-          {renderFormFields()}
-
-          {/* SEARCH */}
-          <label style={{ ...labelStyle, marginTop: 18 }}>ΑΝΑΖΗΤΗΣΗ</label>
+        {/* SEARCH (kept, but now under form like suppliers feel) */}
+        <div style={{ marginBottom: 14 }}>
+          <label style={labelStyle}>ΑΝΑΖΗΤΗΣΗ</label>
           <div style={{ position: 'relative' }}>
             <Search size={16} style={{ position: 'absolute', left: 12, top: 14, color: colors.secondaryText }} />
             <input
@@ -979,320 +872,268 @@ function ManageListsInner() {
           </div>
         </div>
 
-        {/* LIST CARD */}
-        <div style={{ ...cardPremium, marginTop: 14 }}>
-          <label style={labelStyle}>ΛΙΣΤΑ</label>
+        {/* LIST like Suppliers (expand rows) */}
+        <div style={listArea}>
+          <div style={rankingHeader}>
+            {currentTab.icon ? <currentTab.icon size={14} /> : null}
+            ΛΙΣΤΑ: {currentTab.label.toUpperCase()}
+          </div>
 
           {loading ? (
-            <div style={hintBox}>Φόρτωση...</div>
+            <p style={emptyText}>Συγχρονισμός δεδομένων...</p>
           ) : visibleItems.length === 0 ? (
-            <div style={hintBox}>Δεν υπάρχουν εγγραφές.</div>
+            <p style={emptyText}>Δεν υπάρχουν εγγραφές.</p>
           ) : (
-            <div style={listWrap}>
-              {visibleItems.map((item: any) => {
-                const isEditingThis = editingId && String(editingId) === String(item.id)
-                return (
-                  <div
-                    key={item.id}
-                    style={{
-                      ...listRowPremium,
-                      borderColor: isEditingThis ? colors.accentBlue : colors.border,
-                    }}
-                  >
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, flex: 1, minWidth: 0 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                        <span style={{ fontSize: 16, fontWeight: 900, color: colors.primaryDark }}>
-                          {String(item.name || '').toUpperCase()}
-                        </span>
+            visibleItems.map((item: any, idx: number) => (
+              <div key={item.id} style={{ borderBottom: `1px solid ${colors.border}` }}>
+                <div
+                  style={rowWrapper}
+                  onClick={() => setExpandedId(expandedId === String(item.id) ? null : String(item.id))}
+                >
+                  <div style={rankNumber}>{idx + 1}</div>
+                  <div style={{ flex: 1 }}>
+                    <p style={rowName}>{String(item.name || '').toUpperCase()}</p>
+                    <p style={categoryBadge}>
+                      {activeTab === 'suppliers'
+                        ? (item.bank_name ? `ΤΡΑΠΕΖΑ: ${item.bank_name}` : '—')
+                        : (String(item.sub_category || '') === 'Maintenance'
+                          ? 'ΣΥΝΤΗΡΗΣΗ'
+                          : String(item.sub_category || '').toUpperCase() || '—')}
+                    </p>
+                  </div>
 
-                        {isEditingThis && (
-                          <span style={editingBadge}>
-                            <Pencil size={14} />
-                            <span style={{ fontSize: 16, fontWeight: 900 }}>Editing</span>
-                          </span>
-                        )}
-                      </div>
+                  {editingId && String(editingId) === String(item.id) && (
+                    <span style={editingPill}>
+                      <Pencil size={12} /> Editing
+                    </span>
+                  )}
+                </div>
 
-                      {renderListMeta(item)}
-                    </div>
+                {expandedId === String(item.id) && (
+                  <div style={actionPanel}>
+                    {renderExpandedMeta(item)}
 
-                    <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                    <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
                       <button
-                        type="button"
-                        onClick={() => handleEdit(item)}
-                        disabled={saving}
-                        style={{ ...editBtn, opacity: saving ? 0.6 : 1 }}
-                        aria-label="Edit"
-                        title="Edit"
+                        onClick={() => fillFromRowToForm(item)}
+                        style={editBtn}
                       >
-                        <Pencil size={16} />
+                        <Pencil size={14} /> Διόρθωση
                       </button>
-
                       <button
-                        type="button"
-                        onClick={() => handleDelete(item)}
-                        disabled={saving}
-                        style={{ ...dangerBtn, opacity: saving ? 0.6 : 1 }}
-                        aria-label="Delete"
-                        title="Delete"
+                        onClick={() => handleDelete(String(item.id))}
+                        style={delBtn}
                       >
-                        <Trash2 size={16} />
+                        <Trash2 size={14} /> Διαγραφή
                       </button>
                     </div>
                   </div>
-                )
-              })}
-            </div>
+                )}
+              </div>
+            ))
           )}
         </div>
 
-        <div style={{ marginTop: 14, fontSize: 16, fontWeight: 800, color: colors.secondaryText }}>
+        <p style={{ marginTop: 14, fontSize: 12, fontWeight: 700, color: colors.secondaryText }}>
           * Για ασφάλεια, η διαγραφή ζητά επιβεβαίωση.
-        </div>
+        </p>
       </div>
     </div>
   )
 }
 
-// ✅ 16px everywhere + premium style
-const pageWrap: any = {
+/* ---------------- STYLES (Suppliers-like) ---------------- */
+
+const containerStyle: any = {
   backgroundColor: colors.bgLight,
-  minHeight: '100dvh',
-  padding: 20,
-  position: 'absolute',
-  top: 0,
-  left: 0,
-  right: 0,
-  bottom: 0,
-  overflowY: 'auto',
-  fontSize: 16,
+  minHeight: '100%',
+  width: '100%',
+  padding: '20px',
+  touchAction: 'pan-y',
 }
 
-const headerStyle: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }
-const logoBoxStyle: any = {
-  width: 42,
-  height: 42,
+const contentWrapper: any = { maxWidth: '560px', margin: '0 auto', paddingBottom: '120px' }
+
+const headerStyle: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px' }
+const titleStyle: any = { fontSize: '22px', fontWeight: '800', color: colors.primaryDark, margin: 0 }
+const subtitleStyle: any = { fontSize: '10px', fontWeight: '800', color: colors.secondaryText, marginTop: '4px' }
+
+const closeBtn: any = {
+  padding: '8px',
+  background: 'white',
+  borderRadius: '12px',
+  border: `1px solid ${colors.border}`,
+  color: colors.primaryDark,
+  textDecoration: 'none',
+  display: 'flex',
+}
+
+const addBtn: any = {
+  width: '100%',
   backgroundColor: colors.primaryDark,
-  borderRadius: 14,
+  color: 'white',
+  padding: '16px',
+  borderRadius: '16px',
+  fontWeight: '800',
+  border: 'none',
+  marginBottom: '14px',
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
-  color: 'white',
-  fontSize: 16,
-  fontWeight: 900,
+  gap: '8px',
+  cursor: 'pointer',
 }
 
-const backBtnStyle: any = {
-  textDecoration: 'none',
-  color: colors.secondaryText,
-  padding: '10px 12px',
-  backgroundColor: 'white',
+const cancelBtn: any = { ...addBtn, backgroundColor: '#fee2e2', color: colors.accentRed }
+
+const miniCancel: any = {
+  width: '100%',
+  marginBottom: 12,
+  padding: '12px',
   borderRadius: 14,
   border: `1px solid ${colors.border}`,
-  fontSize: 16,
-  fontWeight: 900,
-}
-
-const tabsRow: any = { display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 16 }
-
-const tabBtn: any = {
+  backgroundColor: 'white',
+  color: colors.primaryDark,
+  fontWeight: 800,
+  fontSize: 14,
   display: 'flex',
   alignItems: 'center',
+  justifyContent: 'center',
   gap: 8,
-  padding: '12px 12px',
-  borderRadius: 14,
   cursor: 'pointer',
-  fontSize: 16,
-  fontWeight: 900,
-  userSelect: 'none',
 }
 
-const cardPremium: any = {
-  backgroundColor: colors.white,
+const formCard: any = {
+  background: 'white',
+  padding: '24px',
+  borderRadius: '24px',
+  marginBottom: '16px',
   border: `1px solid ${colors.border}`,
-  borderRadius: 24,
-  padding: 18,
-  boxShadow: '0 8px 22px rgba(15, 23, 42, 0.08)',
+  boxShadow: '0 4px 20px rgba(0,0,0,0.05)',
 }
+
+const inputGroup: any = { marginBottom: '15px' }
 
 const labelStyle: any = {
-  fontSize: 16,
-  fontWeight: 900,
+  fontSize: '10px',
+  fontWeight: '800',
   color: colors.secondaryText,
-  display: 'block',
-  marginBottom: 8,
-}
-
-const miniLabel: any = {
-  fontSize: 16,
-  fontWeight: 900,
-  display: 'block',
-  marginBottom: 6,
+  marginBottom: '6px',
+  display: 'flex',
+  alignItems: 'center',
+  gap: '6px',
 }
 
 const inputStyle: any = {
   width: '100%',
-  padding: 14,
-  borderRadius: 14,
+  padding: '14px',
+  borderRadius: '12px',
   border: `1px solid ${colors.border}`,
-  fontSize: 16,
-  fontWeight: 800,
-  backgroundColor: colors.bgLight,
-  boxSizing: 'border-box',
+  fontSize: '16px',
+  fontWeight: '600',
   outline: 'none',
+  backgroundColor: colors.bgLight,
 }
 
-const selectStyle: any = {
+const saveBtn: any = {
   width: '100%',
-  padding: 14,
-  borderRadius: 14,
-  border: `1px solid ${colors.border}`,
-  fontSize: 16,
-  fontWeight: 800,
-  backgroundColor: colors.bgLight,
-  boxSizing: 'border-box',
-  outline: 'none',
-  appearance: 'none',
-  WebkitAppearance: 'none',
-}
-
-const iconBtn: any = {
-  width: 52,
-  minWidth: 52,
-  height: 52,
-  borderRadius: 14,
-  border: 'none',
-  backgroundColor: colors.primaryDark,
+  padding: '16px',
+  backgroundColor: colors.accentGreen,
   color: 'white',
-  cursor: 'pointer',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  boxShadow: '0 8px 18px rgba(15, 23, 42, 0.14)',
-}
-
-const primaryBtnWide: any = {
-  borderRadius: 14,
+  borderRadius: '16px',
   border: 'none',
-  backgroundColor: colors.primaryDark,
-  color: 'white',
-  padding: '14px 16px',
+  fontWeight: '800',
+  fontSize: '14px',
+  marginTop: '10px',
   cursor: 'pointer',
-  display: 'inline-flex',
-  alignItems: 'center',
-  gap: 10,
-  fontSize: 16,
-  fontWeight: 900,
-  boxShadow: '0 10px 22px rgba(15, 23, 42, 0.14)',
 }
 
-const ghostBtn: any = {
-  borderRadius: 14,
+const listArea: any = {
+  background: 'white',
+  borderRadius: '24px',
   border: `1px solid ${colors.border}`,
-  backgroundColor: colors.white,
-  color: colors.primaryDark,
-  padding: '10px 12px',
-  cursor: 'pointer',
-  display: 'flex',
-  alignItems: 'center',
-  gap: 8,
-  fontSize: 16,
-  fontWeight: 900,
+  overflow: 'hidden',
+  boxShadow: '0 4px 20px rgba(0,0,0,0.05)',
 }
 
-const hintBox: any = {
-  padding: 14,
-  borderRadius: 14,
+const rankingHeader: any = {
+  padding: '14px 20px',
   backgroundColor: colors.bgLight,
-  border: `1px solid ${colors.border}`,
-  fontSize: 16,
-  fontWeight: 800,
+  fontSize: '10px',
+  fontWeight: '800',
   color: colors.secondaryText,
-}
-
-const hintPill: any = {
-  padding: 12,
-  borderRadius: 16,
-  backgroundColor: colors.bgLight,
-  border: `1px solid ${colors.border}`,
-}
-
-const grid2: any = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }
-const grid3: any = { display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }
-
-const listWrap: any = { display: 'flex', flexDirection: 'column', gap: 12, marginTop: 10 }
-
-const listRowPremium: any = {
   display: 'flex',
-  justifyContent: 'space-between',
-  alignItems: 'flex-start',
-  gap: 12,
-  padding: 14,
-  borderRadius: 18,
-  backgroundColor: colors.white,
-  border: `1px solid ${colors.border}`,
-  boxShadow: '0 10px 22px rgba(15, 23, 42, 0.06)',
+  alignItems: 'center',
+  gap: '8px',
 }
 
-const editingBadge: any = {
+const rowWrapper: any = { display: 'flex', padding: '18px 20px', alignItems: 'center', cursor: 'pointer', gap: 10 }
+
+const rankNumber: any = { width: '30px', fontWeight: '800', color: colors.secondaryText, fontSize: '14px' }
+
+const rowName: any = { fontSize: '15px', fontWeight: '800', margin: 0, color: colors.primaryDark }
+
+const categoryBadge: any = { fontSize: '10px', fontWeight: '700', color: colors.secondaryText, margin: 0 }
+
+const editingPill: any = {
+  marginLeft: 'auto',
+  fontSize: 11,
+  fontWeight: 800,
+  color: colors.accentBlue,
+  backgroundColor: '#eef2ff',
+  border: '1px solid #c7d2fe',
+  padding: '6px 10px',
+  borderRadius: 999,
   display: 'inline-flex',
   alignItems: 'center',
   gap: 6,
-  padding: '6px 10px',
-  borderRadius: 999,
-  backgroundColor: '#eff6ff',
-  border: '1px solid #bfdbfe',
-  color: colors.accentBlue,
+  whiteSpace: 'nowrap',
 }
 
-const metaRow: any = { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }
-const metaLabel: any = { fontSize: 16, fontWeight: 900 }
-const metaValue: any = { fontSize: 16, fontWeight: 800, color: colors.primaryDark, wordBreak: 'break-word' }
+const actionPanel: any = { padding: '20px', backgroundColor: '#fcfcfc', borderTop: `1px dashed ${colors.border}` }
+
+const infoGrid: any = { display: 'grid', gap: '8px' }
+
+const infoText: any = { fontSize: '12px', margin: 0, color: colors.primaryDark }
 
 const editBtn: any = {
-  width: 46,
-  minWidth: 46,
-  height: 46,
-  borderRadius: 14,
-  border: `1px solid ${colors.border}`,
-  backgroundColor: 'white',
-  cursor: 'pointer',
+  flex: 1,
+  padding: '10px',
+  background: colors.warning,
+  color: colors.warningText,
+  border: 'none',
+  borderRadius: '10px',
+  fontWeight: '700',
+  fontSize: '12px',
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
-  color: colors.accentBlue,
+  gap: '5px',
+  cursor: 'pointer',
 }
 
-const dangerBtn: any = {
-  width: 46,
-  minWidth: 46,
-  height: 46,
-  borderRadius: 14,
-  border: `1px solid ${colors.border}`,
-  backgroundColor: 'white',
-  cursor: 'pointer',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
+const delBtn: any = {
+  flex: 1,
+  padding: '10px',
+  background: '#fee2e2',
   color: colors.accentRed,
+  border: 'none',
+  borderRadius: '10px',
+  fontWeight: '700',
+  fontSize: '12px',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: '5px',
+  cursor: 'pointer',
 }
 
-const segWrap: any = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }
-const segBtn: any = {
-  borderRadius: 14,
-  border: `1px solid ${colors.border}`,
-  padding: '12px 12px',
-  cursor: 'pointer',
-  fontSize: 16,
-  fontWeight: 900,
-  boxShadow: '0 8px 18px rgba(15, 23, 42, 0.06)',
-  userSelect: 'none',
-}
+const emptyText: any = { padding: '40px', textAlign: 'center', color: colors.secondaryText, fontSize: '13px', fontWeight: '600' }
 
 export default function ManageListsPage() {
   return (
     <Suspense fallback={<div style={{ fontSize: 16, padding: 20 }}>Φόρτωση...</div>}>
-      <ManageListsInner />
+      <ManageListsContent />
     </Suspense>
   )
 }
