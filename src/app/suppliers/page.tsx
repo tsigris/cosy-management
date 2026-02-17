@@ -1,7 +1,7 @@
 'use client'
 export const dynamic = 'force-dynamic'
 
-import { useEffect, useState, Suspense, useCallback } from 'react'
+import { useEffect, useState, Suspense, useCallback, useMemo } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
@@ -25,7 +25,7 @@ function SuppliersContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   
-  // 1. Η ΜΟΝΑΔΙΚΗ ΠΗΓΗ ΑΛΗΘΕΙΑΣ - Μόνο από το URL
+  // SaaS Context από το URL
   const storeIdFromUrl = searchParams.get('store');
 
   const [suppliers, setSuppliers] = useState<any[]>([])
@@ -73,20 +73,39 @@ function SuppliersContent() {
 
   useEffect(() => { fetchSuppliersData(); }, [fetchSuppliersData])
 
+  // --- ΛΟΓΙΚΗ ΤΑΞΙΝΟΜΗΣΗΣ (SORTING BY TURNOVER) ---
+  
+  // 1. Υπολογισμός συνολικού τζίρου ανά προμηθευτή
+  const supplierTotals = useMemo(() => {
+    const totals: Record<string, number> = {};
+    transactions.forEach(t => {
+      if (t.supplier_id) {
+        const amount = Number(t.amount) || 0;
+        totals[t.supplier_id] = (totals[t.supplier_id] || 0) + amount;
+      }
+    });
+    return totals;
+  }, [transactions]);
+
+  // 2. Ταξινόμηση της λίστας: Μεγαλύτερος τζίρος -> Πρώτος
+  const sortedSuppliers = useMemo(() => {
+    return [...suppliers].sort((a, b) => {
+      const totalA = supplierTotals[a.id] || 0;
+      const totalB = supplierTotals[b.id] || 0;
+      return totalB - totalA; 
+    });
+  }, [suppliers, supplierTotals]);
+
+  const getSupplierTurnover = (id: string) => supplierTotals[id] || 0;
+
   const resetForm = () => {
     setName(''); setPhone(''); setAfm(''); setIban(''); setCategory('Εμπορεύματα');
     setEditingId(null); setIsFormOpen(false);
   }
 
-  // --- Η ΚΡΙΣΙΜΗ ΔΙΟΡΘΩΣΗ: handleSave ---
   const handleSave = async () => {
     if (!name.trim()) return toast.error('Συμπληρώστε το όνομα');
-    
-    // ΑΠΟΛΥΤΟΣ ΕΛΕΓΧΟΣ: Αν δεν υπάρχει storeId στο URL, σταμάτα τα πάντα
-    if (!storeIdFromUrl) {
-      toast.error('Σφάλμα: Δεν βρέθηκε κατάστημα στο URL. Παρακαλώ ανανεώστε τη σελίδα.');
-      return;
-    }
+    if (!storeIdFromUrl) return toast.error('Σφάλμα καταστήματος');
 
     setIsSaving(true);
     try {
@@ -96,7 +115,7 @@ function SuppliersContent() {
         vat_number: afm.trim(),
         iban: iban.trim().toUpperCase(),
         category: category,
-        store_id: storeIdFromUrl // <--- ΕΠΙΒΟΛΗ ΑΠΟ ΤΟ URL
+        store_id: storeIdFromUrl
       };
 
       let error;
@@ -105,7 +124,7 @@ function SuppliersContent() {
           .from('suppliers')
           .update(supplierData)
           .eq('id', editingId)
-          .eq('store_id', storeIdFromUrl); // Επιπλέον κλείδωμα
+          .eq('store_id', storeIdFromUrl);
         error = err;
       } else {
         const { error: err } = await supabase
@@ -116,7 +135,7 @@ function SuppliersContent() {
 
       if (error) throw error;
       
-      toast.success(`Καταχωρήθηκε στο ${currentStoreName}`);
+      toast.success('Επιτυχής καταχώρηση');
       resetForm(); 
       fetchSuppliersData();
     } catch (error: any) { 
@@ -127,7 +146,7 @@ function SuppliersContent() {
   }
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Οριστική διαγραφή;')) return;
+    if (!confirm('Οριστική διαγραφή προμηθευτή;')) return;
     try {
       const { error } = await supabase
         .from('suppliers')
@@ -139,11 +158,6 @@ function SuppliersContent() {
       fetchSuppliersData();
     } catch (err) { toast.error('Σφάλμα διαγραφής'); }
   }
-
-  const getSupplierTurnover = (id: string) => 
-    transactions.filter(t => t.supplier_id === id).reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
-  
-  const sortedSuppliers = [...suppliers].sort((a, b) => getSupplierTurnover(b.id) - getSupplierTurnover(a.id));
 
   return (
     <div style={containerStyle}>
@@ -188,14 +202,19 @@ function SuppliersContent() {
         )}
 
         <div style={listArea}>
-          <div style={rankingHeader}><TrendingUp size={14} /> ΚΑΤΑΤΑΞΗ ΤΖΙΡΟΥ</div>
-          {loading ? <p style={emptyText}>Συγχρονισμός...</p> : sortedSuppliers.length === 0 ? <p style={emptyText}>Δεν βρέθηκαν προμηθευτές στο {currentStoreName}</p> : 
+          <div style={rankingHeader}><TrendingUp size={14} /> ΚΑΤΑΤΑΞΗ ΒΑΣΕΙ ΤΖΙΡΟΥ</div>
+          {loading ? <p style={emptyText}>Συγχρονισμός δεδομένων...</p> : sortedSuppliers.length === 0 ? <p style={emptyText}>Δεν βρέθηκαν προμηθευτές.</p> : 
             sortedSuppliers.map((s, idx) => (
               <div key={s.id} style={{ borderBottom: `1px solid ${colors.border}` }}>
                 <div style={rowWrapper} onClick={() => setExpandedId(expandedId === s.id ? null : s.id)}>
                   <div style={rankNumber}>{idx + 1}</div>
-                  <div style={{ flex: 1 }}><p style={rowName}>{s.name.toUpperCase()}</p><p style={categoryBadge}>{s.category}</p></div>
-                  <p style={turnoverText}>{getSupplierTurnover(s.id).toFixed(2)}€</p>
+                  <div style={{ flex: 1 }}>
+                    <p style={rowName}>{s.name.toUpperCase()}</p>
+                    <p style={categoryBadge}>{s.category}</p>
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <p style={turnoverText}>{getSupplierTurnover(s.id).toFixed(2)}€</p>
+                  </div>
                 </div>
                 {expandedId === s.id && (
                   <div style={actionPanel}>
