@@ -30,7 +30,15 @@ function SupplierFormModal({ open, onClose, onCreated, storeId }: { open: boolea
     if (!name.trim()) return toast.error('Όνομα υποχρεωτικό');
     setLoading(true);
     try {
-      const { data, error } = await supabase.from('suppliers').insert([{ name: name.trim(), afm: afm.trim() || null, phone: phone.trim() || null, store_id: storeId }]).select().single();
+      // Map afm state to vat_number column in DB
+      const { data, error } = await supabase.from('suppliers').insert([
+        {
+          name: name.trim(),
+          vat_number: afm.trim() || null,
+          phone: phone.trim() || null,
+          store_id: storeId
+        }
+      ]).select().single();
       if (error) throw error;
       toast.success('Ο προμηθευτής δημιουργήθηκε!');
       onCreated(data);
