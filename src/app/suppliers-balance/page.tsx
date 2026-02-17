@@ -153,7 +153,7 @@ function BalancesContent() {
 
       // -------------------------
       // MODE: ΕΣΟΔΑ (Revenue Sources)
-      // balance = Credit(is_credit:true) - Received(είσπραξη παλαιού χρέους)
+      // balance = Credit(αναμονή είσπραξης: is_credit:true) - Received(είσπραξη παλαιού χρέους)
       // filter tx by revenue_source_id
       // -------------------------
       // ✅ Prompt 2: fetch revenue_sources
@@ -162,7 +162,7 @@ function BalancesContent() {
 
       const revenueSources = (revRes.data || []).map((r) => ({ ...r, entityType: 'revenue' }))
 
-      // ✅ Prompt 2: RECEIVED_TYPES list used for receipts identification
+      // ✅ Prompt 2: Use RECEIVED_TYPES
       const RECEIVED_TYPES = ['debt_payment', 'debt_received', 'income_collection']
 
       const balanceList = revenueSources
@@ -209,7 +209,7 @@ function BalancesContent() {
 
   const totalDisplay = filteredData.reduce((acc, s) => acc + (Number(s.balance) || 0), 0)
 
-  // ✅ Prompt 3: total card dynamic bg
+  // ✅ Prompt 3: Dynamic total card color
   const totalCardBg = viewMode === 'income' ? colors.accentGreen : colors.primaryDark
   const totalLabel =
     viewMode === 'income' ? 'ΣΥΝΟΛΙΚΟ ΑΝΟΙΧΤΟ ΥΠΟΛΟΙΠΟ ΕΣΟΔΩΝ' : 'ΣΥΝΟΛΙΚΟ ΑΝΟΙΧΤΟ ΥΠΟΛΟΙΠΟ ΕΞΟΔΩΝ'
@@ -374,6 +374,7 @@ function BalancesContent() {
                     <button
                       onClick={() => {
                         if (isIncome) {
+                          // mode=debt -> add-income should save type='debt_payment'
                           router.push(`/add-income?store=${storeIdFromUrl}&sourceId=${s.id}&mode=debt`)
                         } else {
                           router.push(
@@ -431,14 +432,13 @@ const backBtnStyle: any = {
   border: `1px solid ${colors.border}`,
 }
 
-// ✅ Prompt 1: switcherWrap + switchBtn EXACT specs
+// ✅ Prompt 1: Styles that were missing for switcher
 const switcherWrap: any = {
   display: 'flex',
   background: '#e2e8f0',
   padding: '4px',
   borderRadius: '14px',
   marginBottom: '20px',
-  gap: '8px',
 }
 
 const switchBtn: any = {
