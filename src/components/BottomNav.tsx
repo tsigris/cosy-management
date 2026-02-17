@@ -1,7 +1,8 @@
 'use client'
-import React, { Suspense } from 'react';
+import React, { Suspense, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
+import { supabase } from '@/lib/supabase';
 
 const colors = {
   primary: '#0f172a',    
@@ -22,20 +23,81 @@ const navItems = [
 function NavContent() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  
+  // State για ΟΛΑ τα δικαιώματα
+  const [permissions, setPermissions] = useState({
+    canViewAnalysis: false,
+    canViewHistory: false,
+    canEditTransactions: false
+  });
 
-  // 🛠️ Η ΔΙΟΡΘΩΣΗ: Απόλυτη προτεραιότητα στο URL
   const storeInUrl = searchParams.get('store');
   const storeInStorage = typeof window !== 'undefined' ? localStorage.getItem('active_store_id') : null;
-  
-  // Αν υπάρχει ID στο URL (π.χ. CFU), χρησιμοποιούμε αυτό. 
-  // Το Storage το κοιτάμε μόνο αν το URL είναι άδειο.
   const storeId = storeInUrl || storeInStorage;
 
-  // Σελίδες όπου το BottomNav πρέπει να κρύβεται
+  useEffect(() => {
+    const checkPermissions = async () => {
+      if (!storeId) return;
+
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+
+        // 1. Τραβάμε και τα 3 δικαιώματα από τη βάση
+        const { data, error } = await supabase
+          .from('store_access')
+          .select('role, can_view_analysis, can_view_history, can_edit_transactions')
+          .eq('store_id', storeId)
+          .eq('user_id', user.id)
+          .single();
+
+        if (error) {
+          console.error('Error fetching permissions:', error);
+          return;
+        }
+
+        if (data) {
+          // 2. Αν είναι ADMIN -> Όλα TRUE
+          if (data.role === 'admin') {
+            setPermissions({
+              canViewAnalysis: true,
+              canViewHistory: true,
+              canEditTransactions: true
+            });
+          } else {
+            // 3. Αν είναι USER -> Ό,τι λέει η βάση
+            setPermissions({
+              canViewAnalysis: data.can_view_analysis === true,
+              canViewHistory: data.can_view_history === true,
+              canEditTransactions: data.can_edit_transactions === true
+            });
+          }
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    };
+
+    checkPermissions();
+  }, [storeId]);
+
+  // Σελίδες όπου το BottomNav κρύβεται
   const hideOnPaths = ['/login', '/register', '/signup', '/select-store'];
   const isFormPage = pathname.includes('/add-');
   
   if (hideOnPaths.includes(pathname) || isFormPage) return null;
+
+  // 4. ΦΙΛΤΡΑΡΙΣΜΑ ΜΕΝΟΥ
+  const visibleNavItems = navItems.filter(item => {
+    // Κρύβουμε την Ανάλυση αν δεν έχει δικαίωμα
+    if (item.label === 'Ανάλυση') {
+      return permissions.canViewAnalysis;
+    }
+    // Εδώ μπορείς να κρύψεις κι άλλα αν θέλεις μελλοντικά
+    // π.χ. αν το Ιστορικό ήταν tab, θα έβαζες: if (item.label === 'Ιστορικό') return permissions.canViewHistory;
+    
+    return true; // Τα υπόλοιπα εμφανίζονται κανονικά
+  });
 
   return (
     <nav style={navWrapper}>
@@ -45,10 +107,8 @@ function NavContent() {
         .nav-item:active { transform: scale(0.9); }
       `}} />
 
-      {navItems.map((item) => {
+      {visibleNavItems.map((item) => {
         const isActive = pathname === item.path;
-        
-        // ✨ ΔΥΝΑΜΙΚΟ LINK: Προσθέτουμε πάντα το τρέχον store ID
         const fullPath = storeId ? `${item.path}?store=${storeId}` : item.path;
 
         return (
@@ -84,7 +144,6 @@ function NavContent() {
   );
 }
 
-// Κύριο Component με Suspense
 export default function BottomNav() {
   return (
     <Suspense fallback={null}>
