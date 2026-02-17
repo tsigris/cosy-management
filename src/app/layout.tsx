@@ -54,12 +54,11 @@ export default function RootLayout({
           margin: 0,
           padding: 0,
           backgroundColor: '#f8fafc',
-          minHeight: '100dvh',
-          display: 'flex',
-          flexDirection: 'column',
-          /* ΔΙΟΡΘΩΣΗ: Αφαιρέθηκε το overscroll-behavior που μπλόκαρε το Chrome/Redmi */
-          overflowX: 'hidden',
-          overflowY: 'auto'
+          minHeight: '100vh',
+          /* ΔΙΟΡΘΩΣΗ: Χρησιμοποιούμε block για να λειτουργήσει το mouse scroll στο PC */
+          display: 'block', 
+          overflowY: 'auto',
+          overflowX: 'hidden'
         }}
       >
         <Suspense fallback={null}>
@@ -68,13 +67,11 @@ export default function RootLayout({
           
           <main 
             style={{ 
-              flex: '1 0 auto', // Επιτρέπει στο περιεχόμενο να επεκτείνεται φυσιολογικά
               width: '100%',
+              minHeight: '100vh',
               paddingBottom: '100px', 
-              /* ΔΙΟΡΘΩΣΗ: touch-action auto για να μην μπερδεύεται ο browser στα inputs */
-              touchAction: 'auto',
               position: 'relative',
-              display: 'block' // Κρίσιμο για τη λειτουργία του ποντικιού στο PC
+              display: 'block'
             }}
           >
             {children}
