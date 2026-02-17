@@ -1,11 +1,12 @@
 'use client'
-import { useEffect, useState, useCallback } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
-import { supabase } from '@/lib/supabase';
-import Link from 'next/link';
-import { toast, Toaster } from 'sonner';
-import { X, Plus, Trash2, Users, Receipt, Wrench, Package, Store, ChevronLeft } from 'lucide-react';
-import { Suspense } from 'react';
+export const dynamic = 'force-dynamic'
+
+import { useEffect, useMemo, useState, useCallback, Suspense } from 'react'
+import Link from 'next/link'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { supabase } from '@/lib/supabase'
+import { toast, Toaster } from 'sonner'
+import { Users, Wrench, Lightbulb, User, Package, Trash2, Plus, Search } from 'lucide-react'
 
 const colors = {
   primaryDark: '#1e293b',
@@ -16,178 +17,463 @@ const colors = {
   bgLight: '#f8fafc',
   border: '#e2e8f0',
   white: '#ffffff',
-};
-
-type CategoryTab = 'suppliers' | 'staff' | 'utility' | 'worker' | 'other';
-
-function ManageListsContent() {
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  const storeId = searchParams.get('store') || '';
-
-  const [activeTab, setActiveTab] = useState<CategoryTab>('suppliers');
-  const [items, setItems] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [newItemName, setNewItemName] = useState('');
-  const [isAdding, setIsAdding] = useState(false);
-
-  const fetchData = useCallback(async () => {
-    if (!storeId) return;
-    setLoading(true);
-    try {
-      let data, error;
-      if (activeTab === 'suppliers') {
-        ({ data, error } = await supabase
-          .from('suppliers')
-          .select('id, name')
-          .eq('store_id', storeId)
-          .order('name'));
-      } else {
-        ({ data, error } = await supabase
-          .from('fixed_assets')
-          .select('id, name, sub_category')
-          .eq('store_id', storeId)
-          .eq('sub_category', activeTab)
-          .order('name'));
-      }
-      if (error) throw error;
-      setItems(data || []);
-    } catch (e: any) {
-      toast.error(e.message);
-    } finally {
-      setLoading(false);
-    }
-  }, [storeId, activeTab]);
-
-  useEffect(() => { fetchData(); }, [fetchData]);
-
-  const handleAdd = async () => {
-    if (!newItemName.trim()) return;
-    setIsAdding(true);
-    try {
-      let error;
-      if (activeTab === 'suppliers') {
-        ({ error } = await supabase.from('suppliers').insert([
-          { name: newItemName.trim().toUpperCase(), store_id: storeId, is_active: true }
-        ]));
-      } else {
-        ({ error } = await supabase.from('fixed_assets').insert([
-          { name: newItemName.trim().toUpperCase(), store_id: storeId, sub_category: activeTab }
-        ]));
-      }
-      if (error) throw error;
-      toast.success('Προστέθηκε επιτυχώς!');
-      setNewItemName('');
-      fetchData();
-    } catch (e: any) {
-      toast.error(e.message);
-    } finally {
-      setIsAdding(false);
-    }
-  };
-
-  const handleDelete = async (id: string) => {
-    if (!confirm('Είσαι σίγουρος για τη διαγραφή;')) return;
-    try {
-      const table = activeTab === 'suppliers' ? 'suppliers' : 'fixed_assets';
-      const { error } = await supabase.from(table).delete().eq('id', id);
-      if (error) throw error;
-      toast.success('Διαγράφηκε!');
-      fetchData();
-    } catch (e: any) {
-      toast.error('Δεν μπορεί να διαγραφεί αν έχει ήδη κινήσεις.');
-    }
-  };
-
-  const tabs = [
-    { id: 'suppliers', label: 'Προμηθ.', icon: <Store size={16} /> },
-    { id: 'staff', label: 'Προσωπ.', icon: <Users size={16} /> },
-    { id: 'utility', label: 'Λογαρ.', icon: <Receipt size={16} /> },
-    { id: 'worker', label: 'Μάστορ.', icon: <Wrench size={16} /> },
-    { id: 'other', label: 'Λοιπά', icon: <Package size={16} /> },
-  ];
-
-  return (
-    <div style={containerStyle}>
-      <Toaster position="top-center" richColors />
-      
-      {/* HEADER */}
-      <div style={headerStyle}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <Link href={`/?store=${storeId}`} style={backBtnStyle}><ChevronLeft size={20} /></Link>
-          <h1 style={{ fontSize: 20, fontWeight: 800, margin: 0 }}>Διαχείριση</h1>
-        </div>
-      </div>
-
-      {/* TABS SELECTOR */}
-      <div style={tabsWrapper}>
-        {tabs.map((tab) => (
-          <div
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id as CategoryTab)}
-            style={{
-              ...tabItem,
-              borderBottom: activeTab === tab.id ? `3px solid ${colors.accentBlue}` : 'none',
-              color: activeTab === tab.id ? colors.accentBlue : colors.secondaryText,
-            }}
-          >
-            {tab.icon}
-            <span style={{ fontSize: 11, fontWeight: 700 }}>{tab.label}</span>
-          </div>
-        ))}
-      </div>
-
-      {/* ADD NEW ITEM SECTION */}
-      <div style={addBox}>
-        <input
-          value={newItemName}
-          onChange={(e) => setNewItemName(e.target.value)}
-          placeholder={`Όνομα νέου ${activeTab === 'suppliers' ? 'προμηθευτή' : 'στοιχείου'}...`}
-          style={inputStyle}
-        />
-        <button onClick={handleAdd} disabled={isAdding} style={addBtn}>
-          {isAdding ? '...' : <Plus size={24} />}
-        </button>
-      </div>
-
-      {/* LIST SECTION */}
-      <div style={listWrapper}>
-        {loading ? (
-          <p style={{ textAlign: 'center', color: colors.secondaryText }}>Φόρτωση...</p>
-        ) : items.length === 0 ? (
-          <p style={{ textAlign: 'center', color: colors.secondaryText, padding: 20 }}>Η λίστα είναι κενή.</p>
-        ) : (
-          items.map((item) => (
-            <div key={item.id} style={itemRow}>
-              <span style={{ fontWeight: 600, fontSize: 15 }}>{item.name}</span>
-              <button onClick={() => handleDelete(item.id)} style={deleteBtn}>
-                <Trash2 size={18} />
-              </button>
-            </div>
-          ))
-        )}
-      </div>
-    </div>
-  );
 }
 
-// --- STYLES ---
-const containerStyle: any = { backgroundColor: '#f8fafc', minHeight: '100vh', padding: '20px' };
-const headerStyle = { marginBottom: 20 };
-const backBtnStyle: any = { padding: 8, backgroundColor: 'white', borderRadius: 10, border: `1px solid ${colors.border}`, display: 'flex', color: colors.primaryDark };
-const tabsWrapper = { display: 'flex', gap: 5, backgroundColor: 'white', padding: '10px 5px', borderRadius: 15, marginBottom: 20, overflowX: 'auto' as const };
-const tabItem: any = { flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5, cursor: 'pointer', paddingBottom: 5, minWidth: '65px' };
-const addBox = { display: 'flex', gap: 10, marginBottom: 20 };
-const inputStyle: any = { flex: 1, padding: 14, borderRadius: 12, border: `1px solid ${colors.border}`, fontSize: 16, fontWeight: 600, outline: 'none' };
-const addBtn: any = { width: 50, height: 50, backgroundColor: colors.primaryDark, color: 'white', border: 'none', borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' };
-const listWrapper = { backgroundColor: 'white', borderRadius: 20, border: `1px solid ${colors.border}`, overflow: 'hidden' };
-const itemRow = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 20px', borderBottom: `1px solid ${colors.border}` };
-const deleteBtn = { background: 'none', border: 'none', color: colors.accentRed, cursor: 'pointer' };
+type TabKey = 'suppliers' | 'worker' | 'utility' | 'staff' | 'other'
+
+const TABS: Array<{
+  key: TabKey
+  label: string
+  icon: any
+  subCategory: 'worker' | 'utility' | 'staff' | 'other' | null
+}> = [
+  { key: 'suppliers', label: 'Προμηθευτές', icon: Users, subCategory: null },
+  { key: 'worker', label: 'Μάστορες', icon: Wrench, subCategory: 'worker' }, // ✅ Wrench (not Tool)
+  { key: 'utility', label: 'Λογαριασμοί', icon: Lightbulb, subCategory: 'utility' },
+  { key: 'staff', label: 'Προσωπικό', icon: User, subCategory: 'staff' },
+  { key: 'other', label: 'Λοιπά', icon: Package, subCategory: 'other' },
+]
+
+function ManageListsInner() {
+  const router = useRouter()
+  const searchParams = useSearchParams()
+
+  // ✅ storeId from URL searchParams (mobile/vercel stable)
+  const urlStoreId = searchParams.get('store')
+  const [storeId, setStoreId] = useState<string | null>(urlStoreId)
+
+  const [activeTab, setActiveTab] = useState<TabKey>('suppliers')
+
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+
+  const [suppliers, setSuppliers] = useState<any[]>([])
+  const [fixedAssets, setFixedAssets] = useState<any[]>([])
+
+  const [name, setName] = useState('')
+  const [search, setSearch] = useState('')
+
+  const currentTab = useMemo(() => TABS.find(t => t.key === activeTab)!, [activeTab])
+
+  const visibleItems = useMemo(() => {
+    const q = search.trim().toLowerCase()
+
+    if (activeTab === 'suppliers') {
+      const base = suppliers
+      if (!q) return base
+      return base.filter((x: any) => String(x.name || '').toLowerCase().includes(q))
+    }
+
+    const base = fixedAssets.filter((x: any) => (x.sub_category || '') === currentTab.subCategory)
+    if (!q) return base
+    return base.filter((x: any) => String(x.name || '').toLowerCase().includes(q))
+  }, [activeTab, suppliers, fixedAssets, search, currentTab.subCategory])
+
+  const loadData = useCallback(async () => {
+    try {
+      setLoading(true)
+
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) {
+        setLoading(false)
+        return router.push('/login')
+      }
+
+      const activeStoreId =
+        urlStoreId ||
+        (typeof window !== 'undefined' ? localStorage.getItem('active_store_id') : null)
+
+      if (!activeStoreId) {
+        setLoading(false)
+        return toast.error('Δεν βρέθηκε κατάστημα (store)')
+      }
+
+      setStoreId(activeStoreId)
+
+      const [sRes, fRes] = await Promise.all([
+        supabase
+          .from('suppliers')
+          .select('id, name, is_active, created_at')
+          .eq('store_id', activeStoreId)
+          .order('name'),
+        supabase
+          .from('fixed_assets')
+          .select('id, name, sub_category, created_at')
+          .eq('store_id', activeStoreId)
+          .order('name'),
+      ])
+
+      if (sRes.error) throw sRes.error
+      if (fRes.error) throw fRes.error
+
+      setSuppliers(sRes.data || [])
+      setFixedAssets(fRes.data || [])
+    } catch (e: any) {
+      toast.error(e?.message || 'Σφάλμα φόρτωσης')
+    } finally {
+      setLoading(false)
+    }
+  }, [router, urlStoreId])
+
+  useEffect(() => {
+    loadData()
+  }, [loadData])
+
+  const handleAdd = async () => {
+    const trimmed = name.trim()
+    if (!trimmed) return toast.error('Γράψε όνομα')
+
+    const activeStoreId =
+      urlStoreId ||
+      (typeof window !== 'undefined' ? localStorage.getItem('active_store_id') : null) ||
+      storeId
+
+    if (!activeStoreId) return toast.error('Δεν βρέθηκε κατάστημα (store)')
+
+    try {
+      setSaving(true)
+
+      if (activeTab === 'suppliers') {
+        // ✅ Save to suppliers
+        const { data, error } = await supabase
+          .from('suppliers')
+          .insert([{ name: trimmed, store_id: activeStoreId }])
+          .select('id, name, is_active, created_at')
+          .single()
+
+        if (error) throw error
+        setSuppliers(prev => [...prev, data].sort((a, b) => String(a.name).localeCompare(String(b.name))))
+      } else {
+        // ✅ Save to fixed_assets with sub_category
+        const { data, error } = await supabase
+          .from('fixed_assets')
+          .insert([{ name: trimmed, store_id: activeStoreId, sub_category: currentTab.subCategory }])
+          .select('id, name, sub_category, created_at')
+          .single()
+
+        if (error) throw error
+        setFixedAssets(prev => [...prev, data].sort((a, b) => String(a.name).localeCompare(String(b.name))))
+      }
+
+      setName('')
+      toast.success('Προστέθηκε!')
+    } catch (e: any) {
+      toast.error(e?.message || 'Αποτυχία καταχώρησης')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleDelete = async (item: any) => {
+    const label = String(item?.name || '').trim()
+    const ok = confirm(`Να διαγραφεί το "${label}"?`)
+    if (!ok) return
+
+    const activeStoreId =
+      urlStoreId ||
+      (typeof window !== 'undefined' ? localStorage.getItem('active_store_id') : null) ||
+      storeId
+
+    if (!activeStoreId) return toast.error('Δεν βρέθηκε κατάστημα (store)')
+
+    try {
+      setSaving(true)
+
+      if (activeTab === 'suppliers') {
+        const { error } = await supabase
+          .from('suppliers')
+          .delete()
+          .eq('id', item.id)
+          .eq('store_id', activeStoreId)
+
+        if (error) throw error
+        setSuppliers(prev => prev.filter(x => x.id !== item.id))
+      } else {
+        const { error } = await supabase
+          .from('fixed_assets')
+          .delete()
+          .eq('id', item.id)
+          .eq('store_id', activeStoreId)
+
+        if (error) throw error
+        setFixedAssets(prev => prev.filter(x => x.id !== item.id))
+      }
+
+      toast.success('Διαγράφηκε!')
+    } catch (e: any) {
+      toast.error(e?.message || 'Αποτυχία διαγραφής')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const backHref = useMemo(() => {
+    const s = urlStoreId || storeId || ''
+    return s ? `/?store=${s}` : '/'
+  }, [storeId, urlStoreId])
+
+  return (
+    <div style={pageWrap}>
+      <Toaster position="top-center" richColors />
+
+      <div style={{ maxWidth: 560, margin: '0 auto', paddingBottom: 120 }}>
+        <div style={headerStyle}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={logoBoxStyle}>📋</div>
+            <div>
+              <h1 style={{ margin: 0, fontSize: 16, fontWeight: 900, color: colors.primaryDark }}>
+                Manage Lists
+              </h1>
+              <p style={{ margin: 0, fontSize: 16, fontWeight: 800, color: colors.secondaryText }}>
+                Διαχείριση Προμηθευτών &amp; Παγίων
+              </p>
+            </div>
+          </div>
+
+          <Link href={backHref} style={backBtnStyle}>✕</Link>
+        </div>
+
+        {/* TABS */}
+        <div style={tabsRow}>
+          {TABS.map(t => {
+            const ActiveIcon = t.icon
+            const active = activeTab === t.key
+            return (
+              <button
+                key={t.key}
+                type="button"
+                onClick={() => { setActiveTab(t.key); setSearch('') }}
+                style={{
+                  ...tabBtn,
+                  backgroundColor: active ? colors.primaryDark : colors.white,
+                  border: `1px solid ${active ? colors.primaryDark : colors.border}`,
+                  color: active ? 'white' : colors.primaryDark,
+                }}
+              >
+                <ActiveIcon size={16} />
+                <span style={{ fontSize: 16, fontWeight: 900 }}>{t.label}</span>
+              </button>
+            )
+          })}
+        </div>
+
+        <div style={card}>
+          {/* ADD */}
+          <label style={labelStyle}>ΝΕΑ ΚΑΤΑΧΩΡΗΣΗ</label>
+          <div style={{ display: 'flex', gap: 10 }}>
+            <input
+              value={name}
+              onChange={e => setName(e.target.value)}
+              placeholder={`Όνομα για "${currentTab.label}"`}
+              style={inputStyle}
+            />
+            <button
+              type="button"
+              onClick={handleAdd}
+              disabled={saving || loading}
+              style={{ ...iconBtn, opacity: saving || loading ? 0.7 : 1 }}
+              aria-label="Add"
+              title="Add"
+            >
+              <Plus size={16} />
+            </button>
+          </div>
+
+          {/* SEARCH */}
+          <label style={{ ...labelStyle, marginTop: 18 }}>ΑΝΑΖΗΤΗΣΗ</label>
+          <div style={{ position: 'relative' }}>
+            <Search size={16} style={{ position: 'absolute', left: 12, top: 14, color: colors.secondaryText }} />
+            <input
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Γράψτε για αναζήτηση..."
+              style={{ ...inputStyle, paddingLeft: 38 }}
+            />
+          </div>
+
+          {/* LIST */}
+          <div style={{ marginTop: 18 }}>
+            <label style={labelStyle}>ΛΙΣΤΑ</label>
+
+            {loading ? (
+              <div style={hintBox}>Φόρτωση...</div>
+            ) : visibleItems.length === 0 ? (
+              <div style={hintBox}>Δεν υπάρχουν εγγραφές.</div>
+            ) : (
+              <div style={listWrap}>
+                {visibleItems.map((item: any) => (
+                  <div key={item.id} style={listRow}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      <span style={{ fontSize: 16, fontWeight: 900, color: colors.primaryDark }}>
+                        {String(item.name || '').toUpperCase()}
+                      </span>
+
+                      {activeTab !== 'suppliers' && (
+                        <span style={{ fontSize: 16, fontWeight: 800, color: colors.secondaryText }}>
+                          sub_category: {String(item.sub_category || '')}
+                        </span>
+                      )}
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => handleDelete(item)}
+                      disabled={saving}
+                      style={{ ...dangerBtn, opacity: saving ? 0.6 : 1 }}
+                      aria-label="Delete"
+                      title="Delete"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div style={{ marginTop: 14, fontSize: 16, fontWeight: 800, color: colors.secondaryText }}>
+          * Για ασφάλεια, η διαγραφή ζητά επιβεβαίωση.
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ✅ 16px everywhere for mobile stability
+const pageWrap: any = {
+  backgroundColor: colors.bgLight,
+  minHeight: '100dvh',
+  padding: 20,
+  position: 'absolute',
+  top: 0, left: 0, right: 0, bottom: 0,
+  overflowY: 'auto',
+  fontSize: 16,
+}
+
+const headerStyle: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }
+const logoBoxStyle: any = {
+  width: 42, height: 42,
+  backgroundColor: colors.primaryDark,
+  borderRadius: 12,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  color: 'white',
+  fontSize: 16,
+  fontWeight: 900,
+}
+
+const backBtnStyle: any = {
+  textDecoration: 'none',
+  color: colors.secondaryText,
+  padding: '10px 12px',
+  backgroundColor: 'white',
+  borderRadius: 10,
+  border: `1px solid ${colors.border}`,
+  fontSize: 16,
+  fontWeight: 900,
+}
+
+const tabsRow: any = { display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 16 }
+
+const tabBtn: any = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 8,
+  padding: '12px 12px',
+  borderRadius: 14,
+  cursor: 'pointer',
+  fontSize: 16,
+  fontWeight: 900,
+  userSelect: 'none',
+}
+
+const card: any = {
+  backgroundColor: colors.white,
+  border: `1px solid ${colors.border}`,
+  borderRadius: 24,
+  padding: 18,
+}
+
+const labelStyle: any = {
+  fontSize: 16,
+  fontWeight: 900,
+  color: colors.secondaryText,
+  display: 'block',
+  marginBottom: 8,
+}
+
+const inputStyle: any = {
+  width: '100%',
+  padding: 14,
+  borderRadius: 12,
+  border: `1px solid ${colors.border}`,
+  fontSize: 16,
+  fontWeight: 800,
+  backgroundColor: colors.bgLight,
+  boxSizing: 'border-box',
+  outline: 'none',
+}
+
+const iconBtn: any = {
+  width: 52,
+  minWidth: 52,
+  height: 52,
+  borderRadius: 12,
+  border: 'none',
+  backgroundColor: colors.primaryDark,
+  color: 'white',
+  cursor: 'pointer',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+}
+
+const hintBox: any = {
+  padding: 14,
+  borderRadius: 14,
+  backgroundColor: colors.bgLight,
+  border: `1px solid ${colors.border}`,
+  fontSize: 16,
+  fontWeight: 800,
+  color: colors.secondaryText,
+}
+
+const listWrap: any = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 10,
+}
+
+const listRow: any = {
+  display: 'flex',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+  padding: 14,
+  borderRadius: 16,
+  backgroundColor: colors.bgLight,
+  border: `1px solid ${colors.border}`,
+}
+
+const dangerBtn: any = {
+  width: 46,
+  minWidth: 46,
+  height: 46,
+  borderRadius: 14,
+  border: `1px solid ${colors.border}`,
+  backgroundColor: 'white',
+  cursor: 'pointer',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  color: colors.accentRed,
+}
 
 export default function ManageListsPage() {
   return (
-    <Suspense fallback={null}>
-      <ManageListsContent />
+    <Suspense fallback={<div style={{ fontSize: 16, padding: 20 }}>Φόρτωση...</div>}>
+      <ManageListsInner />
     </Suspense>
-  );
+  )
 }
