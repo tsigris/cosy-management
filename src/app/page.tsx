@@ -173,13 +173,11 @@ function DashboardContent() {
               {isStoreAdmin && (
                 <>
                   <p style={menuSectionLabel}>ΔΙΑΧΕΙΡΙΣΗ</p>
-                  <NextLink href={`/suppliers?store=${storeIdFromUrl}`} style={menuItem} onClick={() => setIsMenuOpen(false)}>🛒 Προμηθευτές</NextLink>
-                  <NextLink href={`/fixed-assets?store=${storeIdFromUrl}`} style={menuItem} onClick={() => setIsMenuOpen(false)}>🔌 Πάγια</NextLink>
-                  <NextLink href={`/employees?store=${storeIdFromUrl}`} style={menuItem} onClick={() => setIsMenuOpen(false)}>👥 Υπάλληλοι</NextLink>
-                  <NextLink href={`/suppliers-balance?store=${storeIdFromUrl}`} style={menuItem} onClick={() => setIsMenuOpen(false)}>🚩 Καρτέλες (Χρέη)</NextLink>
-                  <NextLink href={`/permissions?store=${storeIdFromUrl}`} style={menuItem} onClick={() => setIsMenuOpen(false)}>🔑 Δικαιώματα</NextLink>
+                  <NextLink href={`/manage-lists?store=${storeIdFromUrl}`} style={menuItem} onClick={() => setIsMenuOpen(false)}>⚙️ Διαχείριση Καταλόγων</NextLink>
                 </>
               )}
+              {/* Divider before Analysis */}
+              {(isStoreAdmin || canViewAnalysis) && <div style={menuDivider} />}
               {canViewAnalysis && (
                 <NextLink href={`/analysis?store=${storeIdFromUrl}`} style={menuItem} onClick={() => setIsMenuOpen(false)}>📊 Ανάλυση</NextLink>
               )}
