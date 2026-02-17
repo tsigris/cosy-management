@@ -27,7 +27,12 @@ const CATEGORY_UI: Array<{
   dbCategory: 'Εμπορεύματα' | 'Maintenance' | 'Utilities' | 'Staff' | 'Other'
 }> = [
   { key: 'suppliers', icon: '🛒', label: 'Εμπορεύματα', dbCategory: 'Εμπορεύματα' },
-  { key: 'worker', icon: '🛠️', label: 'Μάστορες', dbCategory: 'Maintenance' },
+
+  // ✅ RENAME + ICON UPDATE (Μάστορες -> Συντήρηση, 🛠️ -> 🔧)
+  // ✅ DB CONSISTENCY: κρατάμε key 'worker' ώστε να ταιριάζει με sub_category στο fixed_assets,
+  // αλλά dbCategory παραμένει 'Maintenance'
+  { key: 'worker', icon: '🔧', label: 'Συντήρηση', dbCategory: 'Maintenance' },
+
   { key: 'utility', icon: '💡', label: 'Λογαριασμοί', dbCategory: 'Utilities' },
   { key: 'staff', icon: '👤', label: 'Προσωπικό', dbCategory: 'Staff' },
   { key: 'other', icon: '📦', label: 'Λοιπά', dbCategory: 'Other' },
@@ -78,7 +83,12 @@ function AddExpenseForm() {
 
   const keyFromDbCategory = useCallback((cat: string | null | undefined): ExpenseCategoryKey => {
     if (cat === 'Εμπορεύματα') return 'suppliers'
+
+    // ✅ DB CONSISTENCY:
+    // Όταν η βάση επιστρέφει 'Maintenance', επιλέγουμε το UI key που αντιστοιχεί στη "Συντήρηση"
+    // (κρατάμε key = 'worker' για συμβατότητα με existing fixed_assets sub_category)
     if (cat === 'Maintenance') return 'worker'
+
     if (cat === 'Utilities') return 'utility'
     if (cat === 'Staff') return 'staff'
     return 'other'
@@ -352,7 +362,6 @@ function AddExpenseForm() {
               {noInvoice && '✓'}
             </div>
             <span style={{ fontSize: 16, fontWeight: 800, color: noInvoice ? colors.accentRed : colors.primaryDark }}>
-              {/* ✅ REQUIRED label */}
               ΧΩΡΙΣ ΤΙΜΟΛΟΓΙΟ
             </span>
           </div>
@@ -409,7 +418,6 @@ function AddExpenseForm() {
             </div>
           </div>
 
-          {/* ✅ CATEGORY SELECTOR (5 icons) */}
           <label style={{ ...labelStyle, marginTop: 20 }}>ΚΑΤΗΓΟΡΙΑ ΕΞΟΔΟΥ</label>
           <div style={categoryRow}>
             {CATEGORY_UI.map(c => {
@@ -435,7 +443,7 @@ function AddExpenseForm() {
             })}
           </div>
 
-          {/* ✅ DYNAMIC LIST (simple select only) */}
+          {/* ✅ LABELS: για Συντήρηση (και όλα τα non-suppliers) δείχνει ΠΑΓΙΟ / ΚΑΤΑΧΩΡΗΣΗ */}
           <label style={{ ...labelStyle, marginTop: 20 }}>
             {expenseCategory === 'suppliers' ? 'ΠΡΟΜΗΘΕΥΤΗΣ' : 'ΠΑΓΙΟ / ΚΑΤΑΧΩΡΗΣΗ'}
           </label>
@@ -460,7 +468,6 @@ function AddExpenseForm() {
             </div>
           )}
 
-          {/* ✅ Supplier quick add still available only in suppliers category */}
           {expenseCategory === 'suppliers' && (
             <div style={{ marginTop: 12 }}>
               <button type="button" onClick={() => setIsSupModalOpen(true)} style={addSupplierBtn}>
