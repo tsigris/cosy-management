@@ -16,7 +16,7 @@ export const viewport: Viewport = {
   userScalable: false,
   viewportFit: "cover",
   themeColor: "#f8fafc",
-  interactiveWidget: "resizes-content", // Κρίσιμο για το πληκτρολόγιο Android
+  interactiveWidget: "resizes-content", 
 };
 
 export const metadata: Metadata = {
@@ -34,7 +34,6 @@ export default function RootLayout({
   return (
     <html lang="el">
       <head>
-        {/* Το script που διορθώνει το ύψος στα Redmi Note */}
         <script
           dangerouslySetInnerHTML={{
             __html: `
@@ -55,25 +54,27 @@ export default function RootLayout({
           margin: 0,
           padding: 0,
           backgroundColor: '#f8fafc',
-          minHeight: '100dvh', // Δυναμικό ύψος για κινητά
-          overscrollBehavior: 'none', // Απαγορεύει το "τέντωμα" της σελίδας
+          minHeight: '100dvh',
           display: 'flex',
-          flexDirection: 'column'
+          flexDirection: 'column',
+          /* ΔΙΟΡΘΩΣΗ: Αφαιρέθηκε το overscroll-behavior που μπλόκαρε το Chrome/Redmi */
+          overflowX: 'hidden',
+          overflowY: 'auto'
         }}
       >
         <Suspense fallback={null}>
           <AuthLogic />
           <Toaster richColors position="top-center" />
           
-          {/* ΕΔΩ ΕΙΝΑΙ Η ΔΙΟΡΘΩΣΗ ΓΙΑ ΤΟ SCROLL ΜΕ ΕΝΑ ΔΑΧΤΥΛΟ:
-            Αφαιρούμε το position: fixed και το overflow: hidden από το body.
-          */}
           <main 
             style={{ 
-              flex: 1,
+              flex: '1 0 auto', // Επιτρέπει στο περιεχόμενο να επεκτείνεται φυσιολογικά
               width: '100%',
-              paddingBottom: '90px', // Χώρος για το BottomNav
-              touchAction: 'pan-y', // Επιτρέπει το scroll πάνω-κάτω με ένα δάχτυλο
+              paddingBottom: '100px', 
+              /* ΔΙΟΡΘΩΣΗ: touch-action auto για να μην μπερδεύεται ο browser στα inputs */
+              touchAction: 'auto',
+              position: 'relative',
+              display: 'block' // Κρίσιμο για τη λειτουργία του ποντικιού στο PC
             }}
           >
             {children}
