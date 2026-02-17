@@ -153,17 +153,16 @@ function BalancesContent() {
 
       // -------------------------
       // MODE: ΕΣΟΔΑ (Revenue Sources)
-      // balance = Credit(αναμονή είσπραξης: is_credit:true) - Received(είσπραξη παλαιού χρέους)
+      // balance = Credit(is_credit:true) - Received(είσπραξη παλαιού χρέους)
       // filter tx by revenue_source_id
       // -------------------------
+      // ✅ Prompt 2: fetch revenue_sources
       const revRes = await supabase.from('revenue_sources').select('*').eq('store_id', storeIdFromUrl)
       if (revRes.error) throw revRes.error
 
       const revenueSources = (revRes.data || []).map((r) => ({ ...r, entityType: 'revenue' }))
 
-      // ✅ ΑΛΕΞΙΣΦΑΙΡΟ:
-      // Περιλαμβάνουμε ΟΠΩΣΔΗΠΟΤΕ debt_payment (ίδιο type που χρησιμοποιούμε στις εξοφλήσεις χρεών)
-      // + extra types για συμβατότητα
+      // ✅ Prompt 2: RECEIVED_TYPES list used for receipts identification
       const RECEIVED_TYPES = ['debt_payment', 'debt_received', 'income_collection']
 
       const balanceList = revenueSources
@@ -210,6 +209,7 @@ function BalancesContent() {
 
   const totalDisplay = filteredData.reduce((acc, s) => acc + (Number(s.balance) || 0), 0)
 
+  // ✅ Prompt 3: total card dynamic bg
   const totalCardBg = viewMode === 'income' ? colors.accentGreen : colors.primaryDark
   const totalLabel =
     viewMode === 'income' ? 'ΣΥΝΟΛΙΚΟ ΑΝΟΙΧΤΟ ΥΠΟΛΟΙΠΟ ΕΣΟΔΩΝ' : 'ΣΥΝΟΛΙΚΟ ΑΝΟΙΧΤΟ ΥΠΟΛΟΙΠΟ ΕΞΟΔΩΝ'
@@ -254,7 +254,6 @@ function BalancesContent() {
               ...switchBtn,
               backgroundColor: viewMode === 'expenses' ? colors.primaryDark : colors.white,
               color: viewMode === 'expenses' ? colors.white : colors.primaryDark,
-              borderColor: viewMode === 'expenses' ? colors.primaryDark : colors.border,
             }}
           >
             ΕΞΟΔΑ
@@ -265,7 +264,6 @@ function BalancesContent() {
               ...switchBtn,
               backgroundColor: viewMode === 'income' ? colors.accentGreen : colors.white,
               color: viewMode === 'income' ? colors.white : colors.primaryDark,
-              borderColor: viewMode === 'income' ? colors.accentGreen : colors.border,
             }}
           >
             ΕΣΟΔΑ
@@ -306,6 +304,7 @@ function BalancesContent() {
               const badge = getEntityBadge(s)
               const isIncome = viewMode === 'income'
 
+              // ✅ Prompt 3: action label
               const actionLabel = isIncome ? 'ΕΙΣΠΡΑΞΗ' : 'ΕΞΟΦΛΗΣΗ'
 
               const btnStyle = isIncome
@@ -375,7 +374,6 @@ function BalancesContent() {
                     <button
                       onClick={() => {
                         if (isIncome) {
-                          // mode=debt -> add-income ΠΡΕΠΕΙ να αποθηκεύει type='debt_payment'
                           router.push(`/add-income?store=${storeIdFromUrl}&sourceId=${s.id}&mode=debt`)
                         } else {
                           router.push(
@@ -433,19 +431,23 @@ const backBtnStyle: any = {
   border: `1px solid ${colors.border}`,
 }
 
+// ✅ Prompt 1: switcherWrap + switchBtn EXACT specs
 const switcherWrap: any = {
   display: 'flex',
-  gap: '10px',
-  marginBottom: '18px',
+  background: '#e2e8f0',
+  padding: '4px',
+  borderRadius: '14px',
+  marginBottom: '20px',
+  gap: '8px',
 }
 
 const switchBtn: any = {
   flex: 1,
-  padding: '12px 10px',
-  borderRadius: '14px',
-  border: `1px solid ${colors.border}`,
-  fontSize: '12px',
+  padding: '12px',
+  borderRadius: '10px',
+  border: 'none',
   fontWeight: '900',
+  fontSize: '12px',
   cursor: 'pointer',
 }
 
