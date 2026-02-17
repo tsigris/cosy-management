@@ -240,7 +240,7 @@ function SuppliersContent() {
 }
 
 // --- STYLES ---
-const containerStyle: any = { backgroundColor: colors.bgLight, minHeight: '100dvh', padding: '20px' };
+const containerStyle: any = { backgroundColor: colors.bgLight, minHeight: '100%', width: '100%', padding: '20px', touchAction: 'pan-y' };
 const contentWrapper: any = { maxWidth: '480px', margin: '0 auto', paddingBottom: '100px' };
 const headerStyle: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px' };
 const titleStyle: any = { fontSize: '22px', fontWeight: '800', color: colors.primaryDark, margin: 0 };
@@ -251,7 +251,7 @@ const cancelBtn: any = { ...addBtn, backgroundColor: '#fee2e2', color: colors.ac
 const formCard: any = { background: 'white', padding: '24px', borderRadius: '24px', marginBottom: '25px', border: `1px solid ${colors.border}`, boxShadow: '0 4px 20px rgba(0,0,0,0.05)' };
 const inputGroup: any = { marginBottom: '15px' };
 const labelStyle: any = { fontSize: '10px', fontWeight: '800', color: colors.secondaryText, marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '4px' };
-const inputStyle: any = { width: '100%', padding: '14px', borderRadius: '12px', border: `1px solid ${colors.border}`, fontSize: '14px', fontWeight: '600', outline: 'none', backgroundColor: colors.bgLight };
+const inputStyle: any = { width: '100%', padding: '14px', borderRadius: '12px', border: `1px solid ${colors.border}`, fontSize: '16px', fontWeight: '600', outline: 'none', backgroundColor: colors.bgLight };
 const saveBtn: any = { width: '100%', padding: '16px', backgroundColor: colors.accentGreen, color: 'white', borderRadius: '16px', border: 'none', fontWeight: '800', fontSize: '14px', marginTop: '10px', cursor: 'pointer' };
 const listArea: any = { background: 'white', borderRadius: '24px', border: `1px solid ${colors.border}`, overflow: 'hidden', boxShadow: '0 4px 20px rgba(0,0,0,0.05)' };
 const rankingHeader: any = { padding: '14px 20px', backgroundColor: colors.bgLight, fontSize: '10px', fontWeight: '800', color: colors.secondaryText, display: 'flex', alignItems: 'center', gap: '8px' };

@@ -377,7 +377,7 @@ function AnalysisContent() {
 // --- MODERN STYLES ---
 const iphoneWrapper: any = {
   backgroundColor: colors.background,
-  minHeight: '100dvh',
+   minHeight: '100%',
   padding: '20px',
   position: 'absolute',
   top: 0,
@@ -419,7 +419,7 @@ const backBtnStyle: any = {
 const filterCard: any = {
   backgroundColor: colors.surface,
   padding: '20px',
-  borderRadius: '24px',
+   borderRadius: '12px',
   border: `1px solid ${colors.border}`,
   marginBottom: '20px',
   boxShadow: '0 4px 12px rgba(0,0,0,0.02)'
@@ -427,7 +427,7 @@ const filterCard: any = {
 const selectInputStyle: any = {
   width: '100%',
   padding: '14px',
-  borderRadius: '14px',
+   borderRadius: '12px',
   border: `1px solid ${colors.border}`,
   fontSize: '14px',
   fontWeight: '700',
