@@ -122,6 +122,7 @@ function AddExpenseForm() {
 
   const loadFormData = useCallback(async () => {
     setLoading(true);
+    if (!storeId || storeId === '') return;
     try {
       if (!storeId) return;
       const { data: { session } } = await supabase.auth.getSession();
