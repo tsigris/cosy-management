@@ -1,4 +1,3 @@
-
 'use client'
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -347,15 +346,55 @@ function AddExpenseForm() {
 
 // --- STYLES ---
 const smartSaveBtn: any = { width: '100%', padding: '16px', color: 'white', border: 'none', borderRadius: '16px', cursor: 'pointer' };
-const autocompleteDropdown: any = { position: 'absolute', top: '105%', left: 0, right: 0, backgroundColor: 'white', border: `1px solid ${colors.border}`, borderRadius: '14px', zIndex: 1000, maxHeight: 200, overflowY: 'auto', boxShadow: '0 10px 25px rgba(0,0,0,0.1)' };
-const dropdownRow = { padding: '12px 15px', fontSize: 14, fontWeight: 700, cursor: 'pointer', borderBottom: `1px solid ${colors.bgLight}` };
-const iphoneWrapper: any = { backgroundColor: colors.bgLight, minHeight: '100dvh', padding: 20, overflowY: 'auto' };
+const autocompleteDropdown: any = {
+  position: 'absolute',
+  top: '105%',
+  left: 0,
+  right: 0,
+  backgroundColor: 'white',
+  border: `1px solid ${colors.border}`,
+  borderRadius: '14px',
+  zIndex: 1000,
+  maxHeight: 200,
+  overflowY: 'auto',
+  boxShadow: '0 10px 25px rgba(0,0,0,0.1)',
+  fontSize: '16px' // Prevent Android auto-zoom in dropdown
+};
+const dropdownRow = {
+  padding: '12px 15px',
+  fontSize: '16px', // Prevent Android auto-zoom
+  fontWeight: 700,
+  cursor: 'pointer',
+  borderBottom: `1px solid ${colors.bgLight}`
+};
+const iphoneWrapper: any = {
+  backgroundColor: colors.bgLight,
+  minHeight: '100%',
+  padding: 20,
+  touchAction: 'pan-y'
+};
 const headerStyle = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 };
 const logoBoxStyle: any = { width: 42, height: 42, backgroundColor: colors.primaryDark, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: 20 };
 const backBtnStyle: any = { textDecoration: 'none', color: colors.secondaryText, padding: '8px 12px', backgroundColor: 'white', borderRadius: 10, border: `1px solid ${colors.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center' };
 const formCard: any = { backgroundColor: 'white', padding: 20, borderRadius: 24, border: `1px solid ${colors.border}`, boxShadow: '0 4px 15px rgba(0,0,0,0.02)' };
-const labelStyle = { fontSize: 10, fontWeight: 800, color: colors.secondaryText, display: 'block', marginBottom: 5 };
-const inputStyle: any = { width: '100%', padding: 14, borderRadius: 12, border: `1px solid ${colors.border}`, fontSize: 14, fontWeight: 600, backgroundColor: colors.bgLight, boxSizing: 'border-box', outline: 'none' };
+const labelStyle = {
+  fontSize: '11px', // Slightly larger for readability
+  fontWeight: 800,
+  color: colors.secondaryText,
+  display: 'block',
+  marginBottom: 5
+};
+const inputStyle: any = {
+  width: '100%',
+  padding: 14,
+  borderRadius: 12,
+  border: `1px solid ${colors.border}`,
+  fontSize: '16px', // Prevent Android auto-zoom
+  fontWeight: 600,
+  backgroundColor: colors.bgLight,
+  boxSizing: 'border-box', // Prevent horizontal scroll
+  outline: 'none'
+};
 const methodBtn: any = { flex: 1, padding: 14, borderRadius: 12, border: `1px solid ${colors.border}`, cursor: 'pointer', fontWeight: 700, fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 };
 const noInvoiceToggle = { display: 'flex', alignItems: 'center', gap: 10, padding: 12, borderRadius: 12, cursor: 'pointer', marginBottom: 15 };
 const checkboxBox = { width: 18, height: 18, borderRadius: 5, border: '2px solid #cbd5e1', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: 10 };
