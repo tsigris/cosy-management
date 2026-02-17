@@ -134,11 +134,29 @@ function LoginContent() {
         <form onSubmit={handleLogin} style={formStyle}>
           <div style={fieldGroup}>
             <label style={labelStyle}>EMAIL</label>
-            <input type="email" value={email} onChange={e => setEmail(e.target.value)} style={inputStyle} placeholder="email@example.com" />
+            <input 
+              type="email" 
+              name="email" // Για αποθήκευση κωδικού
+              autoComplete="username" // Για αποθήκευση κωδικού
+              value={email} 
+              onChange={e => setEmail(e.target.value)} 
+              style={inputStyle} 
+              placeholder="email@example.com" 
+              required
+            />
           </div>
           <div style={fieldGroup}>
             <label style={labelStyle}>ΚΩΔΙΚΟΣ ΠΡΟΣΒΑΣΗΣ</label>
-            <input type="password" value={password} onChange={e => setPassword(e.target.value)} style={inputStyle} placeholder="••••••••" />
+            <input 
+              type="password" 
+              name="password" // Για αποθήκευση κωδικού
+              autoComplete="current-password" // Για αποθήκευση κωδικού
+              value={password} 
+              onChange={e => setPassword(e.target.value)} 
+              style={inputStyle} 
+              placeholder="••••••••" 
+              required
+            />
           </div>
           <button type="submit" disabled={loading} style={submitBtnStyle}>
             {loading ? 'ΤΑΥΤΟΠΟΙΗΣΗ...' : 'ΕΙΣΟΔΟΣ'}
