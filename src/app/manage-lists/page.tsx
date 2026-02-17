@@ -24,6 +24,7 @@ import {
   CreditCard,
   Tag,
   TrendingUp,
+  DollarSign,
 } from 'lucide-react'
 
 const colors = {
@@ -47,16 +48,17 @@ const BANK_OPTIONS = [
   'Τράπεζα Πειραιώς',
 ] as const
 
-type TabKey = 'suppliers' | 'utility' | 'staff' | 'maintenance' | 'other'
+type TabKey = 'suppliers' | 'utility' | 'staff' | 'maintenance' | 'other' | 'revenue'
 
 const MENU: Array<{
   key: TabKey
   label: string
   icon: any
-  subCategory: 'Maintenance' | 'utility' | 'staff' | 'other' | null
+  subCategory: 'Maintenance' | 'utility' | 'staff' | 'other' | 'revenue' | null
   addLabel: string
 }> = [
   { key: 'suppliers', label: 'Προμηθευτές', icon: Users, subCategory: null, addLabel: 'ΝΕΟΣ ΠΡΟΜΗΘΕΥΤΗΣ' },
+  { key: 'revenue', label: 'Πηγές Εσόδων', icon: DollarSign, subCategory: 'revenue', addLabel: 'ΝΕΑ ΠΗΓΗ ΕΣΟΔΟΥ' },
   { key: 'utility', label: 'Λογαριασμοί', icon: Lightbulb, subCategory: 'utility', addLabel: 'ΝΕΟΣ ΛΟΓΑΡΙΑΣΜΟΣ' },
   { key: 'staff', label: 'Προσωπικό', icon: User, subCategory: 'staff', addLabel: 'ΝΕΟΣ ΥΠΑΛΛΗΛΟΣ' },
   { key: 'maintenance', label: 'Συντήρηση', icon: Wrench, subCategory: 'Maintenance', addLabel: 'ΝΕΟΣ ΤΕΧΝΙΚΟΣ' },
@@ -73,7 +75,6 @@ function ManageListsContent() {
   const [storeId, setStoreId] = useState<string | null>(urlStoreId)
 
   const [currentStoreName, setCurrentStoreName] = useState('Φορτώνει...')
-
   const [activeTab, setActiveTab] = useState<TabKey>('suppliers')
 
   const [loading, setLoading] = useState(true)
@@ -81,11 +82,12 @@ function ManageListsContent() {
 
   const [suppliers, setSuppliers] = useState<any[]>([])
   const [fixedAssets, setFixedAssets] = useState<any[]>([])
+  const [revenueSources, setRevenueSources] = useState<any[]>([])
   const [transactions, setTransactions] = useState<any[]>([]) // ✅ για τζίρους
 
   const [search, setSearch] = useState('')
 
-  // UI like Suppliers page
+  // UI
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [isFormOpen, setIsFormOpen] = useState(false)
@@ -108,7 +110,10 @@ function ManageListsContent() {
   const [rfCode, setRfCode] = useState<string>('')
 
   const currentTab = useMemo(() => MENU.find(t => t.key === activeTab)!, [activeTab])
-  const CurrentIcon = currentTab.icon
+
+  const isRevenueTab = activeTab === 'revenue'
+  const saveColor = isRevenueTab ? colors.accentGreen : colors.accentGreen // (οι άλλες καρτέλες κρατάνε πράσινο ήδη)
+  const TrendingColor = isRevenueTab ? colors.accentGreen : colors.secondaryText
 
   const copyToClipboard = async (text: string) => {
     const value = String(text || '').trim()
@@ -118,7 +123,6 @@ function ManageListsContent() {
       await navigator.clipboard.writeText(value)
       toast.success('Αντιγράφηκε!')
     } catch {
-      // fallback για Android/παλιότερα
       try {
         const ta = document.createElement('textarea')
         ta.value = value
@@ -176,12 +180,24 @@ function ManageListsContent() {
     return totals
   }, [transactions])
 
+  const revenueTotals = useMemo(() => {
+    const totals: Record<string, number> = {}
+    transactions.forEach((t: any) => {
+      if (!t?.revenue_source_id) return
+      const amount = Math.abs(Number(t.amount)) || 0
+      const id = String(t.revenue_source_id)
+      totals[id] = (totals[id] || 0) + amount
+    })
+    return totals
+  }, [transactions])
+
   const getTurnover = useCallback(
     (id: string) => {
       if (activeTab === 'suppliers') return supplierTotals[id] || 0
+      if (activeTab === 'revenue') return revenueTotals[id] || 0
       return fixedAssetTotals[id] || 0
     },
-    [activeTab, supplierTotals, fixedAssetTotals],
+    [activeTab, supplierTotals, fixedAssetTotals, revenueTotals],
   )
 
   const visibleItems = useMemo(() => {
@@ -190,6 +206,8 @@ function ManageListsContent() {
     let base: any[] = []
     if (activeTab === 'suppliers') {
       base = suppliers
+    } else if (activeTab === 'revenue') {
+      base = revenueSources
     } else {
       base = fixedAssets.filter((x: any) => (x.sub_category || '') === currentTab.subCategory)
     }
@@ -212,7 +230,7 @@ function ManageListsContent() {
       const tb = getTurnover(String(b.id))
       return tb - ta
     })
-  }, [activeTab, suppliers, fixedAssets, search, currentTab.subCategory, getTurnover])
+  }, [activeTab, suppliers, revenueSources, fixedAssets, search, currentTab.subCategory, getTurnover])
 
   const loadData = useCallback(async () => {
     try {
@@ -236,7 +254,7 @@ function ManageListsContent() {
 
       setStoreId(activeStoreId)
 
-      const [storeRes, sRes, fRes, tRes] = await Promise.all([
+      const [storeRes, sRes, fRes, rRes, tRes] = await Promise.all([
         supabase.from('stores').select('name').eq('id', activeStoreId).single(),
         supabase
           .from('suppliers')
@@ -250,10 +268,15 @@ function ManageListsContent() {
           )
           .eq('store_id', activeStoreId)
           .order('name'),
-        // ✅ transactions για τζίρους
+        supabase
+          .from('revenue_sources')
+          .select('id, name, phone, vat_number, bank_name, iban, is_active, created_at')
+          .eq('store_id', activeStoreId)
+          .order('name'),
+        // ✅ transactions για τζίρους (και revenue_source_id)
         supabase
           .from('transactions')
-          .select('amount, supplier_id, fixed_asset_id')
+          .select('amount, supplier_id, fixed_asset_id, revenue_source_id')
           .eq('store_id', activeStoreId),
       ])
 
@@ -261,10 +284,12 @@ function ManageListsContent() {
 
       if (sRes.error) throw sRes.error
       if (fRes.error) throw fRes.error
+      if (rRes.error) throw rRes.error
       if (tRes.error) throw tRes.error
 
       setSuppliers(sRes.data || [])
       setFixedAssets(fRes.data || [])
+      setRevenueSources(rRes.data || [])
       setTransactions(tRes.data || [])
     } catch (e: any) {
       toast.error(e?.message || 'Σφάλμα φόρτωσης')
@@ -287,7 +312,8 @@ function ManageListsContent() {
     setExpandedId(String(item.id))
     setIsFormOpen(true)
 
-    if (activeTab === 'suppliers') {
+    // suppliers + revenue share same fields
+    if (activeTab === 'suppliers' || activeTab === 'revenue') {
       setName(String(item.name || ''))
       setPhone(String(item.phone || ''))
       setVatNumber(String(item.vat_number || ''))
@@ -338,6 +364,54 @@ function ManageListsContent() {
     try {
       setSaving(true)
 
+      // -------------------- REVENUE SOURCES --------------------
+      if (activeTab === 'revenue') {
+        const trimmed = name.trim()
+        if (!trimmed) return toast.error('Γράψε όνομα')
+
+        const payload: any = {
+          name: trimmed,
+          phone: phone.trim() || null,
+          vat_number: vatNumber.trim() || null,
+          bank_name: bankName.trim() || null,
+          iban: iban.trim() || null,
+        }
+
+        if (editingId) {
+          const { data, error } = await supabase
+            .from('revenue_sources')
+            .update(payload)
+            .eq('id', editingId)
+            .eq('store_id', activeStoreId)
+            .select('id, name, phone, vat_number, bank_name, iban, is_active, created_at')
+            .single()
+
+          if (error) throw error
+
+          setRevenueSources(prev =>
+            prev
+              .map(x => (String(x.id) === String(editingId) ? data : x))
+              .sort((a, b) => String(a.name).localeCompare(String(b.name))),
+          )
+          toast.success('Ενημερώθηκε!')
+        } else {
+          const { data, error } = await supabase
+            .from('revenue_sources')
+            .insert([{ ...payload, store_id: activeStoreId }])
+            .select('id, name, phone, vat_number, bank_name, iban, is_active, created_at')
+            .single()
+
+          if (error) throw error
+
+          setRevenueSources(prev => [...prev, data].sort((a, b) => String(a.name).localeCompare(String(b.name))))
+          toast.success('Προστέθηκε!')
+        }
+
+        resetForm()
+        loadData()
+        return
+      }
+
       // -------------------- SUPPLIERS --------------------
       if (activeTab === 'suppliers') {
         const trimmed = name.trim()
@@ -382,7 +456,7 @@ function ManageListsContent() {
         }
 
         resetForm()
-        loadData() // ✅ refresh totals & ranking
+        loadData()
         return
       }
 
@@ -599,6 +673,10 @@ function ManageListsContent() {
         const { error } = await supabase.from('suppliers').delete().eq('id', id).eq('store_id', activeStoreId)
         if (error) throw error
         setSuppliers(prev => prev.filter(x => String(x.id) !== String(id)))
+      } else if (activeTab === 'revenue') {
+        const { error } = await supabase.from('revenue_sources').delete().eq('id', id).eq('store_id', activeStoreId)
+        if (error) throw error
+        setRevenueSources(prev => prev.filter(x => String(x.id) !== String(id)))
       } else {
         const { error } = await supabase.from('fixed_assets').delete().eq('id', id).eq('store_id', activeStoreId)
         if (error) throw error
@@ -623,59 +701,65 @@ function ManageListsContent() {
   }
 
   // ---------------------- UI ----------------------
-  const renderForm = () => {
-    if (activeTab === 'suppliers') {
-      return (
-        <div style={formCard}>
-          <div style={inputGroup}>
-            <label style={labelStyle}>
-              <Hash size={12} /> ΕΠΩΝΥΜΙΑ
-            </label>
-            <input value={name} onChange={e => setName(e.target.value)} style={inputStyle} placeholder="π.χ. COCA COLA" />
-          </div>
+  const renderSupplierLikeForm = () => (
+    <div style={formCard}>
+      <div style={inputGroup}>
+        <label style={labelStyle}>
+          <Hash size={12} /> ΕΠΩΝΥΜΙΑ
+        </label>
+        <input value={name} onChange={e => setName(e.target.value)} style={inputStyle} placeholder="π.χ. COCA COLA" />
+      </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-            <div style={inputGroup}>
-              <label style={labelStyle}>
-                <Phone size={12} /> ΤΗΛΕΦΩΝΟ
-              </label>
-              <input value={phone} onChange={e => setPhone(e.target.value)} style={inputStyle} />
-            </div>
-            <div style={inputGroup}>
-              <label style={labelStyle}>
-                <Tag size={12} /> ΑΦΜ
-              </label>
-              <input value={vatNumber} onChange={e => setVatNumber(e.target.value)} style={inputStyle} />
-            </div>
-          </div>
-
-          <div style={inputGroup}>
-            <label style={labelStyle}>
-              <Building2 size={12} /> ΤΡΑΠΕΖΑ
-            </label>
-            <select value={bankName} onChange={e => setBankName(e.target.value)} style={inputStyle}>
-              <option value="">Επιλέξτε Τράπεζα...</option>
-              {BANK_OPTIONS.map(b => (
-                <option key={b} value={b}>
-                  {b}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div style={inputGroup}>
-            <label style={labelStyle}>
-              <CreditCard size={12} /> IBAN
-            </label>
-            <input value={iban} onChange={e => setIban(e.target.value)} style={inputStyle} placeholder="GR..." />
-          </div>
-
-          <button onClick={handleSave} disabled={saving || loading} style={saveBtn}>
-            {saving ? 'ΑΠΟΘΗΚΕΥΣΗ...' : editingId ? 'ΕΝΗΜΕΡΩΣΗ' : 'ΚΑΤΑΧΩΡΗΣΗ'}
-          </button>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+        <div style={inputGroup}>
+          <label style={labelStyle}>
+            <Phone size={12} /> ΤΗΛΕΦΩΝΟ
+          </label>
+          <input value={phone} onChange={e => setPhone(e.target.value)} style={inputStyle} />
         </div>
-      )
-    }
+        <div style={inputGroup}>
+          <label style={labelStyle}>
+            <Tag size={12} /> ΑΦΜ
+          </label>
+          <input value={vatNumber} onChange={e => setVatNumber(e.target.value)} style={inputStyle} />
+        </div>
+      </div>
+
+      <div style={inputGroup}>
+        <label style={labelStyle}>
+          <Building2 size={12} /> ΤΡΑΠΕΖΑ
+        </label>
+        <select value={bankName} onChange={e => setBankName(e.target.value)} style={inputStyle}>
+          <option value="">Επιλέξτε Τράπεζα...</option>
+          {BANK_OPTIONS.map(b => (
+            <option key={b} value={b}>
+              {b}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div style={inputGroup}>
+        <label style={labelStyle}>
+          <CreditCard size={12} /> IBAN
+        </label>
+        <input value={iban} onChange={e => setIban(e.target.value)} style={inputStyle} placeholder="GR..." />
+      </div>
+
+      <button
+        onClick={handleSave}
+        disabled={saving || loading}
+        style={{ ...saveBtn, backgroundColor: isRevenueTab ? '#10b981' : colors.accentGreen }}
+      >
+        {saving ? 'ΑΠΟΘΗΚΕΥΣΗ...' : editingId ? 'ΕΝΗΜΕΡΩΣΗ' : 'ΚΑΤΑΧΩΡΗΣΗ'}
+      </button>
+    </div>
+  )
+
+  const renderForm = () => {
+    if (activeTab === 'suppliers') return renderSupplierLikeForm()
+
+    if (activeTab === 'revenue') return renderSupplierLikeForm()
 
     if (activeTab === 'utility') {
       return (
@@ -881,12 +965,18 @@ function ManageListsContent() {
       </p>
     )
 
-    if (activeTab === 'suppliers') {
+    if (activeTab === 'suppliers' || activeTab === 'revenue') {
       return (
         <div style={infoGrid}>
-          <p style={infoText}><strong>Τηλ:</strong> {item.phone || '-'}</p>
-          <p style={infoText}><strong>ΑΦΜ:</strong> {item.vat_number || '-'}</p>
-          <p style={infoText}><strong>Τράπεζα:</strong> {item.bank_name || '-'}</p>
+          <p style={infoText}>
+            <strong>Τηλ:</strong> {item.phone || '-'}
+          </p>
+          <p style={infoText}>
+            <strong>ΑΦΜ:</strong> {item.vat_number || '-'}
+          </p>
+          <p style={infoText}>
+            <strong>Τράπεζα:</strong> {item.bank_name || '-'}
+          </p>
           <IbanLine />
         </div>
       )
@@ -896,9 +986,15 @@ function ManageListsContent() {
     if (sub === 'utility') {
       return (
         <div style={infoGrid}>
-          <p style={infoText}><strong>RF:</strong> {item.rf_code || '-'}</p>
-          <p style={infoText}><strong>Τράπεζα:</strong> {item.bank_name || '-'}</p>
-          <p style={infoText}><strong>Κατηγορία:</strong> Λογαριασμοί</p>
+          <p style={infoText}>
+            <strong>RF:</strong> {item.rf_code || '-'}
+          </p>
+          <p style={infoText}>
+            <strong>Τράπεζα:</strong> {item.bank_name || '-'}
+          </p>
+          <p style={infoText}>
+            <strong>Κατηγορία:</strong> Λογαριασμοί
+          </p>
         </div>
       )
     }
@@ -908,11 +1004,21 @@ function ManageListsContent() {
       const amount = item.pay_basis === 'daily' ? item.daily_rate ?? '-' : item.monthly_salary ?? '-'
       return (
         <div style={infoGrid}>
-          <p style={infoText}><strong>Συμφωνία:</strong> {pb}</p>
-          <p style={infoText}><strong>Ποσό:</strong> {String(amount)}</p>
-          <p style={infoText}><strong>Μέρες:</strong> {String(item.monthly_days ?? '-')}</p>
-          <p style={infoText}><strong>Ημ. πρόσληψης:</strong> {item.start_date ? String(item.start_date).slice(0, 10) : '-'}</p>
-          <p style={infoText}><strong>Τράπεζα:</strong> {item.bank_name || '-'}</p>
+          <p style={infoText}>
+            <strong>Συμφωνία:</strong> {pb}
+          </p>
+          <p style={infoText}>
+            <strong>Ποσό:</strong> {String(amount)}
+          </p>
+          <p style={infoText}>
+            <strong>Μέρες:</strong> {String(item.monthly_days ?? '-')}
+          </p>
+          <p style={infoText}>
+            <strong>Ημ. πρόσληψης:</strong> {item.start_date ? String(item.start_date).slice(0, 10) : '-'}
+          </p>
+          <p style={infoText}>
+            <strong>Τράπεζα:</strong> {item.bank_name || '-'}
+          </p>
           <IbanLine />
         </div>
       )
@@ -920,11 +1026,19 @@ function ManageListsContent() {
 
     return (
       <div style={infoGrid}>
-        <p style={infoText}><strong>Τηλ:</strong> {item.phone || '-'}</p>
-        <p style={infoText}><strong>ΑΦΜ:</strong> {item.vat_number || '-'}</p>
-        <p style={infoText}><strong>Τράπεζα:</strong> {item.bank_name || '-'}</p>
+        <p style={infoText}>
+          <strong>Τηλ:</strong> {item.phone || '-'}
+        </p>
+        <p style={infoText}>
+          <strong>ΑΦΜ:</strong> {item.vat_number || '-'}
+        </p>
+        <p style={infoText}>
+          <strong>Τράπεζα:</strong> {item.bank_name || '-'}
+        </p>
         <IbanLine />
-        <p style={infoText}><strong>Κατηγορία:</strong> {sub === 'Maintenance' ? 'Συντήρηση' : sub || '-'}</p>
+        <p style={infoText}>
+          <strong>Κατηγορία:</strong> {sub === 'Maintenance' ? 'Συντήρηση' : sub || '-'}
+        </p>
       </div>
     )
   }
@@ -948,11 +1062,7 @@ function ManageListsContent() {
         {/* ✅ DROPDOWN MENU */}
         <div style={{ marginBottom: 14 }}>
           <label style={labelStyle}>ΚΑΤΗΓΟΡΙΑ</label>
-          <select
-            value={activeTab}
-            onChange={e => onChangeCategory(e.target.value as TabKey)}
-            style={inputStyle}
-          >
+          <select value={activeTab} onChange={e => onChangeCategory(e.target.value as TabKey)} style={inputStyle}>
             {MENU.map(m => (
               <option key={m.key} value={m.key}>
                 {m.label}
@@ -968,7 +1078,9 @@ function ManageListsContent() {
           }}
           style={isFormOpen ? cancelBtn : addBtn}
         >
-          {isFormOpen ? 'ΑΚΥΡΩΣΗ' : (
+          {isFormOpen ? (
+            'ΑΚΥΡΩΣΗ'
+          ) : (
             <>
               <Plus size={16} /> {currentTab.addLabel}
             </>
@@ -1006,7 +1118,11 @@ function ManageListsContent() {
             <input
               value={search}
               onChange={e => setSearch(e.target.value)}
-              placeholder={activeTab === 'suppliers' ? 'Όνομα / ΑΦΜ / Τηλέφωνο...' : 'Γράψτε για αναζήτηση...'}
+              placeholder={
+                activeTab === 'suppliers' || activeTab === 'revenue'
+                  ? 'Όνομα / ΑΦΜ / Τηλέφωνο...'
+                  : 'Γράψτε για αναζήτηση...'
+              }
               style={{ ...inputStyle, paddingLeft: 52 }}
             />
           </div>
@@ -1015,7 +1131,7 @@ function ManageListsContent() {
         {/* ✅ LIST (ranking by turnover + amount shown) */}
         <div style={listArea}>
           <div style={rankingHeader}>
-            <TrendingUp size={14} />
+            <TrendingUp size={14} style={{ color: TrendingColor }} />
             ΚΑΤΑΤΑΞΗ ΒΑΣΕΙ ΤΖΙΡΟΥ: {currentTab.label.toUpperCase()}
           </div>
 
@@ -1039,7 +1155,7 @@ function ManageListsContent() {
                     <div style={{ flex: 1 }}>
                       <p style={rowName}>{String(item.name || '').toUpperCase()}</p>
                       <p style={categoryBadge}>
-                        {activeTab === 'suppliers'
+                        {activeTab === 'suppliers' || activeTab === 'revenue'
                           ? item.bank_name
                             ? `ΤΡΑΠΕΖΑ: ${item.bank_name}`
                             : '—'
@@ -1050,7 +1166,9 @@ function ManageListsContent() {
                     </div>
 
                     <div style={{ textAlign: 'right' }}>
-                      <p style={turnoverText}>{turnover.toFixed(2)}€</p>
+                      <p style={{ ...turnoverText, color: isRevenueTab ? '#10b981' : colors.accentGreen }}>
+                        {turnover.toFixed(2)}€
+                      </p>
                     </div>
 
                     {isEditingThis && (
