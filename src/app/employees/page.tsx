@@ -21,6 +21,8 @@ const colors = {
   slate100: '#f1f5f9'
 }
 
+type PayBasis = 'monthly' | 'daily'
+
 function EmployeesContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -35,7 +37,7 @@ function EmployeesContent() {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [selectedEmpId, setSelectedEmpId] = useState<string | null>(null)
 
-  const [payBasis, setPayBasis] = useState<'monthly' | 'daily'>('monthly')
+  const [payBasis, setPayBasis] = useState<PayBasis>('monthly')
   const [viewYear, setViewYear] = useState(new Date().getFullYear())
 
   // Active / Inactive
@@ -81,6 +83,7 @@ function EmployeesContent() {
     }
   })
 
+  // ✅ Form Data (includes monthly_days)
   const [formData, setFormData] = useState({
     full_name: '',
     position: '',
@@ -89,6 +92,7 @@ function EmployeesContent() {
     bank_name: 'Εθνική Τράπεζα',
     monthly_salary: '',
     daily_rate: '',
+    monthly_days: '25', // ✅ default
     start_date: new Date().toISOString().split('T')[0]
   })
 
@@ -106,7 +110,7 @@ function EmployeesContent() {
 
       const { data, error } = await supabase
         .from('transactions')
-        .select('id,date,notes,employee_id,amount,employees(full_name)')
+        .select('id,date,notes,employee_id,amount,fixed_assets(name)')
         .eq('store_id', storeId)
         .ilike('notes', '%tips%')
         .order('date', { ascending: false })
@@ -133,7 +137,7 @@ function EmployeesContent() {
 
           return {
             id: t.id,
-            name: t?.employees?.full_name || '—',
+            name: t?.fixed_assets?.name || '—',
             date: t.date,
             amount,
             note
@@ -176,18 +180,8 @@ function EmployeesContent() {
       if (!session?.user) return
 
       const [empsRes, transRes, otRes] = await Promise.all([
-        supabase
-          .from('fixed_assets')
-          .select('*')
-          .eq('store_id', storeId)
-          .eq('sub_category', 'staff')
-          .order('name'),
-        supabase
-          .from('transactions')
-          .select('*')
-          .eq('store_id', storeId)
-          .not('employee_id', 'is', null)
-          .order('date', { ascending: false }),
+        supabase.from('fixed_assets').select('*').eq('store_id', storeId).eq('sub_category', 'staff').order('name'),
+        supabase.from('transactions').select('*').eq('store_id', storeId).not('fixed_asset_id', 'is', null).order('date', { ascending: false }),
         supabase.from('employee_overtimes').select('*').eq('store_id', storeId).eq('is_paid', false)
       ])
 
@@ -218,23 +212,33 @@ function EmployeesContent() {
     return true
   })
 
-  // ✅ Toggle Active/Inactive (Supabase)
+  // ✅ Toggle Active/Inactive (Supabase)  (fixed_assets)
   async function toggleActive(empId: string, currentValue: boolean | null | undefined) {
     const nextValue = currentValue === false ? true : false
 
     // optimistic UI
     setEmployees((prev) => prev.map((e) => (e.id === empId ? { ...e, is_active: nextValue } : e)))
 
-    // Εδώ θα πρέπει να γίνει update στον πίνακα fixed_assets αν χρειάζεται (αν υπάρχει πεδίο is_active)
+    const { error } = await supabase.from('fixed_assets').update({ is_active: nextValue }).eq('id', empId)
+
+    if (error) {
+      // rollback
+      setEmployees((prev) => prev.map((e) => (e.id === empId ? { ...e, is_active: currentValue } : e)))
+      toast.error('Αποτυχία ενημέρωσης κατάστασης υπαλλήλου.')
+      return
+    }
+
     toast.success(nextValue ? 'Ο υπάλληλος ενεργοποιήθηκε ✅' : 'Ο υπάλληλος απενεργοποιήθηκε 🚫')
   }
 
-  // Υπολογισμός εκκρεμών ωρών
+  // ✅ Υπολογισμός εκκρεμών ωρών (uses fixed_asset_id)
   const getPendingOtHours = (empId: string) => {
-    return overtimes.filter((ot) => ot.employee_id === empId).reduce((acc, curr) => acc + Number(curr.hours), 0)
+    return overtimes
+      .filter((ot) => ot.fixed_asset_id === empId)
+      .reduce((acc, curr) => acc + Number(curr.hours), 0)
   }
 
-  // ✅ Καταγραφή νέας υπερωρίας (store_id from URL)
+  // ✅ Καταγραφή νέας υπερωρίας (store_id from URL) - uses fixed_asset_id
   async function handleQuickOvertime() {
     if (!otHours || !otModal) return
     if (!storeId || storeId === 'null') {
@@ -244,23 +248,27 @@ function EmployeesContent() {
 
     const { error } = await supabase.from('employee_overtimes').insert([
       {
-        employee_id: otModal.empId,
-        store_id: storeId, // ✅ explicit
+        fixed_asset_id: otModal.empId, // ✅ changed
+        store_id: storeId,
         hours: Number(otHours),
         date: new Date().toISOString().split('T')[0],
         is_paid: false
       }
     ])
 
-    if (!error) {
-      toast.success(`Προστέθηκαν ${otHours} ώρες στην ${otModal.name}`)
-      setOtModal(null)
-      setOtHours('')
-      fetchInitialData()
+    if (error) {
+      console.error(error)
+      toast.error('Αποτυχία καταγραφής υπερωρίας.')
+      return
     }
+
+    toast.success(`Προστέθηκαν ${otHours} ώρες στην ${otModal.name}`)
+    setOtModal(null)
+    setOtHours('')
+    fetchInitialData()
   }
 
-  // ✅ Καταγραφή νέων Tips σαν transaction (preserve store context)
+  // ✅ Καταγραφή νέων Tips σαν transaction (preserve store context) - uses fixed_asset_id
   async function handleQuickTip() {
     if (!tipAmount || !tipModal) return
     if (!storeId || storeId === 'null') {
@@ -278,8 +286,8 @@ function EmployeesContent() {
 
     const { error } = await supabase.from('transactions').insert([
       {
-        store_id: storeId, // ✅ explicit
-        employee_id: tipModal.empId,
+        store_id: storeId,
+        fixed_asset_id: tipModal.empId, // ✅ changed
         amount: amountNum,
         type: 'expense',
         category: 'Προσωπικό',
@@ -290,6 +298,7 @@ function EmployeesContent() {
     ])
 
     if (error) {
+      console.error(error)
       toast.error('Αποτυχία καταγραφής tips.')
       return
     }
@@ -320,11 +329,12 @@ function EmployeesContent() {
       .update({
         amount: amountNum,
         notes: `Tips: ${amountNum}€ [${tipEditModal.name}]`,
-        store_id: storeId // ✅ explicit
+        store_id: storeId
       })
       .eq('id', tipEditModal.id)
 
     if (error) {
+      console.error(error)
       toast.error('Αποτυχία επεξεργασίας tips.')
       return
     }
@@ -342,6 +352,7 @@ function EmployeesContent() {
 
     const { error } = await supabase.from('transactions').delete().eq('id', id)
     if (error) {
+      console.error(error)
       toast.error('Αποτυχία διαγραφής tips.')
       return
     }
@@ -368,10 +379,10 @@ function EmployeesContent() {
   // - tips υπολογίζονται στο stats.tips
   // - tips ΔΕΝ υπολογίζονται στο stats.total (ΣΥΝΟΛΟ ΕΤΟΥΣ)
   const getYearlyStats = (id: string) => {
-    const yearTrans = transactions.filter((t) => t.employee_id === id && new Date(t.date).getFullYear() === viewYear)
+    const yearTrans = transactions.filter((t) => t.fixed_asset_id === id && new Date(t.date).getFullYear() === viewYear)
 
     let stats = { base: 0, overtime: 0, bonus: 0, tips: 0, total: 0 }
-    const processedDates = new Set()
+    const processedDates = new Set<string>()
 
     yearTrans.forEach((t) => {
       const note = String(t.notes || '')
@@ -411,6 +422,18 @@ function EmployeesContent() {
     return stats
   }
 
+  // ✅ Clean, type-safe handleSave (fixed_assets only fields)
+  type FixedAssetStaffPayload = {
+    name: string
+    sub_category: 'staff'
+    store_id: string
+    pay_basis: PayBasis
+    monthly_salary: number | null
+    daily_rate: number | null
+    monthly_days: number
+    is_active: boolean
+  }
+
   async function handleSave() {
     const isSalaryMissing = payBasis === 'monthly' ? !formData.monthly_salary : !formData.daily_rate
     if (!formData.full_name.trim() || isSalaryMissing) return alert('Συμπληρώστε τα υποχρεωτικά πεδία!')
@@ -421,33 +444,73 @@ function EmployeesContent() {
 
     setLoading(true)
 
-    const payload: any = {
-      full_name: formData.full_name.trim(),
-      position: formData.position.trim() || null,
-      amka: formData.amka.trim() || null,
-      iban: formData.iban.trim() || null,
-      bank_name: formData.bank_name,
-      pay_basis: payBasis,
-      monthly_salary: payBasis === 'monthly' ? Number(formData.monthly_salary) : null,
-      daily_rate: payBasis === 'daily' ? Number(formData.daily_rate) : null,
-      start_date: formData.start_date,
-      store_id: storeId // ✅ explicit from URL
+    const monthlyDaysNum = Number(formData.monthly_days)
+    if (!Number.isFinite(monthlyDaysNum) || monthlyDaysNum <= 0) {
+      toast.error('Βάλε έγκυρες "Μέρες Μήνα".')
+      setLoading(false)
+      return
     }
 
-    if (!editingId) payload.is_active = true
+    const monthlySalaryNum = Number(formData.monthly_salary)
+    const dailyRateNum = Number(formData.daily_rate)
 
-    // Εδώ θα πρέπει να γίνει update/insert στον πίνακα fixed_assets αν χρειάζεται
+    const payload: FixedAssetStaffPayload = {
+      name: formData.full_name.trim(),
+      sub_category: 'staff',
+      store_id: storeId,
+      pay_basis: payBasis,
+      monthly_salary: payBasis === 'monthly' && Number.isFinite(monthlySalaryNum) ? monthlySalaryNum : null,
+      daily_rate: payBasis === 'daily' && Number.isFinite(dailyRateNum) ? dailyRateNum : null,
+      monthly_days: monthlyDaysNum,
+      is_active: true
+    }
+
+    const { error } = editingId
+      ? await supabase.from('fixed_assets').update(payload).eq('id', editingId)
+      : await supabase.from('fixed_assets').insert([payload])
+
+    if (error) {
+      console.error(error)
+      toast.error('Αποτυχία αποθήκευσης.')
+      setLoading(false)
+      return
+    }
+
+    toast.success('Αποθηκεύτηκε!')
     setEditingId(null)
     resetForm()
     setIsAdding(false)
     fetchInitialData()
+    setLoading(false)
   }
 
+  // ✅ Delete staff: delete transactions by fixed_asset_id, then delete fixed_assets
   async function deleteEmployee(id: string, name: string) {
     if (!confirm(`Οριστική διαγραφή του/της ${name}; Θα σβηστεί και το ιστορικό.`)) return
+    if (!storeId || storeId === 'null') {
+      router.replace('/select-store')
+      return
+    }
+
     setLoading(true)
-    await supabase.from('transactions').delete().eq('employee_id', id)
-    // Εδώ θα πρέπει να γίνει διαγραφή από τον πίνακα fixed_assets αν χρειάζεται
+
+    const { error: transErr } = await supabase.from('transactions').delete().eq('fixed_asset_id', id)
+    if (transErr) {
+      console.error(transErr)
+      toast.error('Αποτυχία διαγραφής συναλλαγών.')
+      setLoading(false)
+      return
+    }
+
+    const { error: empErr } = await supabase.from('fixed_assets').delete().eq('id', id)
+    if (empErr) {
+      console.error(empErr)
+      toast.error('Αποτυχία διαγραφής υπαλλήλου.')
+      setLoading(false)
+      return
+    }
+
+    toast.success('Διαγράφηκε ✅')
     fetchInitialData()
     setLoading(false)
   }
@@ -456,7 +519,10 @@ function EmployeesContent() {
     if (!confirm('Διαγραφή αυτής της πληρωμής;')) return
     const { error } = await supabase.from('transactions').delete().eq('id', id)
     if (!error) fetchInitialData()
-    else alert(error.message)
+    else {
+      console.error(error)
+      toast.error('Αποτυχία διαγραφής πληρωμής.')
+    }
   }
 
   const resetForm = () => {
@@ -468,6 +534,7 @@ function EmployeesContent() {
       bank_name: 'Εθνική Τράπεζα',
       monthly_salary: '',
       daily_rate: '',
+      monthly_days: '25',
       start_date: new Date().toISOString().split('T')[0]
     })
     setPayBasis('monthly')
@@ -477,18 +544,19 @@ function EmployeesContent() {
   return (
     <div style={iphoneWrapper}>
       <Toaster position="top-center" richColors />
+
       <div style={{ maxWidth: '500px', margin: '0 auto', paddingBottom: '100px' }}>
         {/* HEADER */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
             <div style={logoBoxStyle}>👥</div>
             <h1 style={{ fontWeight: '800', fontSize: '22px', margin: 0, color: colors.primaryDark }}>Υπάλληλοι</h1>
-          </div>
 
-          {/* ✅ Back link preserves SaaS context */}
-          <Link href={`/?store=${storeId}`} style={backBtnStyle}>
-            ✕
-          </Link>
+            {/* ✅ Back link preserves SaaS context */}
+            <Link href={`/?store=${storeId}`} style={backBtnStyle}>
+              ✕
+            </Link>
+          </div>
         </div>
 
         {/* ✅ CREATE TIPS MODAL */}
@@ -703,28 +771,43 @@ function EmployeesContent() {
             </div>
 
             <div style={{ display: 'flex', gap: '12px', marginTop: '16px' }}>
-              <div style={{ flex: 1 }}>
-                <label style={labelStyle}>{payBasis === 'monthly' ? 'Μισθός (€) *' : 'Ημερομίσθιο (€) *'}</label>
-                <input
-                  type="number"
-                  inputMode="decimal"
-                  value={payBasis === 'monthly' ? formData.monthly_salary : formData.daily_rate}
-                  onFocus={(e) => {
-                    if (e.target.value === '0')
-                      setFormData({ ...formData, [payBasis === 'monthly' ? 'monthly_salary' : 'daily_rate']: '' } as any)
-                  }}
-                  onChange={(e) =>
-                    setFormData(
-                      {
+              {/* Salary/Daily + Monthly Days (if monthly) */}
+              <div style={{ display: 'flex', gap: '12px', flex: 1 }}>
+                <div style={{ flex: 1 }}>
+                  <label style={labelStyle}>{payBasis === 'monthly' ? 'Μισθός (€) *' : 'Ημερομίσθιο (€) *'}</label>
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    value={payBasis === 'monthly' ? formData.monthly_salary : formData.daily_rate}
+                    onFocus={(e) => {
+                      if (e.target.value === '0') setFormData({ ...formData, [payBasis === 'monthly' ? 'monthly_salary' : 'daily_rate']: '' })
+                    }}
+                    onChange={(e) =>
+                      setFormData({
                         ...formData,
                         [payBasis === 'monthly' ? 'monthly_salary' : 'daily_rate']: e.target.value
-                      } as any
-                    )
-                  }
-                  style={inputStyle}
-                  placeholder="0"
-                />
+                      })
+                    }
+                    style={inputStyle}
+                    placeholder="0"
+                  />
+                </div>
+
+                {payBasis === 'monthly' && (
+                  <div style={{ flex: 1 }}>
+                    <label style={labelStyle}>Μέρες Μήνα</label>
+                    <input
+                      type="number"
+                      inputMode="numeric"
+                      value={formData.monthly_days}
+                      onChange={(e) => setFormData({ ...formData, monthly_days: e.target.value })}
+                      style={inputStyle}
+                      placeholder="25"
+                    />
+                  </div>
+                )}
               </div>
+
               <div style={{ flex: 1 }}>
                 <label style={labelStyle}>Ημ. Πρόσληψης</label>
                 <input type="date" value={formData.start_date} onChange={(e) => setFormData({ ...formData, start_date: e.target.value })} style={inputStyle} />
@@ -763,19 +846,14 @@ function EmployeesContent() {
             const isInactive = emp.is_active === false
 
             return (
-              <div
-                key={emp.id}
-                style={{
-                  ...employeeCard,
-                  opacity: isInactive ? 0.6 : 1
-                }}
-              >
+              <div key={emp.id} style={{ ...employeeCard, opacity: isInactive ? 0.6 : 1 }}>
                 <div
                   onClick={() => setSelectedEmpId(isSelected ? null : emp.id)}
                   style={{ padding: '18px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
                 >
                   <div style={{ flex: 1 }}>
-                    <p style={{ fontWeight: '700', color: colors.primaryDark, fontSize: '16px', margin: 0 }}>{emp.name?.toUpperCase()}</p>
+                    <p style={{ fontWeight: '700', color: colors.primaryDark, fontSize: '16px', margin: 0 }}>{String(emp.name || '').toUpperCase()}</p>
+
                     <div style={{ marginTop: '6px', display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
                       <span
                         style={{
@@ -786,6 +864,7 @@ function EmployeesContent() {
                       >
                         {daysLeft === 0 ? 'ΣΗΜΕΡΑ 💰' : `ΣΕ ${daysLeft} ΗΜΕΡΕΣ 📅`}
                       </span>
+
                       {pendingOt > 0 && <span style={{ ...badgeStyle, backgroundColor: '#fff7ed', color: '#c2410c' }}>⏱️ {pendingOt} ΩΡΕΣ</span>}
                       {isInactive && <span style={{ ...badgeStyle, backgroundColor: '#fef2f2', color: colors.accentRed }}>ΑΝΕΝΕΡΓΟΣ</span>}
                     </div>
@@ -816,9 +895,8 @@ function EmployeesContent() {
                       </>
                     )}
 
-                    {/* ✅ Pay link preserves SaaS context */}
                     <Link
-                      href={`/pay-employee?id=${emp.id}&name=${encodeURIComponent(emp.name)}&store=${storeId}`}
+                      href={`/pay-employee?id=${emp.id}&name=${encodeURIComponent(emp.name || '')}&store=${storeId}`}
                       onClick={(e) => e.stopPropagation()}
                       style={payBtnStyle}
                     >
@@ -834,9 +912,7 @@ function EmployeesContent() {
                       <p style={{ margin: 0, fontWeight: '700' }}>🏦 {emp.bank_name || 'Δεν ορίστηκε'}</p>
                       <p style={{ margin: '3px 0 0 0', fontWeight: '600', color: colors.accentBlue, fontSize: '11px' }}>{emp.iban || 'Δεν ορίστηκε IBAN'}</p>
                       {pendingOt > 0 && (
-                        <p style={{ margin: '8px 0 0 0', fontWeight: '800', color: '#c2410c', fontSize: '11px' }}>
-                          ⚠️ ΕΚΚΡΕΜΟΥΝ: {pendingOt} ώρες υπερωρίας
-                        </p>
+                        <p style={{ margin: '8px 0 0 0', fontWeight: '800', color: '#c2410c', fontSize: '11px' }}>⚠️ ΕΚΚΡΕΜΟΥΝ: {pendingOt} ώρες υπερωρίας</p>
                       )}
                     </div>
 
@@ -869,7 +945,6 @@ function EmployeesContent() {
                         <p style={statValue}>{yearlyStats.tips.toFixed(2)}€</p>
                       </div>
 
-                      {/* ✅ ΣΥΝΟΛΟ ΕΤΟΥΣ (χωρίς tips) */}
                       <div style={{ ...statBox, backgroundColor: colors.primaryDark }}>
                         <p style={{ ...statLabel, color: '#94a3b8' }}>ΣΥΝΟΛΟ ΕΤΟΥΣ</p>
                         <p style={{ ...statValue, color: colors.accentGreen }}>{yearlyStats.total.toFixed(2)}€</p>
@@ -879,7 +954,7 @@ function EmployeesContent() {
                     <p style={historyTitle}>ΙΣΤΟΡΙΚΟ ΠΛΗΡΩΜΩΝ {viewYear}</p>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '20px' }}>
                       {transactions
-                        .filter((t) => t.employee_id === emp.id && new Date(t.date).getFullYear() === viewYear)
+                        .filter((t) => t.fixed_asset_id === emp.id && new Date(t.date).getFullYear() === viewYear)
                         .map((t) => {
                           const isTip = /tips/i.test(t.notes || '')
                           const note = String(t.notes || '')
@@ -888,9 +963,7 @@ function EmployeesContent() {
                           return (
                             <div key={t.id} style={historyItemExtended}>
                               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <span style={{ color: colors.secondaryText, fontWeight: '700', fontSize: '11px' }}>
-                                  {new Date(t.date).toLocaleDateString('el-GR')}
-                                </span>
+                                <span style={{ color: colors.secondaryText, fontWeight: '700', fontSize: '11px' }}>{new Date(t.date).toLocaleDateString('el-GR')}</span>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                                   <span>{t.method === 'Τράπεζα' ? '🏦' : '💵'}</span>
                                   <span style={{ fontWeight: '800', color: colors.primaryDark }}>{Number(t.amount).toFixed(2)}€</span>
@@ -919,16 +992,17 @@ function EmployeesContent() {
                     <div style={{ display: 'flex', gap: '10px' }}>
                       <button
                         onClick={() => {
-                          setPayBasis(emp.pay_basis || 'monthly')
+                          setPayBasis((emp.pay_basis as PayBasis) || 'monthly')
                           setFormData({
-                            full_name: emp.full_name,
-                            position: emp.position || '',
-                            amka: emp.amka || '',
-                            iban: emp.iban || '',
-                            bank_name: emp.bank_name || 'Εθνική Τράπεζα',
-                            monthly_salary: emp.monthly_salary?.toString() || '',
-                            daily_rate: emp.daily_rate?.toString() || '',
-                            start_date: emp.start_date
+                            full_name: emp.name || '',
+                            position: '',
+                            amka: '',
+                            iban: '',
+                            bank_name: 'Εθνική Τράπεζα',
+                            monthly_salary: emp.monthly_salary != null ? String(emp.monthly_salary) : '',
+                            daily_rate: emp.daily_rate != null ? String(emp.daily_rate) : '',
+                            monthly_days: emp.monthly_days != null ? String(emp.monthly_days) : '25',
+                            start_date: new Date().toISOString().split('T')[0]
                           })
                           setEditingId(emp.id)
                           setIsAdding(true)
@@ -939,7 +1013,7 @@ function EmployeesContent() {
                         ΕΠΕΞΕΡΓΑΣΙΑ ✎
                       </button>
 
-                      <button onClick={() => deleteEmployee(emp.id, emp.full_name)} style={deleteBtn}>
+                      <button onClick={() => deleteEmployee(emp.id, emp.name)} style={deleteBtn}>
                         ΔΙΑΓΡΑΦΗ 🗑️
                       </button>
 
@@ -957,6 +1031,8 @@ function EmployeesContent() {
             )
           })}
         </div>
+
+        {loading && <p style={{ marginTop: '18px', fontSize: '12px', color: colors.secondaryText, fontWeight: 800, textAlign: 'center' }}>Φόρτωση...</p>}
       </div>
     </div>
   )
@@ -1132,44 +1208,21 @@ const tipsListBtn: any = { marginTop: '10px', width: '100%', padding: '10px', bo
 const tipsListWrap: any = { backgroundColor: colors.white, border: `1px solid ${colors.border}`, borderRadius: '16px', padding: '14px', marginBottom: '18px' }
 const tipsListItem: any = { padding: '10px', borderRadius: '12px', border: `1px solid ${colors.border}`, backgroundColor: colors.bgLight }
 
-const tipsMonthSelect: any = {
-  padding: '8px 10px',
-  borderRadius: '12px',
-  border: '1px solid #f59e0b',
-  backgroundColor: '#fff7ed',
-  color: '#b45309',
-  fontWeight: 900,
-  fontSize: '11px',
-  outline: 'none',
-  cursor: 'pointer'
-}
+const tipsMonthSelect: any = { padding: '8px 10px', borderRadius: '12px', border: '1px solid #f59e0b', backgroundColor: '#fff7ed', color: '#b45309', fontWeight: 900, fontSize: '11px', outline: 'none', cursor: 'pointer' }
 
-const miniIconBtn: any = {
-  width: '34px',
-  height: '34px',
-  borderRadius: '10px',
-  border: `1px solid ${colors.border}`,
-  backgroundColor: '#ffffff',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  cursor: 'pointer',
-  color: colors.primaryDark
-}
-
-const miniIconBtnDanger: any = {
-  ...miniIconBtn,
-  border: '1px solid #fecaca',
-  backgroundColor: '#fef2f2',
-  color: colors.accentRed
-}
+const miniIconBtn: any = { width: '34px', height: '34px', borderRadius: '10px', border: `1px solid ${colors.border}`, backgroundColor: '#ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: colors.primaryDark }
+const miniIconBtnDanger: any = { ...miniIconBtn, border: '1px solid #fecaca', backgroundColor: '#fef2f2', color: colors.accentRed }
 
 export default function EmployeesPage() {
   return (
-    <main>
-      <Suspense fallback={<div>Φόρτωση...</div>}>
-        <EmployeesContent />
-      </Suspense>
-    </main>
+    <Suspense
+      fallback={
+        <div style={iphoneWrapper}>
+          <p style={{ fontWeight: 800, color: colors.secondaryText, textAlign: 'center', marginTop: '30px' }}>Φόρτωση...</p>
+        </div>
+      }
+    >
+      <EmployeesContent />
+    </Suspense>
   )
 }
