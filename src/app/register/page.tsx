@@ -14,6 +14,7 @@ function RegisterForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
 
+  // Παίρνουμε τον κωδικό πρόσκλησης (store ID) από το URL
   const inviteCode = searchParams.get('invite') 
 
   const handleSignUp = async (e: React.FormEvent) => {
@@ -27,7 +28,7 @@ function RegisterForm() {
     setLoading(true)
 
     try {
-      // 1. ΕΓΓΡΑΦΗ ΣΤΟ AUTH
+      // 1. ΕΓΓΡΑΦΗ ΧΡΗΣΤΗ ΣΤΟ AUTH
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: email.trim(),
         password: password.trim(),
@@ -37,59 +38,73 @@ function RegisterForm() {
       })
 
       if (authError) throw authError
+      
+      const user = authData.user
+      if (!user) throw new Error('Η εγγραφή απέτυχε. Δοκιμάστε ξανά.')
 
-      if (authData.user) {
-        let finalStoreId = '';
+      let finalStoreId = '';
 
-        // 2. ΑΝ ΕΙΝΑΙ ΝΕΟΣ ADMIN (ΟΧΙ ΑΠΟ ΠΡΟΣΚΛΗΣΗ)
-        if (!inviteCode) {
-          // Δημιουργούμε το πρώτο του κατάστημα αυτόματα
-          const { data: newStore, error: storeErr } = await supabase
-            .from('stores')
-            .insert([{ 
-              name: `ΚΑΤΑΣΤΗΜΑ ${username || 'ΜΟΥ'}`, 
-              owner_id: authData.user.id 
-            }])
-            .select()
-            .single()
-
-          if (storeErr) throw storeErr
-          finalStoreId = newStore.id
-
-          // Δίνουμε πρόσβαση (store_access)
-          await supabase.from('store_access').insert([{
-            user_id: authData.user.id,
-            store_id: finalStoreId,
-            role: 'admin'
-          }])
-
-          // Δημιουργία Βασικών Παγίων
-          const defaultAssets = [
-            { name: 'ΕΝΟΙΚΙΟ', store_id: finalStoreId },
-            { name: 'ΛΟΓΙΣΤΗΣ', store_id: finalStoreId },
-            { name: 'ΔΕΗ / ΡΕΥΜΑ', store_id: finalStoreId }
-          ]
-          await supabase.from('fixed_assets').insert(defaultAssets)
-
-        } else {
-          // ΑΝ ΕΙΝΑΙ ΑΠΟ ΠΡΟΣΚΛΗΣΗ
-          finalStoreId = inviteCode
-          await supabase.from('store_access').insert([{
-            user_id: authData.user.id,
-            store_id: finalStoreId,
-            role: 'user'
-          }])
-        }
-
-        toast.success('Η εγγραφή ολοκληρώθηκε!')
+      // 2. ΕΛΕΓΧΟΣ: ΕΙΝΑΙ ΑΠΟ ΠΡΟΣΚΛΗΣΗ Ή ΝΕΟΣ ADMIN;
+      if (inviteCode) {
+        // --- ΣΕΝΑΡΙΟ Α: ΕΓΓΡΑΦΗ ΜΕ ΠΡΟΣΚΛΗΣΗ (ΥΠΑΛΛΗΛΟΣ) ---
+        finalStoreId = inviteCode
         
-        // Αποθήκευση στο localStorage και ανακατεύθυνση
-        localStorage.setItem('active_store_id', finalStoreId)
-        router.push(`/?store=${finalStoreId}`)
-        router.refresh()
+        // Συνδέουμε τον χρήστη με το υπάρχον κατάστημα
+        const { error: accessError } = await supabase.from('store_access').insert([{
+          user_id: user.id,
+          store_id: finalStoreId,
+          role: 'user' // Ο ρόλος είναι απλός χρήστης
+        }])
+
+        if (accessError) throw accessError
+
+      } else {
+        // --- ΣΕΝΑΡΙΟ Β: ΝΕΟΣ ΙΔΙΟΚΤΗΤΗΣ (ADMIN) ---
+        
+        // Δημιουργία νέου καταστήματος
+        const { data: newStore, error: storeErr } = await supabase
+          .from('stores')
+          .insert([{ 
+            name: `ΚΑΤΑΣΤΗΜΑ ${username.toUpperCase() || 'ΜΟΥ'}`, 
+            owner_id: user.id 
+          }])
+          .select()
+          .single()
+
+        if (storeErr) throw storeErr
+        finalStoreId = newStore.id
+
+        // Δίνουμε ρόλο admin στον ιδιοκτήτη
+        await supabase.from('store_access').insert([{
+          user_id: user.id,
+          store_id: finalStoreId,
+          role: 'admin'
+        }])
+
+        // Δημιουργία Βασικών Παγίων για το νέο κατάστημα
+        const defaultAssets = [
+          { name: 'ΕΝΟΙΚΙΟ', store_id: finalStoreId },
+          { name: 'ΛΟΓΙΣΤΗΣ', store_id: finalStoreId },
+          { name: 'ΔΕΗ / ΡΕΥΜΑ', store_id: finalStoreId }
+        ]
+        await supabase.from('fixed_assets').insert(defaultAssets)
       }
+
+      // 3. ΟΛΟΚΛΗΡΩΣΗ & REDIRECT
+      toast.success('Η εγγραφή ολοκληρώθηκε!')
+      
+      // Αποθηκεύουμε το active store για να ξέρει το dashboard τι να δείξει
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('active_store_id', finalStoreId)
+      }
+
+      // Ανακατεύθυνση στο Dashboard
+      router.push(`/?store=${finalStoreId}`)
+      router.refresh()
+
     } catch (error: any) {
-      toast.error(error.message)
+      console.error(error)
+      toast.error(error.message || 'Σφάλμα κατά την εγγραφή')
     } finally {
       setLoading(false)
     }
@@ -147,7 +162,7 @@ function RegisterForm() {
           disabled={loading} 
           style={{...submitBtnStyle, backgroundColor: loading ? '#94a3b8' : '#0f172a'}}
         >
-          {loading ? 'ΓΙΝΕΤΑΙ ΕΓΓΡΑΦΗ...' : 'ΔΗΜΙΟΥΡΓΙΑ ΛΟΓΑΡΙΑΣΜΟΥ'}
+          {loading ? 'ΓΙΝΕΤΑΙ ΕΓΓΡΑΦΗ...' : (inviteCode ? 'ΑΠΟΔΟΧΗ & ΕΙΣΟΔΟΣ' : 'ΔΗΜΙΟΥΡΓΙΑ ΛΟΓΑΡΙΑΣΜΟΥ')}
         </button>
       </form>
 
@@ -161,23 +176,23 @@ function RegisterForm() {
 export default function RegisterPage() {
   return (
     <main style={containerStyle}>
-      <Suspense fallback={null}>
+      <Suspense fallback={<div>Φόρτωση...</div>}>
         <RegisterForm />
       </Suspense>
     </main>
   )
 }
 
-// --- STYLES (Ευθυγραμμισμένα με το globals.css) ---
-const containerStyle = { minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#f8fafc', padding: '20px' };
-const cardStyle = { backgroundColor: '#ffffff', width: '100%', maxWidth: '400px', padding: '40px', borderRadius: '24px', boxShadow: '0 10px 30px rgba(0,0,0,0.05)', border: '1px solid #e2e8f0' };
-const headerStyle = { textAlign: 'center' as const, marginBottom: '30px' };
-const brandStyle = { fontSize: '26px', fontWeight: '900', color: '#0f172a', letterSpacing: '-1px' };
-const dividerStyle = { height: '4px', width: '40px', backgroundColor: '#6366f1', margin: '12px auto', borderRadius: '10px' };
-const instructionStyle = { fontSize: '11px', color: '#64748b', fontWeight: '800', textTransform: 'uppercase' as const, letterSpacing: '1px' };
-const formStyle = { display: 'flex', flexDirection: 'column' as const, gap: '20px' };
-const labelStyle = { fontSize: '10px', fontWeight: '800', color: '#94a3b8', marginBottom: '6px', display: 'block' };
-const inputStyle = { width: '100%', padding: '14px', borderRadius: '12px', border: '1px solid #e2e8f0', fontSize: '15px', outline: 'none', backgroundColor: '#f8fafc', boxSizing: 'border-box' as const };
-const submitBtnStyle = { color: '#ffffff', padding: '16px', borderRadius: '14px', border: 'none', fontWeight: '800', cursor: 'pointer', fontSize: '15px' };
-const footerStyle = { marginTop: '25px', textAlign: 'center' as const, paddingTop: '20px', borderTop: '1px solid #f1f5f9' };
-const linkStyle = { color: '#64748b', fontWeight: '700', textDecoration: 'none', fontSize: '12px' };
+// --- STYLES ---
+const containerStyle: any = { minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#f8fafc', padding: '20px' };
+const cardStyle: any = { backgroundColor: '#ffffff', width: '100%', maxWidth: '400px', padding: '40px', borderRadius: '24px', boxShadow: '0 10px 30px rgba(0,0,0,0.05)', border: '1px solid #e2e8f0' };
+const headerStyle: any = { textAlign: 'center', marginBottom: '30px' };
+const brandStyle: any = { fontSize: '26px', fontWeight: '900', color: '#0f172a', letterSpacing: '-1px', margin: 0 };
+const dividerStyle: any = { height: '4px', width: '40px', backgroundColor: '#6366f1', margin: '12px auto', borderRadius: '10px' };
+const instructionStyle: any = { fontSize: '11px', color: '#64748b', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '1px', margin: 0 };
+const formStyle: any = { display: 'flex', flexDirection: 'column', gap: '20px' };
+const labelStyle: any = { fontSize: '10px', fontWeight: '800', color: '#94a3b8', marginBottom: '6px', display: 'block' };
+const inputStyle: any = { width: '100%', padding: '14px', borderRadius: '12px', border: '1px solid #e2e8f0', fontSize: '15px', outline: 'none', backgroundColor: '#f8fafc', boxSizing: 'border-box' };
+const submitBtnStyle: any = { color: '#ffffff', padding: '16px', borderRadius: '14px', border: 'none', fontWeight: '800', cursor: 'pointer', fontSize: '15px' };
+const footerStyle: any = { marginTop: '25px', textAlign: 'center', paddingTop: '20px', borderTop: '1px solid #f1f5f9' };
+const linkStyle: any = { color: '#64748b', fontWeight: '700', textDecoration: 'none', fontSize: '12px' };
