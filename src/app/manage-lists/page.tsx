@@ -34,7 +34,14 @@ const colors = {
   labelGreen: '#047857',
 }
 
-// Rename 'worker' to 'maintenance' for consistency
+const BANK_OPTIONS = [
+  'Εθνική Τράπεζα',
+  'Eurobank',
+  'Alpha Bank',
+  'Viva Wallet',
+  'Τράπεζα Πειραιώς',
+] as const
+
 type TabKey = 'suppliers' | 'maintenance' | 'utility' | 'staff' | 'other'
 const TABS: Array<{
   key: TabKey
@@ -49,11 +56,12 @@ const TABS: Array<{
   { key: 'other', label: 'Λοιπά', icon: Package, subCategory: 'other' },
 ]
 
+type PayBasis = 'monthly' | 'daily'
+
 function ManageListsInner() {
   const router = useRouter()
   const searchParams = useSearchParams()
 
-  // ✅ storeId from URL searchParams (mobile/vercel stable)
   const urlStoreId = searchParams.get('store')
   const [storeId, setStoreId] = useState<string | null>(urlStoreId)
 
@@ -65,16 +73,25 @@ function ManageListsInner() {
   const [suppliers, setSuppliers] = useState<any[]>([])
   const [fixedAssets, setFixedAssets] = useState<any[]>([])
 
-  // Form fields
+  // Common form fields (suppliers + fixed_assets depending tab)
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
   const [vatNumber, setVatNumber] = useState('')
   const [bankName, setBankName] = useState('')
   const [iban, setIban] = useState('')
 
+  // Staff fields
+  const [payBasis, setPayBasis] = useState<PayBasis>('monthly')
+  const [monthlySalary, setMonthlySalary] = useState<string>('') // stored to monthly_salary
+  const [dailyRate, setDailyRate] = useState<string>('') // stored to daily_rate
+  const [monthlyDays, setMonthlyDays] = useState<string>('') // stored to monthly_days
+  const [startDate, setStartDate] = useState<string>('') // stored to start_date (YYYY-MM-DD)
+
+  // Utility fields
+  const [rfCode, setRfCode] = useState('') // stored to rf_code (and also name for utility)
+
   const [search, setSearch] = useState('')
 
-  // Edit mode
   const [editingId, setEditingId] = useState<string | null>(null)
 
   const currentTab = useMemo(() => TABS.find(t => t.key === activeTab)!, [activeTab])
@@ -85,6 +102,14 @@ function ManageListsInner() {
     setVatNumber('')
     setBankName('')
     setIban('')
+
+    setPayBasis('monthly')
+    setMonthlySalary('')
+    setDailyRate('')
+    setMonthlyDays('')
+    setStartDate('')
+
+    setRfCode('')
     setEditingId(null)
   }, [])
 
@@ -104,7 +129,14 @@ function ManageListsInner() {
 
     const base = fixedAssets.filter((x: any) => (x.sub_category || '') === currentTab.subCategory)
     if (!q) return base
-    return base.filter((x: any) => String(x.name || '').toLowerCase().includes(q))
+
+    return base.filter((x: any) => {
+      const n = String(x.name || '').toLowerCase()
+      const rf = String(x.rf_code || '').toLowerCase()
+      const v = String(x.vat_number || '').toLowerCase()
+      const p = String(x.phone || '').toLowerCase()
+      return n.includes(q) || rf.includes(q) || v.includes(q) || p.includes(q)
+    })
   }, [activeTab, suppliers, fixedAssets, search, currentTab.subCategory])
 
   const loadData = useCallback(async () => {
@@ -137,7 +169,9 @@ function ManageListsInner() {
           .order('name'),
         supabase
           .from('fixed_assets')
-          .select('id, name, sub_category, created_at')
+          .select(
+            'id, name, sub_category, phone, vat_number, bank_name, iban, monthly_days, monthly_salary, daily_rate, start_date, rf_code, pay_basis, created_at',
+          )
           .eq('store_id', activeStoreId)
           .order('name'),
       ])
@@ -161,29 +195,48 @@ function ManageListsInner() {
   const handleEdit = (item: any) => {
     setEditingId(String(item.id))
 
-    setName(String(item.name || ''))
-
     if (activeTab === 'suppliers') {
+      setName(String(item.name || ''))
       setPhone(String(item.phone || ''))
       setVatNumber(String(item.vat_number || ''))
       setBankName(String(item.bank_name || ''))
       setIban(String(item.iban || ''))
+
+      // reset non-supplier specific
+      setPayBasis('monthly')
+      setMonthlySalary('')
+      setDailyRate('')
+      setMonthlyDays('')
+      setStartDate('')
+      setRfCode('')
     } else {
-      // fixed_assets tabs only use name
-      setPhone('')
-      setVatNumber('')
-      setBankName('')
-      setIban('')
+      const sub = String(item.sub_category || '')
+
+      // Defaults
+      setName(String(item.name || ''))
+      setPhone(String(item.phone || ''))
+      setVatNumber(String(item.vat_number || ''))
+      setBankName(String(item.bank_name || ''))
+      setIban(String(item.iban || ''))
+
+      setPayBasis((item.pay_basis === 'daily' ? 'daily' : 'monthly') as PayBasis)
+      setMonthlySalary(item.monthly_salary != null ? String(item.monthly_salary) : '')
+      setDailyRate(item.daily_rate != null ? String(item.daily_rate) : '')
+      setMonthlyDays(item.monthly_days != null ? String(item.monthly_days) : '')
+      setStartDate(item.start_date ? String(item.start_date).slice(0, 10) : '')
+
+      setRfCode(String(item.rf_code || ''))
+
+      // If utility: we show ONLY RF code, so use that as main editable value.
+      if (sub === 'utility') {
+        setRfCode(String(item.rf_code || item.name || ''))
+      }
     }
 
-    // Optional: scroll top for mobile
     if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
   const handleSave = async () => {
-    const trimmed = name.trim()
-    if (!trimmed) return toast.error('Γράψε όνομα')
-
     const activeStoreId =
       urlStoreId ||
       (typeof window !== 'undefined' ? localStorage.getItem('active_store_id') : null) ||
@@ -194,7 +247,11 @@ function ManageListsInner() {
     try {
       setSaving(true)
 
+      // -------------------- SUPPLIERS --------------------
       if (activeTab === 'suppliers') {
+        const trimmed = name.trim()
+        if (!trimmed) return toast.error('Γράψε όνομα')
+
         const payload: any = {
           name: trimmed,
           phone: phone.trim() || null,
@@ -204,7 +261,6 @@ function ManageListsInner() {
         }
 
         if (editingId) {
-          // ✅ UPDATE
           const { data, error } = await supabase
             .from('suppliers')
             .update(payload)
@@ -220,10 +276,8 @@ function ManageListsInner() {
               .map(x => (String(x.id) === String(editingId) ? data : x))
               .sort((a, b) => String(a.name).localeCompare(String(b.name))),
           )
-
           toast.success('Ενημερώθηκε!')
         } else {
-          // ✅ INSERT
           const { data, error } = await supabase
             .from('suppliers')
             .insert([{ ...payload, store_id: activeStoreId }])
@@ -235,20 +289,45 @@ function ManageListsInner() {
           setSuppliers(prev =>
             [...prev, data].sort((a, b) => String(a.name).localeCompare(String(b.name))),
           )
-
           toast.success('Προστέθηκε!')
         }
-      } else {
-        // ✅ fixed_assets
-        const subCategoryToSave = activeTab === 'maintenance' ? 'Maintenance' : currentTab.subCategory
+
+        resetForm()
+        return
+      }
+
+      // -------------------- FIXED_ASSETS --------------------
+      const subCategoryToSave = activeTab === 'maintenance' ? 'Maintenance' : currentTab.subCategory
+
+      // Utility: show ONLY RF Code, so store it in rf_code and also name for identification
+      if (activeTab === 'utility') {
+        const code = rfCode.trim()
+        if (!code) return toast.error('Γράψε Κωδικό RF')
+
+        const payload: any = {
+          name: code, // keeps it usable in list/title
+          rf_code: code || null,
+          // keep only required fields; still allowed by requirement list
+          bank_name: null,
+          iban: null,
+          monthly_days: null,
+          monthly_salary: null,
+          daily_rate: null,
+          start_date: null,
+          vat_number: null,
+          phone: null,
+          pay_basis: null,
+        }
 
         if (editingId) {
           const { data, error } = await supabase
             .from('fixed_assets')
-            .update({ name: trimmed })
+            .update(payload)
             .eq('id', editingId)
             .eq('store_id', activeStoreId)
-            .select('id, name, sub_category, created_at')
+            .select(
+              'id, name, sub_category, phone, vat_number, bank_name, iban, monthly_days, monthly_salary, daily_rate, start_date, rf_code, pay_basis, created_at',
+            )
             .single()
 
           if (error) throw error
@@ -258,13 +337,14 @@ function ManageListsInner() {
               .map(x => (String(x.id) === String(editingId) ? data : x))
               .sort((a, b) => String(a.name).localeCompare(String(b.name))),
           )
-
           toast.success('Ενημερώθηκε!')
         } else {
           const { data, error } = await supabase
             .from('fixed_assets')
-            .insert([{ name: trimmed, store_id: activeStoreId, sub_category: subCategoryToSave }])
-            .select('id, name, sub_category, created_at')
+            .insert([{ ...payload, store_id: activeStoreId, sub_category: subCategoryToSave }])
+            .select(
+              'id, name, sub_category, phone, vat_number, bank_name, iban, monthly_days, monthly_salary, daily_rate, start_date, rf_code, pay_basis, created_at',
+            )
             .single()
 
           if (error) throw error
@@ -272,12 +352,141 @@ function ManageListsInner() {
           setFixedAssets(prev =>
             [...prev, data].sort((a, b) => String(a.name).localeCompare(String(b.name))),
           )
-
           toast.success('Προστέθηκε!')
         }
+
+        resetForm()
+        return
       }
 
-      resetForm()
+      // Staff validation + payload
+      if (activeTab === 'staff') {
+        const trimmed = name.trim()
+        if (!trimmed) return toast.error('Γράψε Ονοματεπώνυμο')
+
+        const md = monthlyDays.trim()
+        const sd = startDate.trim()
+
+        const mSalary = monthlySalary.trim()
+        const dRate = dailyRate.trim()
+
+        const payload: any = {
+          name: trimmed,
+          bank_name: bankName || null,
+          iban: iban.trim() || null,
+          monthly_days: md ? Number(md) : null,
+          monthly_salary: payBasis === 'monthly' && mSalary ? Number(mSalary) : null,
+          daily_rate: payBasis === 'daily' && dRate ? Number(dRate) : null,
+          start_date: sd || null,
+          pay_basis: payBasis,
+          // keep these fields available (even if not used)
+          rf_code: null,
+          vat_number: null,
+          phone: null,
+        }
+
+        if (editingId) {
+          const { data, error } = await supabase
+            .from('fixed_assets')
+            .update(payload)
+            .eq('id', editingId)
+            .eq('store_id', activeStoreId)
+            .select(
+              'id, name, sub_category, phone, vat_number, bank_name, iban, monthly_days, monthly_salary, daily_rate, start_date, rf_code, pay_basis, created_at',
+            )
+            .single()
+
+          if (error) throw error
+
+          setFixedAssets(prev =>
+            prev
+              .map(x => (String(x.id) === String(editingId) ? data : x))
+              .sort((a, b) => String(a.name).localeCompare(String(b.name))),
+          )
+          toast.success('Ενημερώθηκε!')
+        } else {
+          const { data, error } = await supabase
+            .from('fixed_assets')
+            .insert([{ ...payload, store_id: activeStoreId, sub_category: subCategoryToSave }])
+            .select(
+              'id, name, sub_category, phone, vat_number, bank_name, iban, monthly_days, monthly_salary, daily_rate, start_date, rf_code, pay_basis, created_at',
+            )
+            .single()
+
+          if (error) throw error
+
+          setFixedAssets(prev =>
+            [...prev, data].sort((a, b) => String(a.name).localeCompare(String(b.name))),
+          )
+          toast.success('Προστέθηκε!')
+        }
+
+        resetForm()
+        return
+      }
+
+      // Maintenance + Other: add phone, vat_number, bank dropdown, iban
+      if (activeTab === 'maintenance' || activeTab === 'other') {
+        const trimmed = name.trim()
+        if (!trimmed) return toast.error('Γράψε όνομα')
+
+        const payload: any = {
+          name: trimmed,
+          phone: phone.trim() || null,
+          vat_number: vatNumber.trim() || null,
+          bank_name: bankName || null,
+          iban: iban.trim() || null,
+          // keep required fields present (per request)
+          monthly_days: null,
+          monthly_salary: null,
+          daily_rate: null,
+          start_date: null,
+          rf_code: null,
+          pay_basis: null,
+        }
+
+        if (editingId) {
+          const { data, error } = await supabase
+            .from('fixed_assets')
+            .update(payload)
+            .eq('id', editingId)
+            .eq('store_id', activeStoreId)
+            .select(
+              'id, name, sub_category, phone, vat_number, bank_name, iban, monthly_days, monthly_salary, daily_rate, start_date, rf_code, pay_basis, created_at',
+            )
+            .single()
+
+          if (error) throw error
+
+          setFixedAssets(prev =>
+            prev
+              .map(x => (String(x.id) === String(editingId) ? data : x))
+              .sort((a, b) => String(a.name).localeCompare(String(b.name))),
+          )
+          toast.success('Ενημερώθηκε!')
+        } else {
+          const { data, error } = await supabase
+            .from('fixed_assets')
+            .insert([{ ...payload, store_id: activeStoreId, sub_category: subCategoryToSave }])
+            .select(
+              'id, name, sub_category, phone, vat_number, bank_name, iban, monthly_days, monthly_salary, daily_rate, start_date, rf_code, pay_basis, created_at',
+            )
+            .single()
+
+          if (error) throw error
+
+          setFixedAssets(prev =>
+            [...prev, data].sort((a, b) => String(a.name).localeCompare(String(b.name))),
+          )
+          toast.success('Προστέθηκε!')
+        }
+
+        resetForm()
+        return
+      }
+
+      // Fallback (should not happen)
+      toast.error('Άγνωστη καρτέλα')
     } catch (e: any) {
       toast.error(e?.message || 'Αποτυχία καταχώρησης')
     } finally {
@@ -301,16 +510,23 @@ function ManageListsInner() {
       setSaving(true)
 
       if (activeTab === 'suppliers') {
-        const { error } = await supabase.from('suppliers').delete().eq('id', item.id).eq('store_id', activeStoreId)
+        const { error } = await supabase
+          .from('suppliers')
+          .delete()
+          .eq('id', item.id)
+          .eq('store_id', activeStoreId)
         if (error) throw error
         setSuppliers(prev => prev.filter(x => x.id !== item.id))
       } else {
-        const { error } = await supabase.from('fixed_assets').delete().eq('id', item.id).eq('store_id', activeStoreId)
+        const { error } = await supabase
+          .from('fixed_assets')
+          .delete()
+          .eq('id', item.id)
+          .eq('store_id', activeStoreId)
         if (error) throw error
         setFixedAssets(prev => prev.filter(x => x.id !== item.id))
       }
 
-      // if you deleted the one you were editing, reset
       if (editingId && String(item.id) === String(editingId)) resetForm()
 
       toast.success('Διαγράφηκε!')
@@ -331,6 +547,424 @@ function ManageListsInner() {
     return `ΝΕΑ ΚΑΤΑΧΩΡΗΣΗ: ${currentTab.label}`
   }, [editingId, currentTab.label])
 
+  const renderFormFields = () => {
+    // ---------------- SUPPLIERS (unchanged behavior) ----------------
+    if (activeTab === 'suppliers') {
+      return (
+        <>
+          <div style={{ display: 'flex', gap: 10 }}>
+            <input
+              value={name}
+              onChange={e => setName(e.target.value)}
+              placeholder={`Όνομα για "${currentTab.label}"`}
+              style={inputStyle}
+            />
+
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={saving || loading}
+              style={{ ...iconBtn, opacity: saving || loading ? 0.7 : 1 }}
+              aria-label={editingId ? 'Update' : 'Add'}
+              title={editingId ? 'Update' : 'Add'}
+            >
+              {editingId ? <Save size={16} /> : <Plus size={16} />}
+            </button>
+          </div>
+
+          <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div style={grid2}>
+              <div>
+                <label style={{ ...miniLabel, color: colors.labelGreen }}>ΤΗΛΕΦΩΝΟ</label>
+                <input
+                  value={phone}
+                  onChange={e => setPhone(e.target.value)}
+                  placeholder="π.χ. 6970000000"
+                  style={inputStyle}
+                />
+              </div>
+              <div>
+                <label style={{ ...miniLabel, color: colors.labelGray }}>ΑΦΜ</label>
+                <input
+                  value={vatNumber}
+                  onChange={e => setVatNumber(e.target.value)}
+                  placeholder="π.χ. 123456789"
+                  style={inputStyle}
+                />
+              </div>
+            </div>
+
+            <div style={grid2}>
+              <div>
+                <label style={{ ...miniLabel, color: colors.labelGray }}>ΤΡΑΠΕΖΑ</label>
+                <input
+                  value={bankName}
+                  onChange={e => setBankName(e.target.value)}
+                  placeholder="π.χ. Alpha / Eurobank"
+                  style={inputStyle}
+                />
+              </div>
+              <div>
+                <label style={{ ...miniLabel, color: colors.labelBlue }}>IBAN</label>
+                <input
+                  value={iban}
+                  onChange={e => setIban(e.target.value)}
+                  placeholder="π.χ. GR12 3456 ...."
+                  style={inputStyle}
+                />
+              </div>
+            </div>
+
+            <div style={hintPill}>
+              <span style={{ fontSize: 16, fontWeight: 900, color: colors.secondaryText }}>
+                * Η αναζήτηση ψάχνει και σε <span style={{ color: colors.labelGray }}>ΑΦΜ</span> /{' '}
+                <span style={{ color: colors.labelGreen }}>Τηλέφωνο</span>.
+              </span>
+            </div>
+          </div>
+        </>
+      )
+    }
+
+    // ---------------- UTILITY: ONLY RF CODE ----------------
+    if (activeTab === 'utility') {
+      return (
+        <>
+          <div style={{ display: 'flex', gap: 10 }}>
+            <input
+              value={rfCode}
+              onChange={e => setRfCode(e.target.value)}
+              placeholder="ΚΩΔΙΚΟΣ RF"
+              style={inputStyle}
+            />
+
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={saving || loading}
+              style={{ ...iconBtn, opacity: saving || loading ? 0.7 : 1 }}
+              aria-label={editingId ? 'Update' : 'Add'}
+              title={editingId ? 'Update' : 'Add'}
+            >
+              {editingId ? <Save size={16} /> : <Plus size={16} />}
+            </button>
+          </div>
+
+          <div style={{ marginTop: 10, ...hintPill }}>
+            <span style={{ fontSize: 16, fontWeight: 900, color: colors.secondaryText }}>
+              * Στους <b>Λογαριασμούς</b> αποθηκεύουμε μόνο τον <b>Κωδικό RF</b>.
+            </span>
+          </div>
+        </>
+      )
+    }
+
+    // ---------------- STAFF: rebuilt layout like photo ----------------
+    if (activeTab === 'staff') {
+      const salaryLabel = payBasis === 'monthly' ? 'ΜΙΣΘΟΣ' : 'ΗΜΕΡΟΜΙΣΘΙΟ'
+      const salaryValue = payBasis === 'monthly' ? monthlySalary : dailyRate
+      const setSalaryValue = (v: string) => (payBasis === 'monthly' ? setMonthlySalary(v) : setDailyRate(v))
+
+      return (
+        <>
+          {/* a) Full width name */}
+          <div>
+            <label style={{ ...miniLabel, color: colors.labelGray }}>ΟΝΟΜΑΤΕΠΩΝΥΜΟ</label>
+            <input
+              value={name}
+              onChange={e => setName(e.target.value)}
+              placeholder="π.χ. Γιάννης Παπαδόπουλος"
+              style={inputStyle}
+            />
+          </div>
+
+          {/* b) Segmented control */}
+          <div style={{ marginTop: 12 }}>
+            <label style={{ ...miniLabel, color: colors.labelGray }}>ΤΥΠΟΣ ΣΥΜΦΩΝΙΑΣ</label>
+            <div style={segWrap}>
+              <button
+                type="button"
+                onClick={() => setPayBasis('monthly')}
+                style={{
+                  ...segBtn,
+                  backgroundColor: payBasis === 'monthly' ? colors.primaryDark : colors.white,
+                  color: payBasis === 'monthly' ? 'white' : colors.primaryDark,
+                  borderColor: payBasis === 'monthly' ? colors.primaryDark : colors.border,
+                }}
+              >
+                ΜΗΝΙΑΙΟΣ
+              </button>
+              <button
+                type="button"
+                onClick={() => setPayBasis('daily')}
+                style={{
+                  ...segBtn,
+                  backgroundColor: payBasis === 'daily' ? colors.primaryDark : colors.white,
+                  color: payBasis === 'daily' ? 'white' : colors.primaryDark,
+                  borderColor: payBasis === 'daily' ? colors.primaryDark : colors.border,
+                }}
+              >
+                ΗΜΕΡΟΜΙΣΘΙΟ
+              </button>
+            </div>
+          </div>
+
+          {/* c) Salary + Days + Start date in one row (grid) */}
+          <div style={{ marginTop: 12, ...grid3 }}>
+            <div>
+              <label style={{ ...miniLabel, color: colors.labelGreen }}>{salaryLabel}</label>
+              <input
+                value={salaryValue}
+                onChange={e => setSalaryValue(e.target.value)}
+                placeholder={payBasis === 'monthly' ? 'π.χ. 1200' : 'π.χ. 50'}
+                inputMode="decimal"
+                style={inputStyle}
+              />
+            </div>
+
+            <div>
+              <label style={{ ...miniLabel, color: colors.labelGray }}>ΜΕΡΕΣ ΜΗΝΑ</label>
+              <input
+                value={monthlyDays}
+                onChange={e => setMonthlyDays(e.target.value)}
+                placeholder="π.χ. 26"
+                inputMode="numeric"
+                style={inputStyle}
+              />
+            </div>
+
+            <div>
+              <label style={{ ...miniLabel, color: colors.labelGray }}>ΗΜ. ΠΡΟΣΛΗΨΗΣ</label>
+              <input value={startDate} onChange={e => setStartDate(e.target.value)} type="date" style={inputStyle} />
+            </div>
+          </div>
+
+          {/* d) Bank dropdown */}
+          <div style={{ marginTop: 12 }}>
+            <label style={{ ...miniLabel, color: colors.labelGray }}>ΤΡΑΠΕΖΑ ΥΠΑΛΛΗΛΟΥ</label>
+            <select value={bankName} onChange={e => setBankName(e.target.value)} style={selectStyle}>
+              <option value="">Επιλογή...</option>
+              {BANK_OPTIONS.map(b => (
+                <option key={b} value={b}>
+                  {b}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* e) IBAN full width */}
+          <div style={{ marginTop: 12 }}>
+            <label style={{ ...miniLabel, color: colors.labelBlue }}>IBAN ΥΠΑΛΛΗΛΟΥ</label>
+            <input
+              value={iban}
+              onChange={e => setIban(e.target.value)}
+              placeholder="π.χ. GR12 3456 ...."
+              style={inputStyle}
+            />
+          </div>
+
+          {/* SAVE row */}
+          <div style={{ marginTop: 14, display: 'flex', justifyContent: 'flex-end' }}>
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={saving || loading}
+              style={{ ...primaryBtnWide, opacity: saving || loading ? 0.7 : 1 }}
+            >
+              {editingId ? <Save size={16} /> : <Plus size={16} />}
+              <span style={{ fontSize: 16, fontWeight: 900 }}>{editingId ? 'ΑΠΟΘΗΚΕΥΣΗ' : 'ΠΡΟΣΘΗΚΗ'}</span>
+            </button>
+          </div>
+        </>
+      )
+    }
+
+    // ---------------- MAINTENANCE + OTHER: extra fields + bank dropdown ----------------
+    if (activeTab === 'maintenance' || activeTab === 'other') {
+      return (
+        <>
+          <div style={{ display: 'flex', gap: 10 }}>
+            <input
+              value={name}
+              onChange={e => setName(e.target.value)}
+              placeholder={`Όνομα για "${currentTab.label}"`}
+              style={inputStyle}
+            />
+
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={saving || loading}
+              style={{ ...iconBtn, opacity: saving || loading ? 0.7 : 1 }}
+              aria-label={editingId ? 'Update' : 'Add'}
+              title={editingId ? 'Update' : 'Add'}
+            >
+              {editingId ? <Save size={16} /> : <Plus size={16} />}
+            </button>
+          </div>
+
+          <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div style={grid2}>
+              <div>
+                <label style={{ ...miniLabel, color: colors.labelGreen }}>ΤΗΛΕΦΩΝΟ</label>
+                <input
+                  value={phone}
+                  onChange={e => setPhone(e.target.value)}
+                  placeholder="π.χ. 6970000000"
+                  style={inputStyle}
+                />
+              </div>
+              <div>
+                <label style={{ ...miniLabel, color: colors.labelGray }}>ΑΦΜ</label>
+                <input
+                  value={vatNumber}
+                  onChange={e => setVatNumber(e.target.value)}
+                  placeholder="π.χ. 123456789"
+                  style={inputStyle}
+                />
+              </div>
+            </div>
+
+            <div style={grid2}>
+              <div>
+                <label style={{ ...miniLabel, color: colors.labelGray }}>ΤΡΑΠΕΖΑ</label>
+                <select value={bankName} onChange={e => setBankName(e.target.value)} style={selectStyle}>
+                  <option value="">Επιλογή...</option>
+                  {BANK_OPTIONS.map(b => (
+                    <option key={b} value={b}>
+                      {b}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label style={{ ...miniLabel, color: colors.labelBlue }}>IBAN</label>
+                <input
+                  value={iban}
+                  onChange={e => setIban(e.target.value)}
+                  placeholder="π.χ. GR12 3456 ...."
+                  style={inputStyle}
+                />
+              </div>
+            </div>
+          </div>
+        </>
+      )
+    }
+
+    // ---------------- Fallback (should not hit) ----------------
+    return (
+      <div style={hintBox}>
+        <span style={{ fontSize: 16, fontWeight: 900 }}>Δεν υπάρχει φόρμα για αυτή την καρτέλα.</span>
+      </div>
+    )
+  }
+
+  const renderListMeta = (item: any) => {
+    if (activeTab === 'suppliers') {
+      return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <div style={metaRow}>
+            <span style={{ ...metaLabel, color: colors.labelGreen }}>Τηλέφωνο:</span>
+            <span style={metaValue}>{String(item.phone || '-')}</span>
+          </div>
+
+          <div style={metaRow}>
+            <span style={{ ...metaLabel, color: colors.labelGray }}>ΑΦΜ:</span>
+            <span style={metaValue}>{String(item.vat_number || '-')}</span>
+          </div>
+
+          <div style={metaRow}>
+            <span style={{ ...metaLabel, color: colors.labelGray }}>Τράπεζα:</span>
+            <span style={metaValue}>{String(item.bank_name || '-')}</span>
+          </div>
+
+          <div style={metaRow}>
+            <span style={{ ...metaLabel, color: colors.labelBlue }}>IBAN:</span>
+            <span style={metaValue}>{String(item.iban || '-')}</span>
+          </div>
+        </div>
+      )
+    }
+
+    const sub = String(item.sub_category || '')
+
+    if (sub === 'utility') {
+      return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <div style={metaRow}>
+            <span style={{ ...metaLabel, color: colors.labelGray }}>ΚΩΔΙΚΟΣ RF:</span>
+            <span style={metaValue}>{String(item.rf_code || item.name || '-')}</span>
+          </div>
+        </div>
+      )
+    }
+
+    if (sub === 'staff') {
+      const pb = item.pay_basis === 'daily' ? 'ΗΜΕΡΟΜΙΣΘΙΟ' : 'ΜΗΝΙΑΙΟΣ'
+      const amount =
+        item.pay_basis === 'daily' ? item.daily_rate ?? '-' : item.monthly_salary ?? '-'
+
+      return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <div style={metaRow}>
+            <span style={{ ...metaLabel, color: colors.labelGray }}>Συμφωνία:</span>
+            <span style={metaValue}>{pb}</span>
+          </div>
+          <div style={metaRow}>
+            <span style={{ ...metaLabel, color: colors.labelGreen }}>Ποσό:</span>
+            <span style={metaValue}>{String(amount)}</span>
+          </div>
+          <div style={metaRow}>
+            <span style={{ ...metaLabel, color: colors.labelGray }}>Μέρες:</span>
+            <span style={metaValue}>{String(item.monthly_days ?? '-')}</span>
+          </div>
+          <div style={metaRow}>
+            <span style={{ ...metaLabel, color: colors.labelGray }}>Ημ. πρόσληψης:</span>
+            <span style={metaValue}>{String(item.start_date ? String(item.start_date).slice(0, 10) : '-')}</span>
+          </div>
+          <div style={metaRow}>
+            <span style={{ ...metaLabel, color: colors.labelGray }}>Τράπεζα:</span>
+            <span style={metaValue}>{String(item.bank_name || '-')}</span>
+          </div>
+          <div style={metaRow}>
+            <span style={{ ...metaLabel, color: colors.labelBlue }}>IBAN:</span>
+            <span style={metaValue}>{String(item.iban || '-')}</span>
+          </div>
+        </div>
+      )
+    }
+
+    // Maintenance / Other
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <div style={metaRow}>
+          <span style={{ ...metaLabel, color: colors.labelGreen }}>Τηλέφωνο:</span>
+          <span style={metaValue}>{String(item.phone || '-')}</span>
+        </div>
+
+        <div style={metaRow}>
+          <span style={{ ...metaLabel, color: colors.labelGray }}>ΑΦΜ:</span>
+          <span style={metaValue}>{String(item.vat_number || '-')}</span>
+        </div>
+
+        <div style={metaRow}>
+          <span style={{ ...metaLabel, color: colors.labelGray }}>Τράπεζα:</span>
+          <span style={metaValue}>{String(item.bank_name || '-')}</span>
+        </div>
+
+        <div style={metaRow}>
+          <span style={{ ...metaLabel, color: colors.labelBlue }}>IBAN:</span>
+          <span style={metaValue}>{String(item.iban || '-')}</span>
+        </div>
+
+        <span style={{ fontSize: 16, fontWeight: 800, color: colors.secondaryText }}>
+          sub_category: {String(sub === 'Maintenance' ? 'Συντήρηση' : sub || '')}
+        </span>
+      </div>
+    )
+  }
+
   return (
     <div style={pageWrap}>
       <Toaster position="top-center" richColors />
@@ -340,9 +974,7 @@ function ManageListsInner() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <div style={logoBoxStyle}>📋</div>
             <div>
-              <h1 style={{ margin: 0, fontSize: 16, fontWeight: 900, color: colors.primaryDark }}>
-                Manage Lists
-              </h1>
+              <h1 style={{ margin: 0, fontSize: 16, fontWeight: 900, color: colors.primaryDark }}>Manage Lists</h1>
               <p style={{ margin: 0, fontSize: 16, fontWeight: 800, color: colors.secondaryText }}>
                 Διαχείριση Προμηθευτών &amp; Παγίων
               </p>
@@ -402,80 +1034,8 @@ function ManageListsInner() {
             )}
           </div>
 
-          {/* NAME + SAVE */}
-          <div style={{ display: 'flex', gap: 10 }}>
-            <input
-              value={name}
-              onChange={e => setName(e.target.value)}
-              placeholder={`Όνομα για "${currentTab.label}"`}
-              style={inputStyle}
-            />
-
-            <button
-              type="button"
-              onClick={handleSave}
-              disabled={saving || loading}
-              style={{ ...iconBtn, opacity: saving || loading ? 0.7 : 1 }}
-              aria-label={editingId ? 'Update' : 'Add'}
-              title={editingId ? 'Update' : 'Add'}
-            >
-              {editingId ? <Save size={16} /> : <Plus size={16} />}
-            </button>
-          </div>
-
-          {/* EXTRA FIELDS for suppliers */}
-          {activeTab === 'suppliers' && (
-            <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <div style={grid2}>
-                <div>
-                  <label style={{ ...miniLabel, color: colors.labelGreen }}>ΤΗΛΕΦΩΝΟ</label>
-                  <input
-                    value={phone}
-                    onChange={e => setPhone(e.target.value)}
-                    placeholder="π.χ. 6970000000"
-                    style={inputStyle}
-                  />
-                </div>
-                <div>
-                  <label style={{ ...miniLabel, color: colors.labelGray }}>ΑΦΜ</label>
-                  <input
-                    value={vatNumber}
-                    onChange={e => setVatNumber(e.target.value)}
-                    placeholder="π.χ. 123456789"
-                    style={inputStyle}
-                  />
-                </div>
-              </div>
-
-              <div style={grid2}>
-                <div>
-                  <label style={{ ...miniLabel, color: colors.labelGray }}>ΤΡΑΠΕΖΑ</label>
-                  <input
-                    value={bankName}
-                    onChange={e => setBankName(e.target.value)}
-                    placeholder="π.χ. Alpha / Eurobank"
-                    style={inputStyle}
-                  />
-                </div>
-                <div>
-                  <label style={{ ...miniLabel, color: colors.labelBlue }}>IBAN</label>
-                  <input
-                    value={iban}
-                    onChange={e => setIban(e.target.value)}
-                    placeholder="π.χ. GR12 3456 ...."
-                    style={inputStyle}
-                  />
-                </div>
-              </div>
-
-              <div style={hintPill}>
-                <span style={{ fontSize: 16, fontWeight: 900, color: colors.secondaryText }}>
-                  * Η αναζήτηση ψάχνει και σε <span style={{ color: colors.labelGray }}>ΑΦΜ</span> /{' '}
-                  <span style={{ color: colors.labelGreen }}>Τηλέφωνο</span>.
-                </span>
-              </div>
-            </div>
-          )}
+          {/* Dynamic form fields */}
+          {renderFormFields()}
 
           {/* SEARCH */}
           <label style={{ ...labelStyle, marginTop: 18 }}>ΑΝΑΖΗΤΗΣΗ</label>
@@ -485,7 +1045,11 @@ function ManageListsInner() {
               value={search}
               onChange={e => setSearch(e.target.value)}
               placeholder={
-                activeTab === 'suppliers' ? 'Όνομα / ΑΦΜ / Τηλέφωνο...' : 'Γράψτε για αναζήτηση...'
+                activeTab === 'suppliers'
+                  ? 'Όνομα / ΑΦΜ / Τηλέφωνο...'
+                  : activeTab === 'utility'
+                    ? 'Αναζήτηση (RF)...'
+                    : 'Γράψτε για αναζήτηση...'
               }
               style={{ ...inputStyle, paddingLeft: 38 }}
             />
@@ -506,7 +1070,13 @@ function ManageListsInner() {
                 const isEditingThis = editingId && String(editingId) === String(item.id)
 
                 return (
-                  <div key={item.id} style={{ ...listRowPremium, borderColor: isEditingThis ? colors.accentBlue : colors.border }}>
+                  <div
+                    key={item.id}
+                    style={{
+                      ...listRowPremium,
+                      borderColor: isEditingThis ? colors.accentBlue : colors.border,
+                    }}
+                  >
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 8, flex: 1, minWidth: 0 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                         <span style={{ fontSize: 16, fontWeight: 900, color: colors.primaryDark }}>
@@ -521,34 +1091,7 @@ function ManageListsInner() {
                         )}
                       </div>
 
-                      {activeTab === 'suppliers' ? (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                          <div style={metaRow}>
-                            <span style={{ ...metaLabel, color: colors.labelGreen }}>Τηλέφωνο:</span>
-                            <span style={metaValue}>{String(item.phone || '-')}</span>
-                          </div>
-
-                          <div style={metaRow}>
-                            <span style={{ ...metaLabel, color: colors.labelGray }}>ΑΦΜ:</span>
-                            <span style={metaValue}>{String(item.vat_number || '-')}</span>
-                          </div>
-
-                          <div style={metaRow}>
-                            <span style={{ ...metaLabel, color: colors.labelGray }}>Τράπεζα:</span>
-                            <span style={metaValue}>{String(item.bank_name || '-')}</span>
-                          </div>
-
-                          <div style={metaRow}>
-                            <span style={{ ...metaLabel, color: colors.labelBlue }}>IBAN:</span>
-                            <span style={metaValue}>{String(item.iban || '-')}</span>
-                          </div>
-                        </div>
-                      ) : (
-                        <span style={{ fontSize: 16, fontWeight: 800, color: colors.secondaryText }}>
-                          sub_category:{' '}
-                          {String(item.sub_category === 'Maintenance' ? 'Συντήρηση' : item.sub_category || '')}
-                        </span>
-                      )}
+                      {renderListMeta(item)}
                     </div>
 
                     <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
@@ -608,7 +1151,7 @@ const logoBoxStyle: any = {
   width: 42,
   height: 42,
   backgroundColor: colors.primaryDark,
-  borderRadius: 12,
+  borderRadius: 14,
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
@@ -622,7 +1165,7 @@ const backBtnStyle: any = {
   color: colors.secondaryText,
   padding: '10px 12px',
   backgroundColor: 'white',
-  borderRadius: 10,
+  borderRadius: 14,
   border: `1px solid ${colors.border}`,
   fontSize: 16,
   fontWeight: 900,
@@ -668,7 +1211,7 @@ const miniLabel: any = {
 const inputStyle: any = {
   width: '100%',
   padding: 14,
-  borderRadius: 12,
+  borderRadius: 14, // ✅ as requested
   border: `1px solid ${colors.border}`,
   fontSize: 16,
   fontWeight: 800,
@@ -677,11 +1220,25 @@ const inputStyle: any = {
   outline: 'none',
 }
 
+const selectStyle: any = {
+  width: '100%',
+  padding: 14,
+  borderRadius: 14, // ✅ as requested
+  border: `1px solid ${colors.border}`,
+  fontSize: 16,
+  fontWeight: 800,
+  backgroundColor: colors.bgLight,
+  boxSizing: 'border-box',
+  outline: 'none',
+  appearance: 'none',
+  WebkitAppearance: 'none',
+}
+
 const iconBtn: any = {
   width: 52,
   minWidth: 52,
   height: 52,
-  borderRadius: 12,
+  borderRadius: 14,
   border: 'none',
   backgroundColor: colors.primaryDark,
   color: 'white',
@@ -689,6 +1246,22 @@ const iconBtn: any = {
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
+  boxShadow: '0 8px 18px rgba(15, 23, 42, 0.14)',
+}
+
+const primaryBtnWide: any = {
+  borderRadius: 14,
+  border: 'none',
+  backgroundColor: colors.primaryDark,
+  color: 'white',
+  padding: '14px 16px',
+  cursor: 'pointer',
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 10,
+  fontSize: 16,
+  fontWeight: 900,
+  boxShadow: '0 10px 22px rgba(15, 23, 42, 0.14)',
 }
 
 const ghostBtn: any = {
@@ -725,6 +1298,12 @@ const hintPill: any = {
 const grid2: any = {
   display: 'grid',
   gridTemplateColumns: '1fr 1fr',
+  gap: 10,
+}
+
+const grid3: any = {
+  display: 'grid',
+  gridTemplateColumns: '1fr 1fr 1fr',
   gap: 10,
 }
 
@@ -803,6 +1382,23 @@ const dangerBtn: any = {
   alignItems: 'center',
   justifyContent: 'center',
   color: colors.accentRed,
+}
+
+const segWrap: any = {
+  display: 'grid',
+  gridTemplateColumns: '1fr 1fr',
+  gap: 10,
+}
+
+const segBtn: any = {
+  borderRadius: 14,
+  border: `1px solid ${colors.border}`,
+  padding: '12px 12px',
+  cursor: 'pointer',
+  fontSize: 16,
+  fontWeight: 900,
+  boxShadow: '0 8px 18px rgba(15, 23, 42, 0.06)',
+  userSelect: 'none',
 }
 
 export default function ManageListsPage() {
