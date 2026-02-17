@@ -60,14 +60,13 @@ function BalancesContent() {
       const suppliers = supsRes.data || []
       const transactions = transRes.data || []
 
-      // --- ΥΠΟΛΟΓΙΣΜΟΣ ΥΠΟΛΟΙΠΩΝ & ΤΖΙΡΟΥ ---
+      // --- ΥΠΟΛΟΓΙΣΜΟΣ ΥΠΟΛΟΙΠΩΝ & ΤΖΙΡΟΥ (ΜΕ MATH.ABS) ---
       const balanceList = suppliers.map(s => {
         const sTrans = transactions.filter(t => t.supplier_id === s.id)
         
-        // Συνολικός Τζίρος (Όλες οι κινήσεις)
+        // ✅ ΔΙΟΡΘΩΣΗ: Χρησιμοποιούμε Math.abs για να μετράει ο όγκος συναλλαγών σωστά
         const turnover = sTrans.reduce((acc, t) => acc + Math.abs(Number(t.amount) || 0), 0)
 
-        // Υπόλογισμός Υπολοίπου (Πιστώσεις - Πληρωμές)
         const totalCredit = sTrans
           .filter(t => t.is_credit === true)
           .reduce((acc, t) => acc + Math.abs(Number(t.amount) || 0), 0)
@@ -83,7 +82,7 @@ function BalancesContent() {
         }
       })
       .filter(s => Math.abs(s.balance) > 0.1)
-      // ✅ ΤΑΞΙΝΟΜΗΣΗ: Πρώτοι αυτοί με τον μεγαλύτερο ΤΖΙΡΟ
+      // ✅ ΤΑΞΙΝΟΜΗΣΗ: Μεγαλύτερος Τζίρος -> Πρώτος
       .sort((a, b) => b.turnover - a.turnover)
 
       setData(balanceList)
@@ -139,7 +138,6 @@ function BalancesContent() {
       <Toaster position="top-center" richColors />
       <div style={{ maxWidth: '500px', margin: '0 auto', paddingBottom: '120px' }}>
         
-        {/* HEADER */}
         <div style={headerFlexStyle}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <div style={logoBoxStyle}><Receipt size={22} color="#f97316" /></div>
@@ -153,7 +151,6 @@ function BalancesContent() {
           </Link>
         </div>
 
-        {/* SELECT FILTER */}
         <div style={{ marginBottom: '20px' }}>
           <div style={{position: 'relative'}}>
             <Filter size={16} style={filterIconStyle} />
@@ -170,7 +167,6 @@ function BalancesContent() {
           </div>
         </div>
 
-        {/* TOTAL CARD */}
         <div style={totalCardStyle}>
           <p style={totalLabelStyle}>
             {selectedSupplierId === 'all' ? 'ΣΥΝΟΛΙΚΟ ΑΝΟΙΧΤΟ ΥΠΟΛΟΙΠΟ' : 'ΥΠΟΛΟΙΠΟ ΠΡΟΜΗΘΕΥΤΗ'}
@@ -180,7 +176,6 @@ function BalancesContent() {
           </p>
         </div>
 
-        {/* LIST */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
           <p style={listHeaderStyle}>ΛΙΣΤΑ ΟΦΕΙΛΩΝ ({filteredData.length})</p>
           
@@ -248,7 +243,7 @@ function BalancesContent() {
   )
 }
 
-// --- ΟΛΑ ΤΑ STYLES ---
+// --- STYLES ---
 const iphoneWrapper: any = { backgroundColor: colors.bgLight, minHeight: '100dvh', padding: '20px' };
 const headerFlexStyle: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px' };
 const logoBoxStyle: any = { width: '45px', height: '45px', backgroundColor: '#fff7ed', borderRadius: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center' };
