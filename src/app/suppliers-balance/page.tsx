@@ -1,307 +1,923 @@
 'use client'
 export const dynamic = 'force-dynamic'
 
-import { useEffect, useState, Suspense, useCallback, useMemo } from 'react'
+import { useEffect, useMemo, useState, useCallback, Suspense } from 'react'
 import { supabase } from '@/lib/supabase'
-import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { toast, Toaster } from 'sonner'
-import { ChevronLeft, Receipt, CreditCard, Filter } from 'lucide-react'
+import { ChevronLeft, Search, Plus, Camera, X, CheckCircle2, AlertTriangle } from 'lucide-react'
 
-// --- ΘΕΜΑ ΧΡΩΜΑΤΩΝ ---
+// --- COLOR PALETTE (EXACT) ---
 const colors = {
   primaryDark: '#1e293b',
   secondaryText: '#64748b',
-  accentOrange: '#f97316',
+  accentRed: '#dc2626',
+  accentBlue: '#2563eb',
+  accentGreen: '#059669',
   bgLight: '#f8fafc',
   border: '#e2e8f0',
   white: '#ffffff',
-  accentBlue: '#2563eb',
-  accentRed: '#dc2626'
-};
-
-// --- ΒΟΗΘΗΤΙΚΕΣ ΣΥΝΑΡΤΗΣΕΙΣ ---
-const isValidUUID = (id: any) => {
-  const regex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-  return typeof id === 'string' && regex.test(id);
+  warning: '#fffbeb',
+  warningText: '#92400e'
 }
 
-function BalancesContent() {
-  const router = useRouter()
-  const searchParams = useSearchParams()
-  const storeIdFromUrl = searchParams.get('store')
+// --- HELPERS ---
+const isValidUUID = (id: any) => {
+  const regex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+  return typeof id === 'string' && regex.test(id)
+}
 
-  const [data, setData] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
-  const [selectedSupplierId, setSelectedSupplierId] = useState<string>('all')
+type Supplier = { id: string; name: string; category?: string | null; store_id?: string | null }
+type FixedAsset = { id: string; name: string; store_id?: string | null }
 
-  const fetchBalances = useCallback(async () => {
-    if (!storeIdFromUrl || !isValidUUID(storeIdFromUrl)) return;
-
-    try {
-      setLoading(true)
-      
-      const [supsRes, transRes] = await Promise.all([
-        supabase
-          .from('suppliers')
-          .select('*')
-          .eq('store_id', storeIdFromUrl)
-          .order('name'),
-        supabase
-          .from('transactions')
-          .select('*')
-          .eq('store_id', storeIdFromUrl)
-          .not('supplier_id', 'is', null)
-      ]);
-
-      if (supsRes.error) throw supsRes.error
-      if (transRes.error) throw transRes.error
-
-      const suppliers = supsRes.data || []
-      const transactions = transRes.data || []
-
-      // --- ΥΠΟΛΟΓΙΣΜΟΣ ΥΠΟΛΟΙΠΩΝ & ΤΖΙΡΟΥ ---
-      const balanceList = suppliers.map(s => {
-        const sTrans = transactions.filter(t => t.supplier_id === s.id)
-        
-        // Συνολικός Τζίρος (Όγκος - χρησιμοποιούμε Math.abs για να μετράνε όλα ως θετικά)
-        const turnover = sTrans.reduce((acc, t) => acc + Math.abs(Number(t.amount) || 0), 0)
-
-        // Υπολογισμός Υπολοίπου (Πιστώσεις - Πληρωμές)
-        const totalCredit = sTrans
-          .filter(t => t.is_credit === true)
-          .reduce((acc, t) => acc + Math.abs(Number(t.amount) || 0), 0)
-        
-        const totalPaid = sTrans
-          .filter(t => t.type === 'debt_payment')
-          .reduce((acc, t) => acc + Math.abs(Number(t.amount) || 0), 0)
-
-        return { 
-          ...s, 
-          balance: totalCredit - totalPaid,
-          turnover: turnover 
-        }
-      })
-      .filter(s => Math.abs(s.balance) > 0.1)
-      // ΤΑΞΙΝΟΜΗΣΗ: Πρώτοι αυτοί με τον μεγαλύτερο ΤΖΙΡΟ
-      .sort((a, b) => b.turnover - a.turnover)
-
-      setData(balanceList)
-    } catch (err: any) { 
-      if (!err.message.includes("invalid input syntax")) {
-        toast.error(`Σφάλμα: ${err.message}`)
-      }
-    } finally { 
-      setLoading(false) 
-    }
-  }, [storeIdFromUrl])
+function SupplierFormModal({
+  open,
+  storeId,
+  onClose,
+  onCreated
+}: {
+  open: boolean
+  storeId: string
+  onClose: () => void
+  onCreated: (supplier: Supplier) => void
+}) {
+  const [name, setName] = useState('')
+  const [category, setCategory] = useState('')
+  const [saving, setSaving] = useState(false)
 
   useEffect(() => {
-    if (!storeIdFromUrl || !isValidUUID(storeIdFromUrl)) {
-      if (typeof window !== 'undefined') {
-        localStorage.removeItem('active_store_id');
-      }
-      router.replace('/select-store');
-    } else {
-      fetchBalances();
+    if (open) {
+      setName('')
+      setCategory('')
+      setSaving(false)
     }
-  }, [fetchBalances, storeIdFromUrl, router])
+  }, [open])
 
-  async function handleDeleteDebt(supplierId: string, supplierName: string) {
-    const confirmAction = window.confirm(`Θέλετε να μηδενίσετε την καρτέλα του προμηθευτή ${supplierName.toUpperCase()};`);
-    if (!confirmAction) return;
-
+  const handleSaveSupplier = async () => {
+    const trimmed = name.trim()
+    if (!trimmed) {
+      toast.error('Βάλε όνομα προμηθευτή.')
+      return
+    }
+    setSaving(true)
     try {
-      const { error } = await supabase
-        .from('transactions')
-        .delete()
-        .eq('supplier_id', supplierId)
-        .eq('store_id', storeIdFromUrl)
-        .or('is_credit.eq.true,type.eq.debt_payment');
+      const { data, error } = await supabase
+        .from('suppliers')
+        .insert([
+          {
+            store_id: storeId,
+            name: trimmed,
+            category: category.trim() || null
+          }
+        ])
+        .select('id,name,category,store_id')
+        .single()
 
-      if (error) throw error;
-      toast.success('Το υπόλοιπο μηδενίστηκε');
-      fetchBalances();
-    } catch (err: any) {
-      toast.error('Σφάλμα κατά τη διαγραφή');
+      if (error) throw error
+      toast.success('Ο προμηθευτής προστέθηκε ✅')
+      onCreated(data as Supplier)
+      onClose()
+    } catch (e: any) {
+      console.error(e)
+      toast.error(e?.message || 'Σφάλμα κατά την αποθήκευση προμηθευτή.')
+    } finally {
+      setSaving(false)
     }
   }
 
-  const filteredData = useMemo(() => {
-    if (selectedSupplierId === 'all') return data;
-    return data.filter(s => s.id === selectedSupplierId);
-  }, [selectedSupplierId, data]);
-
-  const totalDebtDisplay = filteredData.reduce((acc, s) => acc + s.balance, 0);
+  if (!open) return null
 
   return (
-    <div style={iphoneWrapper}>
-      <Toaster position="top-center" richColors />
-      <div style={{ maxWidth: '500px', margin: '0 auto', paddingBottom: '120px' }}>
-        
-        {/* HEADER */}
-        <div style={headerFlexStyle}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div style={logoBoxStyle}><Receipt size={22} color="#f97316" /></div>
+    <div style={modalOverlay}>
+      <div style={modalCard}>
+        <div style={modalHeader}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <div style={modalIconBox}>
+              <Plus size={18} />
+            </div>
             <div>
-              <h1 style={mainTitleStyle}>Καρτέλες</h1>
-              <p style={subTitleLabelStyle}>ΤΑΞΙΝΟΜΗΣΗ ΒΑΣΕΙ ΤΖΙΡΟΥ</p>
+              <div style={modalTitle}>Νέος Προμηθευτής</div>
+              <div style={modalSubtitle}>Δημιούργησε τον άμεσα χωρίς να φύγεις από τη σελίδα</div>
             </div>
           </div>
-          <Link href={`/?store=${storeIdFromUrl}`} style={backBtnStyle}>
-            <ChevronLeft size={20} />
-          </Link>
+          <button onClick={onClose} style={iconBtn} aria-label="Close modal">
+            <X size={18} />
+          </button>
         </div>
 
-        {/* SELECT FILTER */}
-        <div style={{ marginBottom: '20px' }}>
-          <div style={{position: 'relative'}}>
-            <Filter size={16} style={filterIconStyle} />
-            <select 
-              value={selectedSupplierId} 
-              onChange={(e) => setSelectedSupplierId(e.target.value)}
-              style={selectStyle}
-            >
-              <option value="all">ΟΛΟΙ ΟΙ ΠΡΟΜΗΘΕΥΤΕΣ</option>
-              {data.map(s => (
-                <option key={s.id} value={s.id}>{s.name.toUpperCase()}</option>
-              ))}
-            </select>
-          </div>
+        <div style={{ marginTop: '16px' }}>
+          <label style={label}>ΟΝΟΜΑ *</label>
+          <input value={name} onChange={(e) => setName(e.target.value)} style={input} placeholder="π.χ. ΑΒ Βιομηχανικά" />
         </div>
 
-        {/* TOTAL CARD */}
-        <div style={totalCardStyle}>
-          <p style={totalLabelStyle}>
-            {selectedSupplierId === 'all' ? 'ΣΥΝΟΛΙΚΟ ΑΝΟΙΧΤΟ ΥΠΟΛΟΙΠΟ' : 'ΥΠΟΛΟΙΠΟ ΠΡΟΜΗΘΕΥΤΗ'}
-          </p>
-          <p style={totalAmountStyle}>
-            {totalDebtDisplay.toLocaleString('el-GR', { minimumFractionDigits: 2 })}€
-          </p>
+        <div style={{ marginTop: '14px' }}>
+          <label style={label}>ΚΑΤΗΓΟΡΙΑ (προαιρετικό)</label>
+          <input value={category} onChange={(e) => setCategory(e.target.value)} style={input} placeholder="π.χ. Τρόφιμα / Ανταλλακτικά" />
         </div>
 
-        {/* LIST */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          <p style={listHeaderStyle}>ΛΙΣΤΑ ΟΦΕΙΛΩΝ ({filteredData.length})</p>
-          
-          {loading ? (
-            <div style={{ textAlign: 'center', padding: '50px' }}>
-               <div className="spinner" style={spinnerStyle}></div>
-            </div>
-          ) : filteredData.length > 0 ? (
-            filteredData.map((s, idx) => (
-              <div key={s.id} style={supplierCardStyle}>
-                <div style={{ flex: 1 }}>
-                  <div style={{display: 'flex', alignItems: 'center', gap: '8px'}}>
-                    <span style={rankBadgeStyle}>#{idx + 1}</span>
-                    <p style={supplierNameStyle}>{s.name.toUpperCase()}</p>
-                  </div>
-                  <span style={categoryBadgeStyle}>{s.category || 'Γενικό'}</span>
-                  <p style={turnoverInfoStyle}>ΣΥΝ. ΤΖΙΡΟΣ: {s.turnover.toFixed(2)}€</p>
-                  
-                  <div style={{ display: 'flex', gap: '12px', marginTop: '15px' }}>
-                    <button 
-                      onClick={() => router.push(`/suppliers?store=${storeIdFromUrl}&edit=${s.id}`)} 
-                      style={actionLinkStyle}
-                    >
-                      ΚΑΡΤΕΛΑ
-                    </button>
-                    <button 
-                      onClick={() => handleDeleteDebt(s.id, s.name)} 
-                      style={dangerLinkStyle}
-                    >
-                      ΜΗΔΕΝΙΣΜΟΣ
-                    </button>
-                  </div>
-                </div>
-                
-                <div style={rightColumnStyle}>
-                  <p style={balanceValueStyle}>{s.balance.toFixed(2)}€</p>
-                  <button 
-                    onClick={() => router.push(`/add-expense?store=${storeIdFromUrl}&supId=${s.id}&mode=debt`)}
-                    style={payBtnStyle}
-                  >
-                    <CreditCard size={14} /> ΕΞΟΦΛΗΣΗ
-                  </button>
-                </div>
-              </div>
-            ))
-          ) : (
-            <div style={emptyStateStyle}>
-              <div style={{ fontSize: '40px', marginBottom: '10px' }}>✅</div>
-              <p style={{ fontWeight: '800', color: colors.primaryDark, margin: 0 }}>Όλα τακτοποιημένα</p>
-            </div>
-          )}
+        <div style={{ display: 'flex', gap: '10px', marginTop: '18px' }}>
+          <button onClick={onClose} style={btnGhost} disabled={saving}>
+            ΑΚΥΡΟ
+          </button>
+          <button onClick={handleSaveSupplier} style={btnPrimary} disabled={saving}>
+            {saving ? 'ΑΠΟΘΗΚΕΥΣΗ...' : 'ΠΡΟΣΘΗΚΗ'}
+          </button>
         </div>
       </div>
-
-      <style jsx>{`
-        @keyframes spin {
-          0% { transform: rotate(0deg); }
-          100% { transform: rotate(360deg); }
-        }
-        .spinner {
-          animation: spin 1s linear infinite;
-        }
-      `}</style>
     </div>
   )
 }
 
-// --- ΟΛΑ ΤΑ STYLES (ΠΛΗΡΗ) ---
-const iphoneWrapper: any = { backgroundColor: colors.bgLight, minHeight: '100dvh', padding: '20px' };
-const headerFlexStyle: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px' };
-const logoBoxStyle: any = { width: '45px', height: '45px', backgroundColor: '#fff7ed', borderRadius: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center' };
-const mainTitleStyle: any = { fontWeight: '800', fontSize: '20px', margin: 0, color: colors.primaryDark };
-const subTitleLabelStyle: any = { margin: 0, fontSize: '10px', color: colors.secondaryText, fontWeight: '700', letterSpacing: '1px' };
-const backBtnStyle: any = { textDecoration: 'none', color: colors.secondaryText, backgroundColor: colors.white, width: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '12px', border: `1px solid ${colors.border}` };
+function AddExpenseContent() {
+  const router = useRouter()
+  const searchParams = useSearchParams()
 
-const filterIconStyle: any = { 
-  position: 'absolute', 
-  left: '15px', 
-  top: '50%', 
-  transform: 'translateY(-50%)', 
-  color: colors.secondaryText, 
-  pointerEvents: 'none',
-  zIndex: 10
-};
+  const storeId = searchParams.get('store')
+  const presetSupplierId = searchParams.get('supId')
+  const presetMode = searchParams.get('mode') // e.g. "debt"
 
-const selectStyle: any = { 
-  width: '100%', 
-  padding: '14px 14px 14px 48px', // Εδώ είναι η διόρθωση για το κείμενο
-  borderRadius: '14px', 
-  border: `1px solid ${colors.border}`, 
-  fontSize: '14px', 
-  fontWeight: '700', 
-  backgroundColor: colors.white, 
-  outline: 'none', 
-  color: colors.primaryDark, 
+  // SaaS guard
+  useEffect(() => {
+    if (!storeId || storeId === 'null' || !isValidUUID(storeId)) {
+      router.replace('/select-store')
+    }
+  }, [storeId, router])
+
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+
+  // Data
+  const [suppliers, setSuppliers] = useState<Supplier[]>([])
+  const [fixedAssets, setFixedAssets] = useState<FixedAsset[]>([])
+
+  // Form
+  const [amount, setAmount] = useState<string>('')
+  const [method, setMethod] = useState<'cash' | 'bank'>('cash')
+
+  // Credit / Debt toggles
+  const [isCredit, setIsCredit] = useState(false)
+  const [isDebtPayment, setIsDebtPayment] = useState(false)
+
+  // Supplier select + search (synced)
+  const [selectedSupplierId, setSelectedSupplierId] = useState<string>('')
+  const [supplierSearch, setSupplierSearch] = useState<string>('')
+
+  // Fixed asset
+  const [selectedAssetId, setSelectedAssetId] = useState<string>('')
+
+  // Notes + No Invoice
+  const [notes, setNotes] = useState<string>('')
+  const [noInvoice, setNoInvoice] = useState<boolean>(false)
+
+  // Photo upload
+  const [file, setFile] = useState<File | null>(null)
+  const [previewUrl, setPreviewUrl] = useState<string>('')
+
+  // Supplier modal
+  const [supplierModalOpen, setSupplierModalOpen] = useState(false)
+
+  const fetchInitial = useCallback(async () => {
+    if (!storeId || storeId === 'null' || !isValidUUID(storeId)) return
+    setLoading(true)
+    try {
+      const { data: supData, error: supErr } = await supabase
+        .from('suppliers')
+        .select('id,name,category,store_id')
+        .eq('store_id', storeId)
+        .order('name')
+
+      if (supErr) throw supErr
+
+      const { data: assetData, error: assetErr } = await supabase
+        .from('fixed_assets')
+        .select('id,name,store_id')
+        .eq('store_id', storeId)
+        .order('name')
+
+      if (assetErr) throw assetErr
+
+      setSuppliers((supData || []) as Supplier[])
+      setFixedAssets((assetData || []) as FixedAsset[])
+
+      // Presets (from URL)
+      if (presetSupplierId && isValidUUID(presetSupplierId)) {
+        setSelectedSupplierId(presetSupplierId)
+        const found = (supData || []).find((s: any) => s.id === presetSupplierId)
+        if (found?.name) setSupplierSearch(found.name)
+      }
+
+      if (presetMode === 'debt') {
+        setIsDebtPayment(true)
+        setIsCredit(false)
+      }
+    } catch (e: any) {
+      console.error(e)
+      toast.error(e?.message || 'Σφάλμα φόρτωσης δεδομένων.')
+    } finally {
+      setLoading(false)
+    }
+  }, [storeId, presetSupplierId, presetMode])
+
+  useEffect(() => {
+    fetchInitial()
+  }, [fetchInitial])
+
+  // Manage preview URL lifecycle
+  useEffect(() => {
+    if (!file) {
+      setPreviewUrl('')
+      return
+    }
+    const url = URL.createObjectURL(file)
+    setPreviewUrl(url)
+    return () => URL.revokeObjectURL(url)
+  }, [file])
+
+  // Filter supplier options based on search (nice UX, still synced)
+  const supplierOptions = useMemo(() => {
+    const q = supplierSearch.trim().toLowerCase()
+    if (!q) return suppliers
+    return suppliers.filter((s) => (s.name || '').toLowerCase().includes(q))
+  }, [suppliers, supplierSearch])
+
+  // Sync: dropdown -> search
+  const onSupplierSelect = (id: string) => {
+    setSelectedSupplierId(id)
+    const s = suppliers.find((x) => x.id === id)
+    setSupplierSearch(s?.name || '')
+  }
+
+  // Sync: search -> dropdown
+  const onSupplierSearchChange = (val: string) => {
+    setSupplierSearch(val)
+
+    const exact = suppliers.find((s) => (s.name || '').trim().toLowerCase() === val.trim().toLowerCase())
+    if (exact) {
+      setSelectedSupplierId(exact.id)
+      return
+    }
+
+    // If user is typing something non-exact, keep select empty to avoid wrong selection
+    setSelectedSupplierId('')
+  }
+
+  const onCreatedSupplier = (s: Supplier) => {
+    // update list and select it
+    setSuppliers((prev) => {
+      const next = [...prev, s]
+      next.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'el'))
+      return next
+    })
+    setSelectedSupplierId(s.id)
+    setSupplierSearch(s.name || '')
+  }
+
+  // Ensure credit/debt are mutually exclusive
+  const toggleCredit = () => {
+    setIsCredit((v) => {
+      const next = !v
+      if (next) setIsDebtPayment(false)
+      return next
+    })
+  }
+  const toggleDebtPayment = () => {
+    setIsDebtPayment((v) => {
+      const next = !v
+      if (next) setIsCredit(false)
+      return next
+    })
+  }
+
+  const uploadInvoiceImage = async (): Promise<string | null> => {
+    if (!file) return null
+    if (!storeId || storeId === 'null' || !isValidUUID(storeId)) return null
+
+    const safeName = file.name.replace(/\s+/g, '_')
+    const path = `${storeId}/${Date.now()}_${safeName}`
+
+    const { error: upErr } = await supabase.storage.from('invoices').upload(path, file, {
+      cacheControl: '3600',
+      upsert: false
+    })
+
+    if (upErr) throw upErr
+
+    const { data } = supabase.storage.from('invoices').getPublicUrl(path)
+    return data?.publicUrl || null
+  }
+
+  const handleSave = async () => {
+    if (!storeId || storeId === 'null' || !isValidUUID(storeId)) {
+      router.replace('/select-store')
+      return
+    }
+
+    const amountNum = Number(String(amount).replace(',', '.'))
+    if (!amount || Number.isNaN(amountNum) || amountNum <= 0) {
+      toast.error('Βάλε έγκυρο ποσό.')
+      return
+    }
+
+    // If credit/debt payment, supplier must be selected
+    if ((isCredit || isDebtPayment) && !selectedSupplierId) {
+      toast.error('Επίλεξε προμηθευτή.')
+      return
+    }
+
+    setSaving(true)
+    try {
+      let finalNotes = (notes || '').trim()
+
+      if (noInvoice) {
+        // Requirement: label is "ΧΩΡΙΣ ΤΙΜΟΛΟΓΙΟ" (no "Μαύρα")
+        // Keep the text inside notes so the analysis badge can work.
+        if (!finalNotes) finalNotes = 'ΧΩΡΙΣ ΤΙΜΟΛΟΓΙΟ'
+        else if (!finalNotes.toUpperCase().includes('ΧΩΡΙΣ ΤΙΜΟΛΟΓΙΟ')) finalNotes = `${finalNotes} | ΧΩΡΙΣ ΤΙΜΟΛΟΓΙΟ`
+      }
+
+      const imageUrl = await uploadInvoiceImage()
+
+      const type = isDebtPayment ? 'debt_payment' : 'expense'
+      const methodDb = method === 'cash' ? 'Μετρητά' : 'Τράπεζα'
+
+      // Requirement: amount saved as negative number (Math.abs)
+      const finalAmount = -Math.abs(amountNum)
+
+      const payload: any = {
+        store_id: storeId,
+        amount: finalAmount,
+        type,
+        method: methodDb,
+        date: new Date().toISOString().slice(0, 10),
+        notes: finalNotes || null,
+        supplier_id: selectedSupplierId || null,
+        fixed_asset_id: selectedAssetId || null,
+        is_credit: isCredit === true // credit flag (for supplier balance logic)
+      }
+
+      if (imageUrl) payload.image_url = imageUrl
+
+      const { error } = await supabase.from('transactions').insert([payload])
+      if (error) throw error
+
+      toast.success('Το έξοδο αποθηκεύτηκε ✅')
+
+      // Reset form (keep store context)
+      setAmount('')
+      setMethod('cash')
+      setIsCredit(false)
+      setIsDebtPayment(false)
+      setSelectedSupplierId('')
+      setSupplierSearch('')
+      setSelectedAssetId('')
+      setNotes('')
+      setNoInvoice(false)
+      setFile(null)
+
+      // optional: go back home
+      router.replace(`/?store=${storeId}`)
+    } catch (e: any) {
+      console.error(e)
+      toast.error(e?.message || 'Σφάλμα αποθήκευσης.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div style={iphoneWrapper}>
+      <Toaster position="top-center" richColors />
+      <div style={{ maxWidth: '520px', margin: '0 auto', paddingBottom: '120px' }}>
+        {/* HEADER */}
+        <div style={headerRow}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={logoBox}>➖</div>
+            <div>
+              <h1 style={title}>Προσθήκη Εξόδου</h1>
+              <p style={subtitle}>ΚΑΤΑΧΩΡΗΣΗ ΝΕΑΣ ΚΙΝΗΣΗΣ</p>
+            </div>
+          </div>
+
+          <Link href={`/?store=${storeId || ''}`} style={backBtn} aria-label="Back">
+            <ChevronLeft size={20} />
+          </Link>
+        </div>
+
+        {/* CARD */}
+        <div style={card}>
+          {/* AMOUNT */}
+          <label style={label}>ΠΟΣΟ (€) *</label>
+          <input
+            inputMode="decimal"
+            type="number"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            placeholder="0"
+            style={{ ...input, fontSize: '22px', textAlign: 'center' }}
+          />
+
+          {/* METHOD */}
+          <div style={{ marginTop: '14px' }}>
+            <label style={label}>ΤΡΟΠΟΣ ΠΛΗΡΩΜΗΣ</label>
+            <div style={segmentedRow}>
+              <button onClick={() => setMethod('cash')} style={method === 'cash' ? segActive : segInactive} type="button">
+                💵 ΜΕΤΡΗΤΑ
+              </button>
+              <button onClick={() => setMethod('bank')} style={method === 'bank' ? segActive : segInactive} type="button">
+                🏦 ΤΡΑΠΕΖΑ
+              </button>
+            </div>
+          </div>
+
+          {/* CREDIT / DEBT */}
+          <div style={{ marginTop: '14px' }}>
+            <label style={label}>ΚΑΤΑΣΤΑΣΗ</label>
+            <div style={toggleGrid}>
+              <button onClick={toggleCredit} style={isCredit ? toggleOn : toggleOff} type="button">
+                {isCredit ? <CheckCircle2 size={16} /> : <AlertTriangle size={16} />}
+                ΠΙΣΤΩΣΗ
+              </button>
+              <button onClick={toggleDebtPayment} style={isDebtPayment ? toggleOnBlue : toggleOff} type="button">
+                {isDebtPayment ? <CheckCircle2 size={16} /> : <AlertTriangle size={16} />}
+                ΕΞΟΦΛΗΣΗ ΧΡΕΟΥΣ
+              </button>
+            </div>
+            <p style={hint}>
+              {isCredit
+                ? 'Η κίνηση θα μετρήσει ως πίστωση προμηθευτή.'
+                : isDebtPayment
+                  ? 'Η κίνηση θα μετρήσει ως πληρωμή χρέους (debt_payment).'
+                  : 'Κανονικό έξοδο.'}
+            </p>
+          </div>
+
+          {/* SUPPLIER: SEARCH + PLUS + SELECT */}
+          <div style={{ marginTop: '14px' }}>
+            <label style={label}>ΠΡΟΜΗΘΕΥΤΗΣ</label>
+
+            <div style={supplierSearchRow}>
+              <div style={searchWrap}>
+                <input
+                  value={supplierSearch}
+                  onChange={(e) => onSupplierSearchChange(e.target.value)}
+                  placeholder="Αναζήτηση προμηθευτή..."
+                  style={searchInput}
+                />
+                {/* Search icon on RIGHT */}
+                <Search size={16} style={searchIconRight} />
+              </div>
+
+              <button onClick={() => setSupplierModalOpen(true)} style={plusBtn} type="button" title="Νέος προμηθευτής">
+                <Plus size={18} />
+              </button>
+            </div>
+
+            <select value={selectedSupplierId} onChange={(e) => onSupplierSelect(e.target.value)} style={select}>
+              <option value="">{supplierOptions.length ? 'Επίλεξε προμηθευτή' : 'Δεν υπάρχουν προμηθευτές'}</option>
+              {supplierOptions.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {String(s.name || '').toUpperCase()}
+                </option>
+              ))}
+            </select>
+
+            {(isCredit || isDebtPayment) && !selectedSupplierId && (
+              <div style={warnBox}>⚠️ Για ΠΙΣΤΩΣΗ / ΕΞΟΦΛΗΣΗ ΧΡΕΟΥΣ πρέπει να επιλέξεις προμηθευτή.</div>
+            )}
+          </div>
+
+          {/* FIXED ASSET */}
+          <div style={{ marginTop: '14px' }}>
+            <label style={label}>ΠΑΓΙΟ (προαιρετικό)</label>
+            <select value={selectedAssetId} onChange={(e) => setSelectedAssetId(e.target.value)} style={select}>
+              <option value="">—</option>
+              {fixedAssets.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {String(a.name || '').toUpperCase()}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* NO INVOICE */}
+          <div style={{ marginTop: '14px' }}>
+            <button
+              type="button"
+              onClick={() => setNoInvoice((v) => !v)}
+              style={noInvoice ? toggleNoInvoiceOn : toggleNoInvoiceOff}
+            >
+              {noInvoice ? <CheckCircle2 size={16} /> : <AlertTriangle size={16} />}
+              ΧΩΡΙΣ ΤΙΜΟΛΟΓΙΟ
+            </button>
+          </div>
+
+          {/* NOTES */}
+          <div style={{ marginTop: '14px' }}>
+            <label style={label}>ΣΗΜΕΙΩΣΕΙΣ</label>
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="π.χ. Υλικά / service / μεταφορικά..."
+              style={textarea}
+              rows={3}
+            />
+          </div>
+
+          {/* PHOTO */}
+          <div style={{ marginTop: '14px' }}>
+            <label style={label}>ΦΩΤΟ / ΤΙΜΟΛΟΓΙΟ</label>
+
+            <div style={photoRow}>
+              <label style={photoPickBtn}>
+                <Camera size={16} />
+                Επιλογή Φωτο
+                <input
+                  type="file"
+                  accept="image/*"
+                  style={{ display: 'none' }}
+                  onChange={(e) => setFile(e.target.files?.[0] || null)}
+                />
+              </label>
+
+              {file && (
+                <button type="button" onClick={() => setFile(null)} style={photoRemoveBtn}>
+                  <X size={16} /> Αφαίρεση
+                </button>
+              )}
+            </div>
+
+            {previewUrl && (
+              <div style={previewWrap}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={previewUrl} alt="Preview" style={previewImg} />
+              </div>
+            )}
+          </div>
+
+          {/* SAVE */}
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={saving || loading}
+            style={{
+              ...saveBtn,
+              opacity: saving || loading ? 0.7 : 1
+            }}
+          >
+            {saving ? 'ΑΠΟΘΗΚΕΥΣΗ...' : 'ΑΠΟΘΗΚΕΥΣΗ ΕΞΟΔΟΥ'}
+          </button>
+
+          {loading && <div style={smallHint}>Φόρτωση προμηθευτών/παγίων...</div>}
+        </div>
+      </div>
+
+      {/* MODAL */}
+      {!!storeId && storeId !== 'null' && isValidUUID(storeId) && (
+        <SupplierFormModal
+          open={supplierModalOpen}
+          storeId={storeId}
+          onClose={() => setSupplierModalOpen(false)}
+          onCreated={onCreatedSupplier}
+        />
+      )}
+    </div>
+  )
+}
+
+// --- STYLES (INLINE CSS ONLY) ---
+const iphoneWrapper: any = {
+  backgroundColor: colors.bgLight,
+  minHeight: '100dvh',
+  padding: '18px',
+  overflowY: 'auto',
+  position: 'absolute',
+  top: 0,
+  left: 0,
+  right: 0,
+  bottom: 0
+}
+
+const headerRow: any = {
+  display: 'flex',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+  marginBottom: '18px'
+}
+
+const logoBox: any = {
+  width: '44px',
+  height: '44px',
+  borderRadius: '14px',
+  backgroundColor: '#eef2ff',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  fontSize: '20px'
+}
+
+const title: any = { margin: 0, fontWeight: '900', fontSize: '20px', color: colors.primaryDark }
+const subtitle: any = { margin: 0, marginTop: '3px', fontWeight: '800', fontSize: '10px', letterSpacing: '1px', color: colors.secondaryText }
+
+const backBtn: any = {
+  width: '40px',
+  height: '40px',
+  borderRadius: '12px',
+  border: `1px solid ${colors.border}`,
+  backgroundColor: colors.white,
+  color: colors.secondaryText,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  textDecoration: 'none'
+}
+
+const card: any = {
+  backgroundColor: colors.white,
+  border: `1px solid ${colors.border}`,
+  borderRadius: '24px',
+  padding: '18px',
+  boxShadow: '0 6px 16px rgba(0,0,0,0.04)'
+}
+
+const label: any = {
+  fontSize: '10px',
+  fontWeight: '900',
+  color: colors.secondaryText,
+  letterSpacing: '1px',
+  marginBottom: '6px',
+  display: 'block',
+  textTransform: 'uppercase'
+}
+
+const input: any = {
+  width: '100%',
+  padding: '14px',
+  borderRadius: '14px',
+  border: `1px solid ${colors.border}`,
+  backgroundColor: colors.bgLight,
+  outline: 'none',
+  fontWeight: '900',
+  color: colors.primaryDark,
+  boxSizing: 'border-box'
+}
+
+const textarea: any = {
+  ...input,
+  fontSize: '14px',
+  fontWeight: '800',
+  resize: 'none'
+}
+
+const segmentedRow: any = { display: 'flex', gap: '10px' }
+const segActive: any = {
+  flex: 1,
+  padding: '12px',
+  borderRadius: '14px',
+  border: 'none',
+  backgroundColor: colors.primaryDark,
+  color: colors.white,
+  fontWeight: '900',
+  fontSize: '12px',
+  cursor: 'pointer'
+}
+const segInactive: any = {
+  ...segActive,
+  backgroundColor: colors.bgLight,
+  color: colors.secondaryText,
+  border: `1px solid ${colors.border}`
+}
+
+const toggleGrid: any = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }
+const toggleOff: any = {
+  padding: '12px',
+  borderRadius: '14px',
+  border: `1px solid ${colors.border}`,
+  backgroundColor: colors.white,
+  color: colors.secondaryText,
+  fontWeight: '900',
+  fontSize: '11px',
+  cursor: 'pointer',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: '8px'
+}
+const toggleOn: any = { ...toggleOff, backgroundColor: '#ecfdf5', border: '1px solid #bbf7d0', color: colors.accentGreen }
+const toggleOnBlue: any = { ...toggleOff, backgroundColor: '#eff6ff', border: '1px solid #dbeafe', color: colors.accentBlue }
+
+const hint: any = { margin: '8px 0 0', fontSize: '11px', fontWeight: '800', color: colors.secondaryText }
+
+const supplierSearchRow: any = { display: 'flex', gap: '10px', alignItems: 'center' }
+
+const searchWrap: any = { position: 'relative', flex: 1 }
+const searchInput: any = {
+  ...input,
+  paddingRight: '42px' // ✅ so text doesn't overlap icon (icon on right)
+}
+const searchIconRight: any = {
+  position: 'absolute',
+  right: '14px',
+  top: '50%',
+  transform: 'translateY(-50%)',
+  color: colors.secondaryText,
+  pointerEvents: 'none'
+}
+
+const plusBtn: any = {
+  width: '52px',
+  height: '48px',
+  borderRadius: '14px',
+  border: `1px solid ${colors.border}`,
+  backgroundColor: colors.white,
+  cursor: 'pointer',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  color: colors.primaryDark,
+  boxShadow: '0 6px 14px rgba(0,0,0,0.04)'
+}
+
+const select: any = {
+  width: '100%',
+  marginTop: '10px',
+  padding: '14px',
+  borderRadius: '14px',
+  border: `1px solid ${colors.border}`,
+  backgroundColor: colors.white,
+  outline: 'none',
+  fontWeight: '900',
+  color: colors.primaryDark,
   appearance: 'none',
-  boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
-};
+  boxSizing: 'border-box'
+}
 
-const totalCardStyle: any = { backgroundColor: colors.primaryDark, padding: '30px 20px', borderRadius: '24px', marginBottom: '30px', textAlign: 'center', color: 'white', boxShadow: '0 15px 30px rgba(30, 41, 59, 0.15)' };
-const totalLabelStyle: any = { margin: 0, fontSize: '11px', fontWeight: '700', color: '#fed7aa', letterSpacing: '1px' };
-const totalAmountStyle: any = { margin: '8px 0 0 0', fontSize: '38px', fontWeight: '900', color: '#ffffff' };
-const listHeaderStyle: any = { fontSize: '11px', fontWeight: '800', color: colors.secondaryText, textTransform: 'uppercase', letterSpacing: '0.5px', marginLeft: '5px' };
-const supplierCardStyle: any = { backgroundColor: colors.white, padding: '18px', borderRadius: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'stretch', border: `1px solid ${colors.border}`, marginBottom: '12px' };
-const rankBadgeStyle: any = { fontSize: '10px', color: colors.accentOrange, fontWeight: '900' };
-const supplierNameStyle: any = { fontWeight: '800', margin: 0, fontSize: '15px', color: colors.primaryDark };
-const categoryBadgeStyle: any = { fontSize: '9px', fontWeight: '800', backgroundColor: '#f1f5f9', color: colors.secondaryText, padding: '4px 8px', borderRadius: '6px', marginTop: '6px', display: 'inline-block', textTransform: 'uppercase' };
-const turnoverInfoStyle: any = { fontSize: '9px', color: colors.secondaryText, marginTop: '8px', fontWeight: '600' };
-const actionLinkStyle: any = { background: 'none', border: 'none', padding: 0, fontSize: '10px', fontWeight: '700', color: colors.secondaryText, cursor: 'pointer', textDecoration: 'underline' };
-const dangerLinkStyle: any = { ...actionLinkStyle, color: colors.accentRed };
-const rightColumnStyle: any = { textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', justifyContent: 'space-between' };
-const balanceValueStyle: any = { fontWeight: '900', fontSize: '18px', color: colors.accentOrange, margin: 0 };
-const payBtnStyle: any = { backgroundColor: '#eff6ff', color: colors.accentBlue, border: `1px solid #dbeafe`, padding: '8px 12px', borderRadius: '10px', fontSize: '10px', fontWeight: '900', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' };
-const emptyStateStyle: any = { textAlign: 'center', padding: '60px 20px', background: colors.white, borderRadius: '24px', border: `2px dashed ${colors.border}` };
-const spinnerStyle: any = { width: '24px', height: '24px', border: '3px solid #f3f3f3', borderTop: `3px solid ${colors.accentOrange}`, borderRadius: '50%', margin: '0 auto' };
+const warnBox: any = {
+  marginTop: '10px',
+  backgroundColor: colors.warning,
+  color: colors.warningText,
+  border: `1px solid #fde68a`,
+  borderRadius: '14px',
+  padding: '10px 12px',
+  fontWeight: '900',
+  fontSize: '11px'
+}
 
-export default function SuppliersBalancePage() {
+const noInvoiceToggleBase: any = {
+  width: '100%',
+  padding: '12px',
+  borderRadius: '14px',
+  fontWeight: '900',
+  fontSize: '12px',
+  cursor: 'pointer',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: '8px'
+}
+const toggleNoInvoiceOff: any = { ...noInvoiceToggleBase, backgroundColor: colors.white, border: `1px solid ${colors.border}`, color: colors.secondaryText }
+const toggleNoInvoiceOn: any = { ...noInvoiceToggleBase, backgroundColor: colors.warning, border: '1px solid #fde68a', color: colors.warningText }
+
+const photoRow: any = { display: 'flex', gap: '10px', alignItems: 'center' }
+const photoPickBtn: any = {
+  flex: 1,
+  padding: '12px',
+  borderRadius: '14px',
+  border: `1px solid ${colors.border}`,
+  backgroundColor: colors.bgLight,
+  fontWeight: '900',
+  fontSize: '12px',
+  color: colors.primaryDark,
+  cursor: 'pointer',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: '8px'
+}
+const photoRemoveBtn: any = {
+  padding: '12px',
+  borderRadius: '14px',
+  border: `1px solid #fecaca`,
+  backgroundColor: '#fef2f2',
+  fontWeight: '900',
+  fontSize: '12px',
+  color: colors.accentRed,
+  cursor: 'pointer',
+  display: 'flex',
+  alignItems: 'center',
+  gap: '8px'
+}
+
+const previewWrap: any = {
+  marginTop: '10px',
+  borderRadius: '16px',
+  border: `1px solid ${colors.border}`,
+  overflow: 'hidden',
+  backgroundColor: colors.bgLight
+}
+const previewImg: any = { width: '100%', height: '220px', objectFit: 'cover', display: 'block' }
+
+const saveBtn: any = {
+  marginTop: '18px',
+  width: '100%',
+  padding: '16px',
+  borderRadius: '16px',
+  border: 'none',
+  backgroundColor: colors.primaryDark,
+  color: colors.white,
+  fontWeight: '900',
+  fontSize: '14px',
+  cursor: 'pointer'
+}
+
+const smallHint: any = { marginTop: '10px', fontSize: '11px', fontWeight: '800', color: colors.secondaryText, textAlign: 'center' }
+
+// --- MODAL STYLES ---
+const modalOverlay: any = {
+  position: 'fixed',
+  top: 0,
+  left: 0,
+  right: 0,
+  bottom: 0,
+  backgroundColor: 'rgba(0,0,0,0.55)',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  zIndex: 2000,
+  padding: '18px'
+}
+
+const modalCard: any = {
+  width: '100%',
+  maxWidth: '420px',
+  backgroundColor: colors.white,
+  borderRadius: '24px',
+  border: `1px solid ${colors.border}`,
+  padding: '16px',
+  boxShadow: '0 18px 44px rgba(0,0,0,0.18)'
+}
+
+const modalHeader: any = {
+  display: 'flex',
+  alignItems: 'flex-start',
+  justifyContent: 'space-between',
+  gap: '10px'
+}
+
+const modalIconBox: any = {
+  width: '40px',
+  height: '40px',
+  borderRadius: '14px',
+  backgroundColor: '#eef2ff',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  color: colors.primaryDark
+}
+
+const modalTitle: any = { fontWeight: '900', color: colors.primaryDark, fontSize: '16px' }
+const modalSubtitle: any = { marginTop: '3px', fontWeight: '800', color: colors.secondaryText, fontSize: '11px' }
+
+const iconBtn: any = {
+  width: '40px',
+  height: '40px',
+  borderRadius: '14px',
+  border: `1px solid ${colors.border}`,
+  backgroundColor: colors.white,
+  cursor: 'pointer',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  color: colors.secondaryText
+}
+
+const btnGhost: any = {
+  flex: 1,
+  padding: '14px',
+  borderRadius: '14px',
+  border: `1px solid ${colors.border}`,
+  backgroundColor: colors.white,
+  color: colors.secondaryText,
+  fontWeight: '900',
+  cursor: 'pointer'
+}
+
+const btnPrimary: any = {
+  flex: 1,
+  padding: '14px',
+  borderRadius: '14px',
+  border: 'none',
+  backgroundColor: colors.primaryDark,
+  color: colors.white,
+  fontWeight: '900',
+  cursor: 'pointer'
+}
+
+export default function AddExpensePage() {
   return (
     <main style={{ backgroundColor: colors.bgLight, minHeight: '100vh' }}>
-      <Suspense fallback={<div style={{ padding: '50px', textAlign: 'center' }}>Φόρτωση...</div>}>
-        <BalancesContent />
+      <Suspense fallback={<div style={{ padding: '50px', textAlign: 'center', fontWeight: 900, color: colors.secondaryText }}>Φόρτωση...</div>}>
+        <AddExpenseContent />
       </Suspense>
     </main>
   )
