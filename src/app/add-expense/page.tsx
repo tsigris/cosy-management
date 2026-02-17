@@ -100,6 +100,8 @@ function AddExpenseForm() {
   const [selectedSup, setSelectedSup] = useState('');
   const [selectedFixed, setSelectedFixed] = useState('');
   const [showSupplierModal, setShowSupplierModal] = useState(false);
+  // --- ΝΕΟ: Ημερήσια στατιστικά ---
+  const [dayStats, setDayStats] = useState<{ income: number; expenses: number }>({ income: 0, expenses: 0 });
 
   useEffect(() => {
     if (!storeId || storeId === 'null') {
@@ -130,6 +132,20 @@ function AddExpenseForm() {
 
       const { data: sData } = await supabase.from('suppliers').select('id, name').eq('store_id', storeId).order('name');
       const { data: fData } = await supabase.from('fixed_assets').select('id, name').eq('store_id', storeId).order('name');
+      // --- Φέρε όλες τις συναλλαγές της ημέρας για το storeId ---
+      const { data: txs } = await supabase
+        .from('transactions')
+        .select('amount, type, is_credit')
+        .eq('store_id', storeId)
+        .eq('date', selectedDate);
+      let income = 0, expenses = 0;
+      if (txs) {
+        for (const t of txs) {
+          if (t.type === 'income') income += Math.abs(Number(t.amount)) || 0;
+          else expenses += Math.abs(Number(t.amount)) || 0;
+        }
+      }
+      setDayStats({ income, expenses });
 
       console.log("DEBUG_SUPPLIERS:", sData);
       setSuppliers(sData || []);
@@ -162,7 +178,7 @@ function AddExpenseForm() {
     } finally {
       setLoading(false);
     }
-  }, [storeId, editId, urlAssetId, urlSupId, router]);
+  }, [storeId, editId, urlAssetId, urlSupId, router, selectedDate]);
 
   useEffect(() => { loadFormData(); }, [loadFormData]);
 
@@ -173,6 +189,16 @@ function AddExpenseForm() {
 
     try {
       const { data: { session } } = await supabase.auth.getSession();
+      let invoice_image = undefined;
+      // --- IMAGE STORAGE ---
+      if (imageFile) {
+        const fileExt = imageFile.name.split('.').pop();
+        const fileName = `${Date.now()}.${fileExt}`;
+        const filePath = `${storeId}/${fileName}`;
+        const { error: uploadError } = await supabase.storage.from('invoices').upload(filePath, imageFile);
+        if (uploadError) throw uploadError;
+        invoice_image = filePath;
+      }
       const payload: any = {
         amount: Math.abs(Number(amount)),
         method: isCredit ? 'Πίστωση' : method,
@@ -186,12 +212,14 @@ function AddExpenseForm() {
         category: isAgainstDebt ? 'Εξόφληση Χρέους' : (selectedFixed ? 'Πάγια' : 'Εμπορεύματα'),
         created_by_name: currentUsername,
         notes: noInvoice ? (notes ? `${notes} (ΧΩΡΙΣ ΤΙΜΟΛΟΓΙΟ)` : 'ΧΩΡΙΣ ΤΙΜΟΛΟΓΙΟ') : notes,
+        invoice_image
       };
 
       const { error } = editId ? await supabase.from('transactions').update(payload).eq('id', editId) : await supabase.from('transactions').insert([payload]);
       if (error) throw error;
 
       toast.success('Επιτυχής καταχώρηση!');
+      router.refresh();
       router.push(`/?date=${selectedDate}&store=${storeId}`);
     } catch (error: any) {
       toast.error(error.message);
@@ -259,12 +287,28 @@ function AddExpenseForm() {
           <label style={labelStyle}>ΠΟΣΟ (€)</label>
           <input type="number" inputMode="decimal" autoFocus value={amount} onChange={e => setAmount(e.target.value)} style={inputStyle} placeholder="0.00" />
 
-          <label style={{ ...labelStyle, marginTop: 20 }}>ΜΕΘΟΔΟΣ ΠΛΗΡΩΜΗΣ</label>
+          {/* UI BUTTONS: Μετρητά / Τράπεζα */}
           <div style={{ display: 'flex', gap: 12, marginTop: 8 }}>
-            <button type="button" onClick={() => { setMethod('Μετρητά'); setIsCredit(false); }} style={{ ...methodBtn, backgroundColor: method === 'Μετρητά' && !isCredit ? colors.primaryDark : colors.white, color: method === 'Μετρητά' && !isCredit ? 'white' : colors.secondaryText }}>
+            <button
+              type="button"
+              onClick={() => { setMethod('Μετρητά'); setIsCredit(false); }}
+              style={{
+                ...methodBtn,
+                backgroundColor: method === 'Μετρητά' && !isCredit ? colors.primaryDark : colors.white,
+                color: method === 'Μετρητά' && !isCredit ? 'white' : colors.secondaryText,
+              }}
+            >
               <Banknote size={16} /> Μετρητά
             </button>
-            <button type="button" onClick={() => { setMethod('Τράπεζα'); setIsCredit(false); }} style={{ ...methodBtn, backgroundColor: method === 'Τράπεζα' && !isCredit ? colors.primaryDark : colors.white, color: method === 'Τράπεζα' && !isCredit ? 'white' : colors.secondaryText }}>
+            <button
+              type="button"
+              onClick={() => { setMethod('Τράπεζα'); setIsCredit(false); }}
+              style={{
+                ...methodBtn,
+                backgroundColor: method === 'Τράπεζα' && !isCredit ? colors.primaryDark : colors.white,
+                color: method === 'Τράπεζα' && !isCredit ? 'white' : colors.secondaryText,
+              }}
+            >
               <Landmark size={16} /> Τράπεζα
             </button>
           </div>
@@ -314,6 +358,11 @@ function AddExpenseForm() {
             <button onClick={handleSave} disabled={loading} style={{ ...smartSaveBtn, backgroundColor: colors.accentRed }}>
               <span style={{ fontSize: 15, fontWeight: 800 }}>{loading ? 'ΣΥΓΧΡΟΝΙΣΜΟΣ...' : 'ΚΑΤΑΧΩΡΗΣΗ ΕΞΟΔΟΥ'}</span>
             </button>
+            <div style={{ textAlign: 'center', marginTop: 8, fontSize: 13, color: colors.secondaryText, fontWeight: 700 }}>
+              ΚΑΘΑΡΟ ΤΑΜΕΙΟ: <span style={{ color: dayStats.income - dayStats.expenses >= 0 ? colors.accentGreen : colors.accentRed }}>
+                {(dayStats.income - dayStats.expenses).toFixed(2)}€
+              </span>
+            </div>
           </div>
         </div>
       </div>
