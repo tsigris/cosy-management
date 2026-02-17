@@ -1,7 +1,7 @@
 'use client'
 export const dynamic = 'force-dynamic'
 
-import { useEffect, useState, Suspense, useCallback, useMemo } from 'react'
+import { useEffect, useState, Suspense, useCallback } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
@@ -24,6 +24,7 @@ function AddIncomeForm() {
   // URL Params
   const editId = searchParams.get('editId')
   const selectedDate = searchParams.get('date') || new Date().toISOString().split('T')[0]
+  const storeIdFromUrl = searchParams.get('store')
   
   // Form State
   const [amount, setAmount] = useState('')
@@ -32,9 +33,8 @@ function AddIncomeForm() {
   const [incomeType, setIncomeType] = useState('Είσπραξη')
   const [loading, setLoading] = useState(true)
   const [currentUsername, setCurrentUsername] = useState('Χρήστης')
-  const [storeId, setStoreId] = useState<string | null>(null)
+  const [storeId, setStoreId] = useState<string | null>(storeIdFromUrl)
 
-  // ✅ ΛΟΓΙΚΗ ΦΟΡΤΩΣΗΣ ΔΕΔΟΜΕΝΩΝ (INITIAL & EDIT)
   const loadFormData = useCallback(async () => {
     try {
       const { data: { session } } = await supabase.auth.getSession()
@@ -43,14 +43,14 @@ function AddIncomeForm() {
         return
       }
 
-      // Get activeStoreId from localStorage
-      const activeStoreId = typeof window !== 'undefined' ? localStorage.getItem('active_store_id') : null;
+      // Προτεραιότητα στο storeId από το URL, μετά στο localStorage
+      const activeStoreId = storeIdFromUrl || (typeof window !== 'undefined' ? localStorage.getItem('active_store_id') : null);
+      
       if (!activeStoreId) {
-        setLoading(false);
+        router.replace('/select-store')
         return;
       }
 
-      // Fetch username from profile (ignore profile.store_id)
       const { data: profile } = await supabase
         .from('profiles')
         .select('username')
@@ -59,7 +59,6 @@ function AddIncomeForm() {
       if (profile) setCurrentUsername(profile.username || 'Admin');
       setStoreId(activeStoreId);
 
-      // 🛠 ΑΝ ΕΙΝΑΙ ΕΠΕΞΕΡΓΑΣΙΑ (EDIT MODE)
       if (editId) {
         const { data: tx, error: txErr } = await supabase
           .from('transactions')
@@ -69,10 +68,9 @@ function AddIncomeForm() {
           .single();
 
         if (tx && !txErr) {
-          setAmount(tx.amount.toString());
+          setAmount(Math.abs(tx.amount).toString());
           setMethod(tx.method || 'Μετρητά');
           setNotes(tx.notes || '');
-          // Αναγνώριση τύπου εσόδου από την κατηγορία
           setIncomeType(tx.category === 'income' ? 'Είσπραξη' : 'Άλλο');
         }
       }
@@ -81,7 +79,7 @@ function AddIncomeForm() {
     } finally {
       setLoading(false)
     }
-  }, [editId, router])
+  }, [editId, router, storeIdFromUrl])
 
   useEffect(() => {
     loadFormData()
@@ -93,18 +91,16 @@ function AddIncomeForm() {
     setLoading(true)
 
     try {
-      // Always get store_id from localStorage
-      const activeStoreId = typeof window !== 'undefined' ? localStorage.getItem('active_store_id') : storeId;
-      if (!activeStoreId) throw new Error('Δεν βρέθηκε κατάστημα')
+      if (!storeId) throw new Error('Δεν βρέθηκε κατάστημα')
 
       const payload = {
-        amount: Math.abs(parseFloat(amount)), // Always positive for income
+        amount: Math.abs(parseFloat(amount)), // Πάντα θετικό
         type: 'income',
         category: incomeType === 'Είσπραξη' ? 'income' : 'other_income',
         method: method,
         notes: notes,
         date: selectedDate,
-        store_id: activeStoreId,
+        store_id: storeId,
         created_by_name: currentUsername
       }
 
@@ -115,8 +111,7 @@ function AddIncomeForm() {
       if (error) throw error
       
       toast.success(editId ? 'Ενημερώθηκε επιτυχώς!' : 'Καταχωρήθηκε επιτυχώς!')
-      router.push(`/?date=${selectedDate}`)
-      router.refresh()
+      router.push(`/?date=${selectedDate}&store=${storeId}`)
     } catch (err: any) {
       toast.error('Σφάλμα: ' + err.message)
       setLoading(false)
@@ -126,7 +121,7 @@ function AddIncomeForm() {
   if (loading && !amount) return <div style={loaderStyle}>Φόρτωση...</div>
 
   return (
-    <main style={{ backgroundColor: colors.bgLight, minHeight: '100vh', padding: '16px' }}>
+    <main style={iphoneWrapper}>
       <Toaster position="top-center" richColors />
       <div style={formCardStyle}>
         
@@ -141,11 +136,12 @@ function AddIncomeForm() {
               </p>
             </div>
           </div>
-          <Link href="/" style={backBtnStyle}>✕</Link>
+          {/* ✅ ΔΙΟΡΘΩΣΗ: Επιστροφή στην αρχική με το σωστό store ID */}
+          <Link href={`/?date=${selectedDate}&store=${storeId}`} style={backBtnStyle}>✕</Link>
         </div>
 
         <div style={userIndicator}>
-          <span style={userLabel}>👤 ΚΑΤΑΧΩΡΗΣΗ: {currentUsername.toUpperCase()}</span>
+          <span style={userLabel}>👤 ΧΕΙΡΙΣΤΗΣ: {currentUsername.toUpperCase()}</span>
         </div>
 
         <form onSubmit={handleSubmit}>
@@ -221,25 +217,50 @@ function AddIncomeForm() {
   )
 }
 
-// --- STYLES ---
+// --- STYLES ΔΙΟΡΘΩΜΕΝΑ ---
+const iphoneWrapper: any = { 
+  backgroundColor: colors.bgLight, 
+  minHeight: '100%', 
+  padding: '16px',
+  paddingBottom: '100px',
+  touchAction: 'pan-y'
+};
+
 const formCardStyle = { maxWidth: '500px', margin: '0 auto', backgroundColor: colors.white, borderRadius: '24px', padding: '24px', border: `1px solid ${colors.border}`, boxShadow: '0 4px 20px rgba(0,0,0,0.03)' };
 const headerLayout = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px' };
 const titleStyle = { fontWeight: '800', fontSize: '20px', margin: 0, color: colors.primaryDark };
 const dateSubtitle = { margin: 0, fontSize: '10px', color: colors.accentGreen, fontWeight: '700', letterSpacing: '0.5px' };
 const logoBoxStyle: any = { width: '42px', height: '42px', backgroundColor: '#f0fdf4', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px' };
 const backBtnStyle: any = { textDecoration: 'none', color: colors.secondaryText, fontSize: '18px', fontWeight: 'bold', width: '36px', height: '36px', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bgLight, borderRadius: '10px', border: `1px solid ${colors.border}` };
-const labelStyle: any = { fontSize: '10px', fontWeight: '800', color: colors.secondaryText, marginBottom: '6px', display: 'block', letterSpacing: '0.5px' };
-const inputStyle: any = { width: '100%', padding: '15px', borderRadius: '12px', border: `1px solid ${colors.border}`, fontSize: '15px', fontWeight: '700', backgroundColor: colors.bgLight, boxSizing: 'border-box' as const, outline: 'none', color: colors.primaryDark };
-const textareaStyle: any = { ...inputStyle, height: '70px', paddingTop: '12px', fontWeight: '500' };
-const amountInput: any = { ...inputStyle, fontSize: '22px', color: colors.accentGreen };
+const labelStyle: any = { fontSize: '11px', fontWeight: '800', color: colors.secondaryText, marginBottom: '6px', display: 'block', letterSpacing: '0.5px' };
+
+const inputStyle: any = { 
+  width: '100%', 
+  padding: '15px', 
+  borderRadius: '12px', 
+  border: `1px solid ${colors.border}`, 
+  fontSize: '16px', // ✅ Zoom Fix
+  fontWeight: '700', 
+  backgroundColor: colors.bgLight, 
+  boxSizing: 'border-box', 
+  outline: 'none', 
+  color: colors.primaryDark 
+};
+
+const textareaStyle: any = { ...inputStyle, height: '80px', paddingTop: '12px', fontWeight: '500' };
+const amountInput: any = { ...inputStyle, fontSize: '24px', color: colors.accentGreen };
 const userIndicator = { marginBottom: '20px', padding: '8px', backgroundColor: '#f8fafc', borderRadius: '10px', textAlign: 'center' as any, border: `1px solid ${colors.border}` };
 const userLabel = { fontSize: '11px', fontWeight: '800', color: colors.secondaryText };
 const typeGrid = { display: 'flex', flexWrap: 'wrap' as any, gap: '8px', marginBottom: '24px' };
-const typeBtnStyle: any = { padding: '10px 14px', borderRadius: '10px', fontSize: '12px', fontWeight: '800', cursor: 'pointer', transition: 'all 0.2s' };
+const typeBtnStyle: any = { padding: '10px 14px', borderRadius: '10px', fontSize: '12px', fontWeight: '800', cursor: 'pointer' };
 const inputRow = { display: 'flex', gap: '12px', marginBottom: '20px' };
 const submitBtn: any = { width: '100%', padding: '18px', border: 'none', borderRadius: '16px', color: 'white', fontWeight: '800', fontSize: '16px', cursor: 'pointer', marginTop: '10px' };
 const loaderStyle = { padding: '40px', textAlign: 'center' as any, color: colors.secondaryText, fontWeight: '600' };
 
 export default function AddIncomePage() {
-  return <Suspense fallback={<div style={loaderStyle}>Φόρτωση φόρμας...</div>}><AddIncomeForm /></Suspense>
+  return (
+    <Suspense fallback={<div style={loaderStyle}>Φόρτωση φόρμας...</div>}>
+      <AddIncomeForm />
+    </Suspense>
+  )
 }

@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
 import { toast, Toaster } from 'sonner';
 import { Camera, X, Plus, Search, Landmark, Banknote, Factory, Building2 } from 'lucide-react';
+import { Suspense } from 'react';
 
 const colors = {
   primaryDark: '#1e293b',
@@ -189,7 +190,7 @@ function AddExpenseForm() {
         supplier_id: selectedSup || null,
         fixed_asset_id: selectedFixed || null,
         category: isAgainstDebt ? 'Εξόφληση Χρέους' : (selectedFixed ? 'Πάγια' : 'Εμπορεύματα'),
-        created_by_name: currentUsername,
+        created_by_name: currentUsername, // Operator fix
         notes: noInvoice ? (notes ? `${notes} (ΧΩΡΙΣ ΤΙΜΟΛΟΓΙΟ)` : 'ΧΩΡΙΣ ΤΙΜΟΛΟΓΙΟ') : notes,
       };
       if (imageFile) {
@@ -204,7 +205,7 @@ function AddExpenseForm() {
         : await supabase.from('transactions').insert([payload]);
       if (error) throw error;
       toast.success('Επιτυχής καταχώρηση!');
-      router.push(`/?date=${selectedDate}&store=${storeId}`);
+      router.push(`/?date=${selectedDate}&store=${storeId}`); // Redirect fix
     } catch (error: any) {
       toast.error(error.message);
     } finally {
@@ -237,7 +238,7 @@ function AddExpenseForm() {
               </p>
             </div>
           </div>
-          <Link href={`/?store=${storeId}`} style={backBtnStyle}><X size={20} /></Link>
+          <Link href={`/?store=${storeId}&date=${selectedDate}`} style={backBtnStyle}><X size={20} /></Link>
         </div>
 
         <div style={formCard}>
@@ -368,11 +369,14 @@ const dropdownRow = {
   borderBottom: `1px solid ${colors.bgLight}`
 };
 const iphoneWrapper: any = {
-  backgroundColor: colors.bgLight,
+  backgroundColor: '#f8fafc',
   minHeight: '100%',
   width: '100%',
-  padding: 20,
-  touchAction: 'pan-y'
+  padding: '20px',
+  paddingBottom: '140px',
+  touchAction: 'pan-y',
+  display: 'block',
+  overflowY: 'visible'
 };
 const headerStyle = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 };
 const logoBoxStyle: any = { width: 42, height: 42, backgroundColor: colors.primaryDark, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: 20 };
@@ -412,5 +416,9 @@ const modalCard: any = { backgroundColor: 'white', padding: 28, borderRadius: 22
 const modalCloseBtn: any = { background: 'none', border: 'none', color: colors.secondaryText, cursor: 'pointer', borderRadius: 8, padding: 4 };
 
 export default function AddExpensePage() {
-  return <AddExpenseForm />;
+  return (
+    <Suspense>
+      <AddExpenseForm />
+    </Suspense>
+  );
 }
