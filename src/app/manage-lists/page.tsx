@@ -19,16 +19,16 @@ const colors = {
   white: '#ffffff',
 }
 
-type TabKey = 'suppliers' | 'worker' | 'utility' | 'staff' | 'other'
-
+// Rename 'worker' to 'maintenance' for consistency
+type TabKey = 'suppliers' | 'maintenance' | 'utility' | 'staff' | 'other'
 const TABS: Array<{
   key: TabKey
   label: string
   icon: any
-  subCategory: 'worker' | 'utility' | 'staff' | 'other' | null
+  subCategory: 'Maintenance' | 'utility' | 'staff' | 'other' | null
 }> = [
   { key: 'suppliers', label: 'Προμηθευτές', icon: Users, subCategory: null },
-  { key: 'worker', label: 'Μάστορες', icon: Wrench, subCategory: 'worker' }, // ✅ Wrench (not Tool)
+  { key: 'maintenance', label: 'Συντήρηση', icon: Wrench, subCategory: 'Maintenance' }, // Wrench icon for Συντήρηση
   { key: 'utility', label: 'Λογαριασμοί', icon: Lightbulb, subCategory: 'utility' },
   { key: 'staff', label: 'Προσωπικό', icon: User, subCategory: 'staff' },
   { key: 'other', label: 'Λοιπά', icon: Package, subCategory: 'other' },
@@ -145,9 +145,12 @@ function ManageListsInner() {
         setSuppliers(prev => [...prev, data].sort((a, b) => String(a.name).localeCompare(String(b.name))))
       } else {
         // ✅ Save to fixed_assets with sub_category
+
+        // Ensure Συντήρηση always uses 'Maintenance' for sub_category
+        const subCategoryToSave = activeTab === 'maintenance' ? 'Maintenance' : currentTab.subCategory;
         const { data, error } = await supabase
           .from('fixed_assets')
-          .insert([{ name: trimmed, store_id: activeStoreId, sub_category: currentTab.subCategory }])
+          .insert([{ name: trimmed, store_id: activeStoreId, sub_category: subCategoryToSave }])
           .select('id, name, sub_category, created_at')
           .single()
 
@@ -310,7 +313,7 @@ function ManageListsInner() {
 
                       {activeTab !== 'suppliers' && (
                         <span style={{ fontSize: 16, fontWeight: 800, color: colors.secondaryText }}>
-                          sub_category: {String(item.sub_category || '')}
+                          sub_category: {String(item.sub_category === 'Maintenance' ? 'Συντήρηση' : item.sub_category || '')}
                         </span>
                       )}
                     </div>

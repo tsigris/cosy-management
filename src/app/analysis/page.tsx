@@ -7,7 +7,7 @@ import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { format, startOfMonth, endOfMonth } from 'date-fns'
 import { toast, Toaster } from 'sonner'
-import { User, ShoppingCart, Coins } from 'lucide-react'
+import { Coins, Users, ShoppingBag, Lightbulb, Wrench } from 'lucide-react'
 
 // --- MODERN PREMIUM PALETTE ---
 const colors = {
@@ -22,18 +22,22 @@ const colors = {
 }
 
 // --- CATEGORY META (required order & icons) ---
+// ✅ RENAME: 'Μάστορες' -> 'Συντήρηση'
 const CATEGORY_META: Array<{
   key: 'Εμπορεύματα' | 'Staff' | 'Utilities' | 'Maintenance' | 'Other'
-  icon: string
   label: string
   color: string
+  Icon: any
 }> = [
-  { key: 'Εμπορεύματα', icon: '🛒', label: 'Εμπορεύματα', color: '#6366f1' },
-  { key: 'Staff', icon: '👤', label: 'Προσωπικό', color: '#0ea5e9' },
-  { key: 'Utilities', icon: '💡', label: 'Λογαριασμοί', color: '#f59e0b' },
-  { key: 'Maintenance', icon: '🛠️', label: 'Μάστορες', color: '#10b981' },
-  { key: 'Other', icon: '📦', label: 'Λοιπά', color: '#64748b' }
+  { key: 'Εμπορεύματα', label: 'Εμπορεύματα', color: '#6366f1', Icon: ShoppingBag },
+  { key: 'Staff', label: 'Προσωπικό', color: '#0ea5e9', Icon: Users },
+  { key: 'Utilities', label: 'Λογαριασμοί', color: '#f59e0b', Icon: Lightbulb },
+  { key: 'Maintenance', label: 'Συντήρηση', color: '#10b981', Icon: Wrench },
+  { key: 'Other', label: 'Λοιπά', color: '#64748b', Icon: Coins }
 ]
+
+type FilterA = 'Όλες' | 'Εμπορεύματα' | 'Προσωπικό' | 'Λογαριασμοί' | 'Συντήρηση' | 'Λοιπά'
+type DetailMode = 'none' | 'staff' | 'supplier'
 
 function AnalysisContent() {
   const router = useRouter()
@@ -43,12 +47,14 @@ function AnalysisContent() {
   const [transactions, setTransactions] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
 
-  // ✅ NEW: staff + suppliers for filters
+  // lists for dynamic filters + correct party names
   const [staff, setStaff] = useState<any[]>([])
   const [suppliers, setSuppliers] = useState<any[]>([])
 
-  const [selectedStaffId, setSelectedStaffId] = useState<string>('all')
-  const [selectedSupId, setSelectedSupId] = useState<string>('all')
+  // ✅ Smart Dynamic Filters
+  const [filterA, setFilterA] = useState<FilterA>('Όλες')
+  const [detailMode, setDetailMode] = useState<DetailMode>('none')
+  const [detailId, setDetailId] = useState<string>('all')
 
   // ✅ Default to current month
   const [startDate, setStartDate] = useState(format(startOfMonth(new Date()), 'yyyy-MM-dd'))
@@ -71,7 +77,7 @@ function AnalysisContent() {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) return router.push('/login')
 
-      // ✅ Transactions (include supplier + fixed asset info)
+      // Transactions (include supplier + fixed asset info)
       const { data: tx, error: txErr } = await supabase
         .from('transactions')
         .select('*, suppliers(id, name), fixed_assets(id, name, sub_category)')
@@ -81,7 +87,7 @@ function AnalysisContent() {
       if (txErr) throw txErr
       setTransactions(tx || [])
 
-      // ✅ Staff list (fixed_assets where sub_category = staff)
+      // Staff list (fixed_assets where sub_category = staff)
       const { data: staffData, error: staffErr } = await supabase
         .from('fixed_assets')
         .select('id, name, sub_category')
@@ -92,7 +98,7 @@ function AnalysisContent() {
       if (staffErr) throw staffErr
       setStaff(staffData || [])
 
-      // ✅ Suppliers list
+      // Suppliers list
       const { data: supData, error: supErr } = await supabase
         .from('suppliers')
         .select('id, name')
@@ -111,18 +117,40 @@ function AnalysisContent() {
 
   useEffect(() => { loadData() }, [loadData])
 
+  // ✅ Smart filter B visibility / reset logic
+  useEffect(() => {
+    let nextMode: DetailMode = 'none'
+    if (filterA === 'Προσωπικό') nextMode = 'staff'
+    if (filterA === 'Εμπορεύματα') nextMode = 'supplier'
+
+    setDetailMode(nextMode)
+    setDetailId('all')
+  }, [filterA])
+
   // --- helpers ---
   const normalizeExpenseCategory = useCallback((t: any) => {
     let cat = t.category
     if (!cat) cat = 'Other'
 
+    // if supplier attached -> εμπορεύματα
     if (t.supplier_id || t.suppliers?.name) return 'Εμπορεύματα'
 
-    const sub = t.fixed_assets?.sub_category
+    const subRaw = t.fixed_assets?.sub_category
+    const sub = String(subRaw || '').trim()
+
+    // ✅ RENAME / DATA RULE:
+    // if sub_category is 'worker' OR 'Maintenance' -> 'Maintenance'
     if (sub === 'staff') return 'Staff'
     if (sub === 'utility') return 'Utilities'
-    if (sub === 'worker') return 'Maintenance'
     if (sub === 'other') return 'Other'
+    if (sub === 'worker' || sub === 'Maintenance') return 'Maintenance'
+
+    // also support case-insensitive values just in case
+    const lower = sub.toLowerCase()
+    if (lower === 'worker' || lower === 'maintenance') return 'Maintenance'
+    if (lower === 'staff') return 'Staff'
+    if (lower === 'utility' || lower === 'utilities') return 'Utilities'
+    if (lower === 'other') return 'Other'
 
     if (cat === 'Εμπορεύματα' || cat === 'Staff' || cat === 'Utilities' || cat === 'Maintenance' || cat === 'Other') {
       return cat
@@ -130,12 +158,48 @@ function AnalysisContent() {
     return 'Other'
   }, [])
 
+  // ✅ CLEANUP: recognize correct names even if join is missing
   const getPartyName = useCallback((t: any) => {
-    if (t.fixed_assets?.sub_category === 'staff') return t.fixed_assets?.name || 'Άγνωστος'
+    // staff
+    const isStaff = String(t.fixed_assets?.sub_category || '').toLowerCase() === 'staff'
+    if (isStaff) {
+      const joinedName = t.fixed_assets?.name
+      if (joinedName) return joinedName
+      const found = staff.find(s => String(s.id) === String(t.fixed_asset_id))
+      return found?.name || 'Άγνωστος Υπάλληλος'
+    }
+
+    // supplier
     if (t.suppliers?.name) return t.suppliers.name
-    if (t.supplier_id && !t.suppliers?.name) return 'Προμηθευτής'
-    if (t.fixed_asset_id && !t.fixed_assets?.name) return 'Υπάλληλος'
+    if (t.supplier_id) {
+      const found = suppliers.find(s => String(s.id) === String(t.supplier_id))
+      return found?.name || 'Προμηθευτής'
+    }
+
+    // maintenance (often worker without supplier) - try fixed asset name if exists
+    if (t.fixed_asset_id) {
+      const joinedName = t.fixed_assets?.name
+      if (joinedName) return joinedName
+    }
+
+    // tips
+    if (t.type === 'tip_entry') {
+      // if tip linked to staff, show staff name
+      const found = staff.find(s => String(s.id) === String(t.fixed_asset_id))
+      return found?.name || 'Tips'
+    }
+
     return '-'
+  }, [staff, suppliers])
+
+  // map FilterA to internal normalized keys
+  const filterAToKey = useCallback((fa: FilterA) => {
+    if (fa === 'Εμπορεύματα') return 'Εμπορεύματα'
+    if (fa === 'Προσωπικό') return 'Staff'
+    if (fa === 'Λογαριασμοί') return 'Utilities'
+    if (fa === 'Συντήρηση') return 'Maintenance'
+    if (fa === 'Λοιπά') return 'Other'
+    return null
   }, [])
 
   // --- filtered period data ---
@@ -146,15 +210,29 @@ function AnalysisContent() {
       .filter(t => t.date >= startDate && t.date <= endDate)
   }, [transactions, storeId, startDate, endDate])
 
-  // ✅ ADVANCED FILTER (Staff/Supplier)
+  // ✅ SMART FILTER LOGIC (date + category + optional staff/supplier detail)
   const filteredTx = useMemo(() => {
-    const filtered = periodTx.filter(t => {
-      const matchStaff = selectedStaffId === 'all' || t.fixed_asset_id === selectedStaffId
-      const matchSup = selectedSupId === 'all' || t.supplier_id === selectedSupId
-      return matchStaff && matchSup
+    const key = filterAToKey(filterA)
+
+    return periodTx.filter(t => {
+      // Category filter (applies to all transactions; non-expense types generally drop out when a category is selected)
+      if (filterA !== 'Όλες') {
+        // Special requirement: if FilterA is 'Λογαριασμοί', show only category 'Utilities'
+        // (we do it via normalizedExpenseCategory)
+        if (normalizeExpenseCategory(t) !== key) return false
+      }
+
+      // Detail filter only when the detail select exists
+      if (detailMode === 'staff' && detailId !== 'all') {
+        if (String(t.fixed_asset_id) !== String(detailId)) return false
+      }
+      if (detailMode === 'supplier' && detailId !== 'all') {
+        if (String(t.supplier_id) !== String(detailId)) return false
+      }
+
+      return true
     })
-    return filtered
-  }, [periodTx, selectedStaffId, selectedSupId])
+  }, [periodTx, filterA, detailMode, detailId, filterAToKey, normalizeExpenseCategory])
 
   // ✅ KPI totals with Tips separated
   const kpis = useMemo(() => {
@@ -176,7 +254,7 @@ function AnalysisContent() {
     return { income, expenses, tips, net }
   }, [filteredTx])
 
-  // --- CATEGORY BREAKDOWN (keep existing logic, but based on filteredTx) ---
+  // --- CATEGORY BREAKDOWN (based on filteredTx) ---
   const categoryBreakdown = useMemo(() => {
     const expenseTx = filteredTx.filter(t => t.type === 'expense' || t.type === 'debt_payment')
     const result: Record<string, number> = {}
@@ -193,7 +271,7 @@ function AnalysisContent() {
     return { result, total }
   }, [filteredTx, normalizeExpenseCategory])
 
-  // --- STAFF DETAILS (this month) keep as-is (not affected by advanced filters) ---
+  // --- STAFF DETAILS (this month) keep as-is (not affected by smart filters) ---
   const staffDetailsThisMonth = useMemo(() => {
     if (!storeId || storeId === 'null') return [] as Array<{ name: string; amount: number }>
 
@@ -208,19 +286,31 @@ function AnalysisContent() {
 
     const byStaff: Record<string, number> = {}
     for (const t of staffTxs) {
-      const name = t.fixed_assets?.name || 'Άγνωστος'
+      const name = t.fixed_assets?.name || staff.find(s => String(s.id) === String(t.fixed_asset_id))?.name || 'Άγνωστος'
       byStaff[name] = (byStaff[name] || 0) + Math.abs(Number(t.amount) || 0)
     }
 
     return Object.entries(byStaff)
       .map(([name, amount]) => ({ name, amount }))
       .sort((a, b) => b.amount - a.amount)
-  }, [transactions, storeId, normalizeExpenseCategory])
+  }, [transactions, storeId, normalizeExpenseCategory, staff])
 
   // ✅ DETAILED LIST (period)
   const periodList = useMemo(() => {
     return [...filteredTx].sort((a, b) => String(b.date).localeCompare(String(a.date)))
   }, [filteredTx])
+
+  const detailOptions = useMemo(() => {
+    if (detailMode === 'staff') return staff
+    if (detailMode === 'supplier') return suppliers
+    return []
+  }, [detailMode, staff, suppliers])
+
+  const DetailIcon = useMemo(() => {
+    if (detailMode === 'staff') return Users
+    if (detailMode === 'supplier') return ShoppingBag
+    return null
+  }, [detailMode])
 
   return (
     <div style={iphoneWrapper}>
@@ -245,45 +335,57 @@ function AnalysisContent() {
           <div style={{ display: 'flex', gap: 12 }}>
             <div style={{ flex: 1 }}>
               <label style={dateLabel}>ΑΠΟ</label>
-              <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} style={dateInput} />
+              <input
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                style={dateInput}
+              />
             </div>
             <div style={{ flex: 1 }}>
               <label style={dateLabel}>ΕΩΣ</label>
-              <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} style={dateInput} />
+              <input
+                type="date"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                style={dateInput}
+              />
             </div>
           </div>
 
-          {/* ✅ ADVANCED FILTERS */}
+          {/* ✅ SMART DYNAMIC FILTERS */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 10, marginTop: 12 }}>
+            {/* Filter A */}
             <div>
-              <label style={dateLabel}>
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                  <User size={18} />
-                  Φίλτρο Υπαλλήλου
-                </span>
-              </label>
-              <select value={selectedStaffId} onChange={(e) => setSelectedStaffId(e.target.value)} style={selectInput}>
-                <option value="all">Όλοι</option>
-                {staff.map(s => (
-                  <option key={s.id} value={s.id}>{s.name}</option>
-                ))}
+              <label style={dateLabel}>Φίλτρο Κατηγορίας</label>
+              <select value={filterA} onChange={(e) => setFilterA(e.target.value as FilterA)} style={selectInput}>
+                <option value="Όλες">Όλες</option>
+                <option value="Εμπορεύματα">Εμπορεύματα</option>
+                <option value="Προσωπικό">Προσωπικό</option>
+                <option value="Λογαριασμοί">Λογαριασμοί</option>
+                <option value="Συντήρηση">Συντήρηση</option>
+                <option value="Λοιπά">Λοιπά</option>
               </select>
             </div>
 
-            <div>
-              <label style={dateLabel}>
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                  <ShoppingCart size={18} />
-                  Φίλτρο Εμπόρου
-                </span>
-              </label>
-              <select value={selectedSupId} onChange={(e) => setSelectedSupId(e.target.value)} style={selectInput}>
-                <option value="all">Όλοι</option>
-                {suppliers.map(s => (
-                  <option key={s.id} value={s.id}>{s.name}</option>
-                ))}
-              </select>
-            </div>
+            {/* Filter B (ONLY when Προσωπικό or Εμπορεύματα) */}
+            {detailMode !== 'none' && (
+              <div>
+                <label style={dateLabel}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                    {DetailIcon ? <DetailIcon size={18} /> : null}
+                    {detailMode === 'staff' ? 'Λεπτομέρεια Υπαλλήλου' : 'Λεπτομέρεια Εμπόρου'}
+                  </span>
+                </label>
+
+                <select value={detailId} onChange={(e) => setDetailId(e.target.value)} style={selectInput}>
+                  <option value="all">Όλοι</option>
+                  {detailOptions.map((x: any) => (
+                    <option key={x.id} value={x.id}>{x.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
 
           <div style={{ marginTop: 10, fontSize: 16, fontWeight: 800, color: colors.secondary }}>
@@ -291,9 +393,9 @@ function AnalysisContent() {
           </div>
         </div>
 
-        {/* ✅ KPIs (now include Tips card + Net excludes tips) */}
+        {/* ✅ KPIs (Tips separated; Net excludes tips) */}
         <div style={kpiGrid}>
-          {/* ✅ NEW: Tips KPI at top */}
+          {/* Tips KPI */}
           <div style={{ ...kpiCard, borderColor: '#fde68a', backgroundColor: '#fffbeb' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 16, fontWeight: 900, color: '#92400e' }}>
@@ -374,11 +476,12 @@ function AnalysisContent() {
               {CATEGORY_META.map(c => {
                 const val = categoryBreakdown.result[c.key] || 0
                 const pct = categoryBreakdown.total > 0 ? (val / categoryBreakdown.total) * 100 : 0
+                const Icon = c.Icon
                 return (
                   <div key={c.key} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                        <span style={{ fontSize: 16 }}>{c.icon}</span>
+                        <Icon size={18} />
                         <span style={{ fontSize: 16, fontWeight: 900, color: colors.primary }}>{c.label}</span>
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -459,6 +562,12 @@ function AnalysisContent() {
                 const pillBr = isInc ? '#d1fae5' : isTip ? '#fde68a' : '#ffe4e6'
                 const pillTx = isInc ? colors.success : isTip ? '#92400e' : colors.danger
 
+                const norm = normalizeExpenseCategory(t)
+                const isStaff = norm === 'Staff'
+                const isSup = norm === 'Εμπορεύματα'
+                const isUtil = norm === 'Utilities'
+                const isMaint = norm === 'Maintenance'
+
                 return (
                   <div key={t.id ?? `${t.date}-${t.created_at}-${absAmt}`} style={listRow}>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0 }}>
@@ -484,10 +593,14 @@ function AnalysisContent() {
                       </div>
 
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
-                        {t.fixed_assets?.sub_category === 'staff' ? (
-                          <User size={18} />
-                        ) : t.suppliers?.name ? (
-                          <ShoppingCart size={18} />
+                        {isStaff ? (
+                          <Users size={18} />
+                        ) : isSup ? (
+                          <ShoppingBag size={18} />
+                        ) : isUtil ? (
+                          <Lightbulb size={18} />
+                        ) : isMaint ? (
+                          <Wrench size={18} />
                         ) : isTip ? (
                           <Coins size={18} />
                         ) : (
@@ -528,7 +641,9 @@ const iphoneWrapper: any = {
   position: 'absolute',
   top: 0, left: 0, right: 0, bottom: 0,
   overflowY: 'auto',
-  fontSize: 16
+  fontSize: 16,
+  touchAction: 'pan-y',
+  display: 'block'
 }
 
 const headerStyle: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }
