@@ -75,6 +75,7 @@ function AddExpenseForm() {
   const searchParams = useSearchParams();
   const dropdownRef = useRef<HTMLDivElement>(null);
 
+  // Πάντα πάρε το storeId από το URL, χωρίς default
   const storeId = searchParams.get('store') || '';
   const editId = searchParams.get('editId');
   const urlSupId = searchParams.get('supId');
@@ -122,33 +123,28 @@ function AddExpenseForm() {
   const loadFormData = useCallback(async () => {
     setLoading(true);
     try {
+      if (!storeId) return;
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) return router.push('/login');
 
-      // FIX #3: created_by_name must be fetched from profiles using current session user id
+      // Προφίλ χρήστη
       const { data: profile, error: profileErr } = await supabase
         .from('profiles')
         .select('username')
         .eq('id', session.user.id)
         .maybeSingle();
-
       if (!profileErr && profile) {
         setCurrentUsername(profile.username || 'Admin');
       }
 
+      // FORCE DATA FETCH χωρίς φίλτρα/τάξεις
       const [sRes, fRes] = await Promise.all([
-        // FIX SUPPLIERS LIST: remove .neq('is_active', false) so we get all suppliers for store_id
-        supabase.from('suppliers').select('*').eq('store_id', storeId).order('name'),
-        supabase.from('fixed_assets').select('id, name').eq('store_id', storeId).order('name'),
+        supabase.from('suppliers').select('*').eq('store_id', storeId),
+        supabase.from('fixed_assets').select('*').eq('store_id', storeId)
       ]);
-
-      // DEBUGGING: log suppliers payload
-      console.log("Suppliers loaded:", sRes.data);
-
-      if (sRes.error) {
-        alert("Σφάλμα Βάσης: " + sRes.error.message);
-      }
-      console.log("Βρέθηκαν προμηθευτές:", sRes.data?.length);
+      if (sRes.error) alert("DATABASE ERROR: " + sRes.error.message);
+      console.log("DEBUG - StoreID:", storeId);
+      console.log("DEBUG - Suppliers:", sRes.data);
 
       if (sRes.data) setSuppliers(sRes.data);
       if (fRes.data) setFixedAssets(fRes.data);
@@ -274,7 +270,7 @@ function AddExpenseForm() {
           setSuppliers(prev => [...prev, sup]);
           handleSupplierSelect(sup.id);
         }}
-        storeId={storeId}
+        storeId={storeId || ''}
       />
 
       <div style={{ maxWidth: 500, margin: '0 auto', paddingBottom: 120 }}>
@@ -402,7 +398,7 @@ function AddExpenseForm() {
           >
             <option value="">Επιλέξτε από τη λίστα...</option>
             {suppliers.map(s => (
-              <option key={s.id} value={s.id}>{s.name.toUpperCase()}</option>
+              <option key={s.id} value={s.id}>{s.name?.toUpperCase?.() || ''}</option>
             ))}
           </select>
 
@@ -459,7 +455,7 @@ function AddExpenseForm() {
           >
             <option value="">Επιλογή...</option>
             {fixedAssets.map(f => (
-              <option key={f.id} value={f.id}>{f.name.toUpperCase()}</option>
+              <option key={f.id} value={f.id}>{f.name?.toUpperCase?.() || ''}</option>
             ))}
           </select>
 
