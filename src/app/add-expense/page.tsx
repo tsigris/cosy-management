@@ -96,9 +96,6 @@ function AddExpenseForm() {
   const [suppliers, setSuppliers] = useState<any[]>([]);
   const [fixedAssets, setFixedAssets] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
-  const [showDropdown, setShowDropdown] = useState(false);
-  const [selectedSup, setSelectedSup] = useState('');
-  const [selectedFixed, setSelectedFixed] = useState('');
   const [showSupplierModal, setShowSupplierModal] = useState(false);
   // --- ΝΕΟ: Ημερήσια στατιστικά ---
   const [dayStats, setDayStats] = useState<{ income: number; expenses: number }>({ income: 0, expenses: 0 });
@@ -324,31 +321,32 @@ function AddExpenseForm() {
             </div>
           </div>
 
-          <label style={{ ...labelStyle, marginTop: 20 }}><Factory size={12} /> ΠΡΟΜΗΘΕΥΤΗΣ</label>
-          <select value={selectedSup} onChange={e => handleSupplierSelect(e.target.value)} style={{ ...inputStyle, marginBottom: 10 }}>
-            <option value="">Επιλέξτε από τη λίστα...</option>
-            {suppliers?.map(s => <option key={s.id} value={s.id}>{s.name?.toUpperCase()}</option>)}
-          </select>
-
-          <div style={{ position: 'relative' }} ref={dropdownRef}>
-            <div style={{ display: 'flex', gap: 10 }}>
-              <div style={{ position: 'relative', flex: 1 }}>
-                <input type="text" placeholder="Αναζήτηση..." value={searchTerm} onFocus={() => setShowDropdown(true)} onChange={e => { setSearchTerm(e.target.value); setShowDropdown(true); setSelectedSup(''); setSelectedFixed(''); }} style={inputStyle} />
-                <Search size={18} style={{ position: 'absolute', right: 12, top: 16, color: colors.secondaryText }} />
-              </div>
-              <button type="button" onClick={() => setShowSupplierModal(true)} style={plusBtn}><Plus size={24} /></button>
-            </div>
-            {showDropdown && searchTerm && filteredSuppliers.length > 0 && (
-              <div style={autocompleteDropdown}>
-                {filteredSuppliers.map((s: any) => <div key={s.id} style={dropdownRow} onClick={() => handleSupplierSelect(s.id)}>{s.name}</div>)}
-              </div>
-            )}
+          {/* --- CATEGORY SELECTOR --- */}
+          <div style={{ display: 'flex', gap: 12, marginBottom: 18, justifyContent: 'center' }}>
+            <button type="button" onClick={() => setExpenseCategory('suppliers')} style={{ background: expenseCategory === 'suppliers' ? colors.primaryDark : colors.bgLight, color: expenseCategory === 'suppliers' ? colors.white : colors.primaryDark, borderRadius: 12, border: 'none', fontSize: 16, padding: 12, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span>🛒</span> Εμπορεύματα
+            </button>
+            <button type="button" onClick={() => setExpenseCategory('worker')} style={{ background: expenseCategory === 'worker' ? colors.primaryDark : colors.bgLight, color: expenseCategory === 'worker' ? colors.white : colors.primaryDark, borderRadius: 12, border: 'none', fontSize: 16, padding: 12, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span>🛠️</span> Μάστορες
+            </button>
+            <button type="button" onClick={() => setExpenseCategory('utility')} style={{ background: expenseCategory === 'utility' ? colors.primaryDark : colors.bgLight, color: expenseCategory === 'utility' ? colors.white : colors.primaryDark, borderRadius: 12, border: 'none', fontSize: 16, padding: 12, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span>💡</span> Λογαριασμοί
+            </button>
+            <button type="button" onClick={() => setExpenseCategory('other')} style={{ background: expenseCategory === 'other' ? colors.primaryDark : colors.bgLight, color: expenseCategory === 'other' ? colors.white : colors.primaryDark, borderRadius: 12, border: 'none', fontSize: 16, padding: 12, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span>📦</span> Λοιπά
+            </button>
           </div>
-
-          <label style={{ ...labelStyle, marginTop: 20 }}><Building2 size={12} /> ΠΑΓΙΟ / ΛΟΓΑΡΙΑΣΜΟΣ</label>
-          <select value={selectedFixed} onChange={e => { setSelectedFixed(e.target.value); if (e.target.value) { setSelectedSup(''); setSearchTerm(''); } }} style={inputStyle}>
-            <option value="">Επιλογή...</option>
-            {fixedAssets?.map(f => <option key={f.id} value={f.id}>{f.name?.toUpperCase()}</option>)}
+          {/* --- DYNAMIC DROPDOWN --- */}
+          <label style={{ ...labelStyle, marginTop: 20 }}>Επιλογή {expenseCategory === 'suppliers' ? 'Προμηθευτή' : expenseCategory === 'worker' ? 'Μάστορα' : expenseCategory === 'utility' ? 'Λογαριασμού' : 'Λοιπού'}</label>
+          <select
+            value={selectedItem}
+            onChange={e => setSelectedItem(e.target.value)}
+            style={{ ...inputStyle, marginBottom: 10 }}
+          >
+            <option value="">Επιλέξτε...</option>
+            {expenseCategory === 'suppliers'
+              ? suppliers.map(s => <option key={s.id} value={s.id}>{s.name?.toUpperCase()}</option>)
+              : filteredFixedAssets.map(f => <option key={f.id} value={f.id}>{f.name?.toUpperCase()}</option>)}
           </select>
 
           <label style={{ ...labelStyle, marginTop: 20 }}>ΣΗΜΕΙΩΣΕΙΣ</label>
