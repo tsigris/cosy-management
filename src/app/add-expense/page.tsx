@@ -137,9 +137,13 @@ function AddExpenseForm() {
       }
 
       const [sRes, fRes] = await Promise.all([
-        supabase.from('suppliers').select('*').eq('store_id', storeId).neq('is_active', false).order('name'),
+        // FIX SUPPLIERS LIST: remove .neq('is_active', false) so we get all suppliers for store_id
+        supabase.from('suppliers').select('*').eq('store_id', storeId).order('name'),
         supabase.from('fixed_assets').select('id, name').eq('store_id', storeId).order('name'),
       ]);
+
+      // DEBUGGING: log suppliers payload
+      console.log("Suppliers loaded:", sRes.data);
 
       if (sRes.data) setSuppliers(sRes.data);
       if (fRes.data) setFixedAssets(fRes.data);
@@ -178,7 +182,8 @@ function AddExpenseForm() {
       setLoading(false);
     }
   }, [storeId, editId, urlAssetId, urlSupId, router]);
-const handleSave = async () => {
+
+  const handleSave = async () => {
     if (!amount || Number(amount) <= 0) return toast.error('Συμπληρώστε το ποσό');
     if (!selectedSup && !selectedFixed) return toast.error('Επιλέξτε Προμηθευτή ή Πάγιο');
     setLoading(true);
@@ -280,7 +285,7 @@ const handleSave = async () => {
             </div>
           </div>
 
-          {/* FIX: X button link */}
+          {/* FIX NAVIGATION: X button link */}
           <Link href={`/?store=${storeId}&date=${selectedDate}`} style={backBtnStyle}>
             <X size={20} />
           </Link>
@@ -358,7 +363,7 @@ const handleSave = async () => {
                   if (e.target.checked) setIsAgainstDebt(false);
                 }}
                 id="credit"
-                style={checkboxStyle}
+                style={{ ...checkboxStyle, fontSize: '16px' } as any} // (harmless) keep consistent 16px rule
               />
               <label htmlFor="credit" style={checkLabel}>ΕΠΙ ΠΙΣΤΩΣΕΙ (ΝΕΟ ΧΡΕΟΣ)</label>
             </div>
@@ -372,7 +377,7 @@ const handleSave = async () => {
                   if (e.target.checked) setIsCredit(false);
                 }}
                 id="against"
-                style={checkboxStyle}
+                style={{ ...checkboxStyle, fontSize: '16px' } as any} // (harmless) keep consistent 16px rule
               />
               <label
                 htmlFor="against"
@@ -457,7 +462,7 @@ const handleSave = async () => {
           <textarea
             value={notes}
             onChange={e => setNotes(e.target.value)}
-            style={{ ...inputStyle, height: 60 }} // FIX: 16px in inputStyle
+            style={{ ...inputStyle, height: 60, fontSize: '16px' }} // FIX: ensure textarea 16px
           />
 
           {/* ΦΩΤΟΓΡΑΦΙΑ */}
@@ -484,7 +489,7 @@ const handleSave = async () => {
                       accept="image/*"
                       capture="environment"
                       onChange={handleImageChange}
-                      style={{ display: 'none' }}
+                      style={{ display: 'none', fontSize: '16px' }} // FIX: keep rule
                     />
                   </label>
                 )}
@@ -538,16 +543,16 @@ const dropdownRow = {
   borderBottom: `1px solid ${colors.bgLight}`,
 };
 
-// FIX: wrapper display/overflow for PC natural scroll + Redmi zoom/scroll behavior
+// FIX SCROLL & ZOOM: wrapper must have minHeight 100vh + display block + overflowY auto + touchAction pan-y
 const iphoneWrapper: any = {
   backgroundColor: '#f8fafc',
-  minHeight: '100%',
+  minHeight: '100vh',
   width: '100%',
   padding: '20px',
   paddingBottom: '140px',
   touchAction: 'pan-y',
   display: 'block',
-  overflowY: 'visible',
+  overflowY: 'auto',
 };
 
 const headerStyle = {
@@ -597,7 +602,7 @@ const labelStyle = {
   marginBottom: 5,
 };
 
-// FIX: 16px font size to prevent Redmi auto-zoom on inputs/textarea/select (select also forced inline above)
+// FIX: 16px font size to prevent Redmi auto-zoom on inputs/textarea/select
 const inputStyle: any = {
   width: '100%',
   padding: 14,
