@@ -5,8 +5,9 @@ import { useEffect, useState, Suspense, useMemo, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { format, parseISO, startOfMonth, endOfMonth } from 'date-fns'
+import { format, startOfMonth, endOfMonth } from 'date-fns'
 import { toast, Toaster } from 'sonner'
+import { User, ShoppingCart, Coins } from 'lucide-react'
 
 // --- MODERN PREMIUM PALETTE ---
 const colors = {
@@ -42,7 +43,14 @@ function AnalysisContent() {
   const [transactions, setTransactions] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
 
-  // ✅ Default to current month (more useful for KPI + staff monthly)
+  // ✅ NEW: staff + suppliers for filters
+  const [staff, setStaff] = useState<any[]>([])
+  const [suppliers, setSuppliers] = useState<any[]>([])
+
+  const [selectedStaffId, setSelectedStaffId] = useState<string>('all')
+  const [selectedSupId, setSelectedSupId] = useState<string>('all')
+
+  // ✅ Default to current month
   const [startDate, setStartDate] = useState(format(startOfMonth(new Date()), 'yyyy-MM-dd'))
   const [endDate, setEndDate] = useState(format(endOfMonth(new Date()), 'yyyy-MM-dd'))
 
@@ -63,15 +71,36 @@ function AnalysisContent() {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) return router.push('/login')
 
-      // ✅ Include fixed_assets sub_category for correct breakdown
-      const { data: tx, error } = await supabase
+      // ✅ Transactions (include supplier + fixed asset info)
+      const { data: tx, error: txErr } = await supabase
         .from('transactions')
-        .select('*, suppliers(name), fixed_assets(name, sub_category)')
+        .select('*, suppliers(id, name), fixed_assets(id, name, sub_category)')
         .eq('store_id', storeId)
         .order('date', { ascending: false })
 
-      if (error) throw error
+      if (txErr) throw txErr
       setTransactions(tx || [])
+
+      // ✅ Staff list (fixed_assets where sub_category = staff)
+      const { data: staffData, error: staffErr } = await supabase
+        .from('fixed_assets')
+        .select('id, name, sub_category')
+        .eq('store_id', storeId)
+        .eq('sub_category', 'staff')
+        .order('name', { ascending: true })
+
+      if (staffErr) throw staffErr
+      setStaff(staffData || [])
+
+      // ✅ Suppliers list
+      const { data: supData, error: supErr } = await supabase
+        .from('suppliers')
+        .select('id, name')
+        .eq('store_id', storeId)
+        .order('name', { ascending: true })
+
+      if (supErr) throw supErr
+      setSuppliers(supData || [])
     } catch (err) {
       console.error(err)
       toast.error('Σφάλμα φόρτωσης δεδομένων')
@@ -84,29 +113,29 @@ function AnalysisContent() {
 
   // --- helpers ---
   const normalizeExpenseCategory = useCallback((t: any) => {
-    // DB now stores exact category values:
-    // 'Εμπορεύματα', 'Maintenance', 'Utilities', 'Staff', 'Other'
     let cat = t.category
-
-    // fallback safety:
     if (!cat) cat = 'Other'
 
-    // If supplier exists, always εμπορεύματα
     if (t.supplier_id || t.suppliers?.name) return 'Εμπορεύματα'
 
-    // If fixed asset has sub_category, map it
     const sub = t.fixed_assets?.sub_category
     if (sub === 'staff') return 'Staff'
     if (sub === 'utility') return 'Utilities'
     if (sub === 'worker') return 'Maintenance'
     if (sub === 'other') return 'Other'
 
-    // Otherwise trust category if it is one of expected
     if (cat === 'Εμπορεύματα' || cat === 'Staff' || cat === 'Utilities' || cat === 'Maintenance' || cat === 'Other') {
       return cat
     }
-
     return 'Other'
+  }, [])
+
+  const getPartyName = useCallback((t: any) => {
+    if (t.fixed_assets?.sub_category === 'staff') return t.fixed_assets?.name || 'Άγνωστος'
+    if (t.suppliers?.name) return t.suppliers.name
+    if (t.supplier_id && !t.suppliers?.name) return 'Προμηθευτής'
+    if (t.fixed_asset_id && !t.fixed_assets?.name) return 'Υπάλληλος'
+    return '-'
   }, [])
 
   // --- filtered period data ---
@@ -117,24 +146,39 @@ function AnalysisContent() {
       .filter(t => t.date >= startDate && t.date <= endDate)
   }, [transactions, storeId, startDate, endDate])
 
-  // --- KPI totals ---
+  // ✅ ADVANCED FILTER (Staff/Supplier)
+  const filteredTx = useMemo(() => {
+    const filtered = periodTx.filter(t => {
+      const matchStaff = selectedStaffId === 'all' || t.fixed_asset_id === selectedStaffId
+      const matchSup = selectedSupId === 'all' || t.supplier_id === selectedSupId
+      return matchStaff && matchSup
+    })
+    return filtered
+  }, [periodTx, selectedStaffId, selectedSupId])
+
+  // ✅ KPI totals with Tips separated
   const kpis = useMemo(() => {
-    const income = periodTx
+    const income = filteredTx
       .filter(t => t.type === 'income')
       .reduce((acc, t) => acc + (Number(t.amount) || 0), 0)
 
-    const expenses = periodTx
+    // ✅ tips must NOT affect net profit
+    const tips = filteredTx
+      .filter(t => t.type === 'tip_entry')
+      .reduce((acc, t) => acc + Math.abs(Number(t.amount) || 0), 0)
+
+    const expenses = filteredTx
       .filter(t => t.type === 'expense' || t.type === 'debt_payment')
       .reduce((acc, t) => acc + Math.abs(Number(t.amount) || 0), 0)
 
     const net = income - expenses
 
-    return { income, expenses, net }
-  }, [periodTx])
+    return { income, expenses, tips, net }
+  }, [filteredTx])
 
-  // --- CATEGORY BREAKDOWN ---
+  // --- CATEGORY BREAKDOWN (keep existing logic, but based on filteredTx) ---
   const categoryBreakdown = useMemo(() => {
-    const expenseTx = periodTx.filter(t => t.type === 'expense' || t.type === 'debt_payment')
+    const expenseTx = filteredTx.filter(t => t.type === 'expense' || t.type === 'debt_payment')
     const result: Record<string, number> = {}
     let total = 0
 
@@ -145,14 +189,11 @@ function AnalysisContent() {
       total += val
     }
 
-    // ensure all categories exist for UI
     for (const c of CATEGORY_META) result[c.key] = result[c.key] || 0
-
     return { result, total }
-  }, [periodTx, normalizeExpenseCategory])
+  }, [filteredTx, normalizeExpenseCategory])
 
-  // --- STAFF DETAILS (this month) ---
-  // Requirement: "αυτόν τον μήνα" -> use current month regardless of selected date range.
+  // --- STAFF DETAILS (this month) keep as-is (not affected by advanced filters) ---
   const staffDetailsThisMonth = useMemo(() => {
     if (!storeId || storeId === 'null') return [] as Array<{ name: string; amount: number }>
 
@@ -175,6 +216,11 @@ function AnalysisContent() {
       .map(([name, amount]) => ({ name, amount }))
       .sort((a, b) => b.amount - a.amount)
   }, [transactions, storeId, normalizeExpenseCategory])
+
+  // ✅ DETAILED LIST (period)
+  const periodList = useMemo(() => {
+    return [...filteredTx].sort((a, b) => String(b.date).localeCompare(String(a.date)))
+  }, [filteredTx])
 
   return (
     <div style={iphoneWrapper}>
@@ -207,13 +253,60 @@ function AnalysisContent() {
             </div>
           </div>
 
+          {/* ✅ ADVANCED FILTERS */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 10, marginTop: 12 }}>
+            <div>
+              <label style={dateLabel}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                  <User size={18} />
+                  Φίλτρο Υπαλλήλου
+                </span>
+              </label>
+              <select value={selectedStaffId} onChange={(e) => setSelectedStaffId(e.target.value)} style={selectInput}>
+                <option value="all">Όλοι</option>
+                {staff.map(s => (
+                  <option key={s.id} value={s.id}>{s.name}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label style={dateLabel}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                  <ShoppingCart size={18} />
+                  Φίλτρο Εμπόρου
+                </span>
+              </label>
+              <select value={selectedSupId} onChange={(e) => setSelectedSupId(e.target.value)} style={selectInput}>
+                <option value="all">Όλοι</option>
+                {suppliers.map(s => (
+                  <option key={s.id} value={s.id}>{s.name}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
           <div style={{ marginTop: 10, fontSize: 16, fontWeight: 800, color: colors.secondary }}>
             Περίοδος: {startDate} → {endDate}
           </div>
         </div>
 
-        {/* ✅ 1) KPI CARDS */}
+        {/* ✅ KPIs (now include Tips card + Net excludes tips) */}
         <div style={kpiGrid}>
+          {/* ✅ NEW: Tips KPI at top */}
+          <div style={{ ...kpiCard, borderColor: '#fde68a', backgroundColor: '#fffbeb' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 16, fontWeight: 900, color: '#92400e' }}>
+                <Coins size={18} />
+                Σύνολο Tips
+              </span>
+              <span style={{ fontSize: 16, fontWeight: 900, color: '#92400e' }}>+</span>
+            </div>
+            <div style={{ fontSize: 28, fontWeight: 900, color: colors.primary, marginTop: 10 }}>
+              {kpis.tips.toLocaleString('el-GR')}€
+            </div>
+          </div>
+
           <div style={{ ...kpiCard, borderColor: '#d1fae5', backgroundColor: '#ecfdf5' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
               <span style={{ fontSize: 16, fontWeight: 900, color: colors.success }}>Έσοδα</span>
@@ -258,10 +351,14 @@ function AnalysisContent() {
               {kpis.net >= 0 ? '+' : ''}
               {kpis.net.toLocaleString('el-GR')}€
             </div>
+
+            <div style={{ marginTop: 8, fontSize: 16, fontWeight: 800, color: colors.secondary }}>
+              * Το Net Profit δεν επηρεάζεται από Tips.
+            </div>
           </div>
         </div>
 
-        {/* ✅ 2) CATEGORY BREAKDOWN with progress bars */}
+        {/* ✅ CATEGORY BREAKDOWN */}
         <div style={sectionCard}>
           <div style={sectionTitleRow}>
             <h3 style={sectionTitle}>Έξοδα ανά Κατηγορία</h3>
@@ -304,7 +401,7 @@ function AnalysisContent() {
           )}
         </div>
 
-        {/* ✅ 3) STAFF DETAILS (this month) */}
+        {/* ✅ STAFF DETAILS (this month) */}
         <div style={sectionCard}>
           <div style={sectionTitleRow}>
             <h3 style={sectionTitle}>Μισθοδοσία ανά Υπάλληλο</h3>
@@ -334,7 +431,87 @@ function AnalysisContent() {
           )}
         </div>
 
-        {/* (Optional) small list - keep your existing list if you want it below */}
+        {/* ✅ DETAILED TRANSACTIONS LIST */}
+        <div style={sectionCard}>
+          <div style={sectionTitleRow}>
+            <h3 style={sectionTitle}>Κινήσεις Περιόδου</h3>
+            <div style={{ fontSize: 16, fontWeight: 900, color: colors.secondary }}>
+              {periodList.length} εγγραφές
+            </div>
+          </div>
+
+          {loading ? (
+            <div style={hintBox}>Φόρτωση...</div>
+          ) : periodList.length === 0 ? (
+            <div style={hintBox}>Δεν υπάρχουν κινήσεις για το φίλτρο που επέλεξες.</div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {periodList.map((t: any) => {
+                const name = getPartyName(t)
+                const amt = Number(t.amount) || 0
+                const absAmt = Math.abs(amt)
+                const isInc = t.type === 'income'
+                const isTip = t.type === 'tip_entry'
+                const isExp = t.type === 'expense' || t.type === 'debt_payment'
+
+                const sign = isInc || isTip ? '+' : isExp ? '-' : ''
+                const pillBg = isInc ? '#ecfdf5' : isTip ? '#fffbeb' : '#fff1f2'
+                const pillBr = isInc ? '#d1fae5' : isTip ? '#fde68a' : '#ffe4e6'
+                const pillTx = isInc ? colors.success : isTip ? '#92400e' : colors.danger
+
+                return (
+                  <div key={t.id ?? `${t.date}-${t.created_at}-${absAmt}`} style={listRow}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
+                        <div style={{ fontSize: 16, fontWeight: 900, color: colors.primary, whiteSpace: 'nowrap' }}>
+                          {t.date}
+                        </div>
+
+                        <div
+                          style={{
+                            padding: '6px 10px',
+                            borderRadius: 999,
+                            backgroundColor: pillBg,
+                            border: `1px solid ${pillBr}`,
+                            fontSize: 16,
+                            fontWeight: 900,
+                            color: pillTx,
+                            whiteSpace: 'nowrap'
+                          }}
+                        >
+                          {sign}{absAmt.toLocaleString('el-GR')}€
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+                        {t.fixed_assets?.sub_category === 'staff' ? (
+                          <User size={18} />
+                        ) : t.suppliers?.name ? (
+                          <ShoppingCart size={18} />
+                        ) : isTip ? (
+                          <Coins size={18} />
+                        ) : (
+                          <div style={{ width: 18, height: 18 }} />
+                        )}
+
+                        <div style={{ fontSize: 16, fontWeight: 900, color: colors.secondary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {name}
+                        </div>
+                      </div>
+
+                      {!!t.notes && (
+                        <div style={{ fontSize: 16, fontWeight: 800, color: colors.secondary }}>
+                          {t.notes}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+
         <div style={{ marginTop: 16, fontSize: 16, fontWeight: 800, color: colors.secondary }}>
           * Όλα τα ποσά βασίζονται στις κινήσεις της βάσης για το επιλεγμένο store.
         </div>
@@ -404,6 +581,17 @@ const dateInput: any = {
   color: colors.primary
 }
 
+const selectInput: any = {
+  width: '100%',
+  padding: 14,
+  borderRadius: 12,
+  border: `1px solid ${colors.border}`,
+  fontSize: 16,
+  fontWeight: 800,
+  backgroundColor: colors.background,
+  color: colors.primary
+}
+
 const kpiGrid: any = { display: 'grid', gridTemplateColumns: '1fr', gap: 12, marginBottom: 16 }
 const kpiCard: any = {
   backgroundColor: colors.surface,
@@ -450,6 +638,13 @@ const rowItem: any = {
   display: 'flex',
   justifyContent: 'space-between',
   alignItems: 'center',
+  padding: 14,
+  borderRadius: 16,
+  backgroundColor: colors.background,
+  border: `1px solid ${colors.border}`
+}
+
+const listRow: any = {
   padding: 14,
   borderRadius: 16,
   backgroundColor: colors.background,
