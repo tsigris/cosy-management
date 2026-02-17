@@ -17,13 +17,13 @@ import {
   Search,
   Pencil,
   XCircle,
-  Save,
   ChevronLeft,
   Building2,
   Hash,
   Phone,
   CreditCard,
   Tag,
+  TrendingUp,
 } from 'lucide-react'
 
 const colors = {
@@ -81,6 +81,8 @@ function ManageListsContent() {
 
   const [suppliers, setSuppliers] = useState<any[]>([])
   const [fixedAssets, setFixedAssets] = useState<any[]>([])
+  const [transactions, setTransactions] = useState<any[]>([]) // ✅ για τζίρους
+
   const [search, setSearch] = useState('')
 
   // UI like Suppliers page
@@ -106,6 +108,30 @@ function ManageListsContent() {
   const [rfCode, setRfCode] = useState<string>('')
 
   const currentTab = useMemo(() => MENU.find(t => t.key === activeTab)!, [activeTab])
+  const CurrentIcon = currentTab.icon
+
+  const copyToClipboard = async (text: string) => {
+    const value = String(text || '').trim()
+    if (!value) return toast.error('Δεν υπάρχει τιμή για αντιγραφή')
+
+    try {
+      await navigator.clipboard.writeText(value)
+      toast.success('Αντιγράφηκε!')
+    } catch {
+      // fallback για Android/παλιότερα
+      try {
+        const ta = document.createElement('textarea')
+        ta.value = value
+        document.body.appendChild(ta)
+        ta.select()
+        document.execCommand('copy')
+        document.body.removeChild(ta)
+        toast.success('Αντιγράφηκε!')
+      } catch {
+        toast.error('Δεν μπόρεσα να αντιγράψω')
+      }
+    }
+  }
 
   const resetForm = useCallback(() => {
     setName('')
@@ -127,35 +153,66 @@ function ManageListsContent() {
     setIsFormOpen(false)
   }, [])
 
+  // ✅ totals για ranking/ποσά
+  const supplierTotals = useMemo(() => {
+    const totals: Record<string, number> = {}
+    transactions.forEach((t: any) => {
+      if (!t?.supplier_id) return
+      const amount = Math.abs(Number(t.amount)) || 0
+      const id = String(t.supplier_id)
+      totals[id] = (totals[id] || 0) + amount
+    })
+    return totals
+  }, [transactions])
+
+  const fixedAssetTotals = useMemo(() => {
+    const totals: Record<string, number> = {}
+    transactions.forEach((t: any) => {
+      if (!t?.fixed_asset_id) return
+      const amount = Math.abs(Number(t.amount)) || 0
+      const id = String(t.fixed_asset_id)
+      totals[id] = (totals[id] || 0) + amount
+    })
+    return totals
+  }, [transactions])
+
+  const getTurnover = useCallback(
+    (id: string) => {
+      if (activeTab === 'suppliers') return supplierTotals[id] || 0
+      return fixedAssetTotals[id] || 0
+    },
+    [activeTab, supplierTotals, fixedAssetTotals],
+  )
+
   const visibleItems = useMemo(() => {
     const q = search.trim().toLowerCase()
 
+    let base: any[] = []
     if (activeTab === 'suppliers') {
-      const base = suppliers
-      if (!q) return base
-      return base.filter((x: any) => {
-        const n = String(x.name || '').toLowerCase()
-        const v = String(x.vat_number || '').toLowerCase()
-        const p = String(x.phone || '').toLowerCase()
-        const b = String(x.bank_name || '').toLowerCase()
-        const i = String(x.iban || '').toLowerCase()
-        return n.includes(q) || v.includes(q) || p.includes(q) || b.includes(q) || i.includes(q)
-      })
+      base = suppliers
+    } else {
+      base = fixedAssets.filter((x: any) => (x.sub_category || '') === currentTab.subCategory)
     }
 
-    const base = fixedAssets.filter((x: any) => (x.sub_category || '') === currentTab.subCategory)
-    if (!q) return base
+    const filtered = !q
+      ? base
+      : base.filter((x: any) => {
+          const n = String(x.name || '').toLowerCase()
+          const rf = String(x.rf_code || '').toLowerCase()
+          const v = String(x.vat_number || '').toLowerCase()
+          const p = String(x.phone || '').toLowerCase()
+          const b = String(x.bank_name || '').toLowerCase()
+          const i = String(x.iban || '').toLowerCase()
+          return n.includes(q) || rf.includes(q) || v.includes(q) || p.includes(q) || b.includes(q) || i.includes(q)
+        })
 
-    return base.filter((x: any) => {
-      const n = String(x.name || '').toLowerCase()
-      const rf = String(x.rf_code || '').toLowerCase()
-      const v = String(x.vat_number || '').toLowerCase()
-      const p = String(x.phone || '').toLowerCase()
-      const b = String(x.bank_name || '').toLowerCase()
-      const i = String(x.iban || '').toLowerCase()
-      return n.includes(q) || rf.includes(q) || v.includes(q) || p.includes(q) || b.includes(q) || i.includes(q)
+    // ✅ SORT by turnover desc
+    return [...filtered].sort((a: any, b: any) => {
+      const ta = getTurnover(String(a.id))
+      const tb = getTurnover(String(b.id))
+      return tb - ta
     })
-  }, [activeTab, suppliers, fixedAssets, search, currentTab.subCategory])
+  }, [activeTab, suppliers, fixedAssets, search, currentTab.subCategory, getTurnover])
 
   const loadData = useCallback(async () => {
     try {
@@ -179,7 +236,7 @@ function ManageListsContent() {
 
       setStoreId(activeStoreId)
 
-      const [storeRes, sRes, fRes] = await Promise.all([
+      const [storeRes, sRes, fRes, tRes] = await Promise.all([
         supabase.from('stores').select('name').eq('id', activeStoreId).single(),
         supabase
           .from('suppliers')
@@ -193,15 +250,22 @@ function ManageListsContent() {
           )
           .eq('store_id', activeStoreId)
           .order('name'),
+        // ✅ transactions για τζίρους
+        supabase
+          .from('transactions')
+          .select('amount, supplier_id, fixed_asset_id')
+          .eq('store_id', activeStoreId),
       ])
 
       if (storeRes.data?.name) setCurrentStoreName(String(storeRes.data.name))
 
       if (sRes.error) throw sRes.error
       if (fRes.error) throw fRes.error
+      if (tRes.error) throw tRes.error
 
       setSuppliers(sRes.data || [])
       setFixedAssets(fRes.data || [])
+      setTransactions(tRes.data || [])
     } catch (e: any) {
       toast.error(e?.message || 'Σφάλμα φόρτωσης')
     } finally {
@@ -318,6 +382,7 @@ function ManageListsContent() {
         }
 
         resetForm()
+        loadData() // ✅ refresh totals & ranking
         return
       }
 
@@ -381,6 +446,7 @@ function ManageListsContent() {
         }
 
         resetForm()
+        loadData()
         return
       }
 
@@ -444,6 +510,7 @@ function ManageListsContent() {
         }
 
         resetForm()
+        loadData()
         return
       }
 
@@ -502,6 +569,7 @@ function ManageListsContent() {
         }
 
         resetForm()
+        loadData()
         return
       }
 
@@ -540,6 +608,7 @@ function ManageListsContent() {
       if (editingId && String(id) === String(editingId)) resetForm()
 
       toast.success('Διαγράφηκε!')
+      loadData()
     } catch (e: any) {
       toast.error(e?.message || 'Αποτυχία διαγραφής')
     } finally {
@@ -553,59 +622,56 @@ function ManageListsContent() {
     resetForm()
   }
 
-  const fillFromRowToForm = (item: any) => {
-    // same as edit but keeps UX simple
-    handleEdit(item)
-  }
-
   // ---------------------- UI ----------------------
-  // Segment button style for pay basis selection
-  const segBtn: any = {
-    padding: '12px',
-    borderRadius: '12px',
-    border: `2px solid ${colors.border}`,
-    fontWeight: '700',
-    fontSize: '14px',
-    cursor: 'pointer',
-    transition: 'all 0.2s',
-    background: colors.white,
-    color: colors.primaryDark,
-  }
   const renderForm = () => {
     if (activeTab === 'suppliers') {
       return (
         <div style={formCard}>
           <div style={inputGroup}>
-            <label style={labelStyle}><Hash size={12} /> ΕΠΩΝΥΜΙΑ</label>
-            <input value={name} onChange={(e) => setName(e.target.value)} style={inputStyle} placeholder="π.χ. COCA COLA" />
+            <label style={labelStyle}>
+              <Hash size={12} /> ΕΠΩΝΥΜΙΑ
+            </label>
+            <input value={name} onChange={e => setName(e.target.value)} style={inputStyle} placeholder="π.χ. COCA COLA" />
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
             <div style={inputGroup}>
-              <label style={labelStyle}><Phone size={12} /> ΤΗΛΕΦΩΝΟ</label>
-              <input value={phone} onChange={(e) => setPhone(e.target.value)} style={inputStyle} />
+              <label style={labelStyle}>
+                <Phone size={12} /> ΤΗΛΕΦΩΝΟ
+              </label>
+              <input value={phone} onChange={e => setPhone(e.target.value)} style={inputStyle} />
             </div>
             <div style={inputGroup}>
-              <label style={labelStyle}><Tag size={12} /> ΑΦΜ</label>
-              <input value={vatNumber} onChange={(e) => setVatNumber(e.target.value)} style={inputStyle} />
+              <label style={labelStyle}>
+                <Tag size={12} /> ΑΦΜ
+              </label>
+              <input value={vatNumber} onChange={e => setVatNumber(e.target.value)} style={inputStyle} />
             </div>
           </div>
 
           <div style={inputGroup}>
-            <label style={labelStyle}><Building2 size={12} /> ΤΡΑΠΕΖΑ</label>
-            <select value={bankName} onChange={(e) => setBankName(e.target.value)} style={inputStyle}>
+            <label style={labelStyle}>
+              <Building2 size={12} /> ΤΡΑΠΕΖΑ
+            </label>
+            <select value={bankName} onChange={e => setBankName(e.target.value)} style={inputStyle}>
               <option value="">Επιλέξτε Τράπεζα...</option>
-              {BANK_OPTIONS.map(b => <option key={b} value={b}>{b}</option>)}
+              {BANK_OPTIONS.map(b => (
+                <option key={b} value={b}>
+                  {b}
+                </option>
+              ))}
             </select>
           </div>
 
           <div style={inputGroup}>
-            <label style={labelStyle}><CreditCard size={12} /> IBAN</label>
-            <input value={iban} onChange={(e) => setIban(e.target.value)} style={inputStyle} placeholder="GR..." />
+            <label style={labelStyle}>
+              <CreditCard size={12} /> IBAN
+            </label>
+            <input value={iban} onChange={e => setIban(e.target.value)} style={inputStyle} placeholder="GR..." />
           </div>
 
           <button onClick={handleSave} disabled={saving || loading} style={saveBtn}>
-            {saving ? 'ΑΠΟΘΗΚΕΥΣΗ...' : (editingId ? 'ΕΝΗΜΕΡΩΣΗ' : 'ΚΑΤΑΧΩΡΗΣΗ')}
+            {saving ? 'ΑΠΟΘΗΚΕΥΣΗ...' : editingId ? 'ΕΝΗΜΕΡΩΣΗ' : 'ΚΑΤΑΧΩΡΗΣΗ'}
           </button>
         </div>
       )
@@ -615,25 +681,35 @@ function ManageListsContent() {
       return (
         <div style={formCard}>
           <div style={inputGroup}>
-            <label style={labelStyle}><Hash size={12} /> ΟΝΟΜΑ</label>
-            <input value={name} onChange={(e) => setName(e.target.value)} style={inputStyle} placeholder="π.χ. Ενοίκιο" />
+            <label style={labelStyle}>
+              <Hash size={12} /> ΟΝΟΜΑ
+            </label>
+            <input value={name} onChange={e => setName(e.target.value)} style={inputStyle} placeholder="π.χ. Ενοίκιο" />
           </div>
 
           <div style={inputGroup}>
-            <label style={labelStyle}><Tag size={12} /> ΚΩΔΙΚΟΣ RF</label>
-            <input value={rfCode} onChange={(e) => setRfCode(e.target.value)} style={inputStyle} placeholder="RF..." />
+            <label style={labelStyle}>
+              <Tag size={12} /> ΚΩΔΙΚΟΣ RF
+            </label>
+            <input value={rfCode} onChange={e => setRfCode(e.target.value)} style={inputStyle} placeholder="RF..." />
           </div>
 
           <div style={inputGroup}>
-            <label style={labelStyle}><Building2 size={12} /> ΤΡΑΠΕΖΑ</label>
-            <select value={bankName} onChange={(e) => setBankName(e.target.value)} style={inputStyle}>
+            <label style={labelStyle}>
+              <Building2 size={12} /> ΤΡΑΠΕΖΑ
+            </label>
+            <select value={bankName} onChange={e => setBankName(e.target.value)} style={inputStyle}>
               <option value="">Επιλέξτε Τράπεζα...</option>
-              {BANK_OPTIONS.map(b => <option key={b} value={b}>{b}</option>)}
+              {BANK_OPTIONS.map(b => (
+                <option key={b} value={b}>
+                  {b}
+                </option>
+              ))}
             </select>
           </div>
 
           <button onClick={handleSave} disabled={saving || loading} style={saveBtn}>
-            {saving ? 'ΑΠΟΘΗΚΕΥΣΗ...' : (editingId ? 'ΕΝΗΜΕΡΩΣΗ' : 'ΚΑΤΑΧΩΡΗΣΗ')}
+            {saving ? 'ΑΠΟΘΗΚΕΥΣΗ...' : editingId ? 'ΕΝΗΜΕΡΩΣΗ' : 'ΚΑΤΑΧΩΡΗΣΗ'}
           </button>
         </div>
       )
@@ -647,8 +723,10 @@ function ManageListsContent() {
       return (
         <div style={formCard}>
           <div style={inputGroup}>
-            <label style={labelStyle}><Hash size={12} /> ΟΝΟΜΑΤΕΠΩΝΥΜΟ</label>
-            <input value={name} onChange={(e) => setName(e.target.value)} style={inputStyle} placeholder="π.χ. Γιάννης Παπαδόπουλος" />
+            <label style={labelStyle}>
+              <Hash size={12} /> ΟΝΟΜΑΤΕΠΩΝΥΜΟ
+            </label>
+            <input value={name} onChange={e => setName(e.target.value)} style={inputStyle} placeholder="π.χ. Γιάννης Παπαδόπουλος" />
           </div>
 
           <div style={inputGroup}>
@@ -684,85 +762,132 @@ function ManageListsContent() {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
             <div style={inputGroup}>
               <label style={labelStyle}>{salaryLabel}</label>
-              <input value={salaryValue} onChange={(e) => setSalaryValue(e.target.value)} style={inputStyle} placeholder={payBasis === 'monthly' ? 'π.χ. 1200' : 'π.χ. 50'} inputMode="decimal" />
+              <input
+                value={salaryValue}
+                onChange={e => setSalaryValue(e.target.value)}
+                style={inputStyle}
+                placeholder={payBasis === 'monthly' ? 'π.χ. 1200' : 'π.χ. 50'}
+                inputMode="decimal"
+              />
             </div>
             <div style={inputGroup}>
               <label style={labelStyle}>ΜΕΡΕΣ ΜΗΝΑ</label>
-              <input value={monthlyDays} onChange={(e) => setMonthlyDays(e.target.value)} style={inputStyle} placeholder="π.χ. 26" inputMode="numeric" />
+              <input value={monthlyDays} onChange={e => setMonthlyDays(e.target.value)} style={inputStyle} placeholder="π.χ. 26" inputMode="numeric" />
             </div>
             <div style={inputGroup}>
               <label style={labelStyle}>ΗΜ. ΠΡΟΣΛΗΨΗΣ</label>
-              <input value={startDate} onChange={(e) => setStartDate(e.target.value)} style={inputStyle} type="date" />
+              <input value={startDate} onChange={e => setStartDate(e.target.value)} style={inputStyle} type="date" />
             </div>
           </div>
 
           <div style={inputGroup}>
-            <label style={labelStyle}><Building2 size={12} /> ΤΡΑΠΕΖΑ</label>
-            <select value={bankName} onChange={(e) => setBankName(e.target.value)} style={inputStyle}>
+            <label style={labelStyle}>
+              <Building2 size={12} /> ΤΡΑΠΕΖΑ
+            </label>
+            <select value={bankName} onChange={e => setBankName(e.target.value)} style={inputStyle}>
               <option value="">Επιλέξτε Τράπεζα...</option>
-              {BANK_OPTIONS.map(b => <option key={b} value={b}>{b}</option>)}
+              {BANK_OPTIONS.map(b => (
+                <option key={b} value={b}>
+                  {b}
+                </option>
+              ))}
             </select>
           </div>
 
           <div style={inputGroup}>
-            <label style={labelStyle}><CreditCard size={12} /> IBAN</label>
-            <input value={iban} onChange={(e) => setIban(e.target.value)} style={inputStyle} placeholder="GR..." />
+            <label style={labelStyle}>
+              <CreditCard size={12} /> IBAN
+            </label>
+            <input value={iban} onChange={e => setIban(e.target.value)} style={inputStyle} placeholder="GR..." />
           </div>
 
           <button onClick={handleSave} disabled={saving || loading} style={saveBtn}>
-            {saving ? 'ΑΠΟΘΗΚΕΥΣΗ...' : (editingId ? 'ΕΝΗΜΕΡΩΣΗ' : 'ΚΑΤΑΧΩΡΗΣΗ')}
+            {saving ? 'ΑΠΟΘΗΚΕΥΣΗ...' : editingId ? 'ΕΝΗΜΕΡΩΣΗ' : 'ΚΑΤΑΧΩΡΗΣΗ'}
           </button>
         </div>
       )
     }
 
-    // maintenance & other share same form (like your current logic)
+    // maintenance & other share same form
     return (
       <div style={formCard}>
         <div style={inputGroup}>
-          <label style={labelStyle}><Hash size={12} /> ΟΝΟΜΑ</label>
-          <input value={name} onChange={(e) => setName(e.target.value)} style={inputStyle} placeholder="π.χ. ΤΖΗΛΙΟΣ" />
+          <label style={labelStyle}>
+            <Hash size={12} /> ΟΝΟΜΑ
+          </label>
+          <input value={name} onChange={e => setName(e.target.value)} style={inputStyle} placeholder="π.χ. ΤΖΗΛΙΟΣ" />
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
           <div style={inputGroup}>
-            <label style={labelStyle}><Phone size={12} /> ΤΗΛΕΦΩΝΟ</label>
-            <input value={phone} onChange={(e) => setPhone(e.target.value)} style={inputStyle} />
+            <label style={labelStyle}>
+              <Phone size={12} /> ΤΗΛΕΦΩΝΟ
+            </label>
+            <input value={phone} onChange={e => setPhone(e.target.value)} style={inputStyle} />
           </div>
           <div style={inputGroup}>
-            <label style={labelStyle}><Tag size={12} /> ΑΦΜ</label>
-            <input value={vatNumber} onChange={(e) => setVatNumber(e.target.value)} style={inputStyle} />
+            <label style={labelStyle}>
+              <Tag size={12} /> ΑΦΜ
+            </label>
+            <input value={vatNumber} onChange={e => setVatNumber(e.target.value)} style={inputStyle} />
           </div>
         </div>
 
         <div style={inputGroup}>
-          <label style={labelStyle}><Building2 size={12} /> ΤΡΑΠΕΖΑ</label>
-          <select value={bankName} onChange={(e) => setBankName(e.target.value)} style={inputStyle}>
+          <label style={labelStyle}>
+            <Building2 size={12} /> ΤΡΑΠΕΖΑ
+          </label>
+          <select value={bankName} onChange={e => setBankName(e.target.value)} style={inputStyle}>
             <option value="">Επιλέξτε Τράπεζα...</option>
-            {BANK_OPTIONS.map(b => <option key={b} value={b}>{b}</option>)}
+            {BANK_OPTIONS.map(b => (
+              <option key={b} value={b}>
+                {b}
+              </option>
+            ))}
           </select>
         </div>
 
         <div style={inputGroup}>
-          <label style={labelStyle}><CreditCard size={12} /> IBAN</label>
-          <input value={iban} onChange={(e) => setIban(e.target.value)} style={inputStyle} placeholder="GR..." />
+          <label style={labelStyle}>
+            <CreditCard size={12} /> IBAN
+          </label>
+          <input value={iban} onChange={e => setIban(e.target.value)} style={inputStyle} placeholder="GR..." />
         </div>
 
         <button onClick={handleSave} disabled={saving || loading} style={saveBtn}>
-          {saving ? 'ΑΠΟΘΗΚΕΥΣΗ...' : (editingId ? 'ΕΝΗΜΕΡΩΣΗ' : 'ΚΑΤΑΧΩΡΗΣΗ')}
+          {saving ? 'ΑΠΟΘΗΚΕΥΣΗ...' : editingId ? 'ΕΝΗΜΕΡΩΣΗ' : 'ΚΑΤΑΧΩΡΗΣΗ'}
         </button>
       </div>
     )
   }
 
   const renderExpandedMeta = (item: any) => {
+    const ibanValue = String(item?.iban || '').trim()
+
+    const IbanLine = () => (
+      <p style={infoText}>
+        <strong>IBAN:</strong>{' '}
+        {ibanValue ? (
+          <span
+            onClick={() => copyToClipboard(ibanValue)}
+            style={{ fontWeight: 800, textDecoration: 'underline', cursor: 'pointer' }}
+            title="Πάτα για αντιγραφή"
+          >
+            {ibanValue}
+          </span>
+        ) : (
+          '-'
+        )}
+      </p>
+    )
+
     if (activeTab === 'suppliers') {
       return (
         <div style={infoGrid}>
           <p style={infoText}><strong>Τηλ:</strong> {item.phone || '-'}</p>
           <p style={infoText}><strong>ΑΦΜ:</strong> {item.vat_number || '-'}</p>
           <p style={infoText}><strong>Τράπεζα:</strong> {item.bank_name || '-'}</p>
-          <p style={infoText}><strong>IBAN:</strong> {item.iban || '-'}</p>
+          <IbanLine />
         </div>
       )
     }
@@ -788,7 +913,7 @@ function ManageListsContent() {
           <p style={infoText}><strong>Μέρες:</strong> {String(item.monthly_days ?? '-')}</p>
           <p style={infoText}><strong>Ημ. πρόσληψης:</strong> {item.start_date ? String(item.start_date).slice(0, 10) : '-'}</p>
           <p style={infoText}><strong>Τράπεζα:</strong> {item.bank_name || '-'}</p>
-          <p style={infoText}><strong>IBAN:</strong> {item.iban || '-'}</p>
+          <IbanLine />
         </div>
       )
     }
@@ -798,7 +923,7 @@ function ManageListsContent() {
         <p style={infoText}><strong>Τηλ:</strong> {item.phone || '-'}</p>
         <p style={infoText}><strong>ΑΦΜ:</strong> {item.vat_number || '-'}</p>
         <p style={infoText}><strong>Τράπεζα:</strong> {item.bank_name || '-'}</p>
-        <p style={infoText}><strong>IBAN:</strong> {item.iban || '-'}</p>
+        <IbanLine />
         <p style={infoText}><strong>Κατηγορία:</strong> {sub === 'Maintenance' ? 'Συντήρηση' : sub || '-'}</p>
       </div>
     )
@@ -812,45 +937,49 @@ function ManageListsContent() {
           <div>
             <h1 style={titleStyle}>Manage Lists</h1>
             <p style={subtitleStyle}>
-              ΚΑΤΑΣΤΗΜΑ:{' '}
-              <span style={{ color: colors.accentBlue }}>{currentStoreName.toUpperCase()}</span>
+              ΚΑΤΑΣΤΗΜΑ: <span style={{ color: colors.accentBlue }}>{currentStoreName.toUpperCase()}</span>
             </p>
           </div>
-          <Link href={backHref} style={closeBtn}><ChevronLeft size={20} /></Link>
+          <Link href={backHref} style={closeBtn}>
+            <ChevronLeft size={20} />
+          </Link>
         </header>
 
-        {/* ✅ DROPDOWN MENU (replace tabs) */}
+        {/* ✅ DROPDOWN MENU */}
         <div style={{ marginBottom: 14 }}>
           <label style={labelStyle}>ΚΑΤΗΓΟΡΙΑ</label>
           <select
             value={activeTab}
-            onChange={(e) => onChangeCategory(e.target.value as TabKey)}
+            onChange={e => onChangeCategory(e.target.value as TabKey)}
             style={inputStyle}
           >
             {MENU.map(m => (
-              <option key={m.key} value={m.key}>{m.label}</option>
+              <option key={m.key} value={m.key}>
+                {m.label}
+              </option>
             ))}
           </select>
         </div>
 
-        {/* ✅ ADD BUTTON like Suppliers */}
+        {/* ✅ ADD BUTTON */}
         <button
-          onClick={() => { editingId ? resetForm() : setIsFormOpen(!isFormOpen) }}
+          onClick={() => {
+            editingId ? resetForm() : setIsFormOpen(!isFormOpen)
+          }}
           style={isFormOpen ? cancelBtn : addBtn}
         >
-          {isFormOpen ? 'ΑΚΥΡΩΣΗ' : <><Plus size={16} /> {currentTab.addLabel}</>}
+          {isFormOpen ? 'ΑΚΥΡΩΣΗ' : (
+            <>
+              <Plus size={16} /> {currentTab.addLabel}
+            </>
+          )}
         </button>
 
         {/* FORM */}
         {isFormOpen && (
           <>
             {editingId && (
-              <button
-                type="button"
-                onClick={resetForm}
-                style={miniCancel}
-                disabled={saving || loading}
-              >
+              <button type="button" onClick={resetForm} style={miniCancel} disabled={saving || loading}>
                 <XCircle size={14} /> Ακύρωση Επεξεργασίας
               </button>
             )}
@@ -858,25 +987,36 @@ function ManageListsContent() {
           </>
         )}
 
-        {/* SEARCH (kept, but now under form like suppliers feel) */}
+        {/* ✅ SEARCH (fixed icon overlap) */}
         <div style={{ marginBottom: 14 }}>
           <label style={labelStyle}>ΑΝΑΖΗΤΗΣΗ</label>
           <div style={{ position: 'relative' }}>
-            <Search size={16} style={{ position: 'absolute', left: 12, top: 14, color: colors.secondaryText }} />
+            <Search
+              size={16}
+              style={{
+                position: 'absolute',
+                left: 16,
+                top: '50%',
+                transform: 'translateY(-50%)',
+                color: colors.secondaryText,
+                pointerEvents: 'none',
+                opacity: 0.85,
+              }}
+            />
             <input
               value={search}
               onChange={e => setSearch(e.target.value)}
               placeholder={activeTab === 'suppliers' ? 'Όνομα / ΑΦΜ / Τηλέφωνο...' : 'Γράψτε για αναζήτηση...'}
-              style={{ ...inputStyle, paddingLeft: 38 }}
+              style={{ ...inputStyle, paddingLeft: 52 }}
             />
           </div>
         </div>
 
-        {/* LIST like Suppliers (expand rows) */}
+        {/* ✅ LIST (ranking by turnover + amount shown) */}
         <div style={listArea}>
           <div style={rankingHeader}>
-            {currentTab.icon ? <currentTab.icon size={14} /> : null}
-            ΛΙΣΤΑ: {currentTab.label.toUpperCase()}
+            <TrendingUp size={14} />
+            ΚΑΤΑΤΑΞΗ ΒΑΣΕΙ ΤΖΙΡΟΥ: {currentTab.label.toUpperCase()}
           </div>
 
           {loading ? (
@@ -884,53 +1024,59 @@ function ManageListsContent() {
           ) : visibleItems.length === 0 ? (
             <p style={emptyText}>Δεν υπάρχουν εγγραφές.</p>
           ) : (
-            visibleItems.map((item: any, idx: number) => (
-              <div key={item.id} style={{ borderBottom: `1px solid ${colors.border}` }}>
-                <div
-                  style={rowWrapper}
-                  onClick={() => setExpandedId(expandedId === String(item.id) ? null : String(item.id))}
-                >
-                  <div style={rankNumber}>{idx + 1}</div>
-                  <div style={{ flex: 1 }}>
-                    <p style={rowName}>{String(item.name || '').toUpperCase()}</p>
-                    <p style={categoryBadge}>
-                      {activeTab === 'suppliers'
-                        ? (item.bank_name ? `ΤΡΑΠΕΖΑ: ${item.bank_name}` : '—')
-                        : (String(item.sub_category || '') === 'Maintenance'
-                          ? 'ΣΥΝΤΗΡΗΣΗ'
-                          : String(item.sub_category || '').toUpperCase() || '—')}
-                    </p>
+            visibleItems.map((item: any, idx: number) => {
+              const isEditingThis = editingId && String(editingId) === String(item.id)
+              const turnover = getTurnover(String(item.id))
+
+              return (
+                <div key={item.id} style={{ borderBottom: `1px solid ${colors.border}` }}>
+                  <div
+                    style={rowWrapper}
+                    onClick={() => setExpandedId(expandedId === String(item.id) ? null : String(item.id))}
+                  >
+                    <div style={rankNumber}>{idx + 1}</div>
+
+                    <div style={{ flex: 1 }}>
+                      <p style={rowName}>{String(item.name || '').toUpperCase()}</p>
+                      <p style={categoryBadge}>
+                        {activeTab === 'suppliers'
+                          ? item.bank_name
+                            ? `ΤΡΑΠΕΖΑ: ${item.bank_name}`
+                            : '—'
+                          : String(item.sub_category || '') === 'Maintenance'
+                            ? 'ΣΥΝΤΗΡΗΣΗ'
+                            : String(item.sub_category || '').toUpperCase() || '—'}
+                      </p>
+                    </div>
+
+                    <div style={{ textAlign: 'right' }}>
+                      <p style={turnoverText}>{turnover.toFixed(2)}€</p>
+                    </div>
+
+                    {isEditingThis && (
+                      <span style={editingPill}>
+                        <Pencil size={12} /> Editing
+                      </span>
+                    )}
                   </div>
 
-                  {editingId && String(editingId) === String(item.id) && (
-                    <span style={editingPill}>
-                      <Pencil size={12} /> Editing
-                    </span>
+                  {expandedId === String(item.id) && (
+                    <div style={actionPanel}>
+                      {renderExpandedMeta(item)}
+
+                      <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
+                        <button onClick={() => handleEdit(item)} style={editBtn}>
+                          <Pencil size={14} /> Διόρθωση
+                        </button>
+                        <button onClick={() => handleDelete(String(item.id))} style={delBtn}>
+                          <Trash2 size={14} /> Διαγραφή
+                        </button>
+                      </div>
+                    </div>
                   )}
                 </div>
-
-                {expandedId === String(item.id) && (
-                  <div style={actionPanel}>
-                    {renderExpandedMeta(item)}
-
-                    <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
-                      <button
-                        onClick={() => fillFromRowToForm(item)}
-                        style={editBtn}
-                      >
-                        <Pencil size={14} /> Διόρθωση
-                      </button>
-                      <button
-                        onClick={() => handleDelete(String(item.id))}
-                        style={delBtn}
-                      >
-                        <Trash2 size={14} /> Διαγραφή
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            ))
+              )
+            })
           )}
         </div>
 
@@ -1075,8 +1221,10 @@ const rowName: any = { fontSize: '15px', fontWeight: '800', margin: 0, color: co
 
 const categoryBadge: any = { fontSize: '10px', fontWeight: '700', color: colors.secondaryText, margin: 0 }
 
+const turnoverText: any = { fontSize: '16px', fontWeight: '800', color: colors.accentGreen, margin: 0 }
+
 const editingPill: any = {
-  marginLeft: 'auto',
+  marginLeft: 10,
   fontSize: 11,
   fontWeight: 800,
   color: colors.accentBlue,
@@ -1129,6 +1277,17 @@ const delBtn: any = {
 }
 
 const emptyText: any = { padding: '40px', textAlign: 'center', color: colors.secondaryText, fontSize: '13px', fontWeight: '600' }
+
+const segBtn: any = {
+  borderRadius: 14,
+  border: `1px solid ${colors.border}`,
+  padding: '12px 12px',
+  cursor: 'pointer',
+  fontSize: 16,
+  fontWeight: 900,
+  boxShadow: '0 8px 18px rgba(15, 23, 42, 0.06)',
+  userSelect: 'none',
+}
 
 export default function ManageListsPage() {
   return (
