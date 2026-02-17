@@ -20,6 +20,24 @@ const colors = {
   indigo: '#6366f1'
 }
 
+// --- CATEGORY COLORS ---
+const categoryColors: Record<string, string> = {
+  'Εμπορεύματα': '#6366f1', // Indigo
+  'Staff': '#6366f1', // Indigo
+  'Utilities': '#f59e42', // Amber
+  'Maintenance': '#10b981', // Green
+  'Other': '#64748b', // Gray
+}
+
+// --- CATEGORY LABELS ---
+const categoryLabels: Record<string, string> = {
+  'Εμπορεύματα': 'Εμπορεύματα',
+  'Staff': 'Προσωπικό',
+  'Utilities': 'Λογαριασμοί',
+  'Maintenance': 'Μάστορες',
+  'Other': 'Λοιπά',
+}
+
 function AnalysisContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -163,6 +181,52 @@ function AnalysisContent() {
       finalDisplayData
     }
   }, [transactions, startDate, endDate, view, selectedFilter, storeId])
+
+  // --- CATEGORY BREAKDOWN ---
+  const categoryBreakdown = useMemo(() => {
+    const expenseData = transactions.filter(
+      (t) => t.store_id === storeId && (t.type === 'expense' || t.category === 'pocket' || t.type === 'debt_payment') && t.date >= startDate && t.date <= endDate
+    );
+    const result: Record<string, number> = {};
+    let total = 0;
+    for (const t of expenseData) {
+      let cat = t.category;
+      if (!cat || cat === 'expense') cat = 'Other';
+      if (cat === 'Πάγια') cat = 'Utilities';
+      if (cat === 'Staff' || t.fixed_assets?.sub_category === 'staff') cat = 'Staff';
+      if (cat === 'Maintenance' || t.fixed_assets?.sub_category === 'worker') cat = 'Maintenance';
+      if (cat === 'Εμπορεύματα' || t.suppliers) cat = 'Εμπορεύματα';
+      result[cat] = (result[cat] || 0) + Math.abs(Number(t.amount));
+      total += Math.abs(Number(t.amount));
+    }
+    return { result, total };
+  }, [transactions, storeId, startDate, endDate]);
+
+  // --- STAFF BREAKDOWN ---
+  const staffBreakdown = useMemo(() => {
+    const staffTxs = transactions.filter(
+      (t) => (t.category === 'Staff' || t.fixed_assets?.sub_category === 'staff') && t.store_id === storeId && t.date >= startDate && t.date <= endDate
+    );
+    const byStaff: Record<string, number> = {};
+    for (const t of staffTxs) {
+      const name = t.fixed_assets?.name || 'Άγνωστος';
+      byStaff[name] = (byStaff[name] || 0) + Math.abs(Number(t.amount));
+    }
+    return byStaff;
+  }, [transactions, storeId, startDate, endDate]);
+
+  // --- MAINTENANCE BREAKDOWN ---
+  const maintenanceBreakdown = useMemo(() => {
+    const maintTxs = transactions.filter(
+      (t) => (t.category === 'Maintenance' || t.fixed_assets?.sub_category === 'worker') && t.store_id === storeId && t.date >= startDate && t.date <= endDate
+    );
+    const byWorker: Record<string, number> = {};
+    for (const t of maintTxs) {
+      const name = t.fixed_assets?.name || 'Άγνωστος';
+      byWorker[name] = (byWorker[name] || 0) + Math.abs(Number(t.amount));
+    }
+    return byWorker;
+  }, [transactions, storeId, startDate, endDate]);
 
   return (
     <div style={iphoneWrapper}>
@@ -313,6 +377,62 @@ function AnalysisContent() {
           <p style={{ margin: '10px 0 0 0', fontSize: '10px', fontWeight: 700, opacity: 0.7 }}>
             {stats.finalDisplayData.length} Κινήσεις βρέθηκαν
           </p>
+        </div>
+
+        {/* --- CATEGORY BREAKDOWN --- */}
+        <div style={{ background: colors.surface, borderRadius: 16, padding: 18, margin: '18px 0', boxShadow: '0 2px 8px rgba(0,0,0,0.03)' }}>
+          <h3 style={{ fontSize: 15, fontWeight: 800, margin: 0, marginBottom: 10, color: colors.primary }}>Έξοδα ανά Κατηγορία</h3>
+          {Object.keys(categoryBreakdown.result).length === 0 ? (
+            <div style={{ color: colors.secondary, fontSize: 14 }}>Δεν υπάρχουν έξοδα.</div>
+          ) : (
+            Object.entries(categoryBreakdown.result).map(([cat, val]) => {
+              const percent = categoryBreakdown.total > 0 ? (val / categoryBreakdown.total) * 100 : 0;
+              return (
+                <div key={cat} style={{ marginBottom: 10 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontWeight: 700, color: colors.primary }}>{categoryLabels[cat] || cat}</span>
+                    <span style={{ fontWeight: 700, color: categoryColors[cat] || colors.primary }}>{val.toFixed(2)}€</span>
+                  </div>
+                  <div style={{ background: '#e5e7eb', borderRadius: 8, height: 8, marginTop: 4, overflow: 'hidden' }}>
+                    <div style={{ width: `${percent}%`, height: 8, background: categoryColors[cat] || colors.primary, transition: 'width 0.3s' }} />
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        {/* --- STAFF BREAKDOWN --- */}
+        {Object.keys(staffBreakdown).length > 0 && (
+          <div style={{ background: colors.surface, borderRadius: 16, padding: 18, margin: '18px 0', boxShadow: '0 2px 8px rgba(0,0,0,0.03)' }}>
+            <h3 style={{ fontSize: 15, fontWeight: 800, margin: 0, marginBottom: 10, color: categoryColors['Staff'] }}>Μισθοδοσία Μηνός</h3>
+            {Object.entries(staffBreakdown).map(([name, val]) => (
+              <div key={name} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                <span style={{ fontWeight: 700 }}>{name}</span>
+                <span style={{ fontWeight: 700, color: categoryColors['Staff'] }}>{val.toFixed(2)}€</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* --- MAINTENANCE BREAKDOWN --- */}
+        {Object.keys(maintenanceBreakdown).length > 0 && (
+          <div style={{ background: colors.surface, borderRadius: 16, padding: 18, margin: '18px 0', boxShadow: '0 2px 8px rgba(0,0,0,0.03)' }}>
+            <h3 style={{ fontSize: 15, fontWeight: 800, margin: 0, marginBottom: 10, color: categoryColors['Maintenance'] }}>Ανάλυση Μαστόρων</h3>
+            {Object.entries(maintenanceBreakdown).map(([name, val]) => (
+              <div key={name} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                <span style={{ fontWeight: 700 }}>{name}</span>
+                <span style={{ fontWeight: 700, color: categoryColors['Maintenance'] }}>{val.toFixed(2)}€</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* --- EXPORT BUTTON --- */}
+        <div style={{ textAlign: 'right', marginBottom: 18 }}>
+          <button style={{ background: colors.indigo, color: 'white', border: 'none', borderRadius: 10, padding: '10px 18px', fontWeight: 800, fontSize: 15, cursor: 'pointer', boxShadow: '0 2px 8px rgba(0,0,0,0.07)' }}>
+            Εξαγωγή σε PDF
+          </button>
         </div>
 
         {/* TRANSACTIONS LIST */}
