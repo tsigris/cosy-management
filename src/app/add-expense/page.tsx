@@ -89,7 +89,10 @@ function AddExpenseForm() {
   const [noInvoice, setNoInvoice] = useState(false);
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
+
+  // Will be used as created_by_name (must come from profiles using session user id)
   const [currentUsername, setCurrentUsername] = useState('Χρήστης');
+
   const [loading, setLoading] = useState(true);
   const [suppliers, setSuppliers] = useState<any[]>([]);
   const [fixedAssets, setFixedAssets] = useState<any[]>([]);
@@ -121,14 +124,26 @@ function AddExpenseForm() {
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) return router.push('/login');
-      const { data: profile } = await supabase.from('profiles').select('username').eq('id', session.user.id).maybeSingle();
-      if (profile) setCurrentUsername(profile.username || 'Admin');
+
+      // FIX #3: created_by_name must be fetched from profiles using current session user id
+      const { data: profile, error: profileErr } = await supabase
+        .from('profiles')
+        .select('username')
+        .eq('id', session.user.id)
+        .maybeSingle();
+
+      if (!profileErr && profile) {
+        setCurrentUsername(profile.username || 'Admin');
+      }
+
       const [sRes, fRes] = await Promise.all([
         supabase.from('suppliers').select('*').eq('store_id', storeId).neq('is_active', false).order('name'),
         supabase.from('fixed_assets').select('id, name').eq('store_id', storeId).order('name'),
       ]);
+
       if (sRes.data) setSuppliers(sRes.data);
       if (fRes.data) setFixedAssets(fRes.data);
+
       if (editId) {
         const { data: tx } = await supabase.from('transactions').select('*').eq('id', editId).single();
         if (tx) {
@@ -139,10 +154,12 @@ function AddExpenseForm() {
           setIsAgainstDebt(tx.type === 'debt_payment');
           setSelectedSup(tx.supplier_id || '');
           setSelectedFixed(tx.fixed_asset_id || '');
+
           if (tx.supplier_id && sRes.data) {
             const found = sRes.data.find((s: any) => s.id === tx.supplier_id);
             if (found) setSearchTerm(found.name);
           }
+
           if (tx.invoice_image) {
             const { data: publicUrl } = supabase.storage.from('invoices').getPublicUrl(tx.invoice_image);
             setImagePreview(publicUrl.publicUrl);
@@ -155,30 +172,20 @@ function AddExpenseForm() {
           if (found) { setSearchTerm(found.name); setSelectedSup(found.id); }
         }
       }
-    } catch (error) { console.error(error); } finally { setLoading(false); }
-  }, [storeId, editId, urlAssetId, urlSupId, router]);
-
-  useEffect(() => { loadFormData(); }, [loadFormData]);
-
-  const filteredSuppliers = useMemo(() => {
-    if (!searchTerm) return suppliers;
-    return suppliers.filter(s => s.name.toLowerCase().includes(searchTerm.toLowerCase()));
-  }, [searchTerm, suppliers]);
-
-  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0];
-      setImageFile(file);
-      setImagePreview(URL.createObjectURL(file));
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setLoading(false);
     }
-  };
-
-  const handleSave = async () => {
+  }, [storeId, editId, urlAssetId, urlSupId, router]);
+const handleSave = async () => {
     if (!amount || Number(amount) <= 0) return toast.error('Συμπληρώστε το ποσό');
     if (!selectedSup && !selectedFixed) return toast.error('Επιλέξτε Προμηθευτή ή Πάγιο');
     setLoading(true);
+
     try {
       const { data: { session } } = await supabase.auth.getSession();
+
       const payload: any = {
         amount: Math.abs(Number(amount)), // Always positive
         method: isCredit ? 'Πίστωση' : method,
@@ -190,9 +197,12 @@ function AddExpenseForm() {
         supplier_id: selectedSup || null,
         fixed_asset_id: selectedFixed || null,
         category: isAgainstDebt ? 'Εξόφληση Χρέους' : (selectedFixed ? 'Πάγια' : 'Εμπορεύματα'),
-        created_by_name: currentUsername, // Operator fix
-        notes: noInvoice ? (notes ? `${notes} (ΧΩΡΙΣ ΤΙΜΟΛΟΓΙΟ)` : 'ΧΩΡΙΣ ΤΙΜΟΛΟΓΙΟ') : notes,
+        created_by_name: currentUsername, // (Fetched from profiles in loadFormData)
+        notes: noInvoice
+          ? (notes ? `${notes} (ΧΩΡΙΣ ΤΙΜΟΛΟΓΙΟ)` : 'ΧΩΡΙΣ ΤΙΜΟΛΟΓΙΟ')
+          : notes,
       };
+
       if (imageFile) {
         const fileExt = imageFile.name.split('.').pop();
         const fileName = `${Date.now()}.${fileExt}`;
@@ -200,12 +210,15 @@ function AddExpenseForm() {
         await supabase.storage.from('invoices').upload(filePath, imageFile);
         payload.invoice_image = filePath;
       }
+
       const { error } = editId
         ? await supabase.from('transactions').update(payload).eq('id', editId)
         : await supabase.from('transactions').insert([payload]);
+
       if (error) throw error;
+
       toast.success('Επιτυχής καταχώρηση!');
-      router.push(`/?date=${selectedDate}&store=${storeId}`); // Redirect fix
+      router.push(`/?date=${selectedDate}&store=${storeId}`);
     } catch (error: any) {
       toast.error(error.message);
     } finally {
@@ -222,10 +235,38 @@ function AddExpenseForm() {
     setShowDropdown(false);
   };
 
+  // Filter suppliers for dropdown
+  const filteredSuppliers = useMemo(() => {
+    if (!searchTerm) return [];
+    return suppliers.filter((s) =>
+      s.name && s.name.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+  }, [searchTerm, suppliers]);
+
+  // Handle image upload
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setImageFile(file);
+      const reader = new FileReader();
+      reader.onloadend = () => setImagePreview(reader.result as string);
+      reader.readAsDataURL(file);
+    }
+  };
+
   return (
     <div style={iphoneWrapper}>
       <Toaster position="top-center" richColors />
-      <SupplierFormModal open={showSupplierModal} onClose={() => setShowSupplierModal(false)} onCreated={sup => { setSuppliers(prev => [...prev, sup]); handleSupplierSelect(sup.id); }} storeId={storeId} />
+      <SupplierFormModal
+        open={showSupplierModal}
+        onClose={() => setShowSupplierModal(false)}
+        onCreated={sup => {
+          setSuppliers(prev => [...prev, sup]);
+          handleSupplierSelect(sup.id);
+        }}
+        storeId={storeId}
+      />
+
       <div style={{ maxWidth: 500, margin: '0 auto', paddingBottom: 120 }}>
         {/* HEADER */}
         <div style={headerStyle}>
@@ -238,33 +279,107 @@ function AddExpenseForm() {
               </p>
             </div>
           </div>
-          <Link href={`/?store=${storeId}&date=${selectedDate}`} style={backBtnStyle}><X size={20} /></Link>
+
+          {/* FIX: X button link */}
+          <Link href={`/?store=${storeId}&date=${selectedDate}`} style={backBtnStyle}>
+            <X size={20} />
+          </Link>
         </div>
 
         <div style={formCard}>
           {/* ΧΩΡΙΣ ΤΙΜΟΛΟΓΙΟ */}
-          <div onClick={() => setNoInvoice(!noInvoice)} style={{ ...noInvoiceToggle, backgroundColor: noInvoice ? colors.warning : colors.bgLight, border: `1px solid ${noInvoice ? colors.accentRed : colors.border}` }}>
-            <div style={{ ...checkboxBox, backgroundColor: noInvoice ? colors.accentRed : 'white', border: `2px solid ${noInvoice ? colors.accentRed : colors.secondaryText}` }}>{noInvoice && '✓'}</div>
-            <span style={{ fontSize: 13, fontWeight: 800, color: noInvoice ? colors.accentRed : colors.primaryDark }}>ΧΩΡΙΣ ΤΙΜΟΛΟΓΙΟ</span>
+          <div
+            onClick={() => setNoInvoice(!noInvoice)}
+            style={{
+              ...noInvoiceToggle,
+              backgroundColor: noInvoice ? colors.warning : colors.bgLight,
+              border: `1px solid ${noInvoice ? colors.accentRed : colors.border}`,
+            }}
+          >
+            <div
+              style={{
+                ...checkboxBox,
+                backgroundColor: noInvoice ? colors.accentRed : 'white',
+                border: `2px solid ${noInvoice ? colors.accentRed : colors.secondaryText}`,
+              }}
+            >
+              {noInvoice && '✓'}
+            </div>
+            <span style={{ fontSize: 13, fontWeight: 800, color: noInvoice ? colors.accentRed : colors.primaryDark }}>
+              ΧΩΡΙΣ ΤΙΜΟΛΟΓΙΟ
+            </span>
           </div>
 
           <label style={{ ...labelStyle, marginTop: 20 }}>ΠΟΣΟ (€)</label>
-          <input type="number" inputMode="decimal" autoFocus value={amount} onChange={e => setAmount(e.target.value)} style={inputStyle} placeholder="0.00" />
+          <input
+            type="number"
+            inputMode="decimal"
+            autoFocus
+            value={amount}
+            onChange={e => setAmount(e.target.value)}
+            style={inputStyle} // FIX: fontSize 16px is in inputStyle
+            placeholder="0.00"
+          />
 
           <label style={{ ...labelStyle, marginTop: 20 }}>ΜΕΘΟΔΟΣ ΠΛΗΡΩΜΗΣ</label>
           <div style={{ display: 'flex', gap: 12, marginTop: 8 }}>
-            <button type="button" onClick={() => { setMethod('Μετρητά'); setIsCredit(false); }} style={{ ...methodBtn, backgroundColor: method === 'Μετρητά' && !isCredit ? colors.primaryDark : colors.white, color: method === 'Μετρητά' && !isCredit ? 'white' : colors.secondaryText }}><Banknote size={16} /> Μετρητά</button>
-            <button type="button" onClick={() => { setMethod('Τράπεζα'); setIsCredit(false); }} style={{ ...methodBtn, backgroundColor: method === 'Τράπεζα' && !isCredit ? colors.primaryDark : colors.white, color: method === 'Τράπεζα' && !isCredit ? 'white' : colors.secondaryText }}><Landmark size={16} /> Τράπεζα</button>
+            <button
+              type="button"
+              onClick={() => { setMethod('Μετρητά'); setIsCredit(false); }}
+              style={{
+                ...methodBtn,
+                backgroundColor: method === 'Μετρητά' && !isCredit ? colors.primaryDark : colors.white,
+                color: method === 'Μετρητά' && !isCredit ? 'white' : colors.secondaryText,
+              }}
+            >
+              <Banknote size={16} /> Μετρητά
+            </button>
+
+            <button
+              type="button"
+              onClick={() => { setMethod('Τράπεζα'); setIsCredit(false); }}
+              style={{
+                ...methodBtn,
+                backgroundColor: method === 'Τράπεζα' && !isCredit ? colors.primaryDark : colors.white,
+                color: method === 'Τράπεζα' && !isCredit ? 'white' : colors.secondaryText,
+              }}
+            >
+              <Landmark size={16} /> Τράπεζα
+            </button>
           </div>
 
           <div style={creditPanel}>
             <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 10 }}>
-              <input type="checkbox" checked={isCredit} onChange={e => { setIsCredit(e.target.checked); if (e.target.checked) setIsAgainstDebt(false); }} id="credit" style={checkboxStyle} />
+              <input
+                type="checkbox"
+                checked={isCredit}
+                onChange={e => {
+                  setIsCredit(e.target.checked);
+                  if (e.target.checked) setIsAgainstDebt(false);
+                }}
+                id="credit"
+                style={checkboxStyle}
+              />
               <label htmlFor="credit" style={checkLabel}>ΕΠΙ ΠΙΣΤΩΣΕΙ (ΝΕΟ ΧΡΕΟΣ)</label>
             </div>
+
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <input type="checkbox" checked={isAgainstDebt} onChange={e => { setIsAgainstDebt(e.target.checked); if (e.target.checked) setIsCredit(false); }} id="against" style={checkboxStyle} />
-              <label htmlFor="against" style={{ ...checkLabel, color: isAgainstDebt ? colors.accentBlue : colors.primaryDark }}>ΕΝΑΝΤΙ ΠΑΛΑΙΟΥ ΧΡΕΟΥ</label>
+              <input
+                type="checkbox"
+                checked={isAgainstDebt}
+                onChange={e => {
+                  setIsAgainstDebt(e.target.checked);
+                  if (e.target.checked) setIsCredit(false);
+                }}
+                id="against"
+                style={checkboxStyle}
+              />
+              <label
+                htmlFor="against"
+                style={{ ...checkLabel, color: isAgainstDebt ? colors.accentBlue : colors.primaryDark }}
+              >
+                ΕΝΑΝΤΙ ΠΑΛΑΙΟΥ ΧΡΕΟΥ
+              </label>
             </div>
           </div>
 
@@ -273,10 +388,12 @@ function AddExpenseForm() {
           <select
             value={selectedSup}
             onChange={e => handleSupplierSelect(e.target.value)}
-            style={{ ...inputStyle, marginBottom: 10 }}
+            style={{ ...inputStyle, marginBottom: 10, fontSize: '16px' }} // FIX: ensure select has 16px
           >
             <option value="">Επιλέξτε από τη λίστα...</option>
-            {suppliers.map(s => <option key={s.id} value={s.id}>{s.name.toUpperCase()}</option>)}
+            {suppliers.map(s => (
+              <option key={s.id} value={s.id}>{s.name.toUpperCase()}</option>
+            ))}
           </select>
 
           <div style={{ position: 'relative' }} ref={dropdownRef}>
@@ -287,30 +404,61 @@ function AddExpenseForm() {
                   placeholder="Αναζήτηση προμηθευτή..."
                   value={searchTerm}
                   onFocus={() => setShowDropdown(true)}
-                  onChange={e => { setSearchTerm(e.target.value); setShowDropdown(true); setSelectedSup(''); setSelectedFixed(''); }}
-                  style={{ ...inputStyle, paddingRight: 40, border: selectedSup ? `2px solid ${colors.accentGreen}` : `1px solid ${colors.border}` }}
+                  onChange={e => {
+                    setSearchTerm(e.target.value);
+                    setShowDropdown(true);
+                    setSelectedSup('');
+                    setSelectedFixed('');
+                  }}
+                  style={{
+                    ...inputStyle, // FIX: 16px in inputStyle
+                    paddingRight: 40,
+                    border: selectedSup ? `2px solid ${colors.accentGreen}` : `1px solid ${colors.border}`,
+                  }}
                 />
                 <Search size={18} style={{ position: 'absolute', right: 12, top: 16, color: colors.secondaryText }} />
               </div>
-              <button type="button" onClick={() => setShowSupplierModal(true)} style={plusBtn}><Plus size={24} /></button>
+
+              <button type="button" onClick={() => setShowSupplierModal(true)} style={plusBtn}>
+                <Plus size={24} />
+              </button>
             </div>
+
             {showDropdown && searchTerm && filteredSuppliers.length > 0 && (
               <div style={autocompleteDropdown}>
-                {filteredSuppliers.map(s => (
-                  <div key={s.id} style={dropdownRow} onClick={() => handleSupplierSelect(s.id)}>{s.name}</div>
+                {filteredSuppliers.map((s: { id: string; name: string }) => (
+                  <div key={s.id} style={dropdownRow} onClick={() => handleSupplierSelect(s.id)}>
+                    {s.name}
+                  </div>
                 ))}
               </div>
             )}
           </div>
 
           <label style={{ ...labelStyle, marginTop: 20 }}><Building2 size={12} /> ΠΑΓΙΟ / ΛΟΓΑΡΙΑΣΜΟΣ</label>
-          <select value={selectedFixed} onChange={e => { setSelectedFixed(e.target.value); if (e.target.value) { setSelectedSup(''); setSearchTerm(''); } }} style={inputStyle}>
+          <select
+            value={selectedFixed}
+            onChange={e => {
+              setSelectedFixed(e.target.value);
+              if (e.target.value) {
+                setSelectedSup('');
+                setSearchTerm('');
+              }
+            }}
+            style={{ ...inputStyle, fontSize: '16px' }} // FIX: ensure select has 16px
+          >
             <option value="">Επιλογή...</option>
-            {fixedAssets.map(f => <option key={f.id} value={f.id}>{f.name.toUpperCase()}</option>)}
+            {fixedAssets.map(f => (
+              <option key={f.id} value={f.id}>{f.name.toUpperCase()}</option>
+            ))}
           </select>
 
           <label style={{ ...labelStyle, marginTop: 20 }}>ΣΗΜΕΙΩΣΕΙΣ</label>
-          <textarea value={notes} onChange={e => setNotes(e.target.value)} style={{ ...inputStyle, height: 60 }} />
+          <textarea
+            value={notes}
+            onChange={e => setNotes(e.target.value)}
+            style={{ ...inputStyle, height: 60 }} // FIX: 16px in inputStyle
+          />
 
           {/* ΦΩΤΟΓΡΑΦΙΑ */}
           {!editId && !noInvoice && (
@@ -320,12 +468,24 @@ function AddExpenseForm() {
                 {imagePreview ? (
                   <div style={{ position: 'relative', width: '100%', height: 120 }}>
                     <img src={imagePreview} alt="Preview" style={imagePreviewStyle} />
-                    <button onClick={() => { setImagePreview(null); setImageFile(null); }} style={removeImageBtn}><X size={14} /></button>
+                    <button
+                      onClick={() => { setImagePreview(null); setImageFile(null); }}
+                      style={removeImageBtn}
+                      type="button"
+                    >
+                      <X size={14} />
+                    </button>
                   </div>
                 ) : (
                   <label style={uploadPlaceholder}>
                     <Camera size={32} color={colors.secondaryText} />
-                    <input type="file" accept="image/*" capture="environment" onChange={handleImageChange} style={{ display: 'none' }} />
+                    <input
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      onChange={handleImageChange}
+                      style={{ display: 'none' }}
+                    />
                   </label>
                 )}
               </div>
@@ -346,7 +506,15 @@ function AddExpenseForm() {
 }
 
 // --- STYLES ---
-const smartSaveBtn: any = { width: '100%', padding: '16px', color: 'white', border: 'none', borderRadius: '16px', cursor: 'pointer' };
+const smartSaveBtn: any = {
+  width: '100%',
+  padding: '16px',
+  color: 'white',
+  border: 'none',
+  borderRadius: '16px',
+  cursor: 'pointer',
+};
+
 const autocompleteDropdown: any = {
   position: 'absolute',
   top: '105%',
@@ -359,15 +527,18 @@ const autocompleteDropdown: any = {
   maxHeight: 200,
   overflowY: 'auto',
   boxShadow: '0 10px 25px rgba(0,0,0,0.1)',
-  fontSize: '16px' // Prevent Android auto-zoom in dropdown
+  fontSize: '16px', // Redmi/Android: prevent auto-zoom
 };
+
 const dropdownRow = {
   padding: '12px 15px',
-  fontSize: '16px', // Prevent Android auto-zoom
+  fontSize: '16px', // Redmi/Android: prevent auto-zoom
   fontWeight: 700,
   cursor: 'pointer',
-  borderBottom: `1px solid ${colors.bgLight}`
+  borderBottom: `1px solid ${colors.bgLight}`,
 };
+
+// FIX: wrapper display/overflow for PC natural scroll + Redmi zoom/scroll behavior
 const iphoneWrapper: any = {
   backgroundColor: '#f8fafc',
   minHeight: '100%',
@@ -376,44 +547,195 @@ const iphoneWrapper: any = {
   paddingBottom: '140px',
   touchAction: 'pan-y',
   display: 'block',
-  overflowY: 'visible'
+  overflowY: 'visible',
 };
-const headerStyle = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 };
-const logoBoxStyle: any = { width: 42, height: 42, backgroundColor: colors.primaryDark, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: 20 };
-const backBtnStyle: any = { textDecoration: 'none', color: colors.secondaryText, padding: '8px 12px', backgroundColor: 'white', borderRadius: 10, border: `1px solid ${colors.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center' };
-const formCard: any = { backgroundColor: 'white', padding: 20, borderRadius: 24, border: `1px solid ${colors.border}`, boxShadow: '0 4px 15px rgba(0,0,0,0.02)' };
+
+const headerStyle = {
+  display: 'flex',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+  marginBottom: 20,
+};
+
+const logoBoxStyle: any = {
+  width: 42,
+  height: 42,
+  backgroundColor: colors.primaryDark,
+  borderRadius: 12,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  color: 'white',
+  fontSize: 20,
+};
+
+const backBtnStyle: any = {
+  textDecoration: 'none',
+  color: colors.secondaryText,
+  padding: '8px 12px',
+  backgroundColor: 'white',
+  borderRadius: 10,
+  border: `1px solid ${colors.border}`,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+};
+
+const formCard: any = {
+  backgroundColor: 'white',
+  padding: 20,
+  borderRadius: 24,
+  border: `1px solid ${colors.border}`,
+  boxShadow: '0 4px 15px rgba(0,0,0,0.02)',
+};
+
 const labelStyle = {
-  fontSize: '11px', // Slightly larger for readability
+  fontSize: '11px',
   fontWeight: 800,
   color: colors.secondaryText,
   display: 'block',
-  marginBottom: 5
+  marginBottom: 5,
 };
+
+// FIX: 16px font size to prevent Redmi auto-zoom on inputs/textarea/select (select also forced inline above)
 const inputStyle: any = {
   width: '100%',
   padding: 14,
   borderRadius: 12,
   border: `1px solid ${colors.border}`,
-  fontSize: '16px', // Prevent Android auto-zoom
+  fontSize: '16px',
   fontWeight: 600,
   backgroundColor: colors.bgLight,
-  boxSizing: 'border-box', // Prevent horizontal scroll
-  outline: 'none'
+  boxSizing: 'border-box',
+  outline: 'none',
 };
-const methodBtn: any = { flex: 1, padding: 14, borderRadius: 12, border: `1px solid ${colors.border}`, cursor: 'pointer', fontWeight: 700, fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 };
-const noInvoiceToggle = { display: 'flex', alignItems: 'center', gap: 10, padding: 12, borderRadius: 12, cursor: 'pointer', marginBottom: 15 };
-const checkboxBox = { width: 18, height: 18, borderRadius: 5, border: '2px solid #cbd5e1', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: 10 };
-const creditPanel = { backgroundColor: colors.bgLight, padding: 16, borderRadius: 14, border: `1px solid ${colors.border}`, marginTop: 20 };
+
+const methodBtn: any = {
+  flex: 1,
+  padding: 14,
+  borderRadius: 12,
+  border: `1px solid ${colors.border}`,
+  cursor: 'pointer',
+  fontWeight: 700,
+  fontSize: 13,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: 8,
+};
+
+const noInvoiceToggle = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 10,
+  padding: 12,
+  borderRadius: 12,
+  cursor: 'pointer',
+  marginBottom: 15,
+};
+
+const checkboxBox = {
+  width: 18,
+  height: 18,
+  borderRadius: 5,
+  border: '2px solid #cbd5e1',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  color: 'white',
+  fontSize: 10,
+};
+
+const creditPanel = {
+  backgroundColor: colors.bgLight,
+  padding: 16,
+  borderRadius: 14,
+  border: `1px solid ${colors.border}`,
+  marginTop: 20,
+};
+
 const checkboxStyle = { width: 18, height: 18 };
 const checkLabel = { fontSize: 11, fontWeight: 700, color: colors.primaryDark };
-const plusBtn = { width: 48, height: 48, backgroundColor: colors.primaryDark, color: 'white', border: 'none', borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' };
-const imageUploadContainer = { width: '100%', backgroundColor: colors.bgLight, borderRadius: 14, border: `2px dashed ${colors.border}`, overflow: 'hidden' };
-const uploadPlaceholder = { display: 'flex', flexDirection: 'column' as const, alignItems: 'center', justifyContent: 'center', padding: 30, cursor: 'pointer' };
+
+const plusBtn = {
+  width: 48,
+  height: 48,
+  backgroundColor: colors.primaryDark,
+  color: 'white',
+  border: 'none',
+  borderRadius: 12,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  cursor: 'pointer',
+};
+
+const imageUploadContainer = {
+  width: '100%',
+  backgroundColor: colors.bgLight,
+  borderRadius: 14,
+  border: `2px dashed ${colors.border}`,
+  overflow: 'hidden',
+};
+
+const uploadPlaceholder = {
+  display: 'flex',
+  flexDirection: 'column' as const,
+  alignItems: 'center',
+  justifyContent: 'center',
+  padding: 30,
+  cursor: 'pointer',
+};
+
 const imagePreviewStyle = { width: '100%', height: 120, objectFit: 'cover' as const };
-const removeImageBtn: any = { position: 'absolute', top: 5, right: 5, backgroundColor: 'rgba(0,0,0,0.5)', color: 'white', border: 'none', borderRadius: '50%', width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' };
-const modalOverlay: any = { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000, padding: 20 };
-const modalCard: any = { backgroundColor: 'white', padding: 28, borderRadius: 22, width: '100%', maxWidth: 340, boxShadow: '0 8px 32px rgba(0,0,0,0.10)' };
-const modalCloseBtn: any = { background: 'none', border: 'none', color: colors.secondaryText, cursor: 'pointer', borderRadius: 8, padding: 4 };
+
+const removeImageBtn: any = {
+  position: 'absolute',
+  top: 5,
+  right: 5,
+  backgroundColor: 'rgba(0,0,0,0.5)',
+  color: 'white',
+  border: 'none',
+  borderRadius: '50%',
+  width: 24,
+  height: 24,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  cursor: 'pointer',
+};
+
+const modalOverlay: any = {
+  position: 'fixed',
+  top: 0,
+  left: 0,
+  right: 0,
+  bottom: 0,
+  backgroundColor: 'rgba(0,0,0,0.5)',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  zIndex: 2000,
+  padding: 20,
+};
+
+const modalCard: any = {
+  backgroundColor: 'white',
+  padding: 28,
+  borderRadius: 22,
+  width: '100%',
+  maxWidth: 340,
+  boxShadow: '0 8px 32px rgba(0,0,0,0.10)',
+};
+
+const modalCloseBtn: any = {
+  background: 'none',
+  border: 'none',
+  color: colors.secondaryText,
+  cursor: 'pointer',
+  borderRadius: 8,
+  padding: 4,
+};
 
 export default function AddExpensePage() {
   return (
