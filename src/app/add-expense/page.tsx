@@ -96,13 +96,14 @@ function AddExpenseForm() {
 
   const loadFormData = useCallback(async () => {
     try {
-      const { data: { session } } = await supabase.auth.getSession()
+      const {
+        data: { session },
+      } = await supabase.auth.getSession()
       if (!session) return router.push('/login')
 
       // ✅ URL store has priority (requirement)
       const activeStoreId =
-        urlStoreId ||
-        (typeof window !== 'undefined' ? localStorage.getItem('active_store_id') : null)
+        urlStoreId || (typeof window !== 'undefined' ? localStorage.getItem('active_store_id') : null)
 
       if (!activeStoreId) {
         setLoading(false)
@@ -132,11 +133,7 @@ function AddExpenseForm() {
           .select('id, name, sub_category')
           .eq('store_id', activeStoreId)
           .order('name'),
-        supabase
-          .from('transactions')
-          .select('amount, type')
-          .eq('store_id', activeStoreId)
-          .eq('date', selectedDate),
+        supabase.from('transactions').select('amount, type').eq('store_id', activeStoreId).eq('date', selectedDate),
       ])
 
       if (sRes.data) setSuppliers(sRes.data)
@@ -175,10 +172,7 @@ function AddExpenseForm() {
           setExpenseCategory(inferredKey)
 
           // choose selected item by category
-          const itemId =
-            inferredKey === 'suppliers'
-              ? (tx.supplier_id || '')
-              : (tx.fixed_asset_id || '')
+          const itemId = inferredKey === 'suppliers' ? tx.supplier_id || '' : tx.fixed_asset_id || ''
 
           setSelectedItemId(itemId)
         }
@@ -199,9 +193,22 @@ function AddExpenseForm() {
 
   const currentBalance = useMemo(() => dayStats.income - dayStats.expenses, [dayStats])
 
+  // ✅ FIX: proper mapping for worker -> Maintenance
   const fixedAssetsFiltered = useMemo(() => {
     if (expenseCategory === 'suppliers') return []
-    return fixedAssets.filter((f: any) => (f.sub_category || '') === expenseCategory)
+
+    return fixedAssets.filter((f: any) => {
+      const sub = f.sub_category || ''
+
+      // Αν η επιλεγμένη κατηγορία στο UI είναι 'worker' (Συντήρηση)
+      // τότε ψάχνουμε στη βάση για 'Maintenance'
+      if (expenseCategory === 'worker') {
+        return sub === 'Maintenance'
+      }
+
+      // Για τις υπόλοιπες κατηγορίες (staff, utility κλπ)
+      return sub === expenseCategory
+    })
   }, [expenseCategory, fixedAssets])
 
   const activeSelectOptions = useMemo(() => {
@@ -230,7 +237,9 @@ function AddExpenseForm() {
     setLoading(true)
 
     try {
-      const { data: { session } } = await supabase.auth.getSession()
+      const {
+        data: { session },
+      } = await supabase.auth.getSession()
       if (!session) {
         setLoading(false)
         return router.push('/login')
@@ -265,9 +274,7 @@ function AddExpenseForm() {
         category: dbCategory,
 
         created_by_name: currentUsername,
-        notes: noInvoice
-          ? (notes ? `${notes} (ΧΩΡΙΣ ΤΙΜΟΛΟΓΙΟ)` : 'ΧΩΡΙΣ ΤΙΜΟΛΟΓΙΟ')
-          : notes,
+        notes: noInvoice ? (notes ? `${notes} (ΧΩΡΙΣ ΤΙΜΟΛΟΓΙΟ)` : 'ΧΩΡΙΣ ΤΙΜΟΛΟΓΙΟ') : notes,
       }
 
       // Image upload logic (if present)
@@ -276,10 +283,7 @@ function AddExpenseForm() {
         const fileName = `${Date.now()}.${fileExt}`
         const filePath = `${activeStoreId}/${fileName}`
 
-        const { data: uploadData, error: uploadError } = await supabase
-          .storage
-          .from('invoices')
-          .upload(filePath, imageFile)
+        const { data: uploadData, error: uploadError } = await supabase.storage.from('invoices').upload(filePath, imageFile)
 
         if (uploadError) throw uploadError
         payload.invoice_image = uploadData?.path || null
@@ -319,16 +323,16 @@ function AddExpenseForm() {
           <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
             <div style={logoBoxStyle}>💸</div>
             <div>
-              <h1 style={{ fontWeight: 800, fontSize: 16, margin: 0 }}>
-                {editId ? 'Διόρθωση' : 'Έξοδο'}
-              </h1>
+              <h1 style={{ fontWeight: 800, fontSize: 16, margin: 0 }}>{editId ? 'Διόρθωση' : 'Έξοδο'}</h1>
               <p style={{ margin: 0, fontSize: 16, color: colors.secondaryText, fontWeight: 700 }}>
                 {new Date(selectedDate).toLocaleDateString('el-GR', { day: 'numeric', month: 'long' }).toUpperCase()}
               </p>
             </div>
           </div>
 
-          <Link href={`/?store=${urlStoreId || storeId || ''}`} style={backBtnStyle}>✕</Link>
+          <Link href={`/?store=${urlStoreId || storeId || ''}`} style={backBtnStyle}>
+            ✕
+          </Link>
         </div>
 
         <div style={formCard}>
@@ -370,7 +374,10 @@ function AddExpenseForm() {
           <div style={{ display: 'flex', gap: 12, marginTop: 8 }}>
             <button
               type="button"
-              onClick={() => { setMethod('Μετρητά'); setIsCredit(false) }}
+              onClick={() => {
+                setMethod('Μετρητά')
+                setIsCredit(false)
+              }}
               style={{
                 ...methodBtn,
                 backgroundColor: method === 'Μετρητά' && !isCredit ? colors.primaryDark : colors.white,
@@ -381,7 +388,10 @@ function AddExpenseForm() {
             </button>
             <button
               type="button"
-              onClick={() => { setMethod('Τράπεζα'); setIsCredit(false) }}
+              onClick={() => {
+                setMethod('Τράπεζα')
+                setIsCredit(false)
+              }}
               style={{
                 ...methodBtn,
                 backgroundColor: method === 'Τράπεζα' && !isCredit ? colors.primaryDark : colors.white,
@@ -397,18 +407,26 @@ function AddExpenseForm() {
               <input
                 type="checkbox"
                 checked={isCredit}
-                onChange={e => { setIsCredit(e.target.checked); if (e.target.checked) setIsAgainstDebt(false) }}
+                onChange={e => {
+                  setIsCredit(e.target.checked)
+                  if (e.target.checked) setIsAgainstDebt(false)
+                }}
                 id="credit"
                 style={checkboxStyle}
               />
-              <label htmlFor="credit" style={checkLabel}>ΕΠΙ ΠΙΣΤΩΣΕΙ (ΝΕΟ ΧΡΕΟΣ)</label>
+              <label htmlFor="credit" style={checkLabel}>
+                ΕΠΙ ΠΙΣΤΩΣΕΙ (ΝΕΟ ΧΡΕΟΣ)
+              </label>
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <input
                 type="checkbox"
                 checked={isAgainstDebt}
-                onChange={e => { setIsAgainstDebt(e.target.checked); if (e.target.checked) setIsCredit(false) }}
+                onChange={e => {
+                  setIsAgainstDebt(e.target.checked)
+                  if (e.target.checked) setIsCredit(false)
+                }}
                 id="against"
                 style={checkboxStyle}
               />
@@ -443,16 +461,9 @@ function AddExpenseForm() {
             })}
           </div>
 
-          {/* ✅ LABELS: για Συντήρηση (και όλα τα non-suppliers) δείχνει ΠΑΓΙΟ / ΚΑΤΑΧΩΡΗΣΗ */}
-          <label style={{ ...labelStyle, marginTop: 20 }}>
-            {expenseCategory === 'suppliers' ? 'ΠΡΟΜΗΘΕΥΤΗΣ' : 'ΠΑΓΙΟ / ΚΑΤΑΧΩΡΗΣΗ'}
-          </label>
+          <label style={{ ...labelStyle, marginTop: 20 }}>{expenseCategory === 'suppliers' ? 'ΠΡΟΜΗΘΕΥΤΗΣ' : 'ΠΑΓΙΟ / ΚΑΤΑΧΩΡΗΣΗ'}</label>
 
-          <select
-            value={selectedItemId}
-            onChange={(e) => setSelectedItemId(e.target.value)}
-            style={inputStyle}
-          >
+          <select value={selectedItemId} onChange={e => setSelectedItemId(e.target.value)} style={inputStyle}>
             <option value="">Επιλογή από λίστα...</option>
 
             {activeSelectOptions.map((x: any) => (
@@ -463,7 +474,17 @@ function AddExpenseForm() {
           </select>
 
           {!!selectedLabel && (
-            <div style={{ marginTop: 10, padding: 12, borderRadius: 12, backgroundColor: colors.bgLight, border: `1px solid ${colors.border}`, fontSize: 16, fontWeight: 700 }}>
+            <div
+              style={{
+                marginTop: 10,
+                padding: 12,
+                borderRadius: 12,
+                backgroundColor: colors.bgLight,
+                border: `1px solid ${colors.border}`,
+                fontSize: 16,
+                fontWeight: 700,
+              }}
+            >
               Επιλογή: <span style={{ fontWeight: 900 }}>{String(selectedLabel).toUpperCase()}</span>
             </div>
           )}
@@ -477,11 +498,7 @@ function AddExpenseForm() {
           )}
 
           <label style={{ ...labelStyle, marginTop: 20 }}>ΣΗΜΕΙΩΣΕΙΣ</label>
-          <textarea
-            value={notes}
-            onChange={e => setNotes(e.target.value)}
-            style={{ ...inputStyle, height: 80 }}
-          />
+          <textarea value={notes} onChange={e => setNotes(e.target.value)} style={{ ...inputStyle, height: 80 }} />
 
           {!editId && !noInvoice && (
             <div style={{ marginTop: 20 }}>
@@ -492,7 +509,10 @@ function AddExpenseForm() {
                     <img src={imagePreview} alt="Preview" style={imagePreviewStyle} />
                     <button
                       type="button"
-                      onClick={() => { setImageFile(null); setImagePreview(null) }}
+                      onClick={() => {
+                        setImageFile(null)
+                        setImagePreview(null)
+                      }}
                       style={removeImageBtn}
                     >
                       ✕
@@ -501,13 +521,7 @@ function AddExpenseForm() {
                 ) : (
                   <label style={uploadPlaceholder}>
                     <span style={{ fontSize: 16 }}>📷 Επιλογή φωτογραφίας</span>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      capture="environment"
-                      onChange={handleImageChange}
-                      style={{ display: 'none' }}
-                    />
+                    <input type="file" accept="image/*" capture="environment" onChange={handleImageChange} style={{ display: 'none' }} />
                   </label>
                 )}
               </div>
@@ -519,12 +533,14 @@ function AddExpenseForm() {
               type="button"
               onClick={handleSave}
               disabled={loading}
-              style={{ ...smartSaveBtn, backgroundColor: editId ? colors.accentBlue : colors.accentRed, opacity: loading ? 0.75 : 1 }}
+              style={{
+                ...smartSaveBtn,
+                backgroundColor: editId ? colors.accentBlue : colors.accentRed,
+                opacity: loading ? 0.75 : 1,
+              }}
             >
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                <span style={{ fontSize: 16, fontWeight: 900 }}>
-                  {loading ? 'SYNCING...' : editId ? 'ΕΝΗΜΕΡΩΣΗ ΔΕΔΟΜΕΝΩΝ' : 'ΟΛΟΚΛΗΡΩΣΗ ΕΞΟΔΟΥ'}
-                </span>
+                <span style={{ fontSize: 16, fontWeight: 900 }}>{loading ? 'SYNCING...' : editId ? 'ΕΝΗΜΕΡΩΣΗ ΔΕΔΟΜΕΝΩΝ' : 'ΟΛΟΚΛΗΡΩΣΗ ΕΞΟΔΟΥ'}</span>
                 <span style={{ fontSize: 16, opacity: 0.85, fontWeight: 800, marginTop: 6 }}>
                   ΚΑΘΑΡΟ ΤΑΜΕΙΟ: {currentBalance.toFixed(2)}€
                 </span>
@@ -582,7 +598,10 @@ function AddExpenseForm() {
 
             <button
               type="button"
-              onClick={() => { setIsSupModalOpen(false); setNewSupName('') }}
+              onClick={() => {
+                setIsSupModalOpen(false)
+                setNewSupName('')
+              }}
               style={cancelBtn}
             >
               ΑΚΥΡΩΣΗ
@@ -601,13 +620,36 @@ const iphoneWrapper: any = {
   padding: 20,
   overflowY: 'auto',
   position: 'absolute',
-  top: 0, left: 0, right: 0, bottom: 0,
+  top: 0,
+  left: 0,
+  right: 0,
+  bottom: 0,
   fontSize: 16,
 }
 
 const headerStyle: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }
-const logoBoxStyle: any = { width: 42, height: 42, backgroundColor: colors.primaryDark, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: 16, fontWeight: 900 }
-const backBtnStyle: any = { textDecoration: 'none', color: colors.secondaryText, padding: '10px 12px', backgroundColor: 'white', borderRadius: 10, border: `1px solid ${colors.border}`, fontSize: 16, fontWeight: 900 }
+const logoBoxStyle: any = {
+  width: 42,
+  height: 42,
+  backgroundColor: colors.primaryDark,
+  borderRadius: 12,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  color: 'white',
+  fontSize: 16,
+  fontWeight: 900,
+}
+const backBtnStyle: any = {
+  textDecoration: 'none',
+  color: colors.secondaryText,
+  padding: '10px 12px',
+  backgroundColor: 'white',
+  borderRadius: 10,
+  border: `1px solid ${colors.border}`,
+  fontSize: 16,
+  fontWeight: 900,
+}
 
 const formCard: any = { backgroundColor: 'white', padding: 20, borderRadius: 24, border: `1px solid ${colors.border}` }
 const labelStyle: any = { fontSize: 16, fontWeight: 900, color: colors.secondaryText, display: 'block', marginBottom: 8 }
@@ -623,10 +665,29 @@ const inputStyle: any = {
   boxSizing: 'border-box',
 }
 
-const methodBtn: any = { flex: 1, padding: 14, borderRadius: 12, border: `1px solid ${colors.border}`, cursor: 'pointer', fontWeight: 900, fontSize: 16 }
+const methodBtn: any = {
+  flex: 1,
+  padding: 14,
+  borderRadius: 12,
+  border: `1px solid ${colors.border}`,
+  cursor: 'pointer',
+  fontWeight: 900,
+  fontSize: 16,
+}
 
 const noInvoiceToggle: any = { display: 'flex', alignItems: 'center', gap: 10, padding: 12, borderRadius: 12, cursor: 'pointer' }
-const checkboxBox: any = { width: 20, height: 20, borderRadius: 6, border: '2px solid #cbd5e1', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: 16, fontWeight: 900 }
+const checkboxBox: any = {
+  width: 20,
+  height: 20,
+  borderRadius: 6,
+  border: '2px solid #cbd5e1',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  color: 'white',
+  fontSize: 16,
+  fontWeight: 900,
+}
 
 const creditPanel: any = { backgroundColor: colors.bgLight, padding: 16, borderRadius: 14, border: `1px solid ${colors.border}`, marginTop: 20 }
 const checkboxStyle: any = { width: 20, height: 20 }
@@ -670,9 +731,33 @@ const smartSaveBtn: any = {
 const imageUploadContainer: any = { width: '100%', backgroundColor: colors.bgLight, borderRadius: 14, border: `2px dashed ${colors.border}`, overflow: 'hidden' }
 const uploadPlaceholder: any = { display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, cursor: 'pointer' }
 const imagePreviewStyle: any = { width: '100%', height: 140, objectFit: 'cover' as const }
-const removeImageBtn: any = { position: 'absolute', top: 8, right: 8, backgroundColor: 'rgba(0,0,0,0.5)', color: 'white', border: 'none', borderRadius: 999, width: 30, height: 30, fontSize: 16, fontWeight: 900 }
+const removeImageBtn: any = {
+  position: 'absolute',
+  top: 8,
+  right: 8,
+  backgroundColor: 'rgba(0,0,0,0.5)',
+  color: 'white',
+  border: 'none',
+  borderRadius: 999,
+  width: 30,
+  height: 30,
+  fontSize: 16,
+  fontWeight: 900,
+}
 
-const modalOverlay: any = { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 20 }
+const modalOverlay: any = {
+  position: 'fixed',
+  top: 0,
+  left: 0,
+  right: 0,
+  bottom: 0,
+  backgroundColor: 'rgba(0,0,0,0.5)',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  zIndex: 1000,
+  padding: 20,
+}
 const modalCard: any = { backgroundColor: 'white', padding: 20, borderRadius: 20, width: '100%', maxWidth: 420, border: `1px solid ${colors.border}` }
 const saveBtn: any = { width: '100%', padding: 16, backgroundColor: colors.accentRed, color: 'white', border: 'none', borderRadius: 14, fontWeight: 900, marginTop: 10, fontSize: 16, cursor: 'pointer' }
 const cancelBtn: any = { width: '100%', padding: 16, backgroundColor: colors.white, color: colors.primaryDark, border: `1px solid ${colors.border}`, borderRadius: 14, fontWeight: 900, marginTop: 10, fontSize: 16, cursor: 'pointer' }
