@@ -145,6 +145,11 @@ function AddExpenseForm() {
       // DEBUGGING: log suppliers payload
       console.log("Suppliers loaded:", sRes.data);
 
+      if (sRes.error) {
+        alert("Σφάλμα Βάσης: " + sRes.error.message);
+      }
+      console.log("Βρέθηκαν προμηθευτές:", sRes.data?.length);
+
       if (sRes.data) setSuppliers(sRes.data);
       if (fRes.data) setFixedAssets(fRes.data);
 
