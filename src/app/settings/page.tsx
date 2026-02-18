@@ -1,7 +1,7 @@
 'use client'
 export const dynamic = 'force-dynamic'
 
-import { useEffect, useState, Suspense, useCallback } from 'react'
+import { useEffect, useState, Suspense, useCallback, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
@@ -24,6 +24,62 @@ import {
 } from 'lucide-react'
 
 type SectionId = 'profile' | 'business' | 'appearance' | 'backup' | 'support'
+
+function AnimatedBody({ open, children }: { open: boolean; children: any }) {
+  const innerRef = useRef<HTMLDivElement | null>(null)
+  const [maxH, setMaxH] = useState<number>(0)
+
+  useEffect(() => {
+    const el = innerRef.current
+    if (!el) return
+
+    const measure = () => {
+      // scrollHeight = πλήρες ύψος περιεχομένου
+      const next = el.scrollHeight || 0
+      setMaxH(next)
+    }
+
+    // Measure now
+    measure()
+
+    // Re-measure on resize (mobile rotate etc)
+    window.addEventListener('resize', measure)
+    return () => window.removeEventListener('resize', measure)
+  }, [children])
+
+  useEffect(() => {
+    // Όταν ανοίγει: δίνουμε maxHeight = content height
+    // Όταν κλείνει: maxHeight = 0
+    if (!open) {
+      setMaxH(0)
+      return
+    }
+    const el = innerRef.current
+    if (!el) return
+    setMaxH(el.scrollHeight || 0)
+  }, [open])
+
+  return (
+    <div
+      style={{
+        maxHeight: open ? maxH + 28 : 0, // + λίγο buffer
+        overflow: 'hidden',
+        transition: 'max-height 320ms cubic-bezier(.2,.8,.2,1)',
+      }}
+    >
+      <div
+        style={{
+          opacity: open ? 1 : 0,
+          transform: open ? 'translateY(0px)' : 'translateY(-6px)',
+          transition: 'opacity 200ms ease, transform 220ms ease',
+          padding: open ? 14 : 0,
+        }}
+      >
+        <div ref={innerRef}>{children}</div>
+      </div>
+    </div>
+  )
+}
 
 function SettingsContent() {
   const searchParams = useSearchParams()
@@ -60,7 +116,7 @@ function SettingsContent() {
     email: '',
   })
 
-  // ✅ Accordion: επιτρέπουμε null για να μην ανοίγει άλλη όταν κλείνεις
+  // ✅ Accordion: allow null (no auto-open another section)
   const [openSection, setOpenSection] = useState<SectionId | null>('business')
 
   // Fetch profile
@@ -254,7 +310,6 @@ function SettingsContent() {
       <div style={sectionCard}>
         <button
           type="button"
-          // ✅ κλείνει σε null, δεν ανοίγει άλλη καρτέλα
           onClick={() => setOpenSection(open ? null : id)}
           style={{
             ...sectionHeaderBtn,
@@ -270,12 +325,13 @@ function SettingsContent() {
             </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            {/* ✅ μην βάζεις κενό chip */}
             {id === 'appearance' ? <span style={chip}>Store</span> : null}
             {open ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
           </div>
         </button>
-        {open && <div style={sectionBody}>{children}</div>}
+
+        {/* ✅ Smooth animated body */}
+        <AnimatedBody open={open}>{children}</AnimatedBody>
       </div>
     )
   }
@@ -285,7 +341,6 @@ function SettingsContent() {
       <Toaster richColors position="top-center" />
 
       <div style={container}>
-        {/* Top App Header */}
         <div style={topBar}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <div style={appIcon}>
@@ -302,9 +357,7 @@ function SettingsContent() {
           </Link>
         </div>
 
-        {/* Sections */}
         <Section id="appearance" icon={<Monitor size={18} color="#9A3412" />} title="Εμφάνιση" subtitle="Dashboard Features & προβολές">
-          {/* ✅ Keep photo-style but tighter */}
           <div style={featureCard}>
             <div style={featureHeaderRow}>
               <div style={featureHeaderLeft}>
@@ -494,12 +547,7 @@ const pageWrap: any = {
   padding: 18,
 }
 
-const container: any = {
-  maxWidth: 540,
-  margin: '0 auto',
-  // ✅ πιο σωστό για bottom nav
-  paddingBottom: 140,
-}
+const container: any = { maxWidth: 540, margin: '0 auto', paddingBottom: 140 }
 
 const topBar: any = {
   display: 'flex',
@@ -582,57 +630,22 @@ const sectionTitle: any = { fontSize: 14, fontWeight: 900 }
 const sectionSub: any = { fontSize: 11, fontWeight: 700, color: '#64748b', marginTop: 2 }
 const chip: any = { padding: '6px 10px', borderRadius: 999, border: '1px solid #e2e8f0', background: '#fff', fontSize: 10, fontWeight: 900, color: '#0f172a' }
 
-const sectionBody: any = { padding: 14 }
-
 const label: any = { fontSize: 10, fontWeight: 900, color: '#94a3b8', letterSpacing: 0.6, marginBottom: 6, display: 'block' }
-const input: any = {
-  width: '100%',
-  padding: 12,
-  borderRadius: 12,
-  border: '1px solid #e2e8f0',
-  background: '#f8fafc',
-  fontWeight: 800,
-  fontSize: 14,
-  outline: 'none',
-}
+const input: any = { width: '100%', padding: 12, borderRadius: 12, border: '1px solid #e2e8f0', background: '#f8fafc', fontWeight: 800, fontSize: 14, outline: 'none' }
 const textarea: any = { ...input, height: 72, resize: 'none' }
 const field: any = { marginBottom: 12 }
 const grid2: any = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }
 
-const primaryBtn: any = {
-  width: '100%',
-  background: '#0f172a',
-  color: '#fff',
-  border: 'none',
-  padding: 16,
-  borderRadius: 14,
-  fontWeight: 900,
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  gap: 10,
-  cursor: 'pointer',
-  boxShadow: '0 12px 18px rgba(15,23,42,0.18)',
-}
+const primaryBtn: any = { width: '100%', background: '#0f172a', color: '#fff', border: 'none', padding: 16, borderRadius: 14, fontWeight: 900, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, cursor: 'pointer', boxShadow: '0 12px 18px rgba(15,23,42,0.18)' }
 const successBtn: any = { ...primaryBtn, background: '#059669', boxShadow: '0 12px 18px rgba(5,150,105,0.18)' }
 
 const msgError: any = { marginTop: 10, color: '#dc2626', fontSize: 13, fontWeight: 900 }
 const msgSuccess: any = { marginTop: 10, color: '#059669', fontSize: 13, fontWeight: 900 }
 
-/* --- Feature card (tighter mobile) --- */
 const featureCard: any = { borderRadius: 24, border: '1px solid #e2e8f0', background: '#fff', overflow: 'hidden' }
 const featureHeaderRow: any = { padding: 14, display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #eef2f7' }
 const featureHeaderLeft: any = { display: 'flex', alignItems: 'center', gap: 12 }
-const featureIconOuter: any = {
-  width: 58,
-  height: 58,
-  borderRadius: 22,
-  background: '#fff7ed',
-  border: '1px solid #fde68a',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-}
+const featureIconOuter: any = { width: 58, height: 58, borderRadius: 22, background: '#fff7ed', border: '1px solid #fde68a', display: 'flex', alignItems: 'center', justifyContent: 'center' }
 const featureKicker: any = { fontSize: 12, fontWeight: 900, color: '#64748b', letterSpacing: 0.6 }
 const featureTitle: any = { fontSize: 22, fontWeight: 900, color: '#0f172a', marginTop: 2, lineHeight: 1.1 }
 const featureChip: any = { padding: '9px 16px', borderRadius: 999, border: '1px solid #e2e8f0', fontWeight: 900, background: '#fff' }
@@ -677,7 +690,6 @@ const iosKnob = (on: boolean): any => ({
   boxShadow: '0 10px 18px rgba(15,23,42,0.22)',
 })
 
-/* --- Backup --- */
 const backupCard: any = { border: '1px solid #e2e8f0', background: '#fff', borderRadius: 18, padding: 14 }
 const backupRow: any = { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 12 }
 const backupTitle: any = { fontSize: 14, fontWeight: 900, color: '#0f172a' }
@@ -685,51 +697,16 @@ const backupSub: any = { fontSize: 12, fontWeight: 700, color: '#64748b', margin
 const backupToggleBox: any = { display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 14, border: '1px solid #e2e8f0', background: '#f8fafc' }
 const backupToggleLabel: any = { fontSize: 12, fontWeight: 900, color: '#0f172a' }
 
-/* --- Support --- */
-const supportToggle: any = {
-  width: '100%',
-  border: '1px solid #e2e8f0',
-  background: '#fff',
-  borderRadius: 18,
-  padding: 14,
-  cursor: 'pointer',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'space-between',
-}
+const supportToggle: any = { width: '100%', border: '1px solid #e2e8f0', background: '#fff', borderRadius: 18, padding: 14, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }
 
-const supportIcon: any = {
-  width: 36,
-  height: 36,
-  borderRadius: 14,
-  background: '#f1f5f9',
-  border: '1px solid #e2e8f0',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  color: '#0f172a',
-}
+const supportIcon: any = { width: 36, height: 36, borderRadius: 14, background: '#f1f5f9', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#0f172a' }
 const supportTitle: any = { fontSize: 13, fontWeight: 900, color: '#0f172a' }
 const supportSub: any = { fontSize: 11, fontWeight: 800, color: '#64748b', marginTop: 4 }
 
 const supportCard: any = { marginTop: 12, padding: 16, borderRadius: 18, border: '1px solid #fee2e2', background: '#fff', textAlign: 'center' }
 const supportText: any = { fontSize: 13, fontWeight: 800, color: '#64748b', marginBottom: 14 }
 
-const waBtnStyle: any = {
-  width: '100%',
-  backgroundColor: '#25d366',
-  color: 'white',
-  padding: '14px',
-  borderRadius: '14px',
-  border: 'none',
-  fontWeight: '900',
-  cursor: 'pointer',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  gap: '8px',
-  boxShadow: '0 12px 18px rgba(37,211,102,0.18)',
-}
+const waBtnStyle: any = { width: '100%', backgroundColor: '#25d366', color: 'white', padding: '14px', borderRadius: '14px', border: 'none', fontWeight: '900', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', boxShadow: '0 12px 18px rgba(37,211,102,0.18)' }
 
 export default function SettingsPage() {
   return (
