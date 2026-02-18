@@ -7,7 +7,7 @@ import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { format, startOfMonth, endOfMonth } from 'date-fns'
 import { toast, Toaster } from 'sonner'
-import { Coins, Users, ShoppingBag, Lightbulb, Wrench } from 'lucide-react'
+import { Coins, Users, ShoppingBag, Lightbulb, Wrench, Landmark } from 'lucide-react'
 
 // --- MODERN PREMIUM PALETTE ---
 const colors = {
@@ -22,7 +22,6 @@ const colors = {
 }
 
 // --- CATEGORY META (required order & icons) ---
-// ✅ RENAME: 'Μάστορες' -> 'Συντήρηση'
 const CATEGORY_META: Array<{
   key: 'Εμπορεύματα' | 'Staff' | 'Utilities' | 'Maintenance' | 'Other'
   label: string
@@ -36,8 +35,16 @@ const CATEGORY_META: Array<{
   { key: 'Other', label: 'Λοιπά', color: '#64748b', Icon: Coins }
 ]
 
-type FilterA = 'Όλες' | 'Εμπορεύματα' | 'Προσωπικό' | 'Λογαριασμοί' | 'Συντήρηση' | 'Λοιπά'
-type DetailMode = 'none' | 'staff' | 'supplier'
+type FilterA =
+  | 'Όλες'
+  | 'Έσοδα'
+  | 'Εμπορεύματα'
+  | 'Προσωπικό'
+  | 'Λογαριασμοί'
+  | 'Συντήρηση'
+  | 'Λοιπά'
+
+type DetailMode = 'none' | 'staff' | 'supplier' | 'revenue_source' | 'maintenance'
 
 function AnalysisContent() {
   const router = useRouter()
@@ -50,6 +57,8 @@ function AnalysisContent() {
   // lists for dynamic filters + correct party names
   const [staff, setStaff] = useState<any[]>([])
   const [suppliers, setSuppliers] = useState<any[]>([])
+  const [revenueSources, setRevenueSources] = useState<any[]>([]) // ✅ NEW
+  const [maintenanceWorkers, setMaintenanceWorkers] = useState<any[]>([]) // ✅ NEW
 
   // ✅ Smart Dynamic Filters
   const [filterA, setFilterA] = useState<FilterA>('Όλες')
@@ -59,6 +68,9 @@ function AnalysisContent() {
   // ✅ Default to current month
   const [startDate, setStartDate] = useState(format(startOfMonth(new Date()), 'yyyy-MM-dd'))
   const [endDate, setEndDate] = useState(format(endOfMonth(new Date()), 'yyyy-MM-dd'))
+
+  // ✅ Z report (same day)
+  const isZReport = useMemo(() => startDate === endDate, [startDate, endDate])
 
   // guard
   useEffect(() => {
@@ -74,39 +86,66 @@ function AnalysisContent() {
         return
       }
 
-      const { data: { session } } = await supabase.auth.getSession()
+      const {
+        data: { session }
+      } = await supabase.auth.getSession()
       if (!session) return router.push('/login')
 
-      // Transactions (include supplier + fixed asset info)
-      const { data: tx, error: txErr } = await supabase
+      // ✅ Transactions (include supplier + fixed asset + revenue source info)
+      const txQuery = supabase
         .from('transactions')
-        .select('*, suppliers(id, name), fixed_assets(id, name, sub_category)')
+        .select('*, suppliers(id, name), fixed_assets(id, name, sub_category), revenue_sources(id, name)')
         .eq('store_id', storeId)
         .order('date', { ascending: false })
 
-      if (txErr) throw txErr
-      setTransactions(tx || [])
-
-      // Staff list (fixed_assets where sub_category = staff)
-      const { data: staffData, error: staffErr } = await supabase
+      // ✅ Lists (Promise.all)
+      const staffQuery = supabase
         .from('fixed_assets')
         .select('id, name, sub_category')
         .eq('store_id', storeId)
         .eq('sub_category', 'staff')
         .order('name', { ascending: true })
 
-      if (staffErr) throw staffErr
-      setStaff(staffData || [])
-
-      // Suppliers list
-      const { data: supData, error: supErr } = await supabase
+      const suppliersQuery = supabase
         .from('suppliers')
         .select('id, name')
         .eq('store_id', storeId)
         .order('name', { ascending: true })
 
+      const revenueSourcesQuery = supabase
+        .from('revenue_sources')
+        .select('id, name')
+        .eq('store_id', storeId)
+        .order('name', { ascending: true })
+
+      // ✅ Maintenance workers: accept both legacy values ('worker') and normalized ('Maintenance')
+      // (we fetch from fixed_assets and filter safely client-side too)
+      const maintenanceQuery = supabase
+        .from('fixed_assets')
+        .select('id, name, sub_category')
+        .eq('store_id', storeId)
+        .in('sub_category', ['worker', 'Maintenance', 'maintenance'])
+        .order('name', { ascending: true })
+
+      const [
+        { data: tx, error: txErr },
+        { data: staffData, error: staffErr },
+        { data: supData, error: supErr },
+        { data: revData, error: revErr },
+        { data: maintData, error: maintErr }
+      ] = await Promise.all([txQuery, staffQuery, suppliersQuery, revenueSourcesQuery, maintenanceQuery])
+
+      if (txErr) throw txErr
+      if (staffErr) throw staffErr
       if (supErr) throw supErr
+      if (revErr) throw revErr
+      if (maintErr) throw maintErr
+
+      setTransactions(tx || [])
+      setStaff(staffData || [])
       setSuppliers(supData || [])
+      setRevenueSources(revData || [])
+      setMaintenanceWorkers((maintData || []).filter((x: any) => String(x?.name || '').trim().length > 0))
     } catch (err) {
       console.error(err)
       toast.error('Σφάλμα φόρτωσης δεδομένων')
@@ -115,13 +154,18 @@ function AnalysisContent() {
     }
   }, [router, storeId])
 
-  useEffect(() => { loadData() }, [loadData])
+  useEffect(() => {
+    loadData()
+  }, [loadData])
 
-  // ✅ Smart filter B visibility / reset logic
+  // ✅ Smart filter B visibility / reset logic (now includes Έσοδα + Συντήρηση)
   useEffect(() => {
     let nextMode: DetailMode = 'none'
+
     if (filterA === 'Προσωπικό') nextMode = 'staff'
     if (filterA === 'Εμπορεύματα') nextMode = 'supplier'
+    if (filterA === 'Έσοδα') nextMode = 'revenue_source'
+    if (filterA === 'Συντήρηση') nextMode = 'maintenance'
 
     setDetailMode(nextMode)
     setDetailId('all')
@@ -158,41 +202,53 @@ function AnalysisContent() {
     return 'Other'
   }, [])
 
-  // ✅ CLEANUP: recognize correct names even if join is missing
-  const getPartyName = useCallback((t: any) => {
-    // staff
-    const isStaff = String(t.fixed_assets?.sub_category || '').toLowerCase() === 'staff'
-    if (isStaff) {
-      const joinedName = t.fixed_assets?.name
-      if (joinedName) return joinedName
-      const found = staff.find(s => String(s.id) === String(t.fixed_asset_id))
-      return found?.name || 'Άγνωστος Υπάλληλος'
-    }
+  // ✅ UPDATED: includes revenue sources
+  const getPartyName = useCallback(
+    (t: any) => {
+      // ✅ revenue source (highest priority when present)
+      if (t.revenue_source_id || t.revenue_sources?.name) {
+        const joinedName = t.revenue_sources?.name
+        if (joinedName) return joinedName
+        const found = revenueSources.find((r) => String(r.id) === String(t.revenue_source_id))
+        return found?.name || 'Πηγή Εσόδων'
+      }
 
-    // supplier
-    if (t.suppliers?.name) return t.suppliers.name
-    if (t.supplier_id) {
-      const found = suppliers.find(s => String(s.id) === String(t.supplier_id))
-      return found?.name || 'Προμηθευτής'
-    }
+      // staff
+      const isStaff = String(t.fixed_assets?.sub_category || '').toLowerCase() === 'staff'
+      if (isStaff) {
+        const joinedName = t.fixed_assets?.name
+        if (joinedName) return joinedName
+        const found = staff.find((s) => String(s.id) === String(t.fixed_asset_id))
+        return found?.name || 'Άγνωστος Υπάλληλος'
+      }
 
-    // maintenance (often worker without supplier) - try fixed asset name if exists
-    if (t.fixed_asset_id) {
-      const joinedName = t.fixed_assets?.name
-      if (joinedName) return joinedName
-    }
+      // supplier
+      if (t.suppliers?.name) return t.suppliers.name
+      if (t.supplier_id) {
+        const found = suppliers.find((s) => String(s.id) === String(t.supplier_id))
+        return found?.name || 'Προμηθευτής'
+      }
 
-    // tips
-    if (t.type === 'tip_entry') {
-      // if tip linked to staff, show staff name
-      const found = staff.find(s => String(s.id) === String(t.fixed_asset_id))
-      return found?.name || 'Tips'
-    }
+      // maintenance (often worker without supplier) - try fixed asset name if exists
+      if (t.fixed_asset_id) {
+        const joinedName = t.fixed_assets?.name
+        if (joinedName) return joinedName
+        const found = maintenanceWorkers.find((m) => String(m.id) === String(t.fixed_asset_id))
+        if (found?.name) return found.name
+      }
 
-    return '-'
-  }, [staff, suppliers])
+      // tips
+      if (t.type === 'tip_entry') {
+        const found = staff.find((s) => String(s.id) === String(t.fixed_asset_id))
+        return found?.name || 'Tips'
+      }
 
-  // map FilterA to internal normalized keys
+      return '-'
+    },
+    [staff, suppliers, revenueSources, maintenanceWorkers]
+  )
+
+  // map FilterA to internal normalized keys (expenses categories only)
   const filterAToKey = useCallback((fa: FilterA) => {
     if (fa === 'Εμπορεύματα') return 'Εμπορεύματα'
     if (fa === 'Προσωπικό') return 'Staff'
@@ -206,57 +262,78 @@ function AnalysisContent() {
   const periodTx = useMemo(() => {
     if (!storeId || storeId === 'null') return []
     return transactions
-      .filter(t => t.store_id === storeId)
-      .filter(t => t.date >= startDate && t.date <= endDate)
+      .filter((t) => t.store_id === storeId)
+      .filter((t) => t.date >= startDate && t.date <= endDate)
   }, [transactions, storeId, startDate, endDate])
 
-  // ✅ SMART FILTER LOGIC (date + category + optional staff/supplier detail)
+  // ✅ SMART FILTER LOGIC (date + category + optional detail)
   const filteredTx = useMemo(() => {
     const key = filterAToKey(filterA)
 
-    return periodTx.filter(t => {
-      // Category filter (applies to all transactions; non-expense types generally drop out when a category is selected)
-      if (filterA !== 'Όλες') {
-        // Special requirement: if FilterA is 'Λογαριασμοί', show only category 'Utilities'
-        // (we do it via normalizedExpenseCategory)
+    return periodTx.filter((t) => {
+      // FilterA: Έσοδα (special)
+      if (filterA === 'Έσοδα') {
+        const isIncomeLike = t.type === 'income' || t.type === 'income_collection' || t.type === 'debt_received'
+        if (!isIncomeLike) return false
+      }
+
+      // FilterA: expense categories (uses normalization)
+      if (filterA !== 'Όλες' && filterA !== 'Έσοδα') {
         if (normalizeExpenseCategory(t) !== key) return false
       }
 
-      // Detail filter only when the detail select exists
+      // Detail filter
       if (detailMode === 'staff' && detailId !== 'all') {
         if (String(t.fixed_asset_id) !== String(detailId)) return false
       }
       if (detailMode === 'supplier' && detailId !== 'all') {
         if (String(t.supplier_id) !== String(detailId)) return false
       }
+      if (detailMode === 'revenue_source' && detailId !== 'all') {
+        if (String(t.revenue_source_id) !== String(detailId)) return false
+      }
+      if (detailMode === 'maintenance' && detailId !== 'all') {
+        if (String(t.fixed_asset_id) !== String(detailId)) return false
+      }
 
       return true
     })
   }, [periodTx, filterA, detailMode, detailId, filterAToKey, normalizeExpenseCategory])
 
-  // ✅ KPI totals with Tips separated
+  // ✅ KPI totals with Tips separated + Z cash net support
   const kpis = useMemo(() => {
     const income = filteredTx
-      .filter(t => t.type === 'income')
+      .filter((t) => t.type === 'income' || t.type === 'income_collection' || t.type === 'debt_received')
       .reduce((acc, t) => acc + (Number(t.amount) || 0), 0)
 
-    // ✅ tips must NOT affect net profit
+    // ✅ tips must NOT affect net profit/cash net
     const tips = filteredTx
-      .filter(t => t.type === 'tip_entry')
+      .filter((t) => t.type === 'tip_entry')
       .reduce((acc, t) => acc + Math.abs(Number(t.amount) || 0), 0)
 
     const expenses = filteredTx
-      .filter(t => t.type === 'expense' || t.type === 'debt_payment')
+      .filter((t) => t.type === 'expense' || t.type === 'debt_payment')
       .reduce((acc, t) => acc + Math.abs(Number(t.amount) || 0), 0)
 
-    const net = income - expenses
+    const netProfit = income - expenses
 
-    return { income, expenses, tips, net }
+    // ✅ Z cash net (same day): cash-in minus cash-out (tips excluded)
+    const cashIn = filteredTx
+      .filter((t) => (t.type === 'income' || t.type === 'income_collection' || t.type === 'debt_received') && String(t.payment_method || '').toLowerCase() === 'cash')
+      .reduce((acc, t) => acc + (Number(t.amount) || 0), 0)
+
+    const cashOut = filteredTx
+      .filter((t) => (t.type === 'expense' || t.type === 'debt_payment') && String(t.payment_method || '').toLowerCase() === 'cash')
+      .reduce((acc, t) => acc + Math.abs(Number(t.amount) || 0), 0)
+
+    const cashNet = cashIn - cashOut
+
+    return { income, expenses, tips, netProfit, cashNet, cashIn, cashOut }
   }, [filteredTx])
 
   // --- CATEGORY BREAKDOWN (based on filteredTx) ---
   const categoryBreakdown = useMemo(() => {
-    const expenseTx = filteredTx.filter(t => t.type === 'expense' || t.type === 'debt_payment')
+    const expenseTx = filteredTx.filter((t) => t.type === 'expense' || t.type === 'debt_payment')
     const result: Record<string, number> = {}
     let total = 0
 
@@ -279,14 +356,14 @@ function AnalysisContent() {
     const monthEnd = format(endOfMonth(new Date()), 'yyyy-MM-dd')
 
     const staffTxs = transactions
-      .filter(t => t.store_id === storeId)
-      .filter(t => t.date >= monthStart && t.date <= monthEnd)
-      .filter(t => (t.type === 'expense' || t.type === 'debt_payment'))
-      .filter(t => normalizeExpenseCategory(t) === 'Staff')
+      .filter((t) => t.store_id === storeId)
+      .filter((t) => t.date >= monthStart && t.date <= monthEnd)
+      .filter((t) => t.type === 'expense' || t.type === 'debt_payment')
+      .filter((t) => normalizeExpenseCategory(t) === 'Staff')
 
     const byStaff: Record<string, number> = {}
     for (const t of staffTxs) {
-      const name = t.fixed_assets?.name || staff.find(s => String(s.id) === String(t.fixed_asset_id))?.name || 'Άγνωστος'
+      const name = t.fixed_assets?.name || staff.find((s) => String(s.id) === String(t.fixed_asset_id))?.name || 'Άγνωστος'
       byStaff[name] = (byStaff[name] || 0) + Math.abs(Number(t.amount) || 0)
     }
 
@@ -295,7 +372,7 @@ function AnalysisContent() {
       .sort((a, b) => b.amount - a.amount)
   }, [transactions, storeId, normalizeExpenseCategory, staff])
 
-  // ✅ DETAILED LIST (period)
+  // ✅ DETAILED LIST (period) always desc by date
   const periodList = useMemo(() => {
     return [...filteredTx].sort((a, b) => String(b.date).localeCompare(String(a.date)))
   }, [filteredTx])
@@ -303,13 +380,25 @@ function AnalysisContent() {
   const detailOptions = useMemo(() => {
     if (detailMode === 'staff') return staff
     if (detailMode === 'supplier') return suppliers
+    if (detailMode === 'revenue_source') return revenueSources
+    if (detailMode === 'maintenance') return maintenanceWorkers
     return []
-  }, [detailMode, staff, suppliers])
+  }, [detailMode, staff, suppliers, revenueSources, maintenanceWorkers])
 
   const DetailIcon = useMemo(() => {
     if (detailMode === 'staff') return Users
     if (detailMode === 'supplier') return ShoppingBag
+    if (detailMode === 'revenue_source') return Landmark
+    if (detailMode === 'maintenance') return Wrench
     return null
+  }, [detailMode])
+
+  const detailLabel = useMemo(() => {
+    if (detailMode === 'staff') return 'Λεπτομέρεια Υπαλλήλου'
+    if (detailMode === 'supplier') return 'Λεπτομέρεια Εμπόρου'
+    if (detailMode === 'revenue_source') return 'Λεπτομέρεια Πηγής Εσόδων'
+    if (detailMode === 'maintenance') return 'Λεπτομέρεια Συντήρησης'
+    return ''
   }, [detailMode])
 
   return (
@@ -322,12 +411,14 @@ function AnalysisContent() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <div style={logoBoxStyle}>📊</div>
             <div>
-              <h1 style={titleStyle}>Ανάλυση</h1>
-              <p style={subLabelStyle}>ΠΛΗΡΗΣ ΟΙΚΟΝΟΜΙΚΗ ΕΙΚΟΝΑ</p>
+              <h1 style={titleStyle}>{isZReport ? 'Αναφορά Ημέρας (Ζ)' : 'Ανάλυση'}</h1>
+              <p style={subLabelStyle}>{isZReport ? 'ΚΑΘΑΡΟ ΤΑΜΕΙΟ ΗΜΕΡΑΣ' : 'ΠΛΗΡΗΣ ΟΙΚΟΝΟΜΙΚΗ ΕΙΚΟΝΑ'}</p>
             </div>
           </div>
 
-          <Link href={`/?store=${storeId}`} style={backBtnStyle}>✕</Link>
+          <Link href={`/?store=${storeId}`} style={backBtnStyle}>
+            ✕
+          </Link>
         </div>
 
         {/* FILTERS */}
@@ -335,21 +426,11 @@ function AnalysisContent() {
           <div style={{ display: 'flex', gap: 12 }}>
             <div style={{ flex: 1 }}>
               <label style={dateLabel}>ΑΠΟ</label>
-              <input
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                style={dateInput}
-              />
+              <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} style={dateInput} />
             </div>
             <div style={{ flex: 1 }}>
               <label style={dateLabel}>ΕΩΣ</label>
-              <input
-                type="date"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-                style={dateInput}
-              />
+              <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} style={dateInput} />
             </div>
           </div>
 
@@ -360,6 +441,7 @@ function AnalysisContent() {
               <label style={dateLabel}>Φίλτρο Κατηγορίας</label>
               <select value={filterA} onChange={(e) => setFilterA(e.target.value as FilterA)} style={selectInput}>
                 <option value="Όλες">Όλες</option>
+                <option value="Έσοδα">Έσοδα</option>
                 <option value="Εμπορεύματα">Εμπορεύματα</option>
                 <option value="Προσωπικό">Προσωπικό</option>
                 <option value="Λογαριασμοί">Λογαριασμοί</option>
@@ -368,20 +450,22 @@ function AnalysisContent() {
               </select>
             </div>
 
-            {/* Filter B (ONLY when Προσωπικό or Εμπορεύματα) */}
+            {/* ✅ Filter B (now for Προσωπικό / Εμπορεύματα / Έσοδα / Συντήρηση) */}
             {detailMode !== 'none' && (
               <div>
                 <label style={dateLabel}>
                   <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
                     {DetailIcon ? <DetailIcon size={18} /> : null}
-                    {detailMode === 'staff' ? 'Λεπτομέρεια Υπαλλήλου' : 'Λεπτομέρεια Εμπόρου'}
+                    {detailLabel}
                   </span>
                 </label>
 
                 <select value={detailId} onChange={(e) => setDetailId(e.target.value)} style={selectInput}>
                   <option value="all">Όλοι</option>
                   {detailOptions.map((x: any) => (
-                    <option key={x.id} value={x.id}>{x.name}</option>
+                    <option key={x.id} value={x.id}>
+                      {x.name}
+                    </option>
                   ))}
                 </select>
               </div>
@@ -393,7 +477,7 @@ function AnalysisContent() {
           </div>
         </div>
 
-        {/* ✅ KPIs (Tips separated; Net excludes tips) */}
+        {/* ✅ KPIs (Tips separated; Z shows cash net as main “net”) */}
         <div style={kpiGrid}>
           {/* Tips KPI */}
           <div style={{ ...kpiCard, borderColor: '#fde68a', backgroundColor: '#fffbeb' }}>
@@ -404,9 +488,7 @@ function AnalysisContent() {
               </span>
               <span style={{ fontSize: 16, fontWeight: 900, color: '#92400e' }}>+</span>
             </div>
-            <div style={{ fontSize: 28, fontWeight: 900, color: colors.primary, marginTop: 10 }}>
-              {kpis.tips.toLocaleString('el-GR')}€
-            </div>
+            <div style={{ fontSize: 28, fontWeight: 900, color: colors.primary, marginTop: 10 }}>{kpis.tips.toLocaleString('el-GR')}€</div>
           </div>
 
           <div style={{ ...kpiCard, borderColor: '#d1fae5', backgroundColor: '#ecfdf5' }}>
@@ -414,9 +496,7 @@ function AnalysisContent() {
               <span style={{ fontSize: 16, fontWeight: 900, color: colors.success }}>Έσοδα</span>
               <span style={{ fontSize: 16, fontWeight: 900, color: colors.success }}>+</span>
             </div>
-            <div style={{ fontSize: 28, fontWeight: 900, color: colors.primary, marginTop: 10 }}>
-              {kpis.income.toLocaleString('el-GR')}€
-            </div>
+            <div style={{ fontSize: 28, fontWeight: 900, color: colors.primary, marginTop: 10 }}>{kpis.income.toLocaleString('el-GR')}€</div>
           </div>
 
           <div style={{ ...kpiCard, borderColor: '#ffe4e6', backgroundColor: '#fff1f2' }}>
@@ -424,38 +504,45 @@ function AnalysisContent() {
               <span style={{ fontSize: 16, fontWeight: 900, color: colors.danger }}>Έξοδα</span>
               <span style={{ fontSize: 16, fontWeight: 900, color: colors.danger }}>-</span>
             </div>
-            <div style={{ fontSize: 28, fontWeight: 900, color: colors.primary, marginTop: 10 }}>
-              {kpis.expenses.toLocaleString('el-GR')}€
-            </div>
+            <div style={{ fontSize: 28, fontWeight: 900, color: colors.primary, marginTop: 10 }}>{kpis.expenses.toLocaleString('el-GR')}€</div>
           </div>
 
+          {/* ✅ Net card becomes “Καθαρό Ταμείο” for Z (same day) */}
           <div
             style={{
               ...kpiCard,
-              borderColor: kpis.net >= 0 ? '#d1fae5' : '#ffe4e6',
-              backgroundColor: kpis.net >= 0 ? '#f0fdf4' : '#fff1f2'
+              borderColor: (isZReport ? kpis.cashNet : kpis.netProfit) >= 0 ? '#d1fae5' : '#ffe4e6',
+              backgroundColor: (isZReport ? kpis.cashNet : kpis.netProfit) >= 0 ? '#f0fdf4' : '#fff1f2'
             }}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
-              <span style={{ fontSize: 16, fontWeight: 900, color: colors.primary }}>Καθαρό Κέρδος</span>
-              <span style={{ fontSize: 16, fontWeight: 900, color: kpis.net >= 0 ? colors.success : colors.danger }}>
-                {kpis.net >= 0 ? '▲' : '▼'}
+              <span style={{ fontSize: 16, fontWeight: 900, color: colors.primary }}>{isZReport ? 'Καθαρό Ταμείο' : 'Καθαρό Κέρδος'}</span>
+              <span
+                style={{
+                  fontSize: 16,
+                  fontWeight: 900,
+                  color: (isZReport ? kpis.cashNet : kpis.netProfit) >= 0 ? colors.success : colors.danger
+                }}
+              >
+                {(isZReport ? kpis.cashNet : kpis.netProfit) >= 0 ? '▲' : '▼'}
               </span>
             </div>
+
             <div
               style={{
                 fontSize: 28,
                 fontWeight: 900,
-                color: kpis.net >= 0 ? colors.success : colors.danger,
+                color: (isZReport ? kpis.cashNet : kpis.netProfit) >= 0 ? colors.success : colors.danger,
                 marginTop: 10
               }}
             >
-              {kpis.net >= 0 ? '+' : ''}
-              {kpis.net.toLocaleString('el-GR')}€
+              {(isZReport ? kpis.cashNet : kpis.netProfit) >= 0 ? '+' : ''}
+              {(isZReport ? kpis.cashNet : kpis.netProfit).toLocaleString('el-GR')}€
             </div>
 
             <div style={{ marginTop: 8, fontSize: 16, fontWeight: 800, color: colors.secondary }}>
-              * Το Net Profit δεν επηρεάζεται από Tips.
+              * Το Net δεν επηρεάζεται από Tips.
+              {isZReport ? ' (Ταμείο = Μετρητά Έσοδα - Μετρητά Έξοδα)' : ''}
             </div>
           </div>
         </div>
@@ -464,16 +551,14 @@ function AnalysisContent() {
         <div style={sectionCard}>
           <div style={sectionTitleRow}>
             <h3 style={sectionTitle}>Έξοδα ανά Κατηγορία</h3>
-            <div style={{ fontSize: 16, fontWeight: 900, color: colors.secondary }}>
-              Σύνολο: {categoryBreakdown.total.toLocaleString('el-GR')}€
-            </div>
+            <div style={{ fontSize: 16, fontWeight: 900, color: colors.secondary }}>Σύνολο: {categoryBreakdown.total.toLocaleString('el-GR')}€</div>
           </div>
 
           {categoryBreakdown.total <= 0 ? (
             <div style={hintBox}>Δεν υπάρχουν έξοδα στην επιλεγμένη περίοδο.</div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              {CATEGORY_META.map(c => {
+              {CATEGORY_META.map((c) => {
                 const val = categoryBreakdown.result[c.key] || 0
                 const pct = categoryBreakdown.total > 0 ? (val / categoryBreakdown.total) * 100 : 0
                 const Icon = c.Icon
@@ -485,12 +570,8 @@ function AnalysisContent() {
                         <span style={{ fontSize: 16, fontWeight: 900, color: colors.primary }}>{c.label}</span>
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                        <span style={{ fontSize: 16, fontWeight: 900, color: colors.secondary }}>
-                          {pct.toFixed(0)}%
-                        </span>
-                        <span style={{ fontSize: 16, fontWeight: 900, color: c.color }}>
-                          {val.toLocaleString('el-GR')}€
-                        </span>
+                        <span style={{ fontSize: 16, fontWeight: 900, color: colors.secondary }}>{pct.toFixed(0)}%</span>
+                        <span style={{ fontSize: 16, fontWeight: 900, color: c.color }}>{val.toLocaleString('el-GR')}€</span>
                       </div>
                     </div>
 
@@ -508,9 +589,7 @@ function AnalysisContent() {
         <div style={sectionCard}>
           <div style={sectionTitleRow}>
             <h3 style={sectionTitle}>Μισθοδοσία ανά Υπάλληλο</h3>
-            <div style={{ fontSize: 16, fontWeight: 900, color: colors.secondary }}>
-              {format(new Date(), 'MMMM yyyy')}
-            </div>
+            <div style={{ fontSize: 16, fontWeight: 900, color: colors.secondary }}>{format(new Date(), 'MMMM yyyy')}</div>
           </div>
 
           {staffDetailsThisMonth.length === 0 ? (
@@ -520,27 +599,21 @@ function AnalysisContent() {
               {staffDetailsThisMonth.map((s) => (
                 <div key={s.name} style={rowItem}>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                    <span style={{ fontSize: 16, fontWeight: 900, color: colors.primary }}>
-                      {String(s.name || '').toUpperCase()}
-                    </span>
+                    <span style={{ fontSize: 16, fontWeight: 900, color: colors.primary }}>{String(s.name || '').toUpperCase()}</span>
                     <span style={{ fontSize: 16, fontWeight: 800, color: colors.secondary }}>Καταβλήθηκε</span>
                   </div>
-                  <div style={{ fontSize: 16, fontWeight: 900, color: '#0ea5e9' }}>
-                    {s.amount.toLocaleString('el-GR')}€
-                  </div>
+                  <div style={{ fontSize: 16, fontWeight: 900, color: '#0ea5e9' }}>{s.amount.toLocaleString('el-GR')}€</div>
                 </div>
               ))}
             </div>
           )}
         </div>
 
-        {/* ✅ DETAILED TRANSACTIONS LIST */}
+        {/* ✅ DETAILED TRANSACTIONS LIST (now shows date, name, notes, payment method) */}
         <div style={sectionCard}>
           <div style={sectionTitleRow}>
             <h3 style={sectionTitle}>Κινήσεις Περιόδου</h3>
-            <div style={{ fontSize: 16, fontWeight: 900, color: colors.secondary }}>
-              {periodList.length} εγγραφές
-            </div>
+            <div style={{ fontSize: 16, fontWeight: 900, color: colors.secondary }}>{periodList.length} εγγραφές</div>
           </div>
 
           {loading ? (
@@ -553,7 +626,8 @@ function AnalysisContent() {
                 const name = getPartyName(t)
                 const amt = Number(t.amount) || 0
                 const absAmt = Math.abs(amt)
-                const isInc = t.type === 'income'
+
+                const isInc = t.type === 'income' || t.type === 'income_collection' || t.type === 'debt_received'
                 const isTip = t.type === 'tip_entry'
                 const isExp = t.type === 'expense' || t.type === 'debt_payment'
 
@@ -567,14 +641,16 @@ function AnalysisContent() {
                 const isSup = norm === 'Εμπορεύματα'
                 const isUtil = norm === 'Utilities'
                 const isMaint = norm === 'Maintenance'
+                const isRev = !!(t.revenue_source_id || t.revenue_sources?.name)
+
+                const pm = String(t.payment_method || '').trim()
 
                 return (
                   <div key={t.id ?? `${t.date}-${t.created_at}-${absAmt}`} style={listRow}>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0 }}>
+                      {/* Row 1: Date + Amount */}
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
-                        <div style={{ fontSize: 16, fontWeight: 900, color: colors.primary, whiteSpace: 'nowrap' }}>
-                          {t.date}
-                        </div>
+                        <div style={{ fontSize: 16, fontWeight: 900, color: colors.primary, whiteSpace: 'nowrap' }}>{t.date}</div>
 
                         <div
                           style={{
@@ -588,12 +664,16 @@ function AnalysisContent() {
                             whiteSpace: 'nowrap'
                           }}
                         >
-                          {sign}{absAmt.toLocaleString('el-GR')}€
+                          {sign}
+                          {absAmt.toLocaleString('el-GR')}€
                         </div>
                       </div>
 
+                      {/* Row 2: Name */}
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
-                        {isStaff ? (
+                        {isRev ? (
+                          <Landmark size={18} />
+                        ) : isStaff ? (
                           <Users size={18} />
                         ) : isSup ? (
                           <ShoppingBag size={18} />
@@ -607,14 +687,27 @@ function AnalysisContent() {
                           <div style={{ width: 18, height: 18 }} />
                         )}
 
-                        <div style={{ fontSize: 16, fontWeight: 900, color: colors.secondary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        <div
+                          style={{
+                            fontSize: 16,
+                            fontWeight: 900,
+                            color: colors.secondary,
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap'
+                          }}
+                        >
                           {name}
                         </div>
                       </div>
 
-                      {!!t.notes && (
-                        <div style={{ fontSize: 16, fontWeight: 800, color: colors.secondary }}>
-                          {t.notes}
+                      {/* Row 3: Notes */}
+                      {!!t.notes && <div style={{ fontSize: 16, fontWeight: 800, color: colors.secondary }}>{t.notes}</div>}
+
+                      {/* ✅ Row 4: Payment Method */}
+                      {!!pm && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 16, fontWeight: 800, color: colors.secondary }}>
+                          <span style={{ fontWeight: 900 }}>Μέθοδος:</span> {pm}
                         </div>
                       )}
                     </div>
@@ -639,7 +732,10 @@ const iphoneWrapper: any = {
   minHeight: '100%',
   padding: 20,
   position: 'absolute',
-  top: 0, left: 0, right: 0, bottom: 0,
+  top: 0,
+  left: 0,
+  right: 0,
+  bottom: 0,
   overflowY: 'auto',
   fontSize: 16,
   touchAction: 'pan-y',
