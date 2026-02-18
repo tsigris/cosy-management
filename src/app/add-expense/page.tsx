@@ -32,7 +32,6 @@ type SmartItem = {
 type SelectedEntity = { kind: SmartKind; id: string } | null
 
 function stripDiacritics(str: string) {
-  // αφαιρεί τόνους
   return str.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
 }
 
@@ -43,11 +42,9 @@ function normalizeGreek(str: any) {
     .replace(/ς/g, 'σ')
 }
 
-// ελληνικά -> greeklish (απλό αλλά πολύ χρήσιμο)
 function greekToGreeklish(input: string) {
   let s = normalizeGreek(input)
 
-  // πρώτα δίψηφα
   const digraphs: Array<[RegExp, string]> = [
     [/ου/g, 'ou'],
     [/αι/g, 'ai'],
@@ -97,7 +94,6 @@ function greekToGreeklish(input: string) {
   return out
 }
 
-// fuzzy: ανοχή σε h/i και i/y (η/ι/υ)
 function fuzzyIHI(str: string) {
   return normalizeGreek(str)
     .replace(/h/g, 'i')
@@ -108,10 +104,9 @@ function fuzzyIHI(str: string) {
     .replace(/yi/g, 'i')
 }
 
-// match: πιάνει Ελληνικά + Greeklish + fuzzy
 function smartMatch(name: string, query: string) {
   const q = normalizeGreek(query)
-  if (!q) return true
+  if (!q) return false
 
   const n = normalizeGreek(name)
   if (n.includes(q)) return true
@@ -119,7 +114,6 @@ function smartMatch(name: string, query: string) {
   const nLatin = greekToGreeklish(name)
   if (nLatin.includes(q)) return true
 
-  // αν ο χρήστης γράφει greeklish (dei/deh) να πιάνει και τα 2
   const qF = fuzzyIHI(q)
   const nF = fuzzyIHI(nLatin)
   if (nF.includes(qF)) return true
@@ -140,6 +134,9 @@ function groupFromSubCategory(sub: any): AssetGroup {
   if (s === 'staff') return 'staff'
   if (s === 'utility' || s === 'utilities') return 'utility'
   if (s === 'maintenance' || s === 'worker') return 'maintenance'
+  if (s === 'other') return 'other'
+  // στο manage-lists τα Maintenance έρχονται και με κεφαλαίο
+  if (String(sub || '').trim() === 'Maintenance') return 'maintenance'
   return 'other'
 }
 
@@ -165,7 +162,6 @@ function AddExpenseForm() {
   const selectedDate = searchParams.get('date') || new Date().toISOString().split('T')[0]
   const urlStoreId = searchParams.get('store')
 
-  // deep links
   const urlSupId = searchParams.get('supId')
   const urlAssetId = searchParams.get('assetId')
 
@@ -189,16 +185,12 @@ function AddExpenseForm() {
 
   const [dayStats, setDayStats] = useState({ income: 0, expenses: 0 })
 
-  // ✅ Selection replaces category dropdown
   const [selectedEntity, setSelectedEntity] = useState<SelectedEntity>(null)
 
-  // ✅ Smart search
   const [smartQuery, setSmartQuery] = useState('')
   const [smartOpen, setSmartOpen] = useState(false)
-  const [recentKeys, setRecentKeys] = useState<string[]>([])
   const smartBoxRef = useRef<HTMLDivElement | null>(null)
 
-  // close on outside tap (mobile-safe)
   useEffect(() => {
     const handler = (e: any) => {
       const el = smartBoxRef.current
@@ -208,28 +200,6 @@ function AddExpenseForm() {
     document.addEventListener('pointerdown', handler, true)
     return () => document.removeEventListener('pointerdown', handler, true)
   }, [])
-
-  // recents
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-    const key = `expense_recents_${urlStoreId || 'default'}`
-    const raw = localStorage.getItem(key)
-    if (!raw) return
-    try {
-      const parsed = JSON.parse(raw)
-      if (Array.isArray(parsed)) setRecentKeys(parsed.slice(0, 10))
-    } catch {}
-  }, [urlStoreId])
-
-  const saveRecent = (k: string) => {
-    if (typeof window === 'undefined') return
-    const key = `expense_recents_${urlStoreId || 'default'}`
-    setRecentKeys(prev => {
-      const next = [k, ...prev.filter(x => x !== k)].slice(0, 10)
-      localStorage.setItem(key, JSON.stringify(next))
-      return next
-    })
-  }
 
   const loadFormData = useCallback(async () => {
     try {
@@ -258,19 +228,13 @@ function AddExpenseForm() {
 
       const [sRes, fRes, tRes] = await Promise.all([
         supabase.from('suppliers').select('id, name').eq('store_id', activeStoreId).order('name'),
-        supabase
-          .from('fixed_assets')
-          .select('id, name, sub_category')
-          .eq('store_id', activeStoreId)
-          .order('name'),
+        supabase.from('fixed_assets').select('id, name, sub_category').eq('store_id', activeStoreId).order('name'),
         supabase.from('transactions').select('amount, type').eq('store_id', activeStoreId).eq('date', selectedDate),
       ])
 
       const supData = sRes.data || []
       const faAll = fRes.data || []
 
-      // ✅ κρατάμε ΜΟΝΟ τα sub_category που έχεις στο manage-lists:
-      // staff | Maintenance | utility | other (και πιάνουμε και maintenance σε lowercase)
       const faData = faAll.filter((x: any) => {
         const g = groupFromSubCategory(x.sub_category)
         return g === 'staff' || g === 'maintenance' || g === 'utility' || g === 'other'
@@ -291,7 +255,6 @@ function AddExpenseForm() {
         setDayStats({ income: inc, expenses: exp })
       }
 
-      // ----- EDIT MODE -----
       if (editId) {
         const { data: tx } = await supabase
           .from('transactions')
@@ -308,7 +271,6 @@ function AddExpenseForm() {
           setIsAgainstDebt(tx.type === 'debt_payment')
           setNoInvoice((tx.notes || '').includes('ΧΩΡΙΣ ΤΙΜΟΛΟΓΙΟ'))
 
-          // choose selected entity
           if (tx.supplier_id) {
             const id = String(tx.supplier_id)
             setSelectedEntity({ kind: 'supplier', id })
@@ -325,7 +287,6 @@ function AddExpenseForm() {
           }
         }
       } else {
-        // ----- NEW MODE (DEEP LINKS) -----
         if (urlSupId) {
           const id = String(urlSupId)
           setSelectedEntity({ kind: 'supplier', id })
@@ -355,7 +316,6 @@ function AddExpenseForm() {
 
   const currentBalance = useMemo(() => dayStats.income - dayStats.expenses, [dayStats])
 
-  // Build smart items + map
   const smartItems = useMemo<SmartItem[]>(() => {
     const sList: SmartItem[] =
       suppliers?.map((s: any) => ({
@@ -385,35 +345,23 @@ function AddExpenseForm() {
     return m
   }, [smartItems])
 
-  const recentItems = useMemo(() => {
-    if (!recentKeys.length) return []
-    return recentKeys.map(k => smartItemMap.get(k)).filter(Boolean) as SmartItem[]
-  }, [recentKeys, smartItemMap])
-
+  // ✅ χωρίς "τελευταίες" — αν δεν γράφει query, δεν δείχνει τίποτα
   const filtered = useMemo(() => {
     const q = smartQuery.trim()
-    if (!q) {
-      // αν δεν γράφει, δείξε πρόσφατα, αλλιώς λίγα πρώτα
-      return recentItems.length ? recentItems : smartItems.slice(0, 25)
-    }
-    return smartItems.filter(i => smartMatch(i.name, q)).slice(0, 60)
-  }, [smartQuery, smartItems, recentItems])
+    if (!q) return []
+    return smartItems.filter(i => smartMatch(i.name, q)).slice(0, 80)
+  }, [smartQuery, smartItems])
 
   const groupedResults = useMemo(() => {
     const groups: Record<string, SmartItem[]> = {}
 
     for (const it of filtered) {
-      const key =
-        it.kind === 'supplier'
-          ? 'suppliers'
-          : (it.group || 'other')
-
+      const key = it.kind === 'supplier' ? 'suppliers' : (it.group || 'other')
       const title = groupTitle(key as any)
       if (!groups[title]) groups[title] = []
       groups[title].push(it)
     }
 
-    // μικρό sort μέσα σε κάθε group
     for (const g of Object.keys(groups)) {
       groups[g] = groups[g].sort((a, b) => String(a.name).localeCompare(String(b.name)))
     }
@@ -425,7 +373,6 @@ function AddExpenseForm() {
     setSelectedEntity({ kind: item.kind, id: item.id })
     setSmartQuery(item.name)
     setSmartOpen(false)
-    saveRecent(`${item.kind}:${item.id}`)
   }
 
   const clearSelection = () => {
@@ -486,7 +433,6 @@ function AddExpenseForm() {
         notes: noInvoice ? (notes ? `${notes} (ΧΩΡΙΣ ΤΙΜΟΛΟΓΙΟ)` : 'ΧΩΡΙΣ ΤΙΜΟΛΟΓΙΟ') : notes,
       }
 
-      // Image upload logic (if present)
       if (imageFile && !noInvoice && !editId) {
         const fileExt = imageFile.name.split('.').pop() || 'jpg'
         const fileName = `${Date.now()}.${fileExt}`
@@ -557,7 +503,6 @@ function AddExpenseForm() {
         </div>
 
         <div style={formCard}>
-          {/* SMART SEARCH */}
           <label style={labelStyle}>Δικαιούχος</label>
 
           <div ref={smartBoxRef} style={{ position: 'relative' }}>
@@ -582,7 +527,7 @@ function AddExpenseForm() {
               </button>
             )}
 
-            {smartOpen && (
+            {smartOpen && smartQuery.trim() && (
               <div style={resultsPanel}>
                 {Object.keys(groupedResults).length === 0 ? (
                   <div style={{ padding: 14, fontSize: 14, fontWeight: 700, color: colors.secondaryText }}>
@@ -610,10 +555,10 @@ function AddExpenseForm() {
                           style={resultRow}
                         >
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                            <div style={{ fontSize: 15, fontWeight: 900, color: colors.primaryDark, textTransform: 'none' }}>
+                            <div style={{ fontSize: 15, fontWeight: 900, color: colors.primaryDark }}>
                               {item.name}
                             </div>
-                            <div style={{ fontSize: 12, fontWeight: 700, color: colors.secondaryText, textTransform: 'none' }}>
+                            <div style={{ fontSize: 12, fontWeight: 700, color: colors.secondaryText }}>
                               {item.kind === 'supplier'
                                 ? 'Προμηθευτής'
                                 : (item.group === 'maintenance'
@@ -647,7 +592,6 @@ function AddExpenseForm() {
           <input
             type="number"
             inputMode="decimal"
-            autoFocus={!smartOpen}
             value={amount}
             onChange={e => setAmount(e.target.value)}
             style={inputStyle}
@@ -854,7 +798,7 @@ const inputStyle: any = {
   padding: 14,
   borderRadius: 12,
   border: `1px solid ${colors.border}`,
-  fontSize: 16, // ✅ anti-zoom mobile
+  fontSize: 16,
   fontWeight: 700,
   backgroundColor: colors.bgLight,
   boxSizing: 'border-box',
@@ -916,7 +860,6 @@ const removeImageBtn: any = {
   fontWeight: 900,
 }
 
-// search ui
 const clearBtn: any = {
   position: 'absolute',
   top: 10,
