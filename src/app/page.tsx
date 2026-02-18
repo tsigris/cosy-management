@@ -8,7 +8,7 @@ import NextLink from 'next/link'
 import { format, addDays, subDays, parseISO } from 'date-fns'
 import { el } from 'date-fns/locale'
 import { Toaster, toast } from 'sonner'
-import { TrendingUp, TrendingDown, Menu, X, ChevronLeft, ChevronRight } from 'lucide-react'
+import { TrendingUp, TrendingDown, Menu, X, ChevronLeft, ChevronRight, CreditCard } from 'lucide-react'
 
 // --- MODERN PREMIUM PALETTE ---
 const colors = {
@@ -63,6 +63,9 @@ function DashboardContent() {
   const [loading, setLoading] = useState(true)
   const [expandedTx, setExpandedTx] = useState<string | null>(null)
 
+  // ✅ NEW: Z visibility flag (from settings)
+  const [zEnabled, setZEnabled] = useState<boolean>(true)
+
   // NEW: cache YTD metrics per entity key
   const [ytdCache, setYtdCache] = useState<Record<string, YtdInfo>>({})
 
@@ -116,9 +119,6 @@ function DashboardContent() {
         const rows = res.data || []
 
         // --- Revenue source YTD ---
-        // turnover: all income entries connected to revenue_source
-        // received: all collections types (income_collection, debt_received, debt_payment) connected to revenue_source
-        // open: credit - received (if you use is_credit for receivables)
         if (key.startsWith('rev:')) {
           const turnoverIncome = rows
             .filter((r: any) => String(r.type || '') === 'income')
@@ -143,9 +143,6 @@ function DashboardContent() {
         }
 
         // --- Supplier / Asset YTD ---
-        // totalExpenses: expenses (NOT debt_payment)
-        // payments: debt_payment
-        // open: (credit expenses) - payments
         const totalExpenses = rows
           .filter((r: any) => String(r.type || '') === 'expense')
           .reduce((acc: number, r: any) => acc + Math.abs(Number(r.amount) || 0), 0)
@@ -185,9 +182,18 @@ function DashboardContent() {
       } = await supabase.auth.getSession()
       if (!session) return router.push('/login')
 
-      // store name
-      const { data: storeData } = await supabase.from('stores').select('name').eq('id', storeIdFromUrl).maybeSingle()
-      if (storeData) setStoreName(storeData.name)
+      // ✅ store name + settings (z_enabled)
+      const { data: storeData, error: storeErr } = await supabase
+        .from('stores')
+        .select('name, z_enabled')
+        .eq('id', storeIdFromUrl)
+        .maybeSingle()
+
+      if (storeErr) console.error(storeErr)
+      if (storeData?.name) setStoreName(storeData.name)
+
+      // default: true (if null/undefined)
+      setZEnabled(storeData?.z_enabled === false ? false : true)
 
       // ✅ day transactions
       const { data: tx, error: txError } = await supabase
@@ -247,7 +253,12 @@ function DashboardContent() {
       .filter((t) => (t.type === 'expense' || t.type === 'debt_payment') && t.is_credit !== true)
       .reduce((acc, t) => acc + (Math.abs(Number(t.amount)) || 0), 0)
 
-    return { income, expense, balance: income - expense }
+    // ✅ NEW: total credits of the day (any tx with is_credit === true)
+    const credits = transactions
+      .filter((t) => t.is_credit === true)
+      .reduce((acc: number, t: any) => acc + Math.abs(Number(t.amount) || 0), 0)
+
+    return { income, expense, credits, balance: income - expense }
   }, [transactions])
 
   const changeDate = (days: number) => {
@@ -322,7 +333,6 @@ function DashboardContent() {
                 📖 Οδηγίες Χρήσης
               </NextLink>
 
-              {/* ✅ NEW: Permissions */}
               <NextLink
                 href={`/permissions?store=${storeIdFromUrl}`}
                 style={menuItem}
@@ -360,6 +370,7 @@ function DashboardContent() {
       <div style={heroCardStyle}>
         <p style={heroLabel}>ΔΙΑΘΕΣΙΜΟ ΥΠΟΛΟΙΠΟ ΗΜΕΡΑΣ</p>
         <h2 style={heroAmountText}>{totals.balance.toFixed(2)}€</h2>
+
         <div style={heroStatsRow}>
           <div style={heroStatItem}>
             <div style={statCircle(colors.accentGreen)}>
@@ -367,6 +378,7 @@ function DashboardContent() {
             </div>
             <span style={heroStatValue}>{totals.income.toFixed(2)}€</span>
           </div>
+
           <div style={heroStatItem}>
             <div style={statCircle(colors.accentRed)}>
               <TrendingDown size={12} />
@@ -374,18 +386,48 @@ function DashboardContent() {
             <span style={heroStatValue}>{totals.expense.toFixed(2)}€</span>
           </div>
         </div>
+
+        {/* ✅ NEW: Credits of day */}
+        <div style={heroCreditWrap}>
+          <div style={heroCreditPill}>
+            <div style={creditIconCircle}>
+              <CreditCard size={14} />
+            </div>
+            <span style={heroCreditLabel}>ΠΙΣΤΩΣΕΙΣ ΗΜΕΡΑΣ</span>
+            <span style={heroCreditValue}>{totals.credits.toFixed(2)}€</span>
+          </div>
+        </div>
       </div>
 
+      {/* ✅ NEW LAYOUT: Income/Expense row + Z centered below */}
       <div style={actionGrid}>
-        <NextLink href={`/add-income?date=${selectedDate}&store=${storeIdFromUrl}`} style={{ ...actionBtn, backgroundColor: colors.accentGreen }}>
-          + Έσοδο
-        </NextLink>
-        <NextLink href={`/add-expense?date=${selectedDate}&store=${storeIdFromUrl}`} style={{ ...actionBtn, backgroundColor: colors.accentRed }}>
-          - Έξοδο
-        </NextLink>
-        <NextLink href={`/daily-z?store=${storeIdFromUrl}`} style={{ ...actionBtn, backgroundColor: colors.primaryDark }}>
-          📟 Z
-        </NextLink>
+        <div style={actionRow}>
+          <NextLink
+            href={`/add-income?date=${selectedDate}&store=${storeIdFromUrl}`}
+            style={{ ...actionBtn, backgroundColor: colors.accentGreen }}
+          >
+            + Έσοδο
+          </NextLink>
+
+          <NextLink
+            href={`/add-expense?date=${selectedDate}&store=${storeIdFromUrl}`}
+            style={{ ...actionBtn, backgroundColor: colors.accentRed }}
+          >
+            - Έξοδο
+          </NextLink>
+        </div>
+
+        {/* ✅ Hide Z if disabled from Settings */}
+        {zEnabled && (
+          <div style={zRowWrap}>
+            <NextLink
+              href={`/daily-z?store=${storeIdFromUrl}`}
+              style={{ ...actionBtn, ...zBtnStyle, backgroundColor: colors.primaryDark }}
+            >
+              📟 Z
+            </NextLink>
+          </div>
+        )}
       </div>
 
       <div style={listContainer}>
@@ -428,7 +470,8 @@ function DashboardContent() {
                       {t.is_credit && <span style={creditBadgeStyle}>ΠΙΣΤΩΣΗ</span>}
                     </p>
                     <p style={txMeta}>
-                      {t.method} • {t.created_at ? format(parseISO(t.created_at), 'HH:mm') : '--:--'} • {t.created_by_name || 'Admin'}
+                      {t.method} • {t.created_at ? format(parseISO(t.created_at), 'HH:mm') : '--:--'} •{' '}
+                      {t.created_by_name || 'Admin'}
                     </p>
                   </div>
 
@@ -477,7 +520,12 @@ function DashboardContent() {
                           </div>
                           <div style={ytdRow}>
                             <span style={ytdLabel}>Ανοιχτό υπόλοιπο</span>
-                            <span style={{ ...ytdValue, color: (Number(ytd?.openIncome) || 0) > 0 ? colors.accentRed : colors.accentGreen }}>
+                            <span
+                              style={{
+                                ...ytdValue,
+                                color: (Number(ytd?.openIncome) || 0) > 0 ? colors.accentRed : colors.accentGreen,
+                              }}
+                            >
                               {money(ytd?.openIncome)}€
                             </span>
                           </div>
@@ -495,7 +543,12 @@ function DashboardContent() {
                           </div>
                           <div style={ytdRow}>
                             <span style={ytdLabel}>Ανοιχτό υπόλοιπο</span>
-                            <span style={{ ...ytdValue, color: (Number(ytd?.openExpense) || 0) > 0 ? colors.accentRed : colors.accentGreen }}>
+                            <span
+                              style={{
+                                ...ytdValue,
+                                color: (Number(ytd?.openExpense) || 0) > 0 ? colors.accentRed : colors.accentGreen,
+                              }}
+                            >
                               {money(ytd?.openExpense)}€
                             </span>
                           </div>
@@ -526,38 +579,173 @@ const iphoneWrapper: any = {
 
 const headerStyle: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px' }
 const brandArea = { display: 'flex', alignItems: 'center', gap: '12px' }
-const logoBox = { width: '42px', height: '42px', backgroundColor: colors.primaryDark, borderRadius: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '18px', fontWeight: '800' }
+const logoBox = {
+  width: '42px',
+  height: '42px',
+  backgroundColor: colors.primaryDark,
+  borderRadius: '14px',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  color: 'white',
+  fontSize: '18px',
+  fontWeight: '800',
+}
 const storeTitleText = { fontSize: '16px', fontWeight: '800', margin: 0, color: colors.primaryDark }
-const switchBtnStyle: any = { fontSize: '9px', fontWeight: '800', color: colors.accentBlue, backgroundColor: '#eef2ff', border: 'none', padding: '4px 8px', borderRadius: '8px', cursor: 'pointer', textDecoration: 'none' }
+const switchBtnStyle: any = {
+  fontSize: '9px',
+  fontWeight: '800',
+  color: colors.accentBlue,
+  backgroundColor: '#eef2ff',
+  border: 'none',
+  padding: '4px 8px',
+  borderRadius: '8px',
+  cursor: 'pointer',
+  textDecoration: 'none',
+}
 const dashboardSub = { fontSize: '9px', fontWeight: '800', color: colors.secondaryText, letterSpacing: '0.5px' }
-const statusDot = { width: '6px', height: '6px', backgroundColor: colors.accentGreen, borderRadius: '50%' }
-const menuToggle: any = { background: 'white', border: `1px solid ${colors.border}`, borderRadius: '12px', width: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: colors.primaryDark }
-const dropdownStyle: any = { position: 'absolute', top: '50px', right: 0, background: 'white', minWidth: '220px', borderRadius: '18px', boxShadow: '0 15px 35px rgba(0,0,0,0.1)', padding: '10px', zIndex: 100, border: `1px solid ${colors.border}` }
-const menuItem: any = { display: 'block', padding: '12px 15px', textDecoration: 'none', color: colors.primaryDark, fontWeight: '700', fontSize: '14px', borderRadius: '12px' }
+const statusDot = { width: '6px', height: '6px', background: colors.accentGreen, borderRadius: '50%' }
+const menuToggle: any = {
+  background: 'white',
+  border: `1px solid ${colors.border}`,
+  borderRadius: '12px',
+  width: '40px',
+  height: '40px',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  cursor: 'pointer',
+  color: colors.primaryDark,
+}
+const dropdownStyle: any = {
+  position: 'absolute',
+  top: '50px',
+  right: 0,
+  background: 'white',
+  minWidth: '220px',
+  borderRadius: '18px',
+  boxShadow: '0 15px 35px rgba(0,0,0,0.1)',
+  padding: '10px',
+  zIndex: 100,
+  border: `1px solid ${colors.border}`,
+}
+const menuItem: any = {
+  display: 'block',
+  padding: '12px 15px',
+  textDecoration: 'none',
+  color: colors.primaryDark,
+  fontWeight: '700',
+  fontSize: '14px',
+  borderRadius: '12px',
+}
 const menuSectionLabel = { fontSize: '10px', fontWeight: '800', color: colors.secondaryText, padding: '8px 15px 5px' }
 const menuDivider = { height: '1px', backgroundColor: colors.border, margin: '8px 0' }
-const logoutBtnStyle: any = { width: '100%', textAlign: 'left', padding: '12px 15px', background: '#fff1f2', color: colors.accentRed, border: 'none', borderRadius: '12px', fontWeight: '700', cursor: 'pointer' }
+const logoutBtnStyle: any = {
+  width: '100%',
+  textAlign: 'left',
+  padding: '12px 15px',
+  background: '#fff1f2',
+  color: colors.accentRed,
+  border: 'none',
+  borderRadius: '12px',
+  fontWeight: '700',
+  cursor: 'pointer',
+}
 
-const dateCard: any = { backgroundColor: 'white', padding: '10px', borderRadius: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px', border: `1px solid ${colors.border}` }
+const dateCard: any = {
+  backgroundColor: 'white',
+  padding: '10px',
+  borderRadius: '16px',
+  display: 'flex',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+  marginBottom: '25px',
+  border: `1px solid ${colors.border}`,
+}
 const dateText = { fontSize: '13px', fontWeight: '800', color: colors.primaryDark, margin: 0 }
 const businessHint: any = { margin: '6px 0 0 0', fontSize: '10px', fontWeight: '800', color: colors.secondaryText, opacity: 0.9 }
 const dateNavBtn = { background: 'none', border: 'none', color: colors.secondaryText, cursor: 'pointer', display: 'flex', alignItems: 'center' }
 
-const heroCardStyle: any = { background: colors.primaryDark, padding: '30px 20px', borderRadius: '28px', color: 'white', boxShadow: '0 20px 40px rgba(15, 23, 42, 0.2)', marginBottom: '30px', textAlign: 'center' }
+const heroCardStyle: any = {
+  background: colors.primaryDark,
+  padding: '30px 20px',
+  borderRadius: '28px',
+  color: 'white',
+  boxShadow: '0 20px 40px rgba(15, 23, 42, 0.2)',
+  marginBottom: '30px',
+  textAlign: 'center',
+}
 const heroLabel: any = { fontSize: '10px', fontWeight: '700', opacity: 0.5, letterSpacing: '1px', marginBottom: '10px' }
 const heroAmountText: any = { fontSize: '38px', fontWeight: '900', margin: 0 }
 const heroStatsRow: any = { display: 'flex', gap: '20px', marginTop: '25px', justifyContent: 'center' }
 const heroStatItem: any = { display: 'flex', alignItems: 'center', gap: '8px' }
 const heroStatValue = { fontSize: '15px', fontWeight: '800' }
-const statCircle = (bg: string): any => ({ width: '24px', height: '24px', borderRadius: '50%', background: bg, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white' })
+const statCircle = (bg: string): any => ({
+  width: '24px',
+  height: '24px',
+  borderRadius: '50%',
+  background: bg,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  color: 'white',
+})
 
-const actionGrid = { display: 'flex', gap: '12px', marginBottom: '30px' }
-const actionBtn: any = { flex: 1, padding: '18px', borderRadius: '18px', color: 'white', textDecoration: 'none', textAlign: 'center', fontWeight: '800', fontSize: '14px', boxShadow: '0 8px 15px rgba(0,0,0,0.08)' }
+// ✅ NEW hero credit pill styles
+const heroCreditWrap: any = { marginTop: '18px', display: 'flex', justifyContent: 'center' }
+const heroCreditPill: any = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: '10px',
+  padding: '10px 12px',
+  borderRadius: '16px',
+  background: 'rgba(255,255,255,0.08)',
+  border: '1px solid rgba(255,255,255,0.14)',
+}
+const creditIconCircle: any = {
+  width: '28px',
+  height: '28px',
+  borderRadius: '10px',
+  background: 'rgba(99, 102, 241, 0.25)',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  color: 'white',
+}
+const heroCreditLabel: any = { fontSize: '10px', fontWeight: '900', opacity: 0.9, letterSpacing: '0.6px' }
+const heroCreditValue: any = { fontSize: '14px', fontWeight: '900' }
+
+// ✅ NEW action layout
+const actionGrid: any = { display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '30px' }
+const actionRow: any = { display: 'flex', gap: '12px' }
+const zRowWrap: any = { display: 'flex', justifyContent: 'center' }
+
+const actionBtn: any = {
+  flex: 1,
+  padding: '18px',
+  borderRadius: '18px',
+  color: 'white',
+  textDecoration: 'none',
+  textAlign: 'center',
+  fontWeight: '800',
+  fontSize: '14px',
+  boxShadow: '0 8px 15px rgba(0,0,0,0.08)',
+}
+const zBtnStyle: any = { flex: 'unset', width: '100%', maxWidth: '260px' }
 
 const listContainer = { backgroundColor: 'transparent' }
 const listHeader = { fontSize: '11px', fontWeight: '900', color: colors.secondaryText, marginBottom: '15px', letterSpacing: '0.5px' }
 const txRow: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px', backgroundColor: 'white', border: `1px solid ${colors.border}`, cursor: 'pointer' }
-const txIconContainer = (isInc: boolean): any => ({ width: '42px', height: '42px', borderRadius: '12px', background: isInc ? '#f0fdf4' : '#fef2f2', color: isInc ? colors.accentGreen : colors.accentRed, display: 'flex', alignItems: 'center', justifyContent: 'center' })
+const txIconContainer = (isInc: boolean): any => ({
+  width: '42px',
+  height: '42px',
+  borderRadius: '12px',
+  background: isInc ? '#f0fdf4' : '#fef2f2',
+  color: isInc ? colors.accentGreen : colors.accentRed,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+})
 const txTitle = { fontWeight: '800', fontSize: '14px', margin: 0, color: colors.primaryDark }
 const txMeta = { fontSize: '11px', color: colors.secondaryText, margin: 0, fontWeight: '600' }
 const txAmount = { fontWeight: '900', fontSize: '16px' }
