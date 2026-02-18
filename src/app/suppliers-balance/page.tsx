@@ -51,20 +51,14 @@ function BalancesContent() {
   const [loading, setLoading] = useState(true)
   const [selectedEntityId, setSelectedEntityId] = useState<string>('all')
 
-  // Keep all transactions so we can show history on expand
   const [allTransactions, setAllTransactions] = useState<any[]>([])
-
-  // expanded accordion row
   const [expandedId, setExpandedId] = useState<string | null>(null)
 
-  // ✅ Reset dropdown selection κάθε φορά που αλλάζει mode (για να μη σκάει)
   useEffect(() => {
     setSelectedEntityId('all')
     setExpandedId(null)
   }, [viewMode])
 
-  // ✅ Badge/Label mapping (includes Maintenance category + Revenue sources)
-  // ✅ If viewMode === 'income', badge = green "ΑΠΑΙΤΗΣΗ" for all rows
   const getEntityBadge = useCallback(
     (entity: any) => {
       if (viewMode === 'income') {
@@ -94,7 +88,7 @@ function BalancesContent() {
   )
 
   // -----------------------------
-  // DATE HELPERS (your DB has created_at + date)
+  // DATE HELPERS
   // -----------------------------
   const getTxDate = (t: any) => {
     if (!t) return null
@@ -124,6 +118,8 @@ function BalancesContent() {
     return `${diffDays} μέρες πριν`
   }
 
+  const money = (n: any) => (Math.abs(Number(n) || 0)).toFixed(2)
+
   const getEntityTransactions = (entity: any, transactions: any[], mode: ViewMode) => {
     const isIncome = mode === 'income'
 
@@ -149,8 +145,10 @@ function BalancesContent() {
     const latestCreditDate = creditTxs.length ? getTxDate(creditTxs[0]) : null
     const oldestCreditDate = creditTxs.length ? getTxDate(creditTxs[creditTxs.length - 1]) : null
 
-    // ✅ NEW: latest settlement date
-    const latestSettlementDate = settlementTxs.length ? getTxDate(settlementTxs[0]) : null
+    // ✅ NEW: latest settlement date + amount
+    const latestSettlementTx = settlementTxs.length ? settlementTxs[0] : null
+    const latestSettlementDate = latestSettlementTx ? getTxDate(latestSettlementTx) : null
+    const latestSettlementAmount = latestSettlementTx ? Math.abs(Number(latestSettlementTx.amount) || 0) : null
 
     const totalCreditAmount = creditTxs.reduce((acc, t) => acc + Math.abs(Number(t.amount) || 0), 0)
     const totalSettlementAmount = settlementTxs.reduce((acc, t) => acc + Math.abs(Number(t.amount) || 0), 0)
@@ -160,7 +158,9 @@ function BalancesContent() {
       settlementTxs,
       latestCreditDate,
       oldestCreditDate,
-      latestSettlementDate, // ✅ NEW
+      latestSettlementTx,
+      latestSettlementDate,
+      latestSettlementAmount,
       totalCreditAmount,
       totalSettlementAmount,
     }
@@ -180,10 +180,6 @@ function BalancesContent() {
       const transactions = transRes.data || []
       setAllTransactions(transactions)
 
-      // -------------------------
-      // MODE: EXPENSES
-      // balance = Credit(is_credit:true) - Paid(type: debt_payment)
-      // -------------------------
       if (viewMode === 'expenses') {
         const [supsRes, assetsRes] = await Promise.all([
           supabase.from('suppliers').select('*').eq('store_id', storeIdFromUrl),
@@ -228,10 +224,7 @@ function BalancesContent() {
               .filter((t) => t.type === 'debt_payment')
               .reduce((acc, t) => acc + Math.abs(Number(t.amount) || 0), 0)
 
-            return {
-              ...entity,
-              balance: totalCredit - totalPaid,
-            }
+            return { ...entity, balance: totalCredit - totalPaid }
           })
           .filter((e) => Math.abs(e.balance) > 0.1)
           .sort((a, b) => b.balance - a.balance)
@@ -240,10 +233,6 @@ function BalancesContent() {
         return
       }
 
-      // -------------------------
-      // MODE: INCOME (Revenue Sources)
-      // balance = Credit(is_credit:true) - Received(types)
-      // -------------------------
       const revRes = await supabase.from('revenue_sources').select('*').eq('store_id', storeIdFromUrl)
       if (revRes.error) throw revRes.error
 
@@ -263,10 +252,7 @@ function BalancesContent() {
             .filter((t) => RECEIVED_TYPES.includes(String(t.type || '')))
             .reduce((acc, t) => acc + Math.abs(Number(t.amount) || 0), 0)
 
-          return {
-            ...src,
-            balance: totalCredit - totalReceived,
-          }
+          return { ...src, balance: totalCredit - totalReceived }
         })
         .filter((e) => Math.abs(e.balance) > 0.1)
         .sort((a, b) => b.balance - a.balance)
@@ -313,15 +299,7 @@ function BalancesContent() {
             </div>
             <div>
               <h1 style={{ fontWeight: '900', fontSize: '20px', margin: 0, color: colors.primaryDark }}>Καρτέλες</h1>
-              <p
-                style={{
-                  margin: 0,
-                  fontSize: '10px',
-                  color: colors.secondaryText,
-                  fontWeight: '800',
-                  letterSpacing: '1px',
-                }}
-              >
+              <p style={{ margin: 0, fontSize: '10px', color: colors.secondaryText, fontWeight: '800', letterSpacing: '1px' }}>
                 ΥΠΟΛΟΙΠΑ & ΙΣΤΟΡΙΚΟ ΚΙΝΗΣΕΩΝ
               </p>
             </div>
@@ -425,18 +403,11 @@ function BalancesContent() {
                             {String(s.name || '').toUpperCase()}
                           </p>
 
-                          <span
-                            style={{
-                              ...badgeStyle,
-                              backgroundColor: badge.bg,
-                              color: badge.color,
-                            }}
-                          >
+                          <span style={{ ...badgeStyle, backgroundColor: badge.bg, color: badge.color }}>
                             {badge.text}
                           </span>
                         </div>
 
-                        {/* RF & ΤΡΑΠΕΖΑ */}
                         <div style={{ marginTop: '10px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
                           {s.rf_code && (
                             <div style={infoRow}>
@@ -460,7 +431,6 @@ function BalancesContent() {
                       </div>
                     </div>
 
-                    {/* EXPANDED DETAILS */}
                     {isExpanded && (
                       <div style={detailsWrap} onClick={(e) => e.stopPropagation()}>
                         <div style={detailsHeader}>
@@ -476,7 +446,6 @@ function BalancesContent() {
                           </button>
                         </div>
 
-                        {/* MINI SUMMARY */}
                         <div style={miniSummaryRow}>
                           <div style={miniPill}>
                             <span style={miniPillLabel}>Πρώτη καταχώρηση</span>
@@ -492,12 +461,16 @@ function BalancesContent() {
                             </span>
                           </div>
 
-                          {/* ✅ NEW: last settlement */}
+                          {/* ✅ UPDATED: last settlement shows DATE + DAYS + AMOUNT */}
                           <div style={miniPill}>
-                            <span style={miniPillLabel}>{viewMode === 'income' ? 'Τελευταία είσπραξη' : 'Τελευταία εξόφληση'}</span>
+                            <span style={miniPillLabel}>
+                              {viewMode === 'income' ? 'Τελευταία είσπραξη' : 'Τελευταία εξόφληση'}
+                            </span>
                             <span style={miniPillValue}>
                               {history.latestSettlementDate
-                                ? `${formatTxDate(history.latestSettlementDate)} (${daysAgoLabel(history.latestSettlementDate)})`
+                                ? `${formatTxDate(history.latestSettlementDate)} (${daysAgoLabel(history.latestSettlementDate)}) • ${money(
+                                    history.latestSettlementAmount
+                                  )}€`
                                 : '—'}
                             </span>
                           </div>
@@ -508,12 +481,13 @@ function BalancesContent() {
                           </div>
 
                           <div style={miniPill}>
-                            <span style={miniPillLabel}>{viewMode === 'income' ? 'Σύνολο εισπράξεων' : 'Σύνολο εξοφλήσεων'}</span>
+                            <span style={miniPillLabel}>
+                              {viewMode === 'income' ? 'Σύνολο εισπράξεων' : 'Σύνολο εξοφλήσεων'}
+                            </span>
                             <span style={miniPillValue}>{history.totalSettlementAmount.toFixed(2)}€</span>
                           </div>
                         </div>
 
-                        {/* CREDIT / DEBT ENTRIES */}
                         <div style={sectionTitle}>
                           {viewMode === 'income'
                             ? `Απαιτήσεις (${history.creditTxs.length})`
@@ -553,7 +527,6 @@ function BalancesContent() {
                           </div>
                         )}
 
-                        {/* SETTLEMENTS */}
                         <div style={{ ...sectionTitle, marginTop: 14 }}>
                           {viewMode === 'income'
                             ? `Εισπράξεις (${history.settlementTxs.length})`
@@ -598,7 +571,6 @@ function BalancesContent() {
                     )}
                   </div>
 
-                  {/* RIGHT SIDE */}
                   <div
                     style={{
                       textAlign: 'right',
@@ -611,14 +583,7 @@ function BalancesContent() {
                       minWidth: 120,
                     }}
                   >
-                    <p
-                      style={{
-                        fontWeight: '950',
-                        fontSize: '18px',
-                        color: isIncome ? colors.accentGreen : colors.accentOrange,
-                        margin: 0,
-                      }}
-                    >
+                    <p style={{ fontWeight: '950', fontSize: '18px', color: isIncome ? colors.accentGreen : colors.accentOrange, margin: 0 }}>
                       {(Number(s.balance) || 0).toFixed(2)}€
                     </p>
 
@@ -629,9 +594,7 @@ function BalancesContent() {
                           router.push(`/add-income?store=${storeIdFromUrl}&sourceId=${s.id}&mode=debt`)
                         } else {
                           router.push(
-                            `/add-expense?store=${storeIdFromUrl}&${s.entityType === 'supplier' ? 'supId' : 'assetId'}=${
-                              s.id
-                            }&mode=debt`
+                            `/add-expense?store=${storeIdFromUrl}&${s.entityType === 'supplier' ? 'supId' : 'assetId'}=${s.id}&mode=debt`
                           )
                         }
                       }}
@@ -773,7 +736,6 @@ const selectStyle: any = {
   appearance: 'none',
 }
 
-// Expanded details styles
 const detailsWrap: any = {
   marginTop: '14px',
   padding: '14px',
