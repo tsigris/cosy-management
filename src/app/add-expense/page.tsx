@@ -1,7 +1,7 @@
 'use client'
 export const dynamic = 'force-dynamic'
 
-import { useEffect, useState, Suspense, useCallback, useMemo } from 'react'
+import { useEffect, useState, Suspense, useCallback, useMemo, useRef } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
@@ -27,16 +27,138 @@ const CATEGORY_UI: Array<{
   dbCategory: 'Εμπορεύματα' | 'Maintenance' | 'Utilities' | 'Staff' | 'Other'
 }> = [
   { key: 'suppliers', icon: '🛒', label: 'Εμπορεύματα', dbCategory: 'Εμπορεύματα' },
-
-  // ✅ RENAME + ICON UPDATE (Μάστορες -> Συντήρηση, 🛠️ -> 🔧)
-  // ✅ DB CONSISTENCY: κρατάμε key 'worker' ώστε να ταιριάζει με sub_category στο fixed_assets,
-  // αλλά dbCategory παραμένει 'Maintenance'
   { key: 'worker', icon: '🔧', label: 'Συντήρηση', dbCategory: 'Maintenance' },
-
   { key: 'utility', icon: '💡', label: 'Λογαριασμοί', dbCategory: 'Utilities' },
   { key: 'staff', icon: '👤', label: 'Προσωπικό', dbCategory: 'Staff' },
   { key: 'other', icon: '📦', label: 'Λοιπά', dbCategory: 'Other' },
 ]
+
+type SmartItem =
+  | { kind: 'supplier'; id: string; name: string }
+  | { kind: 'asset'; id: string; name: string; sub_category: string; uiKey: ExpenseCategoryKey }
+
+// -----------------------------
+// ✅ SEARCH HELPERS (Greeklish + Fuzzy)
+// -----------------------------
+function stripDiacritics(input: string) {
+  return input.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+}
+
+function normalizeForSearch(input: any) {
+  return stripDiacritics(String(input || '').toLowerCase().trim())
+}
+
+// Greek -> Greeklish (basic but solid for names)
+function greekToGreeklish(input: string) {
+  let out = normalizeForSearch(input)
+
+  // Digraphs first
+  const digraphs: Array<[RegExp, string]> = [
+    [/ου/g, 'ou'],
+    [/αι/g, 'ai'],
+    [/ει/g, 'ei'],
+    [/οι/g, 'oi'],
+    [/υι/g, 'yi'],
+    [/αυ/g, 'av'],
+    [/ευ/g, 'ev'],
+    [/μπ/g, 'b'],
+    [/ντ/g, 'd'],
+    [/γκ/g, 'g'],
+    [/γγ/g, 'ng'],
+    [/τσ/g, 'ts'],
+    [/τζ/g, 'tz'],
+  ]
+  for (const [re, rep] of digraphs) out = out.replace(re, rep)
+
+  // Single letters
+  const map: Record<string, string> = {
+    α: 'a',
+    β: 'v',
+    γ: 'g',
+    δ: 'd',
+    ε: 'e',
+    ζ: 'z',
+    η: 'h', // -> deh for ΔΕΗ
+    θ: 'th',
+    ι: 'i',
+    κ: 'k',
+    λ: 'l',
+    μ: 'm',
+    ν: 'n',
+    ξ: 'x',
+    ο: 'o',
+    π: 'p',
+    ρ: 'r',
+    σ: 's',
+    ς: 's',
+    τ: 't',
+    υ: 'y',
+    φ: 'f',
+    χ: 'x',
+    ψ: 'ps',
+    ω: 'o',
+  }
+
+  let final = ''
+  for (const ch of out) final += map[ch] ?? ch
+  return final
+}
+
+/**
+ * Fuzzy normalize:
+ * - Treats (h,i,y) as same-ish for Greek vowels (η/ι/υ) in Greeklish context
+ * - Also collapses common combos: ei/oi/yi -> i, ou -> u (optional), etc.
+ * This makes "dei" match "deh" and also match Greek "ΔΕΗ".
+ */
+function fuzzyLatin(s: string) {
+  let out = normalizeForSearch(s)
+
+  // Collapse common multi-letter vowel sounds to simpler forms
+  out = out
+    .replace(/ei/g, 'i')
+    .replace(/oi/g, 'i')
+    .replace(/yi/g, 'i')
+    .replace(/ou/g, 'u')
+    .replace(/ai/g, 'e') // optional simplification
+    .replace(/th/g, 't') // optional: θ -> t for very fuzzy search
+
+  // Collapse h / i / y in latin to i (so h≈i≈y)
+  out = out.replace(/[hy]/g, 'i')
+
+  // Remove non letters/numbers (keeps searching forgiving)
+  out = out.replace(/[^a-z0-9]/g, '')
+
+  return out
+}
+
+function matchesSmartQuery(name: string, query: string) {
+  const qRaw = normalizeForSearch(query)
+  if (!qRaw) return true
+
+  const nRaw = normalizeForSearch(name)
+  if (nRaw.includes(qRaw)) return true
+
+  const nGreeklish = greekToGreeklish(name)
+  if (nGreeklish.includes(qRaw)) return true
+
+  // ✅ FUZZY PASS: makes "dei" match "deh"
+  const qF = fuzzyLatin(query)
+  const nF1 = fuzzyLatin(name) // if name itself is latin
+  if (nF1.includes(qF)) return true
+
+  const nF2 = fuzzyLatin(nGreeklish) // if name is greek -> greeklish -> fuzzy
+  if (nF2.includes(qF)) return true
+
+  return false
+}
+
+function groupTitleForKey(key: ExpenseCategoryKey) {
+  if (key === 'suppliers') return 'ΠΡΟΜΗΘΕΥΤΕΣ'
+  if (key === 'staff') return 'ΠΡΟΣΩΠΙΚΟ'
+  if (key === 'worker') return 'ΣΥΝΤΗΡΗΣΗ'
+  if (key === 'utility') return 'ΛΟΓΑΡΙΑΣΜΟΙ'
+  return 'ΛΟΙΠΑ'
+}
 
 function AddExpenseForm() {
   const router = useRouter()
@@ -45,16 +167,16 @@ function AddExpenseForm() {
   const editId = searchParams.get('editId')
   const selectedDate = searchParams.get('date') || new Date().toISOString().split('T')[0]
 
-  // ✅ MUST read storeId from URL searchParams
   const urlStoreId = searchParams.get('store')
-
-  // ✅ NEW: deep-link params from Cards
   const urlSupId = searchParams.get('supId')
   const urlAssetId = searchParams.get('assetId')
 
   const [amount, setAmount] = useState('')
   const [method, setMethod] = useState<'Μετρητά' | 'Τράπεζα'>('Μετρητά')
+
+  // ✅ NOTES uppercase too (if you don't want, tell me)
   const [notes, setNotes] = useState('')
+
   const [isCredit, setIsCredit] = useState(false)
   const [isAgainstDebt, setIsAgainstDebt] = useState(searchParams.get('mode') === 'debt')
   const [noInvoice, setNoInvoice] = useState(false)
@@ -62,7 +184,7 @@ function AddExpenseForm() {
   const [imageFile, setImageFile] = useState<File | null>(null)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
 
-  const [currentUsername, setCurrentUsername] = useState('Χρήστης')
+  const [currentUsername, setCurrentUsername] = useState('ΧΡΗΣΤΗΣ')
   const [loading, setLoading] = useState(true)
 
   const [storeId, setStoreId] = useState<string | null>(urlStoreId)
@@ -72,14 +194,19 @@ function AddExpenseForm() {
 
   const [dayStats, setDayStats] = useState({ income: 0, expenses: 0 })
 
-  // ✅ NEW: category selector state (default 'suppliers')
   const [expenseCategory, setExpenseCategory] = useState<ExpenseCategoryKey>('suppliers')
-
-  // ✅ Simple select only (Vercel/mobile stable)
   const [selectedItemId, setSelectedItemId] = useState<string>('')
 
   const [isSupModalOpen, setIsSupModalOpen] = useState(false)
   const [newSupName, setNewSupName] = useState('')
+
+  // ✅ SMART SEARCH
+  const [smartQuery, setSmartQuery] = useState('')
+  const [smartOpen, setSmartOpen] = useState(false)
+
+  // ✅ RECENTS
+  const [recentIds, setRecentIds] = useState<string[]>([])
+  const smartBoxRef = useRef<HTMLDivElement | null>(null)
 
   const dbCategoryFromKey = useCallback((key: ExpenseCategoryKey) => {
     return CATEGORY_UI.find(c => c.key === key)?.dbCategory || 'Other'
@@ -87,26 +214,54 @@ function AddExpenseForm() {
 
   const keyFromDbCategory = useCallback((cat: string | null | undefined): ExpenseCategoryKey => {
     if (cat === 'Εμπορεύματα') return 'suppliers'
-
-    // ✅ DB CONSISTENCY:
-    // Όταν η βάση επιστρέφει 'Maintenance', επιλέγουμε το UI key που αντιστοιχεί στη "Συντήρηση"
-    // (κρατάμε key = 'worker' για συμβατότητα με existing fixed_assets sub_category)
     if (cat === 'Maintenance') return 'worker'
-
     if (cat === 'Utilities') return 'utility'
     if (cat === 'Staff') return 'staff'
     return 'other'
   }, [])
 
-  // ✅ maps fixed_assets.sub_category -> UI key (for urlAssetId deep link)
   const keyFromFixedAssetSubCategory = useCallback((subCategory: any): ExpenseCategoryKey => {
     const sub = String(subCategory || '').trim().toLowerCase()
     if (sub === 'maintenance') return 'worker'
     if (sub === 'worker') return 'worker'
     if (sub === 'staff') return 'staff'
     if (sub === 'utility' || sub === 'utilities') return 'utility'
+    if (sub === 'other') return 'other'
     return 'other'
   }, [])
+
+  // ✅ click outside to close results
+  useEffect(() => {
+    const onDown = (e: any) => {
+      if (!smartBoxRef.current) return
+      if (!smartBoxRef.current.contains(e.target)) setSmartOpen(false)
+    }
+    document.addEventListener('mousedown', onDown)
+    return () => document.removeEventListener('mousedown', onDown)
+  }, [])
+
+  // ✅ load recents from localStorage
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const key = `expense_recents_${urlStoreId || 'default'}`
+    const raw = localStorage.getItem(key)
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw)
+        if (Array.isArray(parsed)) setRecentIds(parsed.slice(0, 8))
+      } catch {}
+    }
+  }, [urlStoreId])
+
+  const saveRecent = (id: string) => {
+    if (typeof window === 'undefined') return
+    const key = `expense_recents_${urlStoreId || 'default'}`
+    setRecentIds(prev => {
+      const next = [id, ...prev.filter(x => x !== id)].slice(0, 8)
+      localStorage.setItem(key, JSON.stringify(next))
+      return next
+    })
+  }
 
   const loadFormData = useCallback(async () => {
     try {
@@ -115,7 +270,6 @@ function AddExpenseForm() {
       } = await supabase.auth.getSession()
       if (!session) return router.push('/login')
 
-      // ✅ URL store has priority (requirement)
       const activeStoreId =
         urlStoreId || (typeof window !== 'undefined' ? localStorage.getItem('active_store_id') : null)
 
@@ -132,20 +286,15 @@ function AddExpenseForm() {
         .eq('id', session.user.id)
         .maybeSingle()
 
-      if (profile) setCurrentUsername(profile.username || 'Admin')
+      if (profile) setCurrentUsername(String(profile.username || 'ADMIN').toUpperCase())
 
       const [sRes, fRes, tRes] = await Promise.all([
-        supabase
-          .from('suppliers')
-          .select('*')
-          .eq('store_id', activeStoreId)
-          .neq('is_active', false)
-          .order('name'),
-        // ✅ need sub_category for filtering
+        supabase.from('suppliers').select('*').eq('store_id', activeStoreId).order('name'),
         supabase
           .from('fixed_assets')
           .select('id, name, sub_category')
           .eq('store_id', activeStoreId)
+          .in('sub_category', ['staff', 'Maintenance', 'utility', 'other'])
           .order('name'),
         supabase.from('transactions').select('amount, type').eq('store_id', activeStoreId).eq('date', selectedDate),
       ])
@@ -153,8 +302,8 @@ function AddExpenseForm() {
       const supData = sRes.data || []
       const faData = fRes.data || []
 
-      if (sRes.data) setSuppliers(sRes.data)
-      if (fRes.data) setFixedAssets(fRes.data)
+      setSuppliers(supData)
+      setFixedAssets(faData)
 
       if (tRes.data) {
         const inc = tRes.data
@@ -168,7 +317,6 @@ function AddExpenseForm() {
         setDayStats({ income: inc, expenses: exp })
       }
 
-      // ✅ Edit mode load existing tx
       if (editId) {
         const { data: tx } = await supabase
           .from('transactions')
@@ -180,7 +328,7 @@ function AddExpenseForm() {
         if (tx) {
           setAmount(Math.abs(tx.amount).toString())
           setMethod(tx.method === 'Τράπεζα' ? 'Τράπεζα' : 'Μετρητά')
-          setNotes(tx.notes || '')
+          setNotes(String(tx.notes || '').toUpperCase())
           setIsCredit(!!tx.is_credit)
           setIsAgainstDebt(tx.type === 'debt_payment')
           setNoInvoice((tx.notes || '').includes('ΧΩΡΙΣ ΤΙΜΟΛΟΓΙΟ'))
@@ -188,26 +336,30 @@ function AddExpenseForm() {
           const inferredKey = keyFromDbCategory(tx.category)
           setExpenseCategory(inferredKey)
 
-          // choose selected item by category
           const itemId = inferredKey === 'suppliers' ? tx.supplier_id || '' : tx.fixed_asset_id || ''
           setSelectedItemId(itemId)
+
+          if (itemId) {
+            const found =
+              inferredKey === 'suppliers' ? supData.find((x: any) => x.id === itemId) : faData.find((x: any) => x.id === itemId)
+            setSmartQuery(String(found?.name || '').toUpperCase())
+          }
         }
       } else {
-        // ✅ NEW record: allow deep-link preselect AFTER data loads
-        // 1) supId => suppliers
         if (urlSupId) {
           setExpenseCategory('suppliers')
           setSelectedItemId(urlSupId)
-        }
-        // 2) assetId => infer category from fixed_assets.sub_category
-        else if (urlAssetId) {
+          const found = supData.find((x: any) => x.id === urlSupId)
+          setSmartQuery(String(found?.name || '').toUpperCase())
+        } else if (urlAssetId) {
           const found = faData.find((x: any) => x.id === urlAssetId)
           const inferredKey = keyFromFixedAssetSubCategory(found?.sub_category)
           setExpenseCategory(inferredKey)
           setSelectedItemId(urlAssetId)
+          setSmartQuery(String(found?.name || '').toUpperCase())
         } else {
-          // no deep-link: clear selection
           setSelectedItemId('')
+          setSmartQuery('')
         }
       }
     } catch (error) {
@@ -215,16 +367,7 @@ function AddExpenseForm() {
     } finally {
       setLoading(false)
     }
-  }, [
-    editId,
-    keyFromDbCategory,
-    keyFromFixedAssetSubCategory,
-    router,
-    selectedDate,
-    urlStoreId,
-    urlSupId,
-    urlAssetId,
-  ])
+  }, [editId, keyFromDbCategory, keyFromFixedAssetSubCategory, router, selectedDate, urlStoreId, urlSupId, urlAssetId])
 
   useEffect(() => {
     loadFormData()
@@ -232,34 +375,58 @@ function AddExpenseForm() {
 
   const currentBalance = useMemo(() => dayStats.income - dayStats.expenses, [dayStats])
 
-  // ✅ FIX: proper mapping for worker -> Maintenance
-  const fixedAssetsFiltered = useMemo(() => {
-    if (expenseCategory === 'suppliers') return []
+  const smartItems = useMemo(() => {
+    const s: SmartItem[] = suppliers.map((x: any) => ({ kind: 'supplier', id: x.id, name: x.name || '' }))
 
-    return fixedAssets.filter((f: any) => {
-      const sub = f.sub_category || ''
+    const a: SmartItem[] = fixedAssets.map((x: any) => ({
+      kind: 'asset',
+      id: x.id,
+      name: x.name || '',
+      sub_category: x.sub_category || '',
+      uiKey: keyFromFixedAssetSubCategory(x.sub_category),
+    }))
 
-      // Αν η επιλεγμένη κατηγορία στο UI είναι 'worker' (Συντήρηση)
-      // τότε ψάχνουμε στη βάση για 'Maintenance'
-      if (expenseCategory === 'worker') {
-        return sub === 'Maintenance'
-      }
+    return [...s, ...a]
+  }, [suppliers, fixedAssets, keyFromFixedAssetSubCategory])
 
-      // Για τις υπόλοιπες κατηγορίες (staff, utility κλπ)
-      return sub === expenseCategory
-    })
-  }, [expenseCategory, fixedAssets])
+  const recentItems = useMemo(() => {
+    if (!recentIds.length) return []
+    const map = new Map(smartItems.map(i => [`${i.kind}:${i.id}`, i]))
+    return recentIds.map(k => map.get(k)).filter(Boolean) as SmartItem[]
+  }, [recentIds, smartItems])
 
-  const activeSelectOptions = useMemo(() => {
-    if (expenseCategory === 'suppliers') return suppliers
-    return fixedAssetsFiltered
-  }, [expenseCategory, suppliers, fixedAssetsFiltered])
+  const groupedResults = useMemo(() => {
+    const list = smartQuery.trim()
+      ? smartItems.filter(i => matchesSmartQuery(i.name, smartQuery)).slice(0, 40)
+      : recentItems.length
+      ? recentItems
+      : smartItems.slice(0, 15)
 
-  const selectedLabel = useMemo(() => {
-    if (!selectedItemId) return ''
-    const found = activeSelectOptions.find((x: any) => x.id === selectedItemId)
-    return found?.name || ''
-  }, [activeSelectOptions, selectedItemId])
+    const groups: Record<string, SmartItem[]> = {}
+    for (const item of list) {
+      const groupKey = item.kind === 'supplier' ? 'suppliers' : item.uiKey
+      const title = groupTitleForKey(groupKey as ExpenseCategoryKey)
+      if (!groups[title]) groups[title] = []
+      groups[title].push(item)
+    }
+    return groups
+  }, [smartQuery, smartItems, recentItems])
+
+  const pickSmartItem = (item: SmartItem) => {
+    setSmartQuery(String(item.name || '').toUpperCase())
+    setSmartOpen(false)
+
+    if (item.kind === 'supplier') {
+      setExpenseCategory('suppliers')
+      setSelectedItemId(item.id)
+      saveRecent(`supplier:${item.id}`)
+      return
+    }
+
+    setExpenseCategory(item.uiKey)
+    setSelectedItemId(item.id)
+    saveRecent(`asset:${item.id}`)
+  }
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -270,8 +437,8 @@ function AddExpenseForm() {
   }
 
   const handleSave = async () => {
-    if (!amount || Number(amount) <= 0) return toast.error('Συμπληρώστε το ποσό')
-    if (!selectedItemId) return toast.error('Επιλέξτε από τη λίστα')
+    if (!amount || Number(amount) <= 0) return toast.error('ΣΥΜΠΛΗΡΩΣΤΕ ΤΟ ΠΟΣΟ')
+    if (!selectedItemId) return toast.error('ΕΠΙΛΕΞΤΕ ΔΙΚΑΙΟΥΧΟ ΑΠΟ ΤΗΝ ΑΝΑΖΗΤΗΣΗ')
 
     setLoading(true)
 
@@ -284,7 +451,6 @@ function AddExpenseForm() {
         return router.push('/login')
       }
 
-      // ✅ URL store has priority (requirement)
       const activeStoreId =
         urlStoreId ||
         (typeof window !== 'undefined' ? localStorage.getItem('active_store_id') : null) ||
@@ -292,7 +458,7 @@ function AddExpenseForm() {
 
       if (!activeStoreId) {
         setLoading(false)
-        return toast.error('Δεν βρέθηκε κατάστημα (store)')
+        return toast.error('ΔΕΝ ΒΡΕΘΗΚΕ ΚΑΤΑΣΤΗΜΑ (STORE)')
       }
 
       const dbCategory = dbCategoryFromKey(expenseCategory)
@@ -309,21 +475,21 @@ function AddExpenseForm() {
         supplier_id: expenseCategory === 'suppliers' ? selectedItemId : null,
         fixed_asset_id: expenseCategory === 'suppliers' ? null : selectedItemId,
 
-        // ✅ REQUIRED CATEGORY VALUES
         category: dbCategory,
-
         created_by_name: currentUsername,
-        notes: noInvoice ? (notes ? `${notes} (ΧΩΡΙΣ ΤΙΜΟΛΟΓΙΟ)` : 'ΧΩΡΙΣ ΤΙΜΟΛΟΓΙΟ') : notes,
+        notes: noInvoice
+          ? notes
+            ? `${notes} (ΧΩΡΙΣ ΤΙΜΟΛΟΓΙΟ)`
+            : 'ΧΩΡΙΣ ΤΙΜΟΛΟΓΙΟ'
+          : notes,
       }
 
-      // Image upload logic (if present)
       if (imageFile && !noInvoice && !editId) {
         const fileExt = imageFile.name.split('.').pop() || 'jpg'
         const fileName = `${Date.now()}.${fileExt}`
         const filePath = `${activeStoreId}/${fileName}`
 
         const { data: uploadData, error: uploadError } = await supabase.storage.from('invoices').upload(filePath, imageFile)
-
         if (uploadError) throw uploadError
         payload.invoice_image = uploadData?.path || null
       }
@@ -339,19 +505,20 @@ function AddExpenseForm() {
 
       if (error) throw error
 
-      toast.success(editId ? 'Η κίνηση ενημερώθηκε!' : 'Η κίνηση καταχωρήθηκε!')
-
+      toast.success(editId ? 'Η ΚΙΝΗΣΗ ΕΝΗΜΕΡΩΘΗΚΕ!' : 'Η ΚΙΝΗΣΗ ΚΑΤΑΧΩΡΗΘΗΚΕ!')
       router.push(`/?date=${selectedDate}&store=${activeStoreId}`)
       router.refresh()
     } catch (error: any) {
-      toast.error(error?.message || 'Κάτι πήγε στραβά')
+      toast.error(error?.message || 'ΚΑΤΙ ΠΗΓΕ ΣΤΡΑΒΑ')
       setLoading(false)
     }
   }
 
   const onPickCategory = (key: ExpenseCategoryKey) => {
     setExpenseCategory(key)
-    setSelectedItemId('') // reset selection when switching lists
+    setSelectedItemId('')
+    setSmartQuery('')
+    setSmartOpen(true)
   }
 
   return (
@@ -362,7 +529,7 @@ function AddExpenseForm() {
           <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
             <div style={logoBoxStyle}>💸</div>
             <div>
-              <h1 style={{ fontWeight: 800, fontSize: 16, margin: 0 }}>{editId ? 'Διόρθωση' : 'Έξοδο'}</h1>
+              <h1 style={{ fontWeight: 800, fontSize: 16, margin: 0 }}>{editId ? 'ΔΙΟΡΘΩΣΗ' : 'ΕΞΟΔΟ'}</h1>
               <p style={{ margin: 0, fontSize: 16, color: colors.secondaryText, fontWeight: 700 }}>
                 {new Date(selectedDate).toLocaleDateString('el-GR', { day: 'numeric', month: 'long' }).toUpperCase()}
               </p>
@@ -375,11 +542,110 @@ function AddExpenseForm() {
         </div>
 
         <div style={formCard}>
-          <label style={labelStyle}>ΠΟΣΟ (€)</label>
+          {/* SMART SEARCH */}
+          <label style={labelStyle}>ΔΙΚΑΙΟΥΧΟΣ (SMART SEARCH)</label>
+
+          <div ref={smartBoxRef} style={{ position: 'relative' }}>
+            <input
+              value={smartQuery}
+              onChange={e => {
+                setSmartQuery(String(e.target.value || '').toUpperCase())
+                setSelectedItemId('')
+                setSmartOpen(true)
+              }}
+              onFocus={() => setSmartOpen(true)}
+              placeholder="🔎 ΓΡΑΨΕ ΟΝΟΜΑ... (DEI/DEH, ΔΕΗ, TZILIOS...)"
+              style={inputStyle}
+            />
+
+            {!!smartQuery && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSmartQuery('')
+                  setSelectedItemId('')
+                  setSmartOpen(true)
+                }}
+                style={clearBtn}
+              >
+                ✕
+              </button>
+            )}
+
+            {smartOpen && (
+              <div style={resultsPanel}>
+                {Object.keys(groupedResults).length === 0 ? (
+                  <div style={{ padding: 14, fontSize: 16, fontWeight: 800, color: colors.secondaryText }}>
+                    ΔΕΝ ΒΡΕΘΗΚΕ ΑΠΟΤΕΛΕΣΜΑ
+                  </div>
+                ) : (
+                  Object.entries(groupedResults).map(([group, items]) => (
+                    <div key={group}>
+                      <div style={groupHeader}>{group}</div>
+                      {items.map(item => (
+                        <button
+                          key={`${item.kind}-${item.id}`}
+                          type="button"
+                          onClick={() => pickSmartItem(item)}
+                          style={resultRow}
+                        >
+                          <div style={{ fontSize: 16, fontWeight: 900, color: colors.primaryDark }}>
+                            {String(item.name || '').toUpperCase()}
+                          </div>
+                          <div style={{ fontSize: 16, fontWeight: 800, color: colors.secondaryText }}>
+                            {item.kind === 'supplier' ? 'ΠΡΟΜΗΘΕΥΤΗΣ' : 'ΠΑΓΙΟ'}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+          </div>
+
+          {!!selectedItemId && !!smartQuery && (
+            <div style={selectedBox}>
+              ΕΠΙΛΟΓΗ: <span style={{ fontWeight: 900 }}>{String(smartQuery).toUpperCase()}</span>
+            </div>
+          )}
+
+          {expenseCategory === 'suppliers' && (
+            <div style={{ marginTop: 12 }}>
+              <button type="button" onClick={() => setIsSupModalOpen(true)} style={addSupplierBtn}>
+                + ΝΕΟΣ ΠΡΟΜΗΘΕΥΤΗΣ
+              </button>
+            </div>
+          )}
+
+          {/* Category Buttons (optional override) */}
+          <label style={{ ...labelStyle, marginTop: 20 }}>ΚΑΤΗΓΟΡΙΑ ΕΞΟΔΟΥ</label>
+          <div style={categoryRow}>
+            {CATEGORY_UI.map(c => {
+              const active = expenseCategory === c.key
+              return (
+                <button
+                  key={c.key}
+                  type="button"
+                  onClick={() => onPickCategory(c.key)}
+                  style={{
+                    ...categoryBtn,
+                    backgroundColor: active ? colors.primaryDark : colors.white,
+                    border: `1px solid ${active ? colors.primaryDark : colors.border}`,
+                    color: active ? 'white' : colors.primaryDark,
+                  }}
+                >
+                  <span style={{ fontSize: 16 }}>{c.icon}</span>
+                  <span style={{ fontSize: 16, fontWeight: 800 }}>{String(c.label || '').toUpperCase()}</span>
+                </button>
+              )
+            })}
+          </div>
+
+          <label style={{ ...labelStyle, marginTop: 20 }}>ΠΟΣΟ (€)</label>
           <input
             type="number"
             inputMode="decimal"
-            autoFocus
             value={amount}
             onChange={e => setAmount(e.target.value)}
             style={inputStyle}
@@ -423,7 +689,7 @@ function AddExpenseForm() {
                 color: method === 'Μετρητά' && !isCredit ? 'white' : colors.secondaryText,
               }}
             >
-              💵 Μετρητά
+              💵 ΜΕΤΡΗΤΑ
             </button>
             <button
               type="button"
@@ -437,7 +703,7 @@ function AddExpenseForm() {
                 color: method === 'Τράπεζα' && !isCredit ? 'white' : colors.secondaryText,
               }}
             >
-              🏛️ Τράπεζα
+              🏛️ ΤΡΑΠΕΖΑ
             </button>
           </div>
 
@@ -475,71 +741,12 @@ function AddExpenseForm() {
             </div>
           </div>
 
-          <label style={{ ...labelStyle, marginTop: 20 }}>ΚΑΤΗΓΟΡΙΑ ΕΞΟΔΟΥ</label>
-          <div style={categoryRow}>
-            {CATEGORY_UI.map(c => {
-              const active = expenseCategory === c.key
-              return (
-                <button
-                  key={c.key}
-                  type="button"
-                  onClick={() => onPickCategory(c.key)}
-                  style={{
-                    ...categoryBtn,
-                    backgroundColor: active ? colors.primaryDark : colors.white,
-                    border: `1px solid ${active ? colors.primaryDark : colors.border}`,
-                    color: active ? 'white' : colors.primaryDark,
-                  }}
-                  aria-label={c.label}
-                  title={c.label}
-                >
-                  <span style={{ fontSize: 16, lineHeight: '16px' }}>{c.icon}</span>
-                  <span style={{ fontSize: 16, fontWeight: 800 }}>{c.label}</span>
-                </button>
-              )
-            })}
-          </div>
-
-          <label style={{ ...labelStyle, marginTop: 20 }}>
-            {expenseCategory === 'suppliers' ? 'ΠΡΟΜΗΘΕΥΤΗΣ' : 'ΠΑΓΙΟ / ΚΑΤΑΧΩΡΗΣΗ'}
-          </label>
-
-          <select value={selectedItemId} onChange={e => setSelectedItemId(e.target.value)} style={inputStyle}>
-            <option value="">Επιλογή από λίστα...</option>
-
-            {activeSelectOptions.map((x: any) => (
-              <option key={x.id} value={x.id}>
-                {(x.name || '').toUpperCase()}
-              </option>
-            ))}
-          </select>
-
-          {!!selectedLabel && (
-            <div
-              style={{
-                marginTop: 10,
-                padding: 12,
-                borderRadius: 12,
-                backgroundColor: colors.bgLight,
-                border: `1px solid ${colors.border}`,
-                fontSize: 16,
-                fontWeight: 700,
-              }}
-            >
-              Επιλογή: <span style={{ fontWeight: 900 }}>{String(selectedLabel).toUpperCase()}</span>
-            </div>
-          )}
-
-          {expenseCategory === 'suppliers' && (
-            <div style={{ marginTop: 12 }}>
-              <button type="button" onClick={() => setIsSupModalOpen(true)} style={addSupplierBtn}>
-                + Νέος Προμηθευτής
-              </button>
-            </div>
-          )}
-
           <label style={{ ...labelStyle, marginTop: 20 }}>ΣΗΜΕΙΩΣΕΙΣ</label>
-          <textarea value={notes} onChange={e => setNotes(e.target.value)} style={{ ...inputStyle, height: 80 }} />
+          <textarea
+            value={notes}
+            onChange={e => setNotes(String(e.target.value || '').toUpperCase())}
+            style={{ ...inputStyle, height: 80 }}
+          />
 
           {!editId && !noInvoice && (
             <div style={{ marginTop: 20 }}>
@@ -561,14 +768,8 @@ function AddExpenseForm() {
                   </div>
                 ) : (
                   <label style={uploadPlaceholder}>
-                    <span style={{ fontSize: 16 }}>📷 Επιλογή φωτογραφίας</span>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      capture="environment"
-                      onChange={handleImageChange}
-                      style={{ display: 'none' }}
-                    />
+                    <span style={{ fontSize: 16 }}>📷 ΕΠΙΛΟΓΗ ΦΩΤΟΓΡΑΦΙΑΣ</span>
+                    <input type="file" accept="image/*" capture="environment" onChange={handleImageChange} style={{ display: 'none' }} />
                   </label>
                 )}
               </div>
@@ -602,13 +803,13 @@ function AddExpenseForm() {
       {isSupModalOpen && (
         <div style={modalOverlay}>
           <div style={modalCard}>
-            <h2 style={{ fontSize: 16, margin: '0 0 15px', fontWeight: 900 }}>Νέος Προμηθευτής</h2>
+            <h2 style={{ fontSize: 16, margin: '0 0 15px', fontWeight: 900 }}>ΝΕΟΣ ΠΡΟΜΗΘΕΥΤΗΣ</h2>
 
             <input
               value={newSupName}
-              onChange={e => setNewSupName(e.target.value)}
+              onChange={e => setNewSupName(String(e.target.value || '').toUpperCase())}
               style={{ ...inputStyle, marginBottom: 15 }}
-              placeholder="Όνομα"
+              placeholder="ΟΝΟΜΑ"
             />
 
             <button
@@ -621,7 +822,7 @@ function AddExpenseForm() {
                   (typeof window !== 'undefined' ? localStorage.getItem('active_store_id') : null) ||
                   storeId
 
-                if (!activeStoreId) return toast.error('Δεν βρέθηκε κατάστημα (store)')
+                if (!activeStoreId) return toast.error('ΔΕΝ ΒΡΕΘΗΚΕ ΚΑΤΑΣΤΗΜΑ (STORE)')
 
                 const { data, error } = await supabase
                   .from('suppliers')
@@ -635,9 +836,13 @@ function AddExpenseForm() {
                   setSuppliers(prev => [...prev, data].sort((a, b) => String(a.name).localeCompare(String(b.name))))
                   setExpenseCategory('suppliers')
                   setSelectedItemId(data.id)
+                  setSmartQuery(String(data.name || '').toUpperCase())
+                  setSmartOpen(false)
+                  saveRecent(`supplier:${data.id}`)
+
                   setIsSupModalOpen(false)
                   setNewSupName('')
-                  toast.success('Προστέθηκε!')
+                  toast.success('ΠΡΟΣΤΕΘΗΚΕ!')
                 }
               }}
               style={saveBtn}
@@ -662,7 +867,9 @@ function AddExpenseForm() {
   )
 }
 
-// STYLES (✅ All texts/inputs 16px)
+// -----------------------------
+// STYLES
+// -----------------------------
 const iphoneWrapper: any = {
   backgroundColor: colors.bgLight,
   minHeight: '100dvh',
@@ -709,9 +916,10 @@ const inputStyle: any = {
   borderRadius: 12,
   border: `1px solid ${colors.border}`,
   fontSize: 16,
-  fontWeight: 700,
+  fontWeight: 800,
   backgroundColor: colors.bgLight,
   boxSizing: 'border-box',
+  textTransform: 'uppercase', // ✅ ALWAYS CAPS in UI
 }
 
 const methodBtn: any = {
@@ -811,9 +1019,62 @@ const modalCard: any = { backgroundColor: 'white', padding: 20, borderRadius: 20
 const saveBtn: any = { width: '100%', padding: 16, backgroundColor: colors.accentRed, color: 'white', border: 'none', borderRadius: 14, fontWeight: 900, marginTop: 10, fontSize: 16, cursor: 'pointer' }
 const cancelBtn: any = { width: '100%', padding: 16, backgroundColor: colors.white, color: colors.primaryDark, border: `1px solid ${colors.border}`, borderRadius: 14, fontWeight: 900, marginTop: 10, fontSize: 16, cursor: 'pointer' }
 
+// search ui
+const clearBtn: any = {
+  position: 'absolute',
+  top: 10,
+  right: 10,
+  width: 34,
+  height: 34,
+  borderRadius: 12,
+  border: `1px solid ${colors.border}`,
+  backgroundColor: colors.white,
+  fontSize: 16,
+  fontWeight: 900,
+  cursor: 'pointer',
+  color: colors.secondaryText,
+}
+const resultsPanel: any = {
+  marginTop: 8,
+  border: `1px solid ${colors.border}`,
+  borderRadius: 14,
+  background: colors.white,
+  maxHeight: 320,
+  overflowY: 'auto',
+}
+const groupHeader: any = {
+  position: 'sticky',
+  top: 0,
+  zIndex: 2,
+  background: colors.bgLight,
+  padding: '10px 12px',
+  fontSize: 16,
+  fontWeight: 900,
+  color: colors.secondaryText,
+  borderBottom: `1px solid ${colors.border}`,
+}
+const resultRow: any = {
+  width: '100%',
+  border: 'none',
+  background: colors.white,
+  padding: 12,
+  textAlign: 'left',
+  cursor: 'pointer',
+  borderBottom: `1px solid ${colors.border}`,
+}
+const selectedBox: any = {
+  marginTop: 12,
+  padding: 12,
+  borderRadius: 12,
+  backgroundColor: colors.bgLight,
+  border: `1px solid ${colors.border}`,
+  fontSize: 16,
+  fontWeight: 800,
+}
+
 export default function AddExpensePage() {
   return (
-    <Suspense fallback={<div style={{ fontSize: 16, padding: 20 }}>Φόρτωση...</div>}>
+    <Suspense fallback={<div style={{ fontSize: 16, padding: 20 }}>ΦΟΡΤΩΣΗ...</div>}>
       <AddExpenseForm />
     </Suspense>
   )
