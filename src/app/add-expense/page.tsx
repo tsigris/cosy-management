@@ -18,25 +18,36 @@ const colors = {
   white: '#ffffff',
 }
 
-type SmartItem =
-  | { kind: 'supplier'; id: string; name: string }
-  | { kind: 'asset'; id: string; name: string; sub_category: string | null; rf_code?: string | null }
+type SmartKind = 'supplier' | 'asset'
+type AssetGroup = 'staff' | 'maintenance' | 'utility' | 'other'
 
-// -----------------------------
-// ✅ SEARCH HELPERS (Greeklish + Fuzzy)
-// -----------------------------
-function stripDiacritics(input: string) {
-  return input.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+type SmartItem = {
+  kind: SmartKind
+  id: string
+  name: string
+  sub_category?: string | null
+  group?: AssetGroup
 }
 
-function normalizeForSearch(input: any) {
-  return stripDiacritics(String(input || '').toLowerCase().trim())
+type SelectedEntity = { kind: SmartKind; id: string } | null
+
+function stripDiacritics(str: string) {
+  // αφαιρεί τόνους
+  return str.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
 }
 
-// Greek -> Greeklish (basic + useful)
+function normalizeGreek(str: any) {
+  return stripDiacritics(String(str || ''))
+    .toLowerCase()
+    .trim()
+    .replace(/ς/g, 'σ')
+}
+
+// ελληνικά -> greeklish (απλό αλλά πολύ χρήσιμο)
 function greekToGreeklish(input: string) {
-  let out = normalizeForSearch(input)
+  let s = normalizeGreek(input)
 
+  // πρώτα δίψηφα
   const digraphs: Array<[RegExp, string]> = [
     [/ου/g, 'ou'],
     [/αι/g, 'ai'],
@@ -45,14 +56,14 @@ function greekToGreeklish(input: string) {
     [/υι/g, 'yi'],
     [/αυ/g, 'av'],
     [/ευ/g, 'ev'],
-    [/μπ/g, 'b'],
-    [/ντ/g, 'd'],
-    [/γκ/g, 'g'],
     [/γγ/g, 'ng'],
+    [/γκ/g, 'gk'],
+    [/ντ/g, 'nt'],
+    [/μπ/g, 'mp'],
     [/τσ/g, 'ts'],
     [/τζ/g, 'tz'],
   ]
-  for (const [re, rep] of digraphs) out = out.replace(re, rep)
+  digraphs.forEach(([r, v]) => (s = s.replace(r, v)))
 
   const map: Record<string, string> = {
     α: 'a',
@@ -61,7 +72,7 @@ function greekToGreeklish(input: string) {
     δ: 'd',
     ε: 'e',
     ζ: 'z',
-    η: 'h', // deh for ΔΕΗ
+    η: 'h',
     θ: 'th',
     ι: 'i',
     κ: 'k',
@@ -73,7 +84,6 @@ function greekToGreeklish(input: string) {
     π: 'p',
     ρ: 'r',
     σ: 's',
-    ς: 's',
     τ: 't',
     υ: 'y',
     φ: 'f',
@@ -82,90 +92,68 @@ function greekToGreeklish(input: string) {
     ω: 'o',
   }
 
-  let final = ''
-  for (const ch of out) final += map[ch] ?? ch
-  return final
-}
-
-/**
- * Fuzzy normalize:
- * - Treats (h,i,y) as same-ish for Greek vowels (η/ι/υ) in Greeklish context
- * - Collapses common combos: ei/oi/yi -> i, ou -> u
- * So "dei" matches "deh" matches "ΔΕΗ"
- */
-function fuzzyLatin(s: string) {
-  let out = normalizeForSearch(s)
-
-  out = out
-    .replace(/ei/g, 'i')
-    .replace(/oi/g, 'i')
-    .replace(/yi/g, 'i')
-    .replace(/ou/g, 'u')
-    .replace(/ai/g, 'e')
-
-  out = out.replace(/[hy]/g, 'i')
-  out = out.replace(/[^a-z0-9]/g, '')
+  let out = ''
+  for (const ch of s) out += map[ch] ?? ch
   return out
 }
 
-function matchesSmartQuery(item: SmartItem, query: string) {
-  const qRaw = normalizeForSearch(query)
-  if (!qRaw) return true
+// fuzzy: ανοχή σε h/i και i/y (η/ι/υ)
+function fuzzyIHI(str: string) {
+  return normalizeGreek(str)
+    .replace(/h/g, 'i')
+    .replace(/y/g, 'i')
+    .replace(/u/g, 'i')
+    .replace(/ei/g, 'i')
+    .replace(/oi/g, 'i')
+    .replace(/yi/g, 'i')
+}
 
-  const fields = [
-    String(item.name || ''),
-    item.kind === 'asset' ? String(item.rf_code || '') : '',
-    item.kind === 'asset' ? String(item.sub_category || '') : '',
-  ].filter(Boolean)
+// match: πιάνει Ελληνικά + Greeklish + fuzzy
+function smartMatch(name: string, query: string) {
+  const q = normalizeGreek(query)
+  if (!q) return true
 
-  for (const field of fields) {
-    const nRaw = normalizeForSearch(field)
-    if (nRaw.includes(qRaw)) return true
+  const n = normalizeGreek(name)
+  if (n.includes(q)) return true
 
-    const nGreeklish = greekToGreeklish(field)
-    if (nGreeklish.includes(qRaw)) return true
+  const nLatin = greekToGreeklish(name)
+  if (nLatin.includes(q)) return true
 
-    const qF = fuzzyLatin(query)
-    const nF1 = fuzzyLatin(field)
-    if (nF1.includes(qF)) return true
-
-    const nF2 = fuzzyLatin(nGreeklish)
-    if (nF2.includes(qF)) return true
-  }
+  // αν ο χρήστης γράφει greeklish (dei/deh) να πιάνει και τα 2
+  const qF = fuzzyIHI(q)
+  const nF = fuzzyIHI(nLatin)
+  if (nF.includes(qF)) return true
 
   return false
 }
 
-function normalizeSubCategory(sub: any) {
-  const s = String(sub || '').trim()
-  const low = s.toLowerCase()
-  // keep original values but map for grouping
-  if (low === 'maintenance') return 'Maintenance'
-  if (low === 'staff') return 'staff'
-  if (low === 'utility' || low === 'utilities') return 'utility'
-  if (low === 'other') return 'other'
-  // sometimes in DB it may already be Maintenance
-  if (s === 'Maintenance') return 'Maintenance'
-  return s || 'other'
+function groupTitle(group: AssetGroup | 'suppliers') {
+  if (group === 'suppliers') return 'Προμηθευτές'
+  if (group === 'staff') return 'Προσωπικό'
+  if (group === 'maintenance') return 'Συντήρηση'
+  if (group === 'utility') return 'Λογαριασμοί'
+  return 'Λοιπά'
 }
 
-function groupTitleForItem(item: SmartItem) {
-  if (item.kind === 'supplier') return 'ΠΡΟΜΗΘΕΥΤΕΣ'
-
-  const sub = normalizeSubCategory(item.sub_category)
-  if (sub === 'utility') return 'ΛΟΓΑΡΙΑΣΜΟΙ'
-  if (sub === 'staff') return 'ΠΡΟΣΩΠΙΚΟ'
-  if (sub === 'Maintenance') return 'ΣΥΝΤΗΡΗΣΗ'
-  return 'ΛΟΙΠΑ'
+function groupFromSubCategory(sub: any): AssetGroup {
+  const s = String(sub || '').trim().toLowerCase()
+  if (s === 'staff') return 'staff'
+  if (s === 'utility' || s === 'utilities') return 'utility'
+  if (s === 'maintenance' || s === 'worker') return 'maintenance'
+  return 'other'
 }
 
-function categoryForItem(item: SmartItem) {
-  // this is INTERNAL ONLY (no UI). Keeps consistency for Analysis.
-  if (item.kind === 'supplier') return 'Εμπορεύματα'
-  const sub = normalizeSubCategory(item.sub_category)
-  if (sub === 'utility') return 'Utilities'
-  if (sub === 'staff') return 'Staff'
-  if (sub === 'Maintenance') return 'Maintenance'
+function categoryFromSelection(sel: SelectedEntity, itemMap: Map<string, SmartItem>) {
+  if (!sel) return 'Other'
+  if (sel.kind === 'supplier') return 'Εμπορεύματα'
+
+  const key = `asset:${sel.id}`
+  const item = itemMap.get(key)
+  const g = item?.group || 'other'
+
+  if (g === 'staff') return 'Staff'
+  if (g === 'utility') return 'Utilities'
+  if (g === 'maintenance') return 'Maintenance'
   return 'Other'
 }
 
@@ -175,8 +163,9 @@ function AddExpenseForm() {
 
   const editId = searchParams.get('editId')
   const selectedDate = searchParams.get('date') || new Date().toISOString().split('T')[0]
-
   const urlStoreId = searchParams.get('store')
+
+  // deep links
   const urlSupId = searchParams.get('supId')
   const urlAssetId = searchParams.get('assetId')
 
@@ -200,49 +189,44 @@ function AddExpenseForm() {
 
   const [dayStats, setDayStats] = useState({ income: 0, expenses: 0 })
 
-  // ✅ Selected entity (no category UI)
-  const [selectedEntity, setSelectedEntity] = useState<{ kind: 'supplier' | 'asset'; id: string } | null>(null)
+  // ✅ Selection replaces category dropdown
+  const [selectedEntity, setSelectedEntity] = useState<SelectedEntity>(null)
 
-  const [isSupModalOpen, setIsSupModalOpen] = useState(false)
-  const [newSupName, setNewSupName] = useState('')
-
-  // ✅ SMART SEARCH
+  // ✅ Smart search
   const [smartQuery, setSmartQuery] = useState('')
   const [smartOpen, setSmartOpen] = useState(false)
-
-  // ✅ RECENTS
-  const [recentIds, setRecentIds] = useState<string[]>([])
+  const [recentKeys, setRecentKeys] = useState<string[]>([])
   const smartBoxRef = useRef<HTMLDivElement | null>(null)
 
-  // ✅ click outside to close results
+  // close on outside tap (mobile-safe)
   useEffect(() => {
-    const onDown = (e: any) => {
-      if (!smartBoxRef.current) return
-      if (!smartBoxRef.current.contains(e.target)) setSmartOpen(false)
+    const handler = (e: any) => {
+      const el = smartBoxRef.current
+      if (!el) return
+      if (!el.contains(e.target)) setSmartOpen(false)
     }
-    document.addEventListener('mousedown', onDown)
-    return () => document.removeEventListener('mousedown', onDown)
+    document.addEventListener('pointerdown', handler, true)
+    return () => document.removeEventListener('pointerdown', handler, true)
   }, [])
 
-  // ✅ load recents from localStorage
+  // recents
   useEffect(() => {
     if (typeof window === 'undefined') return
     const key = `expense_recents_${urlStoreId || 'default'}`
     const raw = localStorage.getItem(key)
-    if (raw) {
-      try {
-        const parsed = JSON.parse(raw)
-        if (Array.isArray(parsed)) setRecentIds(parsed.slice(0, 10))
-      } catch {}
-    }
+    if (!raw) return
+    try {
+      const parsed = JSON.parse(raw)
+      if (Array.isArray(parsed)) setRecentKeys(parsed.slice(0, 10))
+    } catch {}
   }, [urlStoreId])
 
-  const saveRecent = (key: string) => {
+  const saveRecent = (k: string) => {
     if (typeof window === 'undefined') return
-    const storageKey = `expense_recents_${urlStoreId || 'default'}`
-    setRecentIds(prev => {
-      const next = [key, ...prev.filter(x => x !== key)].slice(0, 10)
-      localStorage.setItem(storageKey, JSON.stringify(next))
+    const key = `expense_recents_${urlStoreId || 'default'}`
+    setRecentKeys(prev => {
+      const next = [k, ...prev.filter(x => x !== k)].slice(0, 10)
+      localStorage.setItem(key, JSON.stringify(next))
       return next
     })
   }
@@ -272,19 +256,25 @@ function AddExpenseForm() {
 
       if (profile) setCurrentUsername(profile.username || 'Admin')
 
-      // ✅ IMPORTANT: bring ALL fixed_assets of the store (no sub_category filter, so you will see everyone)
       const [sRes, fRes, tRes] = await Promise.all([
-        supabase.from('suppliers').select('*').eq('store_id', activeStoreId).order('name'),
+        supabase.from('suppliers').select('id, name').eq('store_id', activeStoreId).order('name'),
         supabase
           .from('fixed_assets')
-          .select('id, name, sub_category, rf_code')
+          .select('id, name, sub_category')
           .eq('store_id', activeStoreId)
           .order('name'),
         supabase.from('transactions').select('amount, type').eq('store_id', activeStoreId).eq('date', selectedDate),
       ])
 
       const supData = sRes.data || []
-      const faData = fRes.data || []
+      const faAll = fRes.data || []
+
+      // ✅ κρατάμε ΜΟΝΟ τα sub_category που έχεις στο manage-lists:
+      // staff | Maintenance | utility | other (και πιάνουμε και maintenance σε lowercase)
+      const faData = faAll.filter((x: any) => {
+        const g = groupFromSubCategory(x.sub_category)
+        return g === 'staff' || g === 'maintenance' || g === 'utility' || g === 'other'
+      })
 
       setSuppliers(supData)
       setFixedAssets(faData)
@@ -301,7 +291,7 @@ function AddExpenseForm() {
         setDayStats({ income: inc, expenses: exp })
       }
 
-      // ✅ Edit Mode
+      // ----- EDIT MODE -----
       if (editId) {
         const { data: tx } = await supabase
           .from('transactions')
@@ -318,32 +308,33 @@ function AddExpenseForm() {
           setIsAgainstDebt(tx.type === 'debt_payment')
           setNoInvoice((tx.notes || '').includes('ΧΩΡΙΣ ΤΙΜΟΛΟΓΙΟ'))
 
-          const kind: 'supplier' | 'asset' = tx.supplier_id ? 'supplier' : 'asset'
-          const id = tx.supplier_id || tx.fixed_asset_id || ''
-
-          if (id) {
-            setSelectedEntity({ kind, id })
-            if (kind === 'supplier') {
-              const found = supData.find((x: any) => x.id === id)
-              setSmartQuery(found?.name || '')
-            } else {
-              const found = faData.find((x: any) => x.id === id)
-              setSmartQuery(found?.name || '')
-            }
+          // choose selected entity
+          if (tx.supplier_id) {
+            const id = String(tx.supplier_id)
+            setSelectedEntity({ kind: 'supplier', id })
+            const found = supData.find((x: any) => String(x.id) === id)
+            setSmartQuery(found?.name || '')
+          } else if (tx.fixed_asset_id) {
+            const id = String(tx.fixed_asset_id)
+            setSelectedEntity({ kind: 'asset', id })
+            const found = faData.find((x: any) => String(x.id) === id)
+            setSmartQuery(found?.name || '')
           } else {
             setSelectedEntity(null)
             setSmartQuery('')
           }
         }
       } else {
-        // ✅ Preselect from URL
+        // ----- NEW MODE (DEEP LINKS) -----
         if (urlSupId) {
-          setSelectedEntity({ kind: 'supplier', id: urlSupId })
-          const found = supData.find((x: any) => x.id === urlSupId)
+          const id = String(urlSupId)
+          setSelectedEntity({ kind: 'supplier', id })
+          const found = supData.find((x: any) => String(x.id) === id)
           setSmartQuery(found?.name || '')
         } else if (urlAssetId) {
-          setSelectedEntity({ kind: 'asset', id: urlAssetId })
-          const found = faData.find((x: any) => x.id === urlAssetId)
+          const id = String(urlAssetId)
+          setSelectedEntity({ kind: 'asset', id })
+          const found = faData.find((x: any) => String(x.id) === id)
           setSmartQuery(found?.name || '')
         } else {
           setSelectedEntity(null)
@@ -364,54 +355,83 @@ function AddExpenseForm() {
 
   const currentBalance = useMemo(() => dayStats.income - dayStats.expenses, [dayStats])
 
-  const smartItems = useMemo(() => {
-    const s: SmartItem[] = suppliers.map((x: any) => ({
-      kind: 'supplier',
-      id: String(x.id),
-      name: x.name || '',
-    }))
+  // Build smart items + map
+  const smartItems = useMemo<SmartItem[]>(() => {
+    const sList: SmartItem[] =
+      suppliers?.map((s: any) => ({
+        kind: 'supplier',
+        id: String(s.id),
+        name: String(s.name || ''),
+      })) || []
 
-    const a: SmartItem[] = fixedAssets.map((x: any) => ({
-      kind: 'asset',
-      id: String(x.id),
-      name: x.name || '',
-      sub_category: x.sub_category ?? null,
-      rf_code: x.rf_code ?? null,
-    }))
+    const aList: SmartItem[] =
+      fixedAssets?.map((a: any) => ({
+        kind: 'asset',
+        id: String(a.id),
+        name: String(a.name || ''),
+        sub_category: a.sub_category,
+        group: groupFromSubCategory(a.sub_category),
+      })) || []
 
-    return [...s, ...a]
+    return [...sList, ...aList]
   }, [suppliers, fixedAssets])
 
-  const recentItems = useMemo(() => {
-    if (!recentIds.length) return []
-    const map = new Map(smartItems.map(i => [`${i.kind}:${i.id}`, i]))
-    return recentIds.map(k => map.get(k)).filter(Boolean) as SmartItem[]
-  }, [recentIds, smartItems])
-
-  const groupedResults = useMemo(() => {
-    const q = smartQuery.trim()
-
-    const list = q
-      ? smartItems.filter(i => matchesSmartQuery(i, q)).slice(0, 60)
-      : recentItems.length
-      ? recentItems
-      : smartItems.slice(0, 25)
-
-    const groups: Record<string, SmartItem[]> = {}
-    for (const item of list) {
-      const title = groupTitleForItem(item)
-      if (!groups[title]) groups[title] = []
-      groups[title].push(item)
+  const smartItemMap = useMemo(() => {
+    const m = new Map<string, SmartItem>()
+    for (const it of smartItems) {
+      const k = `${it.kind}:${it.id}`
+      m.set(k, it)
     }
-    return groups
+    return m
+  }, [smartItems])
+
+  const recentItems = useMemo(() => {
+    if (!recentKeys.length) return []
+    return recentKeys.map(k => smartItemMap.get(k)).filter(Boolean) as SmartItem[]
+  }, [recentKeys, smartItemMap])
+
+  const filtered = useMemo(() => {
+    const q = smartQuery.trim()
+    if (!q) {
+      // αν δεν γράφει, δείξε πρόσφατα, αλλιώς λίγα πρώτα
+      return recentItems.length ? recentItems : smartItems.slice(0, 25)
+    }
+    return smartItems.filter(i => smartMatch(i.name, q)).slice(0, 60)
   }, [smartQuery, smartItems, recentItems])
 
-  const pickSmartItem = (item: SmartItem) => {
-    setSmartQuery(item.name || '')
-    setSmartOpen(false)
+  const groupedResults = useMemo(() => {
+    const groups: Record<string, SmartItem[]> = {}
 
+    for (const it of filtered) {
+      const key =
+        it.kind === 'supplier'
+          ? 'suppliers'
+          : (it.group || 'other')
+
+      const title = groupTitle(key as any)
+      if (!groups[title]) groups[title] = []
+      groups[title].push(it)
+    }
+
+    // μικρό sort μέσα σε κάθε group
+    for (const g of Object.keys(groups)) {
+      groups[g] = groups[g].sort((a, b) => String(a.name).localeCompare(String(b.name)))
+    }
+
+    return groups
+  }, [filtered])
+
+  const pickSmartItem = (item: SmartItem) => {
     setSelectedEntity({ kind: item.kind, id: item.id })
+    setSmartQuery(item.name)
+    setSmartOpen(false)
     saveRecent(`${item.kind}:${item.id}`)
+  }
+
+  const clearSelection = () => {
+    setSelectedEntity(null)
+    setSmartQuery('')
+    setSmartOpen(true)
   }
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -423,8 +443,8 @@ function AddExpenseForm() {
   }
 
   const handleSave = async () => {
-    if (!amount || Number(amount) <= 0) return toast.error('Συμπληρώστε το ποσό')
-    if (!selectedEntity?.id) return toast.error('Επιλέξτε δικαιούχο από την αναζήτηση')
+    if (!amount || Number(amount) <= 0) return toast.error('Συμπλήρωσε το ποσό')
+    if (!selectedEntity) return toast.error('Επίλεξε δικαιούχο από την αναζήτηση')
 
     setLoading(true)
 
@@ -432,7 +452,6 @@ function AddExpenseForm() {
       const {
         data: { session },
       } = await supabase.auth.getSession()
-
       if (!session) {
         setLoading(false)
         return router.push('/login')
@@ -448,22 +467,7 @@ function AddExpenseForm() {
         return toast.error('Δεν βρέθηκε κατάστημα (store)')
       }
 
-      // Find selected item (for category + safety)
-      const selectedItem =
-        selectedEntity.kind === 'supplier'
-          ? ({ kind: 'supplier', ...(suppliers.find((x: any) => String(x.id) === String(selectedEntity.id)) || {}) } as any)
-          : ({ kind: 'asset', ...(fixedAssets.find((x: any) => String(x.id) === String(selectedEntity.id)) || {}) } as any)
-
-      const internalCategory =
-        selectedEntity.kind === 'supplier'
-          ? 'Εμπορεύματα'
-          : (() => {
-              const sub = normalizeSubCategory(selectedItem?.sub_category)
-              if (sub === 'utility') return 'Utilities'
-              if (sub === 'staff') return 'Staff'
-              if (sub === 'Maintenance') return 'Maintenance'
-              return 'Other'
-            })()
+      const category = categoryFromSelection(selectedEntity, smartItemMap)
 
       const payload: any = {
         amount: -Math.abs(Number(amount)),
@@ -477,12 +481,12 @@ function AddExpenseForm() {
         supplier_id: selectedEntity.kind === 'supplier' ? selectedEntity.id : null,
         fixed_asset_id: selectedEntity.kind === 'asset' ? selectedEntity.id : null,
 
-        // ✅ No category UI, but keep category consistent in DB
-        category: internalCategory,
+        category,
         created_by_name: currentUsername,
         notes: noInvoice ? (notes ? `${notes} (ΧΩΡΙΣ ΤΙΜΟΛΟΓΙΟ)` : 'ΧΩΡΙΣ ΤΙΜΟΛΟΓΙΟ') : notes,
       }
 
+      // Image upload logic (if present)
       if (imageFile && !noInvoice && !editId) {
         const fileExt = imageFile.name.split('.').pop() || 'jpg'
         const fileName = `${Date.now()}.${fileExt}`
@@ -490,6 +494,7 @@ function AddExpenseForm() {
 
         const { data: uploadData, error: uploadError } = await supabase.storage.from('invoices').upload(filePath, imageFile)
         if (uploadError) throw uploadError
+
         payload.invoice_image = uploadData?.path || null
       }
 
@@ -514,26 +519,22 @@ function AddExpenseForm() {
   }
 
   const selectedLabel = useMemo(() => {
-    if (!selectedEntity?.id) return null
-    if (selectedEntity.kind === 'supplier') {
-      const found = suppliers.find((x: any) => String(x.id) === String(selectedEntity.id))
-      return found?.name || smartQuery || ''
-    }
-    const found = fixedAssets.find((x: any) => String(x.id) === String(selectedEntity.id))
-    return found?.name || smartQuery || ''
-  }, [selectedEntity, suppliers, fixedAssets, smartQuery])
+    if (!selectedEntity) return ''
+    const it = smartItemMap.get(`${selectedEntity.kind}:${selectedEntity.id}`)
+    return it?.name || smartQuery || ''
+  }, [selectedEntity, smartItemMap, smartQuery])
 
-  const selectedBadge = useMemo(() => {
-    if (!selectedEntity?.id) return ''
-    if (selectedEntity.kind === 'supplier') return 'Προμηθευτής'
-
-    const found = fixedAssets.find((x: any) => String(x.id) === String(selectedEntity.id))
-    const sub = normalizeSubCategory(found?.sub_category)
-    if (sub === 'utility') return 'Λογαριασμός'
-    if (sub === 'staff') return 'Προσωπικό'
-    if (sub === 'Maintenance') return 'Συντήρηση'
-    return 'Πάγιο'
-  }, [selectedEntity, fixedAssets])
+  const selectedMeta = useMemo(() => {
+    if (!selectedEntity) return ''
+    const it = smartItemMap.get(`${selectedEntity.kind}:${selectedEntity.id}`)
+    if (!it) return ''
+    if (it.kind === 'supplier') return 'Προμηθευτής'
+    const g = it.group || 'other'
+    if (g === 'maintenance') return 'Συντήρηση'
+    if (g === 'staff') return 'Προσωπικό'
+    if (g === 'utility') return 'Λογαριασμός'
+    return 'Λοιπά'
+  }, [selectedEntity, smartItemMap])
 
   return (
     <div style={iphoneWrapper}>
@@ -550,14 +551,14 @@ function AddExpenseForm() {
             </div>
           </div>
 
-          <Link href={`/?store=${urlStoreId || storeId || ''}&date=${selectedDate}`} style={backBtnStyle}>
+          <Link href={`/?store=${urlStoreId || storeId || ''}`} style={backBtnStyle}>
             ✕
           </Link>
         </div>
 
         <div style={formCard}>
           {/* SMART SEARCH */}
-          <label style={labelStyle}>Δικαιούχος (Smart Search)</label>
+          <label style={labelStyle}>Δικαιούχος</label>
 
           <div ref={smartBoxRef} style={{ position: 'relative' }}>
             <input
@@ -568,20 +569,15 @@ function AddExpenseForm() {
                 setSmartOpen(true)
               }}
               onFocus={() => setSmartOpen(true)}
-              placeholder="🔎 Γράψε όνομα... (ΔΕΗ / dei / deh / ΤΖΗΛΙΟΣ / Ενοίκιο...)"
+              placeholder="Αναζήτηση... (π.χ. ΔΕΗ / deh / Τζηλιος / tzhlios)"
               style={inputStyle}
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
             />
 
             {!!smartQuery && (
-              <button
-                type="button"
-                onClick={() => {
-                  setSmartQuery('')
-                  setSelectedEntity(null)
-                  setSmartOpen(true)
-                }}
-                style={clearBtn}
-              >
+              <button type="button" onClick={clearSelection} style={clearBtn} aria-label="Καθαρισμός">
                 ✕
               </button>
             )}
@@ -589,33 +585,45 @@ function AddExpenseForm() {
             {smartOpen && (
               <div style={resultsPanel}>
                 {Object.keys(groupedResults).length === 0 ? (
-                  <div style={{ padding: 14, fontSize: 16, fontWeight: 800, color: colors.secondaryText }}>
+                  <div style={{ padding: 14, fontSize: 14, fontWeight: 700, color: colors.secondaryText }}>
                     Δεν βρέθηκε αποτέλεσμα
                   </div>
                 ) : (
                   Object.entries(groupedResults).map(([group, items]) => (
                     <div key={group}>
                       <div style={groupHeader}>{group}</div>
+
                       {items.map(item => (
                         <button
                           key={`${item.kind}-${item.id}`}
                           type="button"
-                          onClick={() => pickSmartItem(item)}
+                          onPointerDown={e => {
+                            e.preventDefault()
+                            e.stopPropagation()
+                            pickSmartItem(item)
+                          }}
+                          onTouchStart={e => {
+                            e.preventDefault()
+                            e.stopPropagation()
+                            pickSmartItem(item)
+                          }}
                           style={resultRow}
                         >
-                          <div style={{ fontSize: 16, fontWeight: 900, color: colors.primaryDark }}>
-                            {String(item.name || '')}
-                          </div>
-                          <div style={{ fontSize: 14, fontWeight: 800, color: colors.secondaryText }}>
-                            {item.kind === 'supplier'
-                              ? 'Προμηθευτής'
-                              : normalizeSubCategory(item.sub_category) === 'utility'
-                                ? `Λογαριασμός${item.rf_code ? ` • RF: ${item.rf_code}` : ''}`
-                                : normalizeSubCategory(item.sub_category) === 'staff'
-                                  ? 'Προσωπικό'
-                                  : normalizeSubCategory(item.sub_category) === 'Maintenance'
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                            <div style={{ fontSize: 15, fontWeight: 900, color: colors.primaryDark, textTransform: 'none' }}>
+                              {item.name}
+                            </div>
+                            <div style={{ fontSize: 12, fontWeight: 700, color: colors.secondaryText, textTransform: 'none' }}>
+                              {item.kind === 'supplier'
+                                ? 'Προμηθευτής'
+                                : (item.group === 'maintenance'
                                     ? 'Συντήρηση'
-                                    : 'Πάγιο'}
+                                    : item.group === 'staff'
+                                      ? 'Προσωπικό'
+                                      : item.group === 'utility'
+                                        ? 'Λογαριασμός'
+                                        : 'Λοιπά')}
+                            </div>
                           </div>
                         </button>
                       ))}
@@ -626,22 +634,20 @@ function AddExpenseForm() {
             )}
           </div>
 
-          {!!selectedEntity?.id && !!selectedLabel && (
+          {!!selectedEntity && (
             <div style={selectedBox}>
-              Επιλογή: <span style={{ fontWeight: 900 }}>{selectedLabel}</span> <span style={{ opacity: 0.75 }}>({selectedBadge})</span>
+              Επιλογή: <span style={{ fontWeight: 900 }}>{selectedLabel}</span>
+              {!!selectedMeta && (
+                <span style={{ marginLeft: 8, color: colors.secondaryText, fontWeight: 800 }}>({selectedMeta})</span>
+              )}
             </div>
           )}
-
-          <div style={{ marginTop: 12 }}>
-            <button type="button" onClick={() => setIsSupModalOpen(true)} style={addSupplierBtn}>
-              + Νέος Προμηθευτής
-            </button>
-          </div>
 
           <label style={{ ...labelStyle, marginTop: 20 }}>Ποσό (€)</label>
           <input
             type="number"
             inputMode="decimal"
+            autoFocus={!smartOpen}
             value={amount}
             onChange={e => setAmount(e.target.value)}
             style={inputStyle}
@@ -666,7 +672,7 @@ function AddExpenseForm() {
             >
               {noInvoice && '✓'}
             </div>
-            <span style={{ fontSize: 16, fontWeight: 800, color: noInvoice ? colors.accentRed : colors.primaryDark }}>
+            <span style={{ fontSize: 14, fontWeight: 900, color: noInvoice ? colors.accentRed : colors.primaryDark }}>
               Χωρίς τιμολόγιο
             </span>
           </div>
@@ -760,8 +766,14 @@ function AddExpenseForm() {
                   </div>
                 ) : (
                   <label style={uploadPlaceholder}>
-                    <span style={{ fontSize: 16 }}>📷 Επιλογή φωτογραφίας</span>
-                    <input type="file" accept="image/*" capture="environment" onChange={handleImageChange} style={{ display: 'none' }} />
+                    <span style={{ fontSize: 14, fontWeight: 900 }}>📷 Επιλογή φωτογραφίας</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      onChange={handleImageChange}
+                      style={{ display: 'none' }}
+                    />
                   </label>
                 )}
               </div>
@@ -780,10 +792,10 @@ function AddExpenseForm() {
               }}
             >
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                <span style={{ fontSize: 16, fontWeight: 900 }}>
-                  {loading ? 'SYNCING...' : editId ? 'Ενημέρωση δεδομένων' : 'Ολοκλήρωση εξόδου'}
+                <span style={{ fontSize: 14, fontWeight: 900 }}>
+                  {loading ? 'Αποθήκευση...' : editId ? 'Ενημέρωση' : 'Καταχώρηση'}
                 </span>
-                <span style={{ fontSize: 16, opacity: 0.85, fontWeight: 800, marginTop: 6 }}>
+                <span style={{ fontSize: 14, opacity: 0.85, fontWeight: 800, marginTop: 6 }}>
                   Καθαρό ταμείο: {currentBalance.toFixed(2)}€
                 </span>
               </div>
@@ -791,69 +803,6 @@ function AddExpenseForm() {
           </div>
         </div>
       </div>
-
-      {isSupModalOpen && (
-        <div style={modalOverlay}>
-          <div style={modalCard}>
-            <h2 style={{ fontSize: 16, margin: '0 0 15px', fontWeight: 900 }}>Νέος Προμηθευτής</h2>
-
-            <input
-              value={newSupName}
-              onChange={e => setNewSupName(e.target.value)}
-              style={{ ...inputStyle, marginBottom: 15 }}
-              placeholder="Όνομα"
-            />
-
-            <button
-              type="button"
-              onClick={async () => {
-                if (!newSupName.trim()) return
-
-                const activeStoreId =
-                  urlStoreId ||
-                  (typeof window !== 'undefined' ? localStorage.getItem('active_store_id') : null) ||
-                  storeId
-
-                if (!activeStoreId) return toast.error('Δεν βρέθηκε κατάστημα (store)')
-
-                const { data, error } = await supabase
-                  .from('suppliers')
-                  .insert([{ name: newSupName.trim(), store_id: activeStoreId }])
-                  .select()
-                  .single()
-
-                if (error) return toast.error(error.message)
-
-                if (data) {
-                  setSuppliers(prev => [...prev, data].sort((a, b) => String(a.name).localeCompare(String(b.name))))
-                  setSelectedEntity({ kind: 'supplier', id: data.id })
-                  setSmartQuery(data.name || '')
-                  setSmartOpen(false)
-                  saveRecent(`supplier:${data.id}`)
-
-                  setIsSupModalOpen(false)
-                  setNewSupName('')
-                  toast.success('Προστέθηκε!')
-                }
-              }}
-              style={saveBtn}
-            >
-              Προσθήκη
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                setIsSupModalOpen(false)
-                setNewSupName('')
-              }}
-              style={cancelBtn}
-            >
-              Ακύρωση
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   )
 }
@@ -870,6 +819,7 @@ const iphoneWrapper: any = {
   right: 0,
   bottom: 0,
   fontSize: 16,
+  touchAction: 'pan-y',
 }
 
 const headerStyle: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }
@@ -882,7 +832,7 @@ const logoBoxStyle: any = {
   alignItems: 'center',
   justifyContent: 'center',
   color: 'white',
-  fontSize: 16,
+  fontSize: 18,
   fontWeight: 900,
 }
 const backBtnStyle: any = {
@@ -897,14 +847,14 @@ const backBtnStyle: any = {
 }
 
 const formCard: any = { backgroundColor: 'white', padding: 20, borderRadius: 24, border: `1px solid ${colors.border}` }
-const labelStyle: any = { fontSize: 16, fontWeight: 900, color: colors.secondaryText, display: 'block', marginBottom: 8 }
+const labelStyle: any = { fontSize: 12, fontWeight: 900, color: colors.secondaryText, display: 'block', marginBottom: 8 }
 
 const inputStyle: any = {
   width: '100%',
   padding: 14,
   borderRadius: 12,
   border: `1px solid ${colors.border}`,
-  fontSize: 16,
+  fontSize: 16, // ✅ anti-zoom mobile
   fontWeight: 700,
   backgroundColor: colors.bgLight,
   boxSizing: 'border-box',
@@ -930,24 +880,13 @@ const checkboxBox: any = {
   alignItems: 'center',
   justifyContent: 'center',
   color: 'white',
-  fontSize: 16,
+  fontSize: 14,
   fontWeight: 900,
 }
 
 const creditPanel: any = { backgroundColor: colors.bgLight, padding: 16, borderRadius: 14, border: `1px solid ${colors.border}`, marginTop: 20 }
 const checkboxStyle: any = { width: 20, height: 20 }
-const checkLabel: any = { fontSize: 16, fontWeight: 900, color: colors.primaryDark }
-
-const addSupplierBtn: any = {
-  width: '100%',
-  padding: 14,
-  borderRadius: 12,
-  border: `1px solid ${colors.border}`,
-  backgroundColor: colors.white,
-  fontSize: 16,
-  fontWeight: 900,
-  cursor: 'pointer',
-}
+const checkLabel: any = { fontSize: 14, fontWeight: 900, color: colors.primaryDark }
 
 const smartSaveBtn: any = {
   width: '100%',
@@ -977,24 +916,6 @@ const removeImageBtn: any = {
   fontWeight: 900,
 }
 
-// modal
-const modalOverlay: any = {
-  position: 'fixed',
-  top: 0,
-  left: 0,
-  right: 0,
-  bottom: 0,
-  backgroundColor: 'rgba(0,0,0,0.5)',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  zIndex: 1000,
-  padding: 20,
-}
-const modalCard: any = { backgroundColor: 'white', padding: 20, borderRadius: 20, width: '100%', maxWidth: 420, border: `1px solid ${colors.border}` }
-const saveBtn: any = { width: '100%', padding: 16, backgroundColor: colors.accentRed, color: 'white', border: 'none', borderRadius: 14, fontWeight: 900, marginTop: 10, fontSize: 16, cursor: 'pointer' }
-const cancelBtn: any = { width: '100%', padding: 16, backgroundColor: colors.white, color: colors.primaryDark, border: `1px solid ${colors.border}`, borderRadius: 14, fontWeight: 900, marginTop: 10, fontSize: 16, cursor: 'pointer' }
-
 // search ui
 const clearBtn: any = {
   position: 'absolute',
@@ -1010,25 +931,33 @@ const clearBtn: any = {
   cursor: 'pointer',
   color: colors.secondaryText,
 }
+
 const resultsPanel: any = {
-  marginTop: 8,
+  position: 'absolute',
+  left: 0,
+  right: 0,
+  top: 'calc(100% + 8px)',
+  zIndex: 999,
   border: `1px solid ${colors.border}`,
   borderRadius: 14,
   background: colors.white,
   maxHeight: 360,
   overflowY: 'auto',
+  boxShadow: '0 10px 30px rgba(0,0,0,0.12)',
 }
+
 const groupHeader: any = {
   position: 'sticky',
   top: 0,
   zIndex: 2,
   background: colors.bgLight,
   padding: '10px 12px',
-  fontSize: 16,
+  fontSize: 12,
   fontWeight: 900,
   color: colors.secondaryText,
   borderBottom: `1px solid ${colors.border}`,
 }
+
 const resultRow: any = {
   width: '100%',
   border: 'none',
@@ -1038,13 +967,14 @@ const resultRow: any = {
   cursor: 'pointer',
   borderBottom: `1px solid ${colors.border}`,
 }
+
 const selectedBox: any = {
   marginTop: 12,
   padding: 12,
   borderRadius: 12,
   backgroundColor: colors.bgLight,
   border: `1px solid ${colors.border}`,
-  fontSize: 16,
+  fontSize: 14,
   fontWeight: 700,
 }
 
