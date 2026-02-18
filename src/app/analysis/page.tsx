@@ -1,7 +1,7 @@
 'use client'
 export const dynamic = 'force-dynamic'
 
-import { useEffect, useState, Suspense, useMemo, useCallback, useRef } from 'react'
+import { useEffect, useState, Suspense, useMemo, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
@@ -15,13 +15,14 @@ import {
   Wrench,
   Landmark,
   Printer,
-  ChevronDown,
-  Filter,
-  Receipt,
   Sparkles,
+  Filter,
+  ChevronDown,
+  ChevronUp,
+  X,
 } from 'lucide-react'
 
-/* ---------------- PREMIUM PALETTE ---------------- */
+// --- MODERN PREMIUM PALETTE ---
 const colors = {
   primary: '#0f172a',
   secondary: '#64748b',
@@ -31,10 +32,9 @@ const colors = {
   surface: '#ffffff',
   border: '#e2e8f0',
   indigo: '#6366f1',
-  violet: '#7c3aed',
 }
 
-/* ---------------- CATEGORY META ---------------- */
+// --- CATEGORY META (required order & icons) ---
 const CATEGORY_META: Array<{
   key: 'Εμπορεύματα' | 'Staff' | 'Utilities' | 'Maintenance' | 'Other'
   label: string
@@ -68,47 +68,31 @@ function AnalysisContent() {
   const [transactions, setTransactions] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
 
+  // lists for dynamic filters + correct party names
   const [staff, setStaff] = useState<any[]>([])
   const [suppliers, setSuppliers] = useState<any[]>([])
   const [revenueSources, setRevenueSources] = useState<any[]>([])
   const [maintenanceWorkers, setMaintenanceWorkers] = useState<any[]>([])
 
-  // Smart filters
+  // ✅ Smart Dynamic Filters
   const [filterA, setFilterA] = useState<FilterA>('Όλες')
   const [detailMode, setDetailMode] = useState<DetailMode>('none')
   const [detailId, setDetailId] = useState<string>('all')
 
-  // Date range (month)
+  // ✅ Default to current month
   const [startDate, setStartDate] = useState(format(startOfMonth(new Date()), 'yyyy-MM-dd'))
   const [endDate, setEndDate] = useState(format(endOfMonth(new Date()), 'yyyy-MM-dd'))
 
-  // Z report (same day)
+  // ✅ Z report (same day)
   const isZReport = useMemo(() => startDate === endDate, [startDate, endDate])
 
-  // Print Mode
+  // ✅ Print Mode toggle
   const [printMode, setPrintMode] = useState<PrintMode>('full')
 
-  // Collapsible filters (premium UX)
+  // ✅ Filters accordion (photo-style)
   const [filtersOpen, setFiltersOpen] = useState(true)
-  const filtersBodyRef = useRef<HTMLDivElement | null>(null)
-  const [filtersH, setFiltersH] = useState(0)
 
-  useEffect(() => {
-    const el = filtersBodyRef.current
-    if (!el) return
-    const measure = () => setFiltersH(el.scrollHeight || 0)
-    measure()
-    window.addEventListener('resize', measure)
-    return () => window.removeEventListener('resize', measure)
-  }, [])
-
-  useEffect(() => {
-    const el = filtersBodyRef.current
-    if (!el) return
-    setFiltersH(el.scrollHeight || 0)
-  }, [filterA, detailMode, detailId, startDate, endDate])
-
-  /* ---------------- PRINT CSS (inject once) ---------------- */
+  // ✅ PRINT CSS (inject once)
   useEffect(() => {
     const STYLE_ID = 'analysis-print-css'
     if (document.getElementById(STYLE_ID)) return
@@ -138,13 +122,42 @@ function AnalysisContent() {
     display: block !important;
     background: #fff !important;
   }
+
   [data-print-root="true"] * { box-shadow: none !important; }
-  [data-print-section="true"]{ break-inside: avoid; page-break-inside: avoid; }
-  .print-header { display: block !important; margin: 0 0 10mm 0 !important; padding-bottom: 6mm !important; border-bottom: 1px solid #e5e7eb !important; }
-  .print-title { font-size: 18px !important; font-weight: 900 !important; margin: 0 !important; color: #000 !important; }
-  .print-sub { margin: 4px 0 0 0 !important; font-size: 12px !important; font-weight: 700 !important; color: #374151 !important; }
-  .print-meta { margin: 6px 0 0 0 !important; font-size: 12px !important; font-weight: 700 !important; color: #374151 !important; }
-  [data-print-root="true"] [data-print-row="true"]{ border: 1px solid #e5e7eb !important; background: #fff !important; }
+
+  [data-print-section="true"]{
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .print-header {
+    display: block !important;
+    margin: 0 0 10mm 0 !important;
+    padding-bottom: 6mm !important;
+    border-bottom: 1px solid #e5e7eb !important;
+  }
+  .print-title {
+    font-size: 18px !important;
+    font-weight: 900 !important;
+    margin: 0 !important;
+    color: #000 !important;
+  }
+  .print-sub {
+    margin: 4px 0 0 0 !important;
+    font-size: 12px !important;
+    font-weight: 700 !important;
+    color: #374151 !important;
+  }
+  .print-meta {
+    margin: 6px 0 0 0 !important;
+    font-size: 12px !important;
+    font-weight: 700 !important;
+    color: #374151 !important;
+  }
+  [data-print-root="true"] [data-print-row="true"]{
+    border: 1px solid #e5e7eb !important;
+    background: #fff !important;
+  }
 }
 `
     document.head.appendChild(style)
@@ -327,9 +340,7 @@ function AnalysisContent() {
 
   const periodTx = useMemo(() => {
     if (!storeId || storeId === 'null') return []
-    return transactions
-      .filter((t) => t.store_id === storeId)
-      .filter((t) => t.date >= startDate && t.date <= endDate)
+    return transactions.filter((t) => t.store_id === storeId).filter((t) => t.date >= startDate && t.date <= endDate)
   }, [transactions, storeId, startDate, endDate])
 
   const filteredTx = useMemo(() => {
@@ -388,8 +399,7 @@ function AnalysisContent() {
     const cashOut = filteredTx
       .filter(
         (t) =>
-          (t.type === 'expense' || t.type === 'debt_payment') &&
-          String(t.payment_method || '').toLowerCase() === 'cash'
+          (t.type === 'expense' || t.type === 'debt_payment') && String(t.payment_method || '').toLowerCase() === 'cash'
       )
       .reduce((acc, t) => acc + Math.abs(Number(t.amount) || 0), 0)
 
@@ -428,7 +438,8 @@ function AnalysisContent() {
 
     const byStaff: Record<string, number> = {}
     for (const t of staffTxs) {
-      const name = t.fixed_assets?.name || staff.find((s) => String(s.id) === String(t.fixed_asset_id))?.name || 'Άγνωστος'
+      const name =
+        t.fixed_assets?.name || staff.find((s) => String(s.id) === String(t.fixed_asset_id))?.name || 'Άγνωστος'
       byStaff[name] = (byStaff[name] || 0) + Math.abs(Number(t.amount) || 0)
     }
 
@@ -465,270 +476,235 @@ function AnalysisContent() {
     return ''
   }, [detailMode])
 
-  const activeFilterChip = useMemo(() => {
-    const items: string[] = []
-    items.push(`${startDate} → ${endDate}`)
-    if (filterA !== 'Όλες') items.push(filterA)
-    if (detailMode !== 'none' && detailId !== 'all') {
-      const found = detailOptions.find((x: any) => String(x.id) === String(detailId))
-      if (found?.name) items.push(found.name)
-    }
-    return items
-  }, [startDate, endDate, filterA, detailMode, detailId, detailOptions])
+  const periodLabel = useMemo(() => {
+    return `${startDate} → ${endDate}`
+  }, [startDate, endDate])
 
   return (
     <div style={pageWrap} data-print-root="true">
       <Toaster position="top-center" richColors />
 
       <div style={container}>
-        {/* PRINT HEADER (only on print) */}
+        {/* ✅ PRINT HEADER (only visible in print) */}
         <div className="print-header" style={{ display: 'none' }}>
           <h1 className="print-title">{isZReport ? 'Αναφορά Ημέρας (Ζ)' : 'Ανάλυση'}</h1>
           <p className="print-sub">{isZReport ? 'ΚΑΘΑΡΟ ΤΑΜΕΙΟ ΗΜΕΡΑΣ' : 'ΠΛΗΡΗΣ ΟΙΚΟΝΟΜΙΚΗ ΕΙΚΟΝΑ'}</p>
           <p className="print-meta">
-            Περίοδος: {startDate} → {endDate} • Φίλτρο: {filterA} • Εκτύπωση:{' '}
-            {printMode === 'summary' ? 'Σύνοψη' : 'Πλήρες'}
+            Περίοδος: {startDate} → {endDate} • Φίλτρο: {filterA} • Εκτύπωση: {printMode === 'summary' ? 'Σύνοψη' : 'Πλήρες'}
           </p>
         </div>
 
-        {/* TOP BAR */}
-        <div style={topBar} className="no-print">
+        {/* ✅ PHOTO-STYLE HEADER */}
+        <div style={topHeaderCard} className="no-print">
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <div style={appIcon}>
+            <div style={headerIconPill}>
               <Sparkles size={18} />
             </div>
             <div>
-              <div style={topTitle}>{isZReport ? 'Αναφορά Ημέρας (Ζ)' : 'Ανάλυση'}</div>
-              <div style={topSubtitle}>{isZReport ? 'ΚΑΘΑΡΟ ΤΑΜΕΙΟ ΗΜΕΡΑΣ' : 'ΠΛΗΡΗΣ ΟΙΚΟΝΟΜΙΚΗ ΕΙΚΟΝΑ'}</div>
+              <div style={headerTitle}>{isZReport ? 'Αναφορά Ημέρας (Ζ)' : 'Ανάλυση'}</div>
+              <div style={headerSub}>{isZReport ? 'ΚΑΘΑΡΟ ΤΑΜΕΙΟ ΗΜΕΡΑΣ' : 'ΠΛΗΡΗΣ ΟΙΚΟΝΟΜΙΚΗ ΕΙΚΟΝΑ'}</div>
             </div>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <button type="button" onClick={handlePrint} style={miniBtn} aria-label="print">
-              <Printer size={16} />
+          <div style={{ display: 'flex', gap: 10 }}>
+            <button type="button" onClick={handlePrint} style={iconBtn} aria-label="print">
+              <Printer size={18} />
             </button>
-
-            <Link href={`/?store=${storeId}`} style={closeBtn} aria-label="close">
-              ✕
+            <Link href={`/?store=${storeId}`} style={iconBtn as any} aria-label="close">
+              <X size={18} />
             </Link>
           </div>
         </div>
 
-        {/* ACTIVE FILTERS CHIPS */}
-        <div className="no-print" style={chipRow}>
-          {activeFilterChip.map((x, i) => (
-            <div key={`${x}-${i}`} style={chip}>
-              {x}
-            </div>
-          ))}
+        {/* ✅ PERIOD PILL */}
+        <div className="no-print" style={periodPill}>
+          {periodLabel}
         </div>
 
-        {/* FILTERS CARD (collapsible) */}
-        <div className="no-print" style={card}>
+        {/* ✅ FILTERS CARD (collapsible like photo) */}
+        <div style={filtersCard} className="no-print">
           <button
             type="button"
             onClick={() => setFiltersOpen((p) => !p)}
-            style={cardHeaderBtn}
+            style={filtersHeaderBtn}
             aria-label="toggle filters"
           >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <div style={iconPill}>
-                <Filter size={16} />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div style={filtersIconWrap}>
+                <Filter size={18} />
               </div>
               <div style={{ textAlign: 'left' }}>
-                <div style={cardTitle}>Φίλτρα</div>
-                <div style={cardSub}>Περίοδος, κατηγορία και drill-down</div>
+                <div style={filtersTitle}>Φίλτρα</div>
+                <div style={filtersSub}>Περίοδος, κατηγορία και drill-down</div>
               </div>
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <div style={badge}>{filtersOpen ? 'OPEN' : 'CLOSED'}</div>
-              <ChevronDown
-                size={18}
-                style={{ transform: filtersOpen ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform .18s ease' }}
-              />
+              <div style={openPill(filtersOpen)}>{filtersOpen ? 'OPEN' : 'CLOSED'}</div>
+              {filtersOpen ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
             </div>
           </button>
 
-          <div
-            style={{
-              maxHeight: filtersOpen ? filtersH + 24 : 0,
-              overflow: 'hidden',
-              transition: 'max-height 320ms cubic-bezier(.2,.8,.2,1)',
-            }}
-          >
-            <div style={{ padding: 14 }}>
-              <div ref={filtersBodyRef}>
-                <div style={grid2}>
-                  <div>
-                    <label style={label}>ΑΠΟ</label>
-                    <input
-                      type="date"
-                      value={startDate}
-                      onChange={(e) => setStartDate(e.target.value)}
-                      style={input}
-                    />
-                  </div>
-                  <div>
-                    <label style={label}>ΕΩΣ</label>
-                    <input
-                      type="date"
-                      value={endDate}
-                      onChange={(e) => setEndDate(e.target.value)}
-                      style={input}
-                    />
-                  </div>
+          {filtersOpen && (
+            <div style={filtersBody}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div>
+                  <label style={label}>ΑΠΟ</label>
+                  <input
+                    type="date"
+                    value={startDate}
+                    onChange={(e) => setStartDate(e.target.value)}
+                    style={input}
+                  />
                 </div>
+                <div>
+                  <label style={label}>ΕΩΣ</label>
+                  <input
+                    type="date"
+                    value={endDate}
+                    onChange={(e) => setEndDate(e.target.value)}
+                    style={input}
+                  />
+                </div>
+              </div>
 
+              <div style={{ marginTop: 12 }}>
+                <label style={label}>ΦΙΛΤΡΟ ΚΑΤΗΓΟΡΙΑΣ</label>
+                <select value={filterA} onChange={(e) => setFilterA(e.target.value as FilterA)} style={input}>
+                  <option value="Όλες">Όλες</option>
+                  <option value="Έσοδα">Έσοδα</option>
+                  <option value="Εμπορεύματα">Εμπορεύματα</option>
+                  <option value="Προσωπικό">Προσωπικό</option>
+                  <option value="Λογαριασμοί">Λογαριασμοί</option>
+                  <option value="Συντήρηση">Συντήρηση</option>
+                  <option value="Λοιπά">Λοιπά</option>
+                </select>
+              </div>
+
+              {detailMode !== 'none' && (
                 <div style={{ marginTop: 12 }}>
-                  <label style={label}>Φίλτρο Κατηγορίας</label>
-                  <select value={filterA} onChange={(e) => setFilterA(e.target.value as FilterA)} style={input}>
-                    <option value="Όλες">Όλες</option>
-                    <option value="Έσοδα">Έσοδα</option>
-                    <option value="Εμπορεύματα">Εμπορεύματα</option>
-                    <option value="Προσωπικό">Προσωπικό</option>
-                    <option value="Λογαριασμοί">Λογαριασμοί</option>
-                    <option value="Συντήρηση">Συντήρηση</option>
-                    <option value="Λοιπά">Λοιπά</option>
+                  <label style={label}>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                      {DetailIcon ? <DetailIcon size={18} /> : null}
+                      {detailLabel}
+                    </span>
+                  </label>
+
+                  <select value={detailId} onChange={(e) => setDetailId(e.target.value)} style={input}>
+                    <option value="all">Όλοι</option>
+                    {detailOptions.map((x: any) => (
+                      <option key={x.id} value={x.id}>
+                        {x.name}
+                      </option>
+                    ))}
                   </select>
                 </div>
-
-                {detailMode !== 'none' && (
-                  <div style={{ marginTop: 12 }}>
-                    <label style={label}>
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                        {DetailIcon ? <DetailIcon size={16} /> : null}
-                        {detailLabel}
-                      </span>
-                    </label>
-
-                    <select value={detailId} onChange={(e) => setDetailId(e.target.value)} style={input}>
-                      <option value="all">Όλοι</option>
-                      {detailOptions.map((x: any) => (
-                        <option key={x.id} value={x.id}>
-                          {x.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                )}
-              </div>
+              )}
             </div>
-          </div>
+          )}
         </div>
 
-        {/* KPIs */}
+        {/* ✅ KPIs */}
         <div style={kpiGrid} data-print-section="true">
-          <div style={{ ...kpiCard, borderColor: '#fde68a', background: 'linear-gradient(180deg,#fffbeb,#ffffff)' }}>
-            <div style={kpiTop}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 900, color: '#92400e' }}>
-                <Coins size={16} /> Tips
-              </div>
-              <div style={kpiPill('#fffbeb', '#fde68a', '#92400e')}>+</div>
+          <div style={kpiCardWarm}>
+            <div style={kpiTopRow}>
+              <span style={kpiTitleWarm}>
+                <Coins size={18} />
+                Tips
+              </span>
+              <span style={kpiMini}>+</span>
             </div>
-            <div style={kpiValue(colors.primary)}>{kpis.tips.toLocaleString('el-GR')}€</div>
+            <div style={kpiValue}>{kpis.tips.toLocaleString('el-GR')}€</div>
             <div style={kpiHint}>Δεν αφαιρούνται από Net</div>
           </div>
 
-          <div style={{ ...kpiCard, borderColor: '#d1fae5', background: 'linear-gradient(180deg,#ecfdf5,#ffffff)' }}>
-            <div style={kpiTop}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 900, color: colors.success }}>
-                <Receipt size={16} /> Έσοδα
-              </div>
-              <div style={kpiPill('#ecfdf5', '#d1fae5', colors.success)}>+</div>
+          <div style={kpiCardGreen}>
+            <div style={kpiTopRow}>
+              <span style={kpiTitleGreen}>Έσοδα</span>
+              <span style={kpiMini}>+</span>
             </div>
-            <div style={kpiValue(colors.primary)}>{kpis.income.toLocaleString('el-GR')}€</div>
-            <div style={kpiHint}>Income / Collections / Debt</div>
+            <div style={kpiValue}>{kpis.income.toLocaleString('el-GR')}€</div>
+            <div style={kpiHint}>Σύνολο εισπράξεων περιόδου</div>
           </div>
 
-          <div style={{ ...kpiCard, borderColor: '#ffe4e6', background: 'linear-gradient(180deg,#fff1f2,#ffffff)' }}>
-            <div style={kpiTop}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 900, color: colors.danger }}>
-                <Coins size={16} /> Έξοδα
-              </div>
-              <div style={kpiPill('#fff1f2', '#ffe4e6', colors.danger)}>-</div>
+          <div style={kpiCardRed}>
+            <div style={kpiTopRow}>
+              <span style={kpiTitleRed}>Έξοδα</span>
+              <span style={kpiMini}>-</span>
             </div>
-            <div style={kpiValue(colors.primary)}>{kpis.expenses.toLocaleString('el-GR')}€</div>
-            <div style={kpiHint}>Expense + Debt Payment</div>
+            <div style={kpiValue}>{kpis.expenses.toLocaleString('el-GR')}€</div>
+            <div style={kpiHint}>Με πληρωμές & έξοδα</div>
           </div>
 
           <div
             style={{
-              ...kpiCard,
+              ...kpiCardBase,
               borderColor: (isZReport ? kpis.cashNet : kpis.netProfit) >= 0 ? '#d1fae5' : '#ffe4e6',
-              background:
-                (isZReport ? kpis.cashNet : kpis.netProfit) >= 0
-                  ? 'linear-gradient(180deg,#f0fdf4,#ffffff)'
-                  : 'linear-gradient(180deg,#fff1f2,#ffffff)',
+              background: (isZReport ? kpis.cashNet : kpis.netProfit) >= 0 ? '#f0fdf4' : '#fff1f2',
             }}
           >
-            <div style={kpiTop}>
-              <div style={{ fontWeight: 900, color: colors.primary }}>{isZReport ? 'Καθαρό Ταμείο' : 'Καθαρό Κέρδος'}</div>
-              <div
-                style={kpiPill(
-                  (isZReport ? kpis.cashNet : kpis.netProfit) >= 0 ? '#f0fdf4' : '#fff1f2',
-                  (isZReport ? kpis.cashNet : kpis.netProfit) >= 0 ? '#d1fae5' : '#ffe4e6',
-                  (isZReport ? kpis.cashNet : kpis.netProfit) >= 0 ? colors.success : colors.danger
-                )}
+            <div style={kpiTopRow}>
+              <span style={kpiTitleDark}>{isZReport ? 'Καθαρό Ταμείο' : 'Καθαρό Κέρδος'}</span>
+              <span
+                style={{
+                  ...kpiMini,
+                  color: (isZReport ? kpis.cashNet : kpis.netProfit) >= 0 ? colors.success : colors.danger,
+                }}
               >
                 {(isZReport ? kpis.cashNet : kpis.netProfit) >= 0 ? '▲' : '▼'}
-              </div>
+              </span>
             </div>
 
             <div
-              style={kpiValue((isZReport ? kpis.cashNet : kpis.netProfit) >= 0 ? colors.success : colors.danger)}
+              style={{
+                ...kpiValue,
+                color: (isZReport ? kpis.cashNet : kpis.netProfit) >= 0 ? colors.success : colors.danger,
+              }}
             >
               {(isZReport ? kpis.cashNet : kpis.netProfit) >= 0 ? '+' : ''}
               {(isZReport ? kpis.cashNet : kpis.netProfit).toLocaleString('el-GR')}€
             </div>
 
             <div style={kpiHint}>
-              {isZReport ? 'Cash In - Cash Out' : 'Income - Expenses'}
+              * Το Net δεν επηρεάζεται από Tips.
+              {isZReport ? ' (Ταμείο = Μετρητά Έσοδα - Μετρητά Έξοδα)' : ''}
             </div>
           </div>
         </div>
 
-        {/* CATEGORY BREAKDOWN */}
-        <div style={card} data-print-section="true">
-          <div style={sectionHead}>
-            <div>
-              <div style={sectionTitle}>Έξοδα ανά Κατηγορία</div>
-              <div style={sectionSub}>Κατανομή της περιόδου (χωρίς έσοδα)</div>
-            </div>
-            <div style={rightStat}>
-              <div style={rightStatLabel}>Σύνολο</div>
-              <div style={rightStatValue}>{categoryBreakdown.total.toLocaleString('el-GR')}€</div>
-            </div>
+        {/* ✅ CATEGORY BREAKDOWN */}
+        <div style={sectionCard} data-print-section="true">
+          <div style={sectionTitleRow}>
+            <h3 style={sectionTitle}>Έξοδα ανά Κατηγορία</h3>
+            <div style={sectionMeta}>Σύνολο: {categoryBreakdown.total.toLocaleString('el-GR')}€</div>
           </div>
 
           {categoryBreakdown.total <= 0 ? (
-            <div style={emptyBox}>Δεν υπάρχουν έξοδα στην επιλεγμένη περίοδο.</div>
+            <div style={hintBox}>Δεν υπάρχουν έξοδα στην επιλεγμένη περίοδο.</div>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               {CATEGORY_META.map((c) => {
                 const val = categoryBreakdown.result[c.key] || 0
                 const pct = categoryBreakdown.total > 0 ? (val / categoryBreakdown.total) * 100 : 0
                 const Icon = c.Icon
                 return (
-                  <div key={c.key} style={breakRow}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+                  <div key={c.key} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    <div style={catRow}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                        <div style={{ ...miniIcon, color: c.color }}>
-                          <Icon size={16} />
+                        <div style={catIconWrap}>
+                          <Icon size={18} />
                         </div>
-                        <div style={{ fontSize: 16, fontWeight: 900, color: colors.primary }}>{c.label}</div>
+                        <span style={catLabel}>{c.label}</span>
                       </div>
 
-                      <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
-                        <div style={{ fontSize: 14, fontWeight: 900, color: colors.secondary }}>{pct.toFixed(0)}%</div>
-                        <div style={{ fontSize: 16, fontWeight: 900, color: c.color }}>
-                          {val.toLocaleString('el-GR')}€
-                        </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <span style={catPct}>{pct.toFixed(0)}%</span>
+                        <span style={{ ...catVal, color: c.color }}>{val.toLocaleString('el-GR')}€</span>
                       </div>
                     </div>
 
-                    <div style={track}>
-                      <div style={{ ...fill, width: `${pct}%`, backgroundColor: c.color }} />
+                    <div style={progressTrack}>
+                      <div style={{ ...progressFill, width: `${pct}%`, backgroundColor: c.color }} />
                     </div>
                   </div>
                 )
@@ -737,30 +713,25 @@ function AnalysisContent() {
           )}
         </div>
 
-        {/* FULL: STAFF DETAILS */}
+        {/* ✅ FULL MODE ONLY: STAFF DETAILS */}
         {printMode === 'full' && (
-          <div style={card} data-print-section="true">
-            <div style={sectionHead}>
-              <div>
-                <div style={sectionTitle}>Μισθοδοσία ανά Υπάλληλο</div>
-                <div style={sectionSub}>Τρέχων μήνας (για γρήγορη εικόνα)</div>
-              </div>
-              <div style={badge}>{format(new Date(), 'MMMM yyyy')}</div>
+          <div style={sectionCard} data-print-section="true">
+            <div style={sectionTitleRow}>
+              <h3 style={sectionTitle}>Μισθοδοσία ανά Υπάλληλο</h3>
+              <div style={sectionMeta}>{format(new Date(), 'MMMM yyyy')}</div>
             </div>
 
             {staffDetailsThisMonth.length === 0 ? (
-              <div style={emptyBox}>Δεν υπάρχουν εγγραφές μισθοδοσίας αυτόν τον μήνα.</div>
+              <div style={hintBox}>Δεν υπάρχουν εγγραφές μισθοδοσίας αυτόν τον μήνα.</div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 {staffDetailsThisMonth.map((s) => (
                   <div key={s.name} style={rowItem}>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
-                      <div style={rowTitle}>{String(s.name || '').toUpperCase()}</div>
-                      <div style={rowSub}>Καταβλήθηκε</div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      <span style={rowTitle}>{String(s.name || '').toUpperCase()}</span>
+                      <span style={rowSub}>Καταβλήθηκε</span>
                     </div>
-                    <div style={{ fontSize: 16, fontWeight: 900, color: '#0ea5e9' }}>
-                      {s.amount.toLocaleString('el-GR')}€
-                    </div>
+                    <div style={rowAmountBlue}>{s.amount.toLocaleString('el-GR')}€</div>
                   </div>
                 ))}
               </div>
@@ -768,25 +739,18 @@ function AnalysisContent() {
           </div>
         )}
 
-        {/* FULL: TRANSACTIONS LIST */}
+        {/* ✅ FULL MODE ONLY: DETAILED TRANSACTIONS LIST */}
         {printMode === 'full' && (
-          <div style={card} data-print-section="true">
-            <div style={sectionHead}>
-              <div>
-                <div style={sectionTitle}>Κινήσεις Περιόδου</div>
-                <div style={sectionSub}>Λίστα κινήσεων με οντότητα, ποσό και σημειώσεις</div>
-              </div>
-
-              <div style={rightStat}>
-                <div style={rightStatLabel}>Εγγραφές</div>
-                <div style={rightStatValue}>{periodList.length}</div>
-              </div>
+          <div style={sectionCard} data-print-section="true">
+            <div style={sectionTitleRow}>
+              <h3 style={sectionTitle}>Κινήσεις Περιόδου</h3>
+              <div style={sectionMeta}>{periodList.length} εγγραφές</div>
             </div>
 
             {loading ? (
-              <div style={emptyBox}>Φόρτωση...</div>
+              <div style={hintBox}>Φόρτωση...</div>
             ) : periodList.length === 0 ? (
-              <div style={emptyBox}>Δεν υπάρχουν κινήσεις για το φίλτρο που επέλεξες.</div>
+              <div style={hintBox}>Δεν υπάρχουν κινήσεις για το φίλτρο που επέλεξες.</div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 {periodList.map((t: any) => {
@@ -804,7 +768,7 @@ function AnalysisContent() {
                   const pillTx = isInc ? colors.success : isTip ? '#92400e' : colors.danger
 
                   const norm = normalizeExpenseCategory(t)
-                  const isStaffCat = norm === 'Staff'
+                  const isStaff = norm === 'Staff'
                   const isSup = norm === 'Εμπορεύματα'
                   const isUtil = norm === 'Utilities'
                   const isMaint = norm === 'Maintenance'
@@ -812,59 +776,54 @@ function AnalysisContent() {
 
                   const pm = String(t.payment_method || '').trim()
 
-                  const RowIcon = isRev
-                    ? Landmark
-                    : isStaffCat
-                      ? Users
-                      : isSup
-                        ? ShoppingBag
-                        : isUtil
-                          ? Lightbulb
-                          : isMaint
-                            ? Wrench
-                            : isTip
-                              ? Coins
-                              : null
-
                   return (
                     <div key={t.id ?? `${t.date}-${t.created_at}-${absAmt}`} style={listRow} data-print-row="true">
-                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
-                        <div style={rowIconBox(isInc, isTip)}>
-                          {RowIcon ? <RowIcon size={18} /> : <div style={{ width: 18, height: 18 }} />}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, minWidth: 0 }}>
+                        <div style={listTopRow}>
+                          <div style={dateBadge}>{t.date}</div>
+
+                          <div
+                            style={{
+                              ...amountPill,
+                              backgroundColor: pillBg,
+                              border: `1px solid ${pillBr}`,
+                              color: pillTx,
+                            }}
+                          >
+                            {sign}
+                            {absAmt.toLocaleString('el-GR')}€
+                          </div>
                         </div>
 
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
-                            <div style={rowDate}>{t.date}</div>
-                            <div
-                              style={{
-                                padding: '7px 12px',
-                                borderRadius: 999,
-                                backgroundColor: pillBg,
-                                border: `1px solid ${pillBr}`,
-                                fontSize: 16,
-                                fontWeight: 900,
-                                color: pillTx,
-                                whiteSpace: 'nowrap',
-                              }}
-                            >
-                              {sign}
-                              {absAmt.toLocaleString('el-GR')}€
-                            </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+                          <div style={typeIconPill(isInc, isTip)}>
+                            {isRev ? (
+                              <Landmark size={18} />
+                            ) : isStaff ? (
+                              <Users size={18} />
+                            ) : isSup ? (
+                              <ShoppingBag size={18} />
+                            ) : isUtil ? (
+                              <Lightbulb size={18} />
+                            ) : isMaint ? (
+                              <Wrench size={18} />
+                            ) : isTip ? (
+                              <Coins size={18} />
+                            ) : (
+                              <Coins size={18} />
+                            )}
                           </div>
 
-                          <div style={rowName} title={name}>
-                            {name}
-                          </div>
-
-                          {!!t.notes && <div style={rowNotes}>{t.notes}</div>}
-
-                          {!!pm && (
-                            <div style={rowMeta}>
-                              <span style={{ fontWeight: 900 }}>Μέθοδος:</span> {pm}
-                            </div>
-                          )}
+                          <div style={listTitle}>{name}</div>
                         </div>
+
+                        {!!t.notes && <div style={listNote}>{t.notes}</div>}
+
+                        {!!pm && (
+                          <div style={listMeta}>
+                            <span style={{ fontWeight: 900 }}>Μέθοδος:</span> {pm}
+                          </div>
+                        )}
                       </div>
                     </div>
                   )
@@ -874,25 +833,24 @@ function AnalysisContent() {
           </div>
         )}
 
-        {/* FOOT NOTE */}
         <div style={footNote} data-print-section="true">
           * Όλα τα ποσά βασίζονται στις κινήσεις της βάσης για το επιλεγμένο store.
         </div>
 
-        {/* PRINT MODE + BUTTON */}
+        {/* ✅ PRINT BUTTON + MODE TOGGLE */}
         <div className="no-print" style={printWrap}>
-          <div style={switchWrap}>
+          <div style={printModeSwitchWrap}>
             <button
               type="button"
               onClick={() => setPrintMode('summary')}
-              style={{ ...switchBtn, ...(printMode === 'summary' ? switchBtnActive : {}) }}
+              style={{ ...printModeBtn, ...(printMode === 'summary' ? printModeBtnActive : {}) }}
             >
               Σύνοψη
             </button>
             <button
               type="button"
               onClick={() => setPrintMode('full')}
-              style={{ ...switchBtn, ...(printMode === 'full' ? switchBtnActive : {}) }}
+              style={{ ...printModeBtn, ...(printMode === 'full' ? printModeBtnActive : {}) }}
             >
               Πλήρες
             </button>
@@ -904,60 +862,61 @@ function AnalysisContent() {
           </button>
 
           <div style={printHint}>
-            Εκτύπωση: <b>{printMode === 'summary' ? 'Σύνοψη' : 'Πλήρες'}</b> • Ανοίγει το παράθυρο εκτύπωσης για PDF.
+            Εκτύπωση: <b>{printMode === 'summary' ? 'Σύνοψη' : 'Πλήρες'}</b> • Θα ανοίξει το παράθυρο εκτύπωσης για αποθήκευση σε PDF.
           </div>
         </div>
+
+        <div style={{ height: 24 }} />
       </div>
     </div>
   )
 }
 
 /* ---------------- STYLES ---------------- */
+
 const pageWrap: any = {
   minHeight: '100dvh',
   background:
     'radial-gradient(1200px 600px at 20% -10%, #eef2ff 0%, rgba(238,242,255,0) 55%), radial-gradient(1200px 600px at 90% 0%, #ecfdf5 0%, rgba(236,253,245,0) 55%), #f8fafc',
-  padding: 18,
+  padding: 20,
+  touchAction: 'pan-y',
 }
 
-const container: any = {
-  maxWidth: 560,
-  margin: '0 auto',
-  paddingBottom: 140,
-}
+const container: any = { maxWidth: 560, margin: '0 auto', paddingBottom: 120 }
 
-/* Sticky glass topbar */
-const topBar: any = {
-  position: 'sticky',
-  top: 12,
-  zIndex: 20,
+/* Header card like photo */
+const topHeaderCard: any = {
   display: 'flex',
   justifyContent: 'space-between',
   alignItems: 'center',
+  gap: 12,
   padding: 14,
   borderRadius: 22,
   border: `1px solid ${colors.border}`,
   background: 'rgba(255,255,255,0.92)',
   backdropFilter: 'blur(10px)',
   boxShadow: '0 14px 28px rgba(15, 23, 42, 0.06)',
+  position: 'sticky',
+  top: 12,
+  zIndex: 10,
 }
 
-const appIcon: any = {
+const headerIconPill: any = {
   width: 44,
   height: 44,
   borderRadius: 16,
-  background: '#fff',
   border: `1px solid ${colors.border}`,
+  background: '#fff',
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
   color: colors.indigo,
 }
 
-const topTitle: any = { fontSize: 16, fontWeight: 900, color: colors.primary, margin: 0 }
-const topSubtitle: any = { fontSize: 12, fontWeight: 800, color: colors.secondary, marginTop: 2 }
+const headerTitle: any = { fontSize: 16, fontWeight: 900, color: colors.primary }
+const headerSub: any = { fontSize: 12, fontWeight: 900, color: colors.secondary, marginTop: 2 }
 
-const closeBtn: any = {
+const iconBtn: any = {
   width: 44,
   height: 44,
   borderRadius: 16,
@@ -968,38 +927,37 @@ const closeBtn: any = {
   justifyContent: 'center',
   color: '#94a3b8',
   textDecoration: 'none',
-  fontWeight: 900,
-  fontSize: 16,
 }
 
-const miniBtn: any = {
-  width: 44,
-  height: 44,
-  borderRadius: 16,
-  background: '#fff',
-  border: `1px solid ${colors.border}`,
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  color: colors.primary,
-  cursor: 'pointer',
-}
-
-/* Cards */
-const card: any = {
+/* Period pill */
+const periodPill: any = {
   marginTop: 12,
+  width: 'fit-content',
+  padding: '10px 14px',
+  borderRadius: 999,
+  border: `1px solid ${colors.border}`,
+  background: 'rgba(255,255,255,0.9)',
+  boxShadow: '0 10px 18px rgba(15,23,42,0.05)',
+  fontSize: 14,
+  fontWeight: 900,
+  color: colors.primary,
+}
+
+/* Filters card */
+const filtersCard: any = {
+  marginTop: 14,
   borderRadius: 22,
   border: `1px solid ${colors.border}`,
-  background: 'rgba(255,255,255,0.92)',
+  background: 'rgba(255,255,255,0.9)',
   boxShadow: '0 10px 22px rgba(15, 23, 42, 0.05)',
   overflow: 'hidden',
 }
 
-const cardHeaderBtn: any = {
+const filtersHeaderBtn: any = {
   width: '100%',
-  border: 'none',
-  background: 'linear-gradient(180deg, rgba(255,255,255,0.98), rgba(248,250,252,0.9))',
   padding: 14,
+  border: 'none',
+  background: 'linear-gradient(180deg, rgba(255,255,255,0.98), rgba(248,250,252,0.88))',
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'space-between',
@@ -1007,10 +965,10 @@ const cardHeaderBtn: any = {
   color: colors.primary,
 }
 
-const iconPill: any = {
-  width: 38,
-  height: 38,
-  borderRadius: 14,
+const filtersIconWrap: any = {
+  width: 44,
+  height: 44,
+  borderRadius: 16,
   background: '#eef2ff',
   border: `1px solid ${colors.border}`,
   display: 'flex',
@@ -1019,189 +977,159 @@ const iconPill: any = {
   color: colors.indigo,
 }
 
-const cardTitle: any = { fontSize: 14, fontWeight: 900 }
-const cardSub: any = { fontSize: 12, fontWeight: 800, color: colors.secondary, marginTop: 2 }
+const filtersTitle: any = { fontSize: 14, fontWeight: 900 }
+const filtersSub: any = { fontSize: 12, fontWeight: 800, color: colors.secondary, marginTop: 2 }
+const filtersBody: any = { padding: 14 }
 
-const badge: any = {
-  padding: '6px 10px',
+const openPill = (open: boolean): any => ({
+  padding: '8px 12px',
   borderRadius: 999,
-  border: `1px solid ${colors.border}`,
+  border: `1px solid ${open ? '#c7d2fe' : colors.border}`,
   background: '#fff',
-  fontSize: 11,
-  fontWeight: 900,
-  color: colors.primary,
-}
-
-/* Chips */
-const chipRow: any = {
-  display: 'flex',
-  flexWrap: 'wrap',
-  gap: 8,
-  marginTop: 12,
-}
-
-const chip: any = {
-  padding: '8px 10px',
-  borderRadius: 999,
-  border: `1px solid ${colors.border}`,
-  background: '#fff',
+  color: open ? colors.indigo : colors.secondary,
   fontSize: 12,
   fontWeight: 900,
-  color: colors.primary,
-}
+})
 
-/* Inputs */
-const grid2: any = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }
+/* Inputs (16px to avoid mobile zoom) */
 const label: any = { fontSize: 11, fontWeight: 900, color: '#94a3b8', letterSpacing: 0.6, marginBottom: 6, display: 'block' }
 const input: any = {
   width: '100%',
-  padding: 12,
-  borderRadius: 12,
+  padding: 14,
+  borderRadius: 14,
   border: `1px solid ${colors.border}`,
-  background: colors.background,
-  fontWeight: 800,
+  background: '#fff',
+  fontWeight: 900,
   fontSize: 16,
   outline: 'none',
   color: colors.primary,
+  boxShadow: '0 6px 14px rgba(15,23,42,0.04)',
 }
 
-/* KPI grid */
-const kpiGrid: any = { display: 'grid', gridTemplateColumns: '1fr', gap: 12, marginTop: 12 }
-const kpiCard: any = {
-  borderRadius: 18,
+/* KPI */
+const kpiGrid: any = { display: 'grid', gridTemplateColumns: '1fr', gap: 12, marginTop: 16, marginBottom: 16 }
+const kpiCardBase: any = {
+  borderRadius: 22,
   border: `1px solid ${colors.border}`,
   padding: 16,
   background: '#fff',
+  boxShadow: '0 10px 22px rgba(15,23,42,0.05)',
 }
+const kpiCardWarm: any = { ...kpiCardBase, borderColor: '#fde68a', background: '#fffbeb' }
+const kpiCardGreen: any = { ...kpiCardBase, borderColor: '#d1fae5', background: '#ecfdf5' }
+const kpiCardRed: any = { ...kpiCardBase, borderColor: '#ffe4e6', background: '#fff1f2' }
 
-const kpiTop: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }
-const kpiPill = (bg: string, br: string, tx: string): any => ({
-  padding: '7px 10px',
-  borderRadius: 999,
-  backgroundColor: bg,
-  border: `1px solid ${br}`,
-  color: tx,
-  fontWeight: 900,
-  fontSize: 12,
-  minWidth: 34,
-  textAlign: 'center',
-})
+const kpiTopRow: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }
+const kpiMini: any = { fontSize: 14, fontWeight: 900, color: colors.secondary }
 
-const kpiValue = (color: string): any => ({
-  marginTop: 10,
-  fontSize: 28,
-  fontWeight: 900,
-  color,
-  letterSpacing: -0.2,
-})
-
-const kpiHint: any = { marginTop: 6, fontSize: 12, fontWeight: 800, color: colors.secondary }
+const kpiTitleWarm: any = { display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 14, fontWeight: 900, color: '#92400e' }
+const kpiTitleGreen: any = { fontSize: 14, fontWeight: 900, color: colors.success }
+const kpiTitleRed: any = { fontSize: 14, fontWeight: 900, color: colors.danger }
+const kpiTitleDark: any = { fontSize: 14, fontWeight: 900, color: colors.primary }
+const kpiValue: any = { fontSize: 30, fontWeight: 900, color: colors.primary, marginTop: 10 }
+const kpiHint: any = { marginTop: 10, fontSize: 13, fontWeight: 800, color: colors.secondary }
 
 /* Sections */
-const sectionHead: any = {
-  display: 'flex',
-  justifyContent: 'space-between',
-  alignItems: 'flex-start',
-  gap: 12,
+const sectionCard: any = {
+  backgroundColor: 'rgba(255,255,255,0.92)',
+  borderRadius: 22,
+  border: `1px solid ${colors.border}`,
   padding: 16,
-  borderBottom: `1px solid ${colors.border}`,
-  background: 'linear-gradient(180deg, rgba(255,255,255,0.98), rgba(248,250,252,0.92))',
+  marginBottom: 16,
+  boxShadow: '0 10px 22px rgba(15,23,42,0.05)',
 }
 
-const sectionTitle: any = { fontSize: 16, fontWeight: 900, color: colors.primary }
-const sectionSub: any = { marginTop: 4, fontSize: 12, fontWeight: 800, color: colors.secondary }
+const sectionTitleRow: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 12 }
+const sectionTitle: any = { margin: 0, fontSize: 16, fontWeight: 900, color: colors.primary }
+const sectionMeta: any = { fontSize: 13, fontWeight: 900, color: colors.secondary }
 
-const rightStat: any = { textAlign: 'right' }
-const rightStatLabel: any = { fontSize: 11, fontWeight: 900, color: colors.secondary }
-const rightStatValue: any = { fontSize: 16, fontWeight: 900, color: colors.primary, marginTop: 2 }
-
-const emptyBox: any = {
-  padding: 16,
+const hintBox: any = {
+  padding: 14,
+  borderRadius: 16,
+  backgroundColor: '#f8fafc',
+  border: `1px solid ${colors.border}`,
   fontSize: 14,
   fontWeight: 800,
   color: colors.secondary,
 }
 
-/* Breakdown rows */
-const breakRow: any = { padding: 16, display: 'flex', flexDirection: 'column', gap: 8 }
-const miniIcon: any = {
-  width: 34,
-  height: 34,
-  borderRadius: 14,
-  background: '#fff',
-  border: `1px solid ${colors.border}`,
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-}
-const track: any = { height: 10, borderRadius: 999, background: '#e5e7eb', overflow: 'hidden' }
-const fill: any = { height: 10, borderRadius: 999, transition: 'width 0.25s ease' }
+/* Category rows */
+const catRow: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }
+const catIconWrap: any = { width: 36, height: 36, borderRadius: 14, border: `1px solid ${colors.border}`, background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', color: colors.primary }
+const catLabel: any = { fontSize: 14, fontWeight: 900, color: colors.primary }
+const catPct: any = { fontSize: 13, fontWeight: 900, color: colors.secondary }
+const catVal: any = { fontSize: 14, fontWeight: 900 }
 
-/* List rows */
-const listRow: any = {
-  borderRadius: 18,
-  border: `1px solid ${colors.border}`,
-  background: colors.background,
-  padding: 14,
-}
-
-const rowIconBox = (isInc: boolean, isTip: boolean): any => ({
-  width: 44,
-  height: 44,
-  borderRadius: 16,
-  background: isInc ? '#ecfdf5' : isTip ? '#fffbeb' : '#fff1f2',
-  border: `1px solid ${colors.border}`,
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  color: isInc ? colors.success : isTip ? '#92400e' : colors.danger,
-  flex: '0 0 auto',
-})
-
-const rowDate: any = { fontSize: 12, fontWeight: 900, color: colors.secondary }
-const rowName: any = {
-  marginTop: 6,
-  fontSize: 16,
-  fontWeight: 900,
-  color: colors.primary,
-  overflow: 'hidden',
-  textOverflow: 'ellipsis',
-  whiteSpace: 'nowrap',
-}
-const rowNotes: any = { marginTop: 6, fontSize: 13, fontWeight: 800, color: colors.secondary }
-const rowMeta: any = { marginTop: 8, fontSize: 12, fontWeight: 800, color: colors.secondary }
+const progressTrack: any = { height: 10, borderRadius: 999, backgroundColor: '#e5e7eb', overflow: 'hidden' }
+const progressFill: any = { height: 10, borderRadius: 999, transition: 'width 0.25s ease' }
 
 /* Staff rows */
 const rowItem: any = {
-  borderRadius: 18,
-  border: `1px solid ${colors.border}`,
-  background: colors.background,
-  padding: 14,
   display: 'flex',
   justifyContent: 'space-between',
   alignItems: 'center',
-}
-const rowTitle: any = { fontSize: 14, fontWeight: 900, color: colors.primary }
-const rowSub: any = { fontSize: 12, fontWeight: 800, color: colors.secondary }
-
-/* Footer */
-const footNote: any = { marginTop: 12, fontSize: 12, fontWeight: 800, color: colors.secondary, textAlign: 'center' }
-
-/* Print controls */
-const printWrap: any = {
-  marginTop: 14,
   padding: 14,
   borderRadius: 18,
+  backgroundColor: '#fff',
   border: `1px solid ${colors.border}`,
-  background: 'rgba(255,255,255,0.92)',
-  boxShadow: '0 10px 22px rgba(15, 23, 42, 0.05)',
+  boxShadow: '0 6px 14px rgba(15,23,42,0.04)',
+}
+const rowTitle: any = { fontSize: 14, fontWeight: 900, color: colors.primary }
+const rowSub: any = { fontSize: 13, fontWeight: 800, color: colors.secondary }
+const rowAmountBlue: any = { fontSize: 14, fontWeight: 900, color: '#0ea5e9' }
+
+/* Transactions list */
+const listRow: any = {
+  padding: 14,
+  borderRadius: 18,
+  backgroundColor: '#fff',
+  border: `1px solid ${colors.border}`,
+  boxShadow: '0 6px 14px rgba(15,23,42,0.04)',
+}
+const listTopRow: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }
+const dateBadge: any = { fontSize: 13, fontWeight: 900, color: colors.secondary }
+const amountPill: any = { padding: '10px 12px', borderRadius: 999, fontSize: 14, fontWeight: 900, whiteSpace: 'nowrap' }
+
+const typeIconPill = (isInc: boolean, isTip: boolean): any => ({
+  width: 44,
+  height: 44,
+  borderRadius: 16,
+  border: `1px solid ${colors.border}`,
+  background: isInc ? '#ecfdf5' : isTip ? '#fffbeb' : '#fff1f2',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  color: colors.primary,
+})
+
+const listTitle: any = { fontSize: 14, fontWeight: 900, color: colors.primary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }
+const listNote: any = { fontSize: 13, fontWeight: 800, color: colors.secondary }
+const listMeta: any = { fontSize: 13, fontWeight: 800, color: colors.secondary }
+
+/* Print footer area */
+const footNote: any = { marginTop: 10, fontSize: 13, fontWeight: 800, color: colors.secondary }
+
+const printWrap: any = {
+  marginTop: 18,
+  padding: 14,
+  borderRadius: 18,
+  backgroundColor: 'rgba(255,255,255,0.92)',
+  border: `1px solid ${colors.border}`,
+  boxShadow: '0 10px 22px rgba(15,23,42,0.05)',
   display: 'flex',
   flexDirection: 'column',
   gap: 10,
 }
 
-const switchWrap: any = { display: 'flex', background: '#e2e8f0', padding: 4, borderRadius: 14, gap: 6 }
-const switchBtn: any = {
+const printModeSwitchWrap: any = {
+  display: 'flex',
+  backgroundColor: '#e2e8f0',
+  padding: 4,
+  borderRadius: 14,
+  gap: 6,
+}
+
+const printModeBtn: any = {
   flex: 1,
   padding: 12,
   borderRadius: 10,
@@ -1209,10 +1137,14 @@ const switchBtn: any = {
   fontWeight: 900,
   fontSize: 14,
   cursor: 'pointer',
-  background: 'transparent',
+  backgroundColor: 'transparent',
   color: colors.primary,
 }
-const switchBtnActive: any = { background: colors.indigo, color: '#fff' }
+
+const printModeBtnActive: any = {
+  backgroundColor: colors.indigo,
+  color: '#fff',
+}
 
 const printBtn: any = {
   width: '100%',
@@ -1220,18 +1152,18 @@ const printBtn: any = {
   borderRadius: 14,
   border: 'none',
   cursor: 'pointer',
-  fontSize: 16,
+  fontSize: 14,
   fontWeight: 900,
-  background: colors.indigo,
+  backgroundColor: colors.indigo,
   color: '#fff',
   display: 'inline-flex',
   alignItems: 'center',
   justifyContent: 'center',
   gap: 10,
-  boxShadow: '0 12px 18px rgba(99,102,241,0.22)',
+  boxShadow: '0 14px 24px rgba(99,102,241,0.22)',
 }
 
-const printHint: any = { fontSize: 12, fontWeight: 800, color: colors.secondary, textAlign: 'center' }
+const printHint: any = { fontSize: 13, fontWeight: 800, color: colors.secondary, textAlign: 'center' }
 
 export default function AnalysisPage() {
   return (
