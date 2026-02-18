@@ -34,22 +34,16 @@ function AnimatedBody({ open, children }: { open: boolean; children: any }) {
     if (!el) return
 
     const measure = () => {
-      // scrollHeight = πλήρες ύψος περιεχομένου
       const next = el.scrollHeight || 0
       setMaxH(next)
     }
 
-    // Measure now
     measure()
-
-    // Re-measure on resize (mobile rotate etc)
     window.addEventListener('resize', measure)
     return () => window.removeEventListener('resize', measure)
   }, [children])
 
   useEffect(() => {
-    // Όταν ανοίγει: δίνουμε maxHeight = content height
-    // Όταν κλείνει: maxHeight = 0
     if (!open) {
       setMaxH(0)
       return
@@ -62,7 +56,7 @@ function AnimatedBody({ open, children }: { open: boolean; children: any }) {
   return (
     <div
       style={{
-        maxHeight: open ? maxH + 28 : 0, // + λίγο buffer
+        maxHeight: open ? maxH + 28 : 0,
         overflow: 'hidden',
         transition: 'max-height 320ms cubic-bezier(.2,.8,.2,1)',
       }}
@@ -116,8 +110,8 @@ function SettingsContent() {
     email: '',
   })
 
-  // ✅ Accordion: allow null (no auto-open another section)
-  const [openSection, setOpenSection] = useState<SectionId | null>('business')
+  // ✅ IMPORTANT: no section open by default
+  const [openSection, setOpenSection] = useState<SectionId | null>(null)
 
   // Fetch profile
   useEffect(() => {
@@ -306,8 +300,18 @@ function SettingsContent() {
     children: any
   }) => {
     const open = openSection === id
+    const wrapRef = useRef<HTMLDivElement | null>(null)
+
+    // ✅ Scroll to the section when it opens (iOS feel)
+    useEffect(() => {
+      if (!open) return
+      setTimeout(() => {
+        wrapRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      }, 60)
+    }, [open])
+
     return (
-      <div style={sectionCard}>
+      <div ref={wrapRef} style={sectionCard}>
         <button
           type="button"
           onClick={() => setOpenSection(open ? null : id)}
@@ -330,7 +334,6 @@ function SettingsContent() {
           </div>
         </button>
 
-        {/* ✅ Smooth animated body */}
         <AnimatedBody open={open}>{children}</AnimatedBody>
       </div>
     )
@@ -341,6 +344,7 @@ function SettingsContent() {
       <Toaster richColors position="top-center" />
 
       <div style={container}>
+        {/* Top App Header */}
         <div style={topBar}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <div style={appIcon}>
@@ -357,6 +361,7 @@ function SettingsContent() {
           </Link>
         </div>
 
+        {/* Sections */}
         <Section id="appearance" icon={<Monitor size={18} color="#9A3412" />} title="Εμφάνιση" subtitle="Dashboard Features & προβολές">
           <div style={featureCard}>
             <div style={featureHeaderRow}>
