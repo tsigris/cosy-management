@@ -7,19 +7,7 @@ import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { format, startOfMonth, endOfMonth } from 'date-fns'
 import { toast, Toaster } from 'sonner'
-import {
-  Coins,
-  Users,
-  ShoppingBag,
-  Lightbulb,
-  Wrench,
-  Landmark,
-  Printer,
-  Calendar,
-  SlidersHorizontal,
-  BarChart3,
-  X
-} from 'lucide-react'
+import { Coins, Users, ShoppingBag, Lightbulb, Wrench, Landmark, Printer, BarChart3, X } from 'lucide-react'
 
 // --- MODERN PREMIUM PALETTE ---
 const colors = {
@@ -59,86 +47,6 @@ type FilterA =
 
 type DetailMode = 'none' | 'staff' | 'supplier' | 'revenue_source' | 'maintenance'
 type PrintMode = 'summary' | 'full'
-
-function ddmmyyyy(iso: string) {
-  // iso: yyyy-MM-dd
-  if (!iso) return ''
-  const [y, m, d] = iso.split('-')
-  if (!y || !m || !d) return iso
-  return `${d}/${m}/${y}`
-}
-
-/**
- * ✅ iOS/Android SAFE date field:
- * - δείχνει custom κείμενο (dd/MM/yyyy)
- * - από πάνω έχει το native <input type="date"> διάφανο για να ανοίγει picker
- */
-function DateField({
-  label,
-  value,
-  onChange
-}: {
-  label: string
-  value: string
-  onChange: (v: string) => void
-}) {
-  return (
-    <div style={dateTile}>
-      <div style={dateTileLabel}>{label}</div>
-
-      <div style={dateTileInner}>
-        <div style={dateIconWrap}>
-          <Calendar size={18} />
-        </div>
-
-        <div style={dateTextWrap}>
-          <div style={dateTextValue}>{ddmmyyyy(value)}</div>
-          <div style={dateTextHint}>Επιλογή ημερομηνίας</div>
-        </div>
-
-        {/* Native date picker overlay (invisible, but clickable) */}
-        <input
-          type="date"
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          style={nativeDateOverlay}
-          aria-label={label}
-        />
-      </div>
-    </div>
-  )
-}
-
-function SelectTile({
-  label,
-  icon,
-  value,
-  onChange,
-  children
-}: {
-  label: string
-  icon: any
-  value: string
-  onChange: (v: string) => void
-  children: any
-}) {
-  const Icon = icon
-  return (
-    <div style={dateTile}>
-      <div style={dateTileLabel}>{label}</div>
-
-      <div style={selectTileInner}>
-        <div style={dateIconWrap}>
-          <Icon size={18} />
-        </div>
-
-        <select value={value} onChange={(e) => onChange(e.target.value)} style={selectNative}>
-          {children}
-        </select>
-      </div>
-    </div>
-  )
-}
 
 function AnalysisContent() {
   const router = useRouter()
@@ -192,9 +100,7 @@ function AnalysisContent() {
   }
 
   [data-print-root="true"] * { box-shadow: none !important; }
-
   [data-print-section="true"]{ break-inside: avoid; page-break-inside: avoid; }
-
   .print-header { display: block !important; margin: 0 0 10mm 0 !important; padding-bottom: 6mm !important; border-bottom: 1px solid #e5e7eb !important; }
   .print-title { font-size: 18px !important; font-weight: 900 !important; margin: 0 !important; color: #000 !important; }
   .print-sub { margin: 4px 0 0 0 !important; font-size: 12px !important; font-weight: 700 !important; color: #374151 !important; }
@@ -508,11 +414,11 @@ function AnalysisContent() {
   }, [detailMode, staff, suppliers, revenueSources, maintenanceWorkers])
 
   const detailLabel = useMemo(() => {
-    if (detailMode === 'staff') return 'Λεπτομέρεια (Υπάλληλος)'
-    if (detailMode === 'supplier') return 'Λεπτομέρεια (Έμπορος)'
-    if (detailMode === 'revenue_source') return 'Λεπτομέρεια (Πηγή Εσόδων)'
-    if (detailMode === 'maintenance') return 'Λεπτομέρεια (Συντήρηση)'
-    return ''
+    if (detailMode === 'staff') return 'Λεπτομέρεια Υπαλλήλου'
+    if (detailMode === 'supplier') return 'Λεπτομέρεια Εμπόρου'
+    if (detailMode === 'revenue_source') return 'Λεπτομέρεια Πηγής Εσόδων'
+    if (detailMode === 'maintenance') return 'Λεπτομέρεια Συντήρησης'
+    return 'Λεπτομέρεια'
   }, [detailMode])
 
   return (
@@ -520,7 +426,7 @@ function AnalysisContent() {
       <Toaster position="top-center" richColors />
 
       <div style={{ maxWidth: 560, margin: '0 auto', paddingBottom: 120 }}>
-        {/* ✅ PRINT HEADER (only visible in print) */}
+        {/* PRINT HEADER (only visible in print) */}
         <div className="print-header" style={{ display: 'none' }}>
           <h1 className="print-title">{isZReport ? 'Αναφορά Ημέρας (Ζ)' : 'Ανάλυση'}</h1>
           <p className="print-sub">{isZReport ? 'ΚΑΘΑΡΟ ΤΑΜΕΙΟ ΗΜΕΡΑΣ' : 'ΠΛΗΡΗΣ ΟΙΚΟΝΟΜΙΚΗ ΕΙΚΟΝΑ'}</p>
@@ -556,30 +462,36 @@ function AnalysisContent() {
           {startDate} → {endDate}
         </div>
 
-        {/* FILTERS (premium tiles) */}
-        <div style={filterCard} className="no-print">
-          <div style={filterHead}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <div style={filterIconWrap}>
-                <SlidersHorizontal size={18} />
-              </div>
-              <div>
-                <div style={filterTitle}>Φίλτρα</div>
-                <div style={filterSub}>Περίοδος, κατηγορία και drill-down</div>
-              </div>
-            </div>
+        {/* ✅ CLEAN FILTERS (works same on iPhone + Android) */}
+        <div style={filterCardClean} className="no-print">
+          <div style={filterTitleClean}>Φίλτρα</div>
+          <div style={filterSubClean}>Περίοδος, κατηγορία και drill-down</div>
+
+          <div style={fieldGroup}>
+            <label style={fieldLabel}>Από</label>
+            <input
+              type="date"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              style={fieldInput}
+              inputMode="none"
+            />
           </div>
 
-          <div style={tilesGrid}>
-            <DateField label="ΑΠΟ" value={startDate} onChange={setStartDate} />
-            <DateField label="ΕΩΣ" value={endDate} onChange={setEndDate} />
+          <div style={fieldGroup}>
+            <label style={fieldLabel}>Έως</label>
+            <input
+              type="date"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+              style={fieldInput}
+              inputMode="none"
+            />
+          </div>
 
-            <SelectTile
-              label="Φίλτρο Κατηγορίας"
-              icon={SlidersHorizontal}
-              value={filterA}
-              onChange={(v) => setFilterA(v as FilterA)}
-            >
+          <div style={fieldGroup}>
+            <label style={fieldLabel}>Φίλτρο Κατηγορίας</label>
+            <select value={filterA} onChange={(e) => setFilterA(e.target.value as FilterA)} style={fieldInput}>
               <option value="Όλες">Όλες</option>
               <option value="Έσοδα">Έσοδα</option>
               <option value="Εμπορεύματα">Εμπορεύματα</option>
@@ -587,13 +499,16 @@ function AnalysisContent() {
               <option value="Λογαριασμοί">Λογαριασμοί</option>
               <option value="Συντήρηση">Συντήρηση</option>
               <option value="Λοιπά">Λοιπά</option>
-            </SelectTile>
+            </select>
+          </div>
 
-            <SelectTile
-              label={detailMode === 'none' ? 'Λεπτομέρεια' : detailLabel}
-              icon={Landmark}
+          <div style={fieldGroup}>
+            <label style={fieldLabel}>{detailLabel}</label>
+            <select
               value={detailId}
-              onChange={(v) => setDetailId(v)}
+              onChange={(e) => setDetailId(e.target.value)}
+              style={{ ...fieldInput, opacity: detailMode === 'none' ? 0.6 : 1 }}
+              disabled={detailMode === 'none'}
             >
               <option value="all">Όλοι</option>
               {detailMode !== 'none' &&
@@ -602,16 +517,14 @@ function AnalysisContent() {
                     {x.name}
                   </option>
                 ))}
-            </SelectTile>
+            </select>
           </div>
         </div>
 
-        {/* KPI CARDS (2x2 like mock) */}
+        {/* KPI CARDS */}
         <div style={kpiGrid2} data-print-section="true">
           <div style={{ ...kpiCard2, background: 'linear-gradient(180deg, #ecfdf5 0%, #ffffff 70%)' }}>
-            <div style={kpiTopRow}>
-              <div style={kpiLabel}>Έσοδα</div>
-            </div>
+            <div style={kpiLabel}>Έσοδα</div>
             <div style={{ ...kpiValue, color: colors.success }}>+ {kpis.income.toLocaleString('el-GR')}€</div>
             <div style={miniTrack}>
               <div style={{ ...miniFill, width: '68%', background: colors.success }} />
@@ -619,9 +532,7 @@ function AnalysisContent() {
           </div>
 
           <div style={{ ...kpiCard2, background: 'linear-gradient(180deg, #fff1f2 0%, #ffffff 70%)' }}>
-            <div style={kpiTopRow}>
-              <div style={kpiLabel}>Έξοδα</div>
-            </div>
+            <div style={kpiLabel}>Έξοδα</div>
             <div style={{ ...kpiValue, color: colors.danger }}>- {kpis.expenses.toLocaleString('el-GR')}€</div>
             <div style={miniTrack}>
               <div style={{ ...miniFill, width: '68%', background: colors.danger }} />
@@ -629,34 +540,23 @@ function AnalysisContent() {
           </div>
 
           <div style={{ ...kpiCard2, background: 'linear-gradient(180deg, #fffbeb 0%, #ffffff 70%)' }}>
-            <div style={kpiTopRow}>
-              <div style={kpiLabel}>Σύνολο Tips</div>
-            </div>
+            <div style={kpiLabel}>Σύνολο Tips</div>
             <div style={{ ...kpiValue, color: '#b45309' }}>+ {kpis.tips.toLocaleString('el-GR')}€</div>
             <div style={miniTrack}>
               <div style={{ ...miniFill, width: '68%', background: '#f59e0b' }} />
             </div>
           </div>
 
-          <div
-            style={{
-              ...kpiCard2,
-              background: 'linear-gradient(180deg, #0b1220 0%, #111827 70%)',
-              borderColor: '#0b1220'
-            }}
-          >
-            <div style={{ ...kpiTopRow, color: '#e5e7eb' }}>
-              <div style={{ ...kpiLabel, color: '#e5e7eb' }}>{isZReport ? 'Καθαρό Ταμείο' : 'Καθαρό Κέρδος'}</div>
-            </div>
+          <div style={{ ...kpiCard2, background: 'linear-gradient(180deg, #0b1220 0%, #111827 70%)', borderColor: '#0b1220' }}>
+            <div style={{ ...kpiLabel, color: '#e5e7eb' }}>{isZReport ? 'Καθαρό Ταμείο' : 'Καθαρό Κέρδος'}</div>
             <div style={{ ...kpiValue, color: '#ffffff' }}>
-              {(isZReport ? kpis.cashNet : kpis.netProfit) >= 0 ? '+' : '-'}{' '}
-              {Math.abs(isZReport ? kpis.cashNet : kpis.netProfit).toLocaleString('el-GR')}€
+              {(isZReport ? kpis.cashNet : kpis.netProfit) >= 0 ? '+' : '-'} {Math.abs(isZReport ? kpis.cashNet : kpis.netProfit).toLocaleString('el-GR')}€
             </div>
-            <div style={{ ...kpiSubDark }}>Income - Expenses</div>
+            <div style={{ marginTop: 10, fontSize: 12, fontWeight: 800, color: '#cbd5e1' }}>Income - Expenses</div>
           </div>
         </div>
 
-        {/* CATEGORY BREAKDOWN (✅ no cut labels) */}
+        {/* CATEGORY BREAKDOWN */}
         <div style={sectionCard} data-print-section="true">
           <div style={sectionHeadRow}>
             <div>
@@ -683,9 +583,7 @@ function AnalysisContent() {
                       <div style={catIcon}>
                         <Icon size={18} />
                       </div>
-                      <div style={catLabelWrap}>
-                        <div style={catLabel}>{c.label}</div>
-                      </div>
+                      <div style={catLabel}>{c.label}</div>
                     </div>
 
                     <div style={catMid}>
@@ -703,7 +601,7 @@ function AnalysisContent() {
           )}
         </div>
 
-        {/* FULL MODE ONLY: STAFF DETAILS */}
+        {/* STAFF DETAILS */}
         {printMode === 'full' && (
           <div style={sectionCard} data-print-section="true">
             <div style={sectionHeadRow}>
@@ -732,7 +630,7 @@ function AnalysisContent() {
           </div>
         )}
 
-        {/* FULL MODE ONLY: DETAILED TRANSACTIONS LIST */}
+        {/* TRANSACTIONS LIST */}
         {printMode === 'full' && (
           <div style={sectionCard} data-print-section="true">
             <div style={sectionHeadRow}>
@@ -789,9 +687,7 @@ function AnalysisContent() {
                         </div>
 
                         <div style={txName}>{name}</div>
-
                         {!!t.notes && <div style={txNote}>{t.notes}</div>}
-
                         {!!pm && (
                           <div style={txMeta}>
                             <span style={{ fontWeight: 900 }}>Μέθοδος:</span> {pm}
@@ -805,10 +701,6 @@ function AnalysisContent() {
             )}
           </div>
         )}
-
-        <div style={footerNote} data-print-section="true">
-          * Όλα τα ποσά βασίζονται στις κινήσεις της βάσης για το επιλεγμένο store.
-        </div>
 
         {/* PRINT BUTTON + MODE TOGGLE */}
         <div className="no-print" style={printWrap}>
@@ -841,7 +733,8 @@ function AnalysisContent() {
 
 /* ---------------- STYLES ---------------- */
 const iphoneWrapper: any = {
-  background: 'radial-gradient(900px 500px at 20% -10%, #eef2ff 0%, rgba(238,242,255,0) 55%), radial-gradient(900px 500px at 90% 0%, #ecfdf5 0%, rgba(236,253,245,0) 55%), #f8fafc',
+  background:
+    'radial-gradient(900px 500px at 20% -10%, #eef2ff 0%, rgba(238,242,255,0) 55%), radial-gradient(900px 500px at 90% 0%, #ecfdf5 0%, rgba(236,253,245,0) 55%), #f8fafc',
   minHeight: '100dvh',
   padding: 16,
   position: 'absolute',
@@ -907,98 +800,37 @@ const periodPill: any = {
   color: colors.primary
 }
 
-const filterCard: any = {
+/* ✅ Clean filter card */
+const filterCardClean: any = {
   marginTop: 12,
   backgroundColor: 'rgba(255,255,255,0.92)',
   borderRadius: 22,
   border: `1px solid ${colors.border}`,
-  boxShadow: '0 14px 26px rgba(15,23,42,0.06)',
-  overflow: 'hidden'
-}
-
-const filterHead: any = {
   padding: 14,
-  borderBottom: `1px solid ${colors.soft}`
+  boxShadow: '0 14px 26px rgba(15,23,42,0.06)'
 }
-const filterIconWrap: any = {
-  width: 42,
-  height: 42,
-  borderRadius: 14,
-  background: '#eef2ff',
-  border: `1px solid ${colors.border}`,
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  color: colors.indigo
-}
-const filterTitle: any = { fontSize: 16, fontWeight: 950, color: colors.primary }
-const filterSub: any = { fontSize: 12, fontWeight: 800, color: colors.secondary, marginTop: 2 }
+const filterTitleClean: any = { fontSize: 18, fontWeight: 950, color: colors.primary }
+const filterSubClean: any = { marginTop: 4, fontSize: 13, fontWeight: 800, color: colors.secondary }
 
-const tilesGrid: any = {
+const fieldGroup: any = { marginTop: 12 }
+const fieldLabel: any = { display: 'block', marginBottom: 8, fontSize: 13, fontWeight: 950, color: colors.secondary }
+
+const fieldInput: any = {
+  width: '100%',
   padding: 14,
-  display: 'grid',
-  gridTemplateColumns: '1fr 1fr',
-  gap: 12
-}
-
-/* date/select tiles */
-const dateTile: any = {
-  borderRadius: 18,
+  borderRadius: 16,
   border: `1px solid ${colors.border}`,
   background: '#fff',
-  padding: 12,
-  minWidth: 0
-}
-const dateTileLabel: any = { fontSize: 12, fontWeight: 950, color: colors.secondary, letterSpacing: 0.6, marginBottom: 10 }
-const dateTileInner: any = { position: 'relative', display: 'flex', alignItems: 'center', gap: 10, borderRadius: 16, border: `1px solid ${colors.border}`, background: '#fff', padding: 10, minWidth: 0 }
-const selectTileInner: any = { position: 'relative', display: 'flex', alignItems: 'center', gap: 10, borderRadius: 16, border: `1px solid ${colors.border}`, background: '#fff', padding: 10, minWidth: 0 }
-
-const dateIconWrap: any = {
-  width: 40,
-  height: 40,
-  borderRadius: 14,
-  background: '#eef2ff',
-  border: `1px solid ${colors.border}`,
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  color: colors.indigo,
-  flex: '0 0 auto'
-}
-
-const dateTextWrap: any = { minWidth: 0, flex: 1 }
-const dateTextValue: any = { fontSize: 18, fontWeight: 950, color: colors.primary, lineHeight: '20px', whiteSpace: 'nowrap' }
-const dateTextHint: any = { fontSize: 12, fontWeight: 800, color: colors.secondary, marginTop: 2 }
-
-const nativeDateOverlay: any = {
-  position: 'absolute',
-  inset: 0,
-  width: '100%',
-  height: '100%',
-  opacity: 0,
-  cursor: 'pointer'
-}
-
-/* select native */
-const selectNative: any = {
-  width: '100%',
-  border: 'none',
-  outline: 'none',
-  background: 'transparent',
+  color: colors.primary,
   fontSize: 16,
   fontWeight: 900,
-  color: colors.primary,
-  padding: '6px 2px',
-  minWidth: 0
+  outline: 'none',
+  WebkitAppearance: 'none',
+  appearance: 'none'
 }
 
-/* KPI cards */
-const kpiGrid2: any = {
-  marginTop: 14,
-  display: 'grid',
-  gridTemplateColumns: '1fr 1fr',
-  gap: 12
-}
+/* KPI */
+const kpiGrid2: any = { marginTop: 14, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }
 const kpiCard2: any = {
   borderRadius: 20,
   border: `1px solid ${colors.border}`,
@@ -1006,14 +838,12 @@ const kpiCard2: any = {
   padding: 14,
   boxShadow: '0 16px 26px rgba(15,23,42,0.05)'
 }
-const kpiTopRow: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center' }
 const kpiLabel: any = { fontSize: 16, fontWeight: 950, color: colors.primary }
 const kpiValue: any = { fontSize: 22, fontWeight: 950, marginTop: 10 }
 const miniTrack: any = { height: 10, borderRadius: 999, background: '#e5e7eb', overflow: 'hidden', marginTop: 12 }
 const miniFill: any = { height: 10, borderRadius: 999 }
-const kpiSubDark: any = { marginTop: 10, fontSize: 12, fontWeight: 800, color: '#cbd5e1' }
 
-/* Section card */
+/* Section */
 const sectionCard: any = {
   marginTop: 14,
   backgroundColor: 'rgba(255,255,255,0.92)',
@@ -1034,31 +864,10 @@ const totalPill: any = {
   fontSize: 13,
   fontWeight: 900,
   color: colors.primary,
-  whiteSpace: 'nowrap',
-  alignSelf: 'flex-start'
-}
-
-const monthPill: any = {
-  padding: '10px 12px',
-  borderRadius: 999,
-  border: `1px solid ${colors.border}`,
-  background: '#fff',
-  fontSize: 13,
-  fontWeight: 900,
-  color: colors.primary,
   whiteSpace: 'nowrap'
 }
-
-const countPill: any = {
-  padding: '10px 12px',
-  borderRadius: 999,
-  border: `1px solid ${colors.border}`,
-  background: '#fff',
-  fontSize: 13,
-  fontWeight: 900,
-  color: colors.primary,
-  whiteSpace: 'nowrap'
-}
+const monthPill: any = { ...totalPill }
+const countPill: any = { ...totalPill }
 
 const hintBox: any = {
   padding: 14,
@@ -1070,7 +879,7 @@ const hintBox: any = {
   color: colors.secondary
 }
 
-/* ✅ Category rows (no truncation) */
+/* Category rows (no truncation) */
 const catRow: any = {
   display: 'grid',
   gridTemplateColumns: '1fr 160px 110px',
@@ -1078,7 +887,6 @@ const catRow: any = {
   alignItems: 'center',
   minWidth: 0
 }
-
 const catLeft: any = { display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }
 const catIcon: any = {
   width: 40,
@@ -1092,23 +900,14 @@ const catIcon: any = {
   color: colors.secondary,
   flex: '0 0 auto'
 }
-const catLabelWrap: any = { minWidth: 0 }
-const catLabel: any = {
-  fontSize: 16,
-  fontWeight: 950,
-  color: colors.primary,
-  whiteSpace: 'nowrap',
-  overflow: 'visible',
-  textOverflow: 'clip'
-}
-
+const catLabel: any = { fontSize: 16, fontWeight: 950, color: colors.primary, whiteSpace: 'nowrap' }
 const catMid: any = { display: 'flex', alignItems: 'center', gap: 10 }
 const catPct: any = { width: 44, textAlign: 'right', fontSize: 14, fontWeight: 900, color: colors.secondary, whiteSpace: 'nowrap' }
 const catBarTrack: any = { flex: 1, height: 10, borderRadius: 999, background: '#e5e7eb', overflow: 'hidden' }
 const catBarFill: any = { height: 10, borderRadius: 999 }
 const catAmount: any = { textAlign: 'right', fontSize: 16, fontWeight: 950, whiteSpace: 'nowrap' }
 
-/* Staff rows */
+/* Staff */
 const staffRow: any = {
   display: 'flex',
   alignItems: 'center',
@@ -1123,19 +922,12 @@ const staffName: any = { fontSize: 15, fontWeight: 950, color: colors.primary }
 const staffSub: any = { fontSize: 12, fontWeight: 800, color: colors.secondary, marginTop: 4 }
 const staffAmt: any = { fontSize: 16, fontWeight: 950, color: '#0ea5e9', whiteSpace: 'nowrap' }
 
-/* Transactions list */
-const listRow: any = {
-  padding: 14,
-  borderRadius: 18,
-  backgroundColor: '#fff',
-  border: `1px solid ${colors.border}`
-}
+/* Transactions */
+const listRow: any = { padding: 14, borderRadius: 18, backgroundColor: '#fff', border: `1px solid ${colors.border}` }
 const txDate: any = { fontSize: 13, fontWeight: 900, color: colors.secondary, whiteSpace: 'nowrap' }
-const txName: any = { fontSize: 18, fontWeight: 950, color: colors.primary, letterSpacing: 0.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }
+const txName: any = { fontSize: 18, fontWeight: 950, color: colors.primary, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }
 const txNote: any = { fontSize: 13, fontWeight: 800, color: colors.secondary }
 const txMeta: any = { fontSize: 13, fontWeight: 800, color: colors.secondary }
-
-const footerNote: any = { marginTop: 14, fontSize: 13, fontWeight: 800, color: colors.secondary, textAlign: 'center' }
 
 /* Print block */
 const printWrap: any = {
@@ -1149,32 +941,9 @@ const printWrap: any = {
   gap: 10,
   boxShadow: '0 14px 26px rgba(15,23,42,0.06)'
 }
-
-const printModeSwitchWrap: any = {
-  display: 'flex',
-  backgroundColor: '#e2e8f0',
-  padding: 4,
-  borderRadius: 14,
-  gap: 6
-}
-
-const printModeBtn: any = {
-  flex: 1,
-  padding: 12,
-  borderRadius: 10,
-  border: 'none',
-  fontWeight: 950,
-  fontSize: 14,
-  cursor: 'pointer',
-  backgroundColor: 'transparent',
-  color: colors.primary
-}
-
-const printModeBtnActive: any = {
-  backgroundColor: colors.indigo,
-  color: '#fff'
-}
-
+const printModeSwitchWrap: any = { display: 'flex', backgroundColor: '#e2e8f0', padding: 4, borderRadius: 14, gap: 6 }
+const printModeBtn: any = { flex: 1, padding: 12, borderRadius: 10, border: 'none', fontWeight: 950, fontSize: 14, cursor: 'pointer', backgroundColor: 'transparent', color: colors.primary }
+const printModeBtnActive: any = { backgroundColor: colors.indigo, color: '#fff' }
 const printBtn: any = {
   width: '100%',
   padding: 14,
