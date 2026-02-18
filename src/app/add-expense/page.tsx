@@ -16,7 +16,16 @@ const colors = {
   bgLight: '#f8fafc',
   border: '#e2e8f0',
   white: '#ffffff',
+  modalBackdrop: 'rgba(2,6,23,0.6)',
 }
+
+const BANK_OPTIONS = [
+  'Εθνική Τράπεζα',
+  'Eurobank',
+  'Alpha Bank',
+  'Viva Wallet',
+  'Τράπεζα Πειραιώς',
+] as const
 
 type SmartKind = 'supplier' | 'asset'
 type AssetGroup = 'staff' | 'maintenance' | 'utility' | 'other'
@@ -27,9 +36,22 @@ type SmartItem = {
   name: string
   sub_category?: string | null
   group?: AssetGroup
+  rf_code?: string | null
+  bank_name?: string | null
+  iban?: string | null
+  phone?: string | null
+  vat_number?: string | null
+  // staff
+  pay_basis?: 'monthly' | 'daily' | null
+  monthly_salary?: number | null
+  daily_rate?: number | null
+  monthly_days?: number | null
+  start_date?: string | null
 }
 
 type SelectedEntity = { kind: SmartKind; id: string } | null
+
+type CreateTab = 'suppliers' | 'utility' | 'staff' | 'maintenance' | 'other'
 
 function stripDiacritics(str: string) {
   return str.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
@@ -130,12 +152,13 @@ function groupTitle(group: AssetGroup | 'suppliers') {
 }
 
 function groupFromSubCategory(sub: any): AssetGroup {
-  const s = String(sub || '').trim().toLowerCase()
+  const raw = String(sub || '').trim()
+  const s = raw.toLowerCase()
   if (s === 'staff') return 'staff'
   if (s === 'utility' || s === 'utilities') return 'utility'
   if (s === 'maintenance' || s === 'worker') return 'maintenance'
   if (s === 'other') return 'other'
-  if (String(sub || '').trim() === 'Maintenance') return 'maintenance'
+  if (raw === 'Maintenance') return 'maintenance'
   return 'other'
 }
 
@@ -151,6 +174,14 @@ function categoryFromSelection(sel: SelectedEntity, itemMap: Map<string, SmartIt
   if (g === 'utility') return 'Utilities'
   if (g === 'maintenance') return 'Maintenance'
   return 'Other'
+}
+
+function createTabLabel(t: CreateTab) {
+  if (t === 'suppliers') return 'Προμηθευτές'
+  if (t === 'utility') return 'Λογαριασμοί'
+  if (t === 'staff') return 'Προσωπικό'
+  if (t === 'maintenance') return 'Συντήρηση'
+  return 'Λοιπά'
 }
 
 function AddExpenseForm() {
@@ -190,6 +221,43 @@ function AddExpenseForm() {
   const [smartOpen, setSmartOpen] = useState(false)
   const smartBoxRef = useRef<HTMLDivElement | null>(null)
 
+  // ✅ Smart "Create new" modal
+  const [createOpen, setCreateOpen] = useState(false)
+  const [createSaving, setCreateSaving] = useState(false)
+  const [createTab, setCreateTab] = useState<CreateTab>('suppliers')
+
+  // shared
+  const [cName, setCName] = useState('')
+  const [cPhone, setCPhone] = useState('')
+  const [cVat, setCVat] = useState('')
+  const [cBank, setCBank] = useState<string>('')
+  const [cIban, setCIban] = useState('')
+
+  // utility
+  const [cRf, setCRf] = useState('')
+
+  // staff
+  const [cPayBasis, setCPayBasis] = useState<'monthly' | 'daily'>('monthly')
+  const [cMonthlySalary, setCMonthlySalary] = useState('')
+  const [cDailyRate, setCDailyRate] = useState('')
+  const [cMonthlyDays, setCMonthlyDays] = useState('')
+  const [cStartDate, setCStartDate] = useState('')
+
+  const resetCreateForm = useCallback(() => {
+    setCName(smartQuery.trim() || '')
+    setCPhone('')
+    setCVat('')
+    setCBank('')
+    setCIban('')
+    setCRf('')
+    setCPayBasis('monthly')
+    setCMonthlySalary('')
+    setCDailyRate('')
+    setCMonthlyDays('')
+    setCStartDate('')
+  }, [smartQuery])
+
+  // close dropdown on outside
   useEffect(() => {
     const handler = (e: any) => {
       const el = smartBoxRef.current
@@ -226,8 +294,14 @@ function AddExpenseForm() {
       if (profile) setCurrentUsername(profile.username || 'Admin')
 
       const [sRes, fRes, tRes] = await Promise.all([
-        supabase.from('suppliers').select('id, name').eq('store_id', activeStoreId).order('name'),
-        supabase.from('fixed_assets').select('id, name, sub_category').eq('store_id', activeStoreId).order('name'),
+        supabase.from('suppliers').select('id, name, phone, vat_number, bank_name, iban').eq('store_id', activeStoreId).order('name'),
+        supabase
+          .from('fixed_assets')
+          .select(
+            'id, name, sub_category, phone, vat_number, bank_name, iban, monthly_days, monthly_salary, daily_rate, start_date, rf_code, pay_basis',
+          )
+          .eq('store_id', activeStoreId)
+          .order('name'),
         supabase.from('transactions').select('amount, type').eq('store_id', activeStoreId).eq('date', selectedDate),
       ])
 
@@ -321,6 +395,10 @@ function AddExpenseForm() {
         kind: 'supplier',
         id: String(s.id),
         name: String(s.name || ''),
+        phone: s.phone ?? null,
+        vat_number: s.vat_number ?? null,
+        bank_name: s.bank_name ?? null,
+        iban: s.iban ?? null,
       })) || []
 
     const aList: SmartItem[] =
@@ -330,6 +408,16 @@ function AddExpenseForm() {
         name: String(a.name || ''),
         sub_category: a.sub_category,
         group: groupFromSubCategory(a.sub_category),
+        phone: a.phone ?? null,
+        vat_number: a.vat_number ?? null,
+        bank_name: a.bank_name ?? null,
+        iban: a.iban ?? null,
+        rf_code: a.rf_code ?? null,
+        pay_basis: a.pay_basis ?? null,
+        monthly_salary: a.monthly_salary ?? null,
+        daily_rate: a.daily_rate ?? null,
+        monthly_days: a.monthly_days ?? null,
+        start_date: a.start_date ?? null,
       })) || []
 
     return [...sList, ...aList]
@@ -352,18 +440,34 @@ function AddExpenseForm() {
 
   const groupedResults = useMemo(() => {
     const groups: Record<string, SmartItem[]> = {}
-
     for (const it of filtered) {
       const key = it.kind === 'supplier' ? 'suppliers' : (it.group || 'other')
       const title = groupTitle(key as any)
       if (!groups[title]) groups[title] = []
       groups[title].push(it)
     }
-
     for (const g of Object.keys(groups)) {
       groups[g] = groups[g].sort((a, b) => String(a.name).localeCompare(String(b.name)))
     }
+    return groups
+  }, [filtered])
 
+  // fix sort typo safely
+  useEffect(() => {
+    // no-op: kept to avoid TS unused warnings in some configs
+  }, [])
+
+  const groupedResultsSafe = useMemo(() => {
+    const groups: Record<string, SmartItem[]> = {}
+    for (const it of filtered) {
+      const key = it.kind === 'supplier' ? 'suppliers' : (it.group || 'other')
+      const title = groupTitle(key as any)
+      if (!groups[title]) groups[title] = []
+      groups[title].push(it)
+    }
+    for (const g of Object.keys(groups)) {
+      groups[g] = groups[g].sort((a, b) => String(a.name).localeCompare(String(b.name)))
+    }
     return groups
   }, [filtered])
 
@@ -384,6 +488,142 @@ function AddExpenseForm() {
       const file = e.target.files[0]
       setImageFile(file)
       setImagePreview(URL.createObjectURL(file))
+    }
+  }
+
+  const openCreateModal = () => {
+    // default suggestion based on query hints
+    const q = normalizeGreek(smartQuery)
+    const suggest: CreateTab =
+      q.includes('δεη') || q.includes('deh') || q.includes('dei') || q.includes('ενοικ') || q.includes('rf')
+        ? 'utility'
+        : 'suppliers'
+
+    setCreateTab(suggest)
+    resetCreateForm()
+    setCreateOpen(true)
+    setSmartOpen(false)
+  }
+
+  const doCreate = async () => {
+    const activeStoreId =
+      urlStoreId ||
+      (typeof window !== 'undefined' ? localStorage.getItem('active_store_id') : null) ||
+      storeId
+
+    if (!activeStoreId) return toast.error('Δεν βρέθηκε κατάστημα (store)')
+
+    const nm = cName.trim()
+    if (!nm) return toast.error('Γράψε όνομα')
+
+    // field checks
+    if (createTab === 'utility') {
+      const rf = cRf.trim()
+      if (!rf) return toast.error('Γράψε κωδικό RF')
+      if (!cBank) return toast.error('Επίλεξε τράπεζα')
+    }
+
+    if (createTab === 'staff') {
+      const days = cMonthlyDays.trim()
+      if (!days) return toast.error('Γράψε μέρες μήνα')
+      if (cPayBasis === 'monthly' && !cMonthlySalary.trim()) return toast.error('Γράψε μισθό')
+      if (cPayBasis === 'daily' && !cDailyRate.trim()) return toast.error('Γράψε ημερομίσθιο')
+    }
+
+    try {
+      setCreateSaving(true)
+
+      // ---------------- create SUPPLIER ----------------
+      if (createTab === 'suppliers') {
+        const payload: any = {
+          name: nm,
+          phone: cPhone.trim() || null,
+          vat_number: cVat.trim() || null,
+          bank_name: cBank || null,
+          iban: cIban.trim() || null,
+          store_id: activeStoreId,
+        }
+
+        const { data, error } = await supabase.from('suppliers').insert([payload]).select('id, name, phone, vat_number, bank_name, iban').single()
+        if (error) throw error
+
+        setSuppliers(prev => [...prev, data].sort((a, b) => String(a.name).localeCompare(String(b.name))))
+        setSelectedEntity({ kind: 'supplier', id: String(data.id) })
+        setSmartQuery(String(data.name || nm))
+        toast.success('Προστέθηκε στους Προμηθευτές')
+        setCreateOpen(false)
+        return
+      }
+
+      // ---------------- create FIXED_ASSET ----------------
+      const sub_category =
+        createTab === 'maintenance' ? 'Maintenance' : createTab === 'utility' ? 'utility' : createTab === 'staff' ? 'staff' : 'other'
+
+      let payload: any = { store_id: activeStoreId, sub_category, name: nm }
+
+      if (createTab === 'utility') {
+        payload = {
+          ...payload,
+          rf_code: cRf.trim(),
+          bank_name: cBank,
+          phone: null,
+          vat_number: null,
+          iban: null,
+          pay_basis: null,
+          monthly_days: null,
+          monthly_salary: null,
+          daily_rate: null,
+          start_date: null,
+        }
+      } else if (createTab === 'staff') {
+        payload = {
+          ...payload,
+          bank_name: cBank || null,
+          iban: cIban.trim() || null,
+          pay_basis: cPayBasis,
+          monthly_days: cMonthlyDays.trim() ? Number(cMonthlyDays.trim()) : null,
+          monthly_salary: cPayBasis === 'monthly' && cMonthlySalary.trim() ? Number(cMonthlySalary.trim()) : null,
+          daily_rate: cPayBasis === 'daily' && cDailyRate.trim() ? Number(cDailyRate.trim()) : null,
+          start_date: cStartDate.trim() || null,
+          rf_code: null,
+          phone: null,
+          vat_number: null,
+        }
+      } else {
+        // maintenance / other
+        payload = {
+          ...payload,
+          phone: cPhone.trim() || null,
+          vat_number: cVat.trim() || null,
+          bank_name: cBank || null,
+          iban: cIban.trim() || null,
+
+          rf_code: null,
+          pay_basis: null,
+          monthly_days: null,
+          monthly_salary: null,
+          daily_rate: null,
+          start_date: null,
+        }
+      }
+
+      const { data, error } = await supabase
+        .from('fixed_assets')
+        .insert([payload])
+        .select('id, name, sub_category, phone, vat_number, bank_name, iban, monthly_days, monthly_salary, daily_rate, start_date, rf_code, pay_basis')
+        .single()
+
+      if (error) throw error
+
+      setFixedAssets(prev => [...prev, data].sort((a, b) => String(a.name).localeCompare(String(b.name))))
+      setSelectedEntity({ kind: 'asset', id: String(data.id) })
+      setSmartQuery(String(data.name || nm))
+      toast.success(`Προστέθηκε σε: ${createTabLabel(createTab)}`)
+      setCreateOpen(false)
+    } catch (e: any) {
+      toast.error(e?.message || 'Αποτυχία καταχώρησης')
+    } finally {
+      setCreateSaving(false)
     }
   }
 
@@ -480,6 +720,14 @@ function AddExpenseForm() {
     return 'Λοιπά'
   }, [selectedEntity, smartItemMap])
 
+  const showCreateInline = useMemo(() => {
+    const q = smartQuery.trim()
+    if (!smartOpen) return false
+    if (!q) return false
+    if (filtered.length > 0) return false
+    return true
+  }, [smartOpen, smartQuery, filtered.length])
+
   return (
     <div style={iphoneWrapper}>
       <Toaster position="top-center" richColors />
@@ -527,12 +775,38 @@ function AddExpenseForm() {
 
             {smartOpen && smartQuery.trim() && (
               <div style={resultsPanel}>
-                {Object.keys(groupedResults).length === 0 ? (
-                  <div style={{ padding: 14, fontSize: 14, fontWeight: 700, color: colors.secondaryText }}>
-                    Δεν βρέθηκε αποτέλεσμα
-                  </div>
+                {showCreateInline && (
+                  <button
+                    type="button"
+                    onPointerDown={e => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      openCreateModal()
+                    }}
+                    style={createRow}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                      <div>
+                        <div style={{ fontSize: 15, fontWeight: 900, color: colors.primaryDark }}>
+                          Δεν βρέθηκε: <span style={{ color: colors.accentBlue }}>{smartQuery.trim()}</span>
+                        </div>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: colors.secondaryText }}>
+                          Πάτα για καταχώρηση στη λίστα (επιλογή κατηγορίας)
+                        </div>
+                      </div>
+                      <div style={plusPill}>＋</div>
+                    </div>
+                  </button>
+                )}
+
+                {Object.keys(groupedResultsSafe).length === 0 ? (
+                  !showCreateInline ? (
+                    <div style={{ padding: 14, fontSize: 14, fontWeight: 700, color: colors.secondaryText }}>
+                      Δεν βρέθηκε αποτέλεσμα
+                    </div>
+                  ) : null
                 ) : (
-                  Object.entries(groupedResults).map(([group, items]) => (
+                  Object.entries(groupedResultsSafe).map(([group, items]) => (
                     <div key={group}>
                       <div style={groupHeader}>{group}</div>
 
@@ -726,6 +1000,189 @@ function AddExpenseForm() {
           </div>
         </div>
       </div>
+
+      {/* ✅ CREATE MODAL */}
+      {createOpen && (
+        <div style={modalOverlay} onMouseDown={() => !createSaving && setCreateOpen(false)}>
+          <div style={modalCard} onMouseDown={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+              <h2 style={{ margin: 0, fontSize: 16, fontWeight: 900, color: colors.primaryDark }}>Νέα καταχώρηση</h2>
+              <button
+                type="button"
+                onClick={() => !createSaving && setCreateOpen(false)}
+                style={modalCloseBtn}
+                aria-label="Κλείσιμο"
+              >
+                ✕
+              </button>
+            </div>
+
+            <p style={{ margin: '8px 0 14px', fontSize: 13, fontWeight: 700, color: colors.secondaryText }}>
+              Δεν βρέθηκε <strong>{smartQuery.trim()}</strong>. Διάλεξε κατηγορία και συμπλήρωσε τα πεδία.
+            </p>
+
+            {/* category picker */}
+            <label style={modalLabel}>Κατηγορία</label>
+            <select
+              value={createTab}
+              onChange={e => {
+                setCreateTab(e.target.value as CreateTab)
+                resetCreateForm()
+              }}
+              style={modalSelect}
+              disabled={createSaving}
+            >
+              <option value="suppliers">Προμηθευτές</option>
+              <option value="utility">Λογαριασμοί</option>
+              <option value="staff">Προσωπικό</option>
+              <option value="maintenance">Συντήρηση</option>
+              <option value="other">Λοιπά</option>
+            </select>
+
+            {/* forms */}
+            <div style={{ marginTop: 12 }}>
+              <label style={modalLabel}>{createTab === 'staff' ? 'Ονοματεπώνυμο' : 'Όνομα'}</label>
+              <input value={cName} onChange={e => setCName(e.target.value)} style={modalInput} placeholder="π.χ. Τζήλιος" disabled={createSaving} />
+            </div>
+
+            {(createTab === 'suppliers' || createTab === 'maintenance' || createTab === 'other') && (
+              <>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 10 }}>
+                  <div>
+                    <label style={modalLabel}>Τηλέφωνο</label>
+                    <input value={cPhone} onChange={e => setCPhone(e.target.value)} style={modalInput} disabled={createSaving} />
+                  </div>
+                  <div>
+                    <label style={modalLabel}>ΑΦΜ</label>
+                    <input value={cVat} onChange={e => setCVat(e.target.value)} style={modalInput} disabled={createSaving} />
+                  </div>
+                </div>
+
+                <div style={{ marginTop: 10 }}>
+                  <label style={modalLabel}>Τράπεζα</label>
+                  <select value={cBank} onChange={e => setCBank(e.target.value)} style={modalSelect} disabled={createSaving}>
+                    <option value="">Επιλέξτε...</option>
+                    {BANK_OPTIONS.map(b => (
+                      <option key={b} value={b}>
+                        {b}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div style={{ marginTop: 10 }}>
+                  <label style={modalLabel}>IBAN</label>
+                  <input value={cIban} onChange={e => setCIban(e.target.value)} style={modalInput} placeholder="GR..." disabled={createSaving} />
+                </div>
+              </>
+            )}
+
+            {createTab === 'utility' && (
+              <>
+                <div style={{ marginTop: 10 }}>
+                  <label style={modalLabel}>Κωδικός RF</label>
+                  <input value={cRf} onChange={e => setCRf(e.target.value)} style={modalInput} placeholder="RF..." disabled={createSaving} />
+                </div>
+
+                <div style={{ marginTop: 10 }}>
+                  <label style={modalLabel}>Τράπεζα</label>
+                  <select value={cBank} onChange={e => setCBank(e.target.value)} style={modalSelect} disabled={createSaving}>
+                    <option value="">Επιλέξτε...</option>
+                    {BANK_OPTIONS.map(b => (
+                      <option key={b} value={b}>
+                        {b}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </>
+            )}
+
+            {createTab === 'staff' && (
+              <>
+                <div style={{ marginTop: 10 }}>
+                  <label style={modalLabel}>Τύπος συμφωνίας</label>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                    <button
+                      type="button"
+                      onClick={() => setCPayBasis('monthly')}
+                      style={{
+                        ...segBtn,
+                        backgroundColor: cPayBasis === 'monthly' ? colors.primaryDark : colors.white,
+                        color: cPayBasis === 'monthly' ? 'white' : colors.primaryDark,
+                        borderColor: cPayBasis === 'monthly' ? colors.primaryDark : colors.border,
+                      }}
+                      disabled={createSaving}
+                    >
+                      Μηνιαίος
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCPayBasis('daily')}
+                      style={{
+                        ...segBtn,
+                        backgroundColor: cPayBasis === 'daily' ? colors.primaryDark : colors.white,
+                        color: cPayBasis === 'daily' ? 'white' : colors.primaryDark,
+                        borderColor: cPayBasis === 'daily' ? colors.primaryDark : colors.border,
+                      }}
+                      disabled={createSaving}
+                    >
+                      Ημερομίσθιο
+                    </button>
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginTop: 10 }}>
+                  <div>
+                    <label style={modalLabel}>{cPayBasis === 'monthly' ? 'Μισθός' : 'Ημερομίσθιο'}</label>
+                    <input
+                      value={cPayBasis === 'monthly' ? cMonthlySalary : cDailyRate}
+                      onChange={e => (cPayBasis === 'monthly' ? setCMonthlySalary(e.target.value) : setCDailyRate(e.target.value))}
+                      style={modalInput}
+                      inputMode="decimal"
+                      disabled={createSaving}
+                    />
+                  </div>
+                  <div>
+                    <label style={modalLabel}>Μέρες μήνα</label>
+                    <input value={cMonthlyDays} onChange={e => setCMonthlyDays(e.target.value)} style={modalInput} inputMode="numeric" disabled={createSaving} />
+                  </div>
+                  <div>
+                    <label style={modalLabel}>Ημ. πρόσληψης</label>
+                    <input value={cStartDate} onChange={e => setCStartDate(e.target.value)} style={modalInput} type="date" disabled={createSaving} />
+                  </div>
+                </div>
+
+                <div style={{ marginTop: 10 }}>
+                  <label style={modalLabel}>Τράπεζα</label>
+                  <select value={cBank} onChange={e => setCBank(e.target.value)} style={modalSelect} disabled={createSaving}>
+                    <option value="">Επιλέξτε...</option>
+                    {BANK_OPTIONS.map(b => (
+                      <option key={b} value={b}>
+                        {b}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div style={{ marginTop: 10 }}>
+                  <label style={modalLabel}>IBAN</label>
+                  <input value={cIban} onChange={e => setCIban(e.target.value)} style={modalInput} placeholder="GR..." disabled={createSaving} />
+                </div>
+              </>
+            )}
+
+            <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
+              <button type="button" onClick={() => setCreateOpen(false)} style={modalSecondaryBtn} disabled={createSaving}>
+                Ακύρωση
+              </button>
+              <button type="button" onClick={doCreate} style={modalPrimaryBtn} disabled={createSaving}>
+                {createSaving ? 'Αποθήκευση...' : 'Προσθήκη'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -890,6 +1347,30 @@ const resultRow: any = {
   borderBottom: `1px solid ${colors.border}`,
 }
 
+const createRow: any = {
+  width: '100%',
+  border: 'none',
+  background: '#eef2ff',
+  padding: 12,
+  textAlign: 'left',
+  cursor: 'pointer',
+  borderBottom: `1px solid ${colors.border}`,
+}
+
+const plusPill: any = {
+  width: 34,
+  height: 34,
+  borderRadius: 999,
+  backgroundColor: colors.accentBlue,
+  color: 'white',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  fontWeight: 900,
+  fontSize: 18,
+  flexShrink: 0,
+}
+
 const selectedBox: any = {
   marginTop: 12,
   padding: 12,
@@ -898,6 +1379,89 @@ const selectedBox: any = {
   border: `1px solid ${colors.border}`,
   fontSize: 14,
   fontWeight: 700,
+}
+
+/* modal */
+const modalOverlay: any = {
+  position: 'fixed',
+  inset: 0,
+  backgroundColor: colors.modalBackdrop,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  padding: 16,
+  zIndex: 2000,
+}
+
+const modalCard: any = {
+  width: '100%',
+  maxWidth: 520,
+  background: 'white',
+  borderRadius: 18,
+  border: `1px solid ${colors.border}`,
+  padding: 16,
+  boxShadow: '0 20px 60px rgba(0,0,0,0.25)',
+}
+
+const modalCloseBtn: any = {
+  width: 36,
+  height: 36,
+  borderRadius: 12,
+  border: `1px solid ${colors.border}`,
+  background: colors.white,
+  cursor: 'pointer',
+  fontWeight: 900,
+  fontSize: 16,
+  color: colors.secondaryText,
+}
+
+const modalLabel: any = { display: 'block', fontSize: 12, fontWeight: 900, color: colors.secondaryText, marginBottom: 6 }
+
+const modalInput: any = {
+  width: '100%',
+  padding: 12,
+  borderRadius: 12,
+  border: `1px solid ${colors.border}`,
+  fontSize: 16,
+  fontWeight: 700,
+  backgroundColor: colors.bgLight,
+  boxSizing: 'border-box',
+}
+
+const modalSelect: any = { ...modalInput }
+
+const modalPrimaryBtn: any = {
+  flex: 1,
+  padding: 14,
+  borderRadius: 14,
+  border: 'none',
+  backgroundColor: colors.accentGreen,
+  color: 'white',
+  fontWeight: 900,
+  cursor: 'pointer',
+  fontSize: 14,
+}
+
+const modalSecondaryBtn: any = {
+  flex: 1,
+  padding: 14,
+  borderRadius: 14,
+  border: `1px solid ${colors.border}`,
+  backgroundColor: colors.white,
+  color: colors.primaryDark,
+  fontWeight: 900,
+  cursor: 'pointer',
+  fontSize: 14,
+}
+
+const segBtn: any = {
+  borderRadius: 14,
+  border: `1px solid ${colors.border}`,
+  padding: '12px 12px',
+  cursor: 'pointer',
+  fontSize: 14,
+  fontWeight: 900,
+  userSelect: 'none',
 }
 
 export default function AddExpensePage() {
