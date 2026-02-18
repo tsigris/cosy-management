@@ -23,6 +23,8 @@ import {
   ChevronUp,
 } from 'lucide-react'
 
+type SectionId = 'profile' | 'business' | 'appearance' | 'backup' | 'support'
+
 function SettingsContent() {
   const searchParams = useSearchParams()
   const storeId = searchParams.get('store')
@@ -58,8 +60,8 @@ function SettingsContent() {
     email: '',
   })
 
-  // Accordion states (premium experience)
-  const [openSection, setOpenSection] = useState<'profile' | 'business' | 'appearance' | 'backup' | 'support'>('business')
+  // ✅ Accordion: επιτρέπουμε null για να μην ανοίγει άλλη όταν κλείνεις
+  const [openSection, setOpenSection] = useState<SectionId | null>('business')
 
   // Fetch profile
   useEffect(() => {
@@ -241,7 +243,7 @@ function SettingsContent() {
     subtitle,
     children,
   }: {
-    id: 'profile' | 'business' | 'appearance' | 'backup' | 'support'
+    id: SectionId
     icon: any
     title: string
     subtitle: string
@@ -252,8 +254,13 @@ function SettingsContent() {
       <div style={sectionCard}>
         <button
           type="button"
-          onClick={() => setOpenSection(open ? 'business' : id)}
-          style={{ ...sectionHeaderBtn, borderBottomLeftRadius: open ? 0 : 22, borderBottomRightRadius: open ? 0 : 22 }}
+          // ✅ κλείνει σε null, δεν ανοίγει άλλη καρτέλα
+          onClick={() => setOpenSection(open ? null : id)}
+          style={{
+            ...sectionHeaderBtn,
+            borderBottomLeftRadius: open ? 0 : 22,
+            borderBottomRightRadius: open ? 0 : 22,
+          }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <div style={sectionIconWrap}>{icon}</div>
@@ -263,7 +270,8 @@ function SettingsContent() {
             </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <span style={chip}>{id === 'appearance' ? 'Store' : ' '}</span>
+            {/* ✅ μην βάζεις κενό chip */}
+            {id === 'appearance' ? <span style={chip}>Store</span> : null}
             {open ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
           </div>
         </button>
@@ -295,13 +303,8 @@ function SettingsContent() {
         </div>
 
         {/* Sections */}
-        <Section
-          id="appearance"
-          icon={<Monitor size={18} color="#9A3412" />}
-          title="Εμφάνιση"
-          subtitle="Dashboard Features & προβολές"
-        >
-          {/* ✅ Keep this EXACT look (photo-style) */}
+        <Section id="appearance" icon={<Monitor size={18} color="#9A3412" />} title="Εμφάνιση" subtitle="Dashboard Features & προβολές">
+          {/* ✅ Keep photo-style but tighter */}
           <div style={featureCard}>
             <div style={featureHeaderRow}>
               <div style={featureHeaderLeft}>
@@ -324,7 +327,9 @@ function SettingsContent() {
 
                 <div style={{ flex: 1 }}>
                   <div style={featureMainTitle}>Εμφάνιση Ζ στην αρχική</div>
-                  <div style={featureMainSub}>Το κουμπί Ζ φαίνεται στο Dashboard</div>
+                  <div style={featureMainSub}>
+                    {zEnabled ? 'Το κουμπί Z φαίνεται στο Dashboard' : 'Το κουμπί Z είναι κρυφό από το Dashboard'}
+                  </div>
                 </div>
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -346,12 +351,7 @@ function SettingsContent() {
           </div>
         </Section>
 
-        <Section
-          id="business"
-          icon={<Building2 size={18} color="#0f172a" />}
-          title="Επιχείρηση"
-          subtitle="Στοιχεία καταστήματος & τιμολόγησης"
-        >
+        <Section id="business" icon={<Building2 size={18} color="#0f172a" />} title="Επιχείρηση" subtitle="Στοιχεία καταστήματος & τιμολόγησης">
           <div style={grid2}>
             <div style={field}>
               <label style={label}>ΤΙΤΛΟΣ ΚΑΤΑΣΤΗΜΑΤΟΣ (ΕΜΦΑΝΙΣΗ)</label>
@@ -428,12 +428,7 @@ function SettingsContent() {
               </div>
 
               <div style={backupToggleBox}>
-                <input
-                  type="checkbox"
-                  id="exportAll"
-                  checked={exportAllData}
-                  onChange={(e) => setExportAllData(e.target.checked)}
-                />
+                <input type="checkbox" id="exportAll" checked={exportAllData} onChange={(e) => setExportAllData(e.target.checked)} />
                 <label htmlFor="exportAll" style={backupToggleLabel}>
                   Πλήρες Backup
                 </label>
@@ -496,10 +491,15 @@ const pageWrap: any = {
   minHeight: '100dvh',
   background:
     'radial-gradient(1200px 600px at 20% -10%, #eef2ff 0%, rgba(238,242,255,0) 55%), radial-gradient(1200px 600px at 90% 0%, #ecfdf5 0%, rgba(236,253,245,0) 55%), #f8fafc',
-  padding: 20,
+  padding: 18,
 }
 
-const container: any = { maxWidth: 540, margin: '0 auto', paddingBottom: 90 }
+const container: any = {
+  maxWidth: 540,
+  margin: '0 auto',
+  // ✅ πιο σωστό για bottom nav
+  paddingBottom: 140,
+}
 
 const topBar: any = {
   display: 'flex',
@@ -514,6 +514,7 @@ const topBar: any = {
   position: 'sticky',
   top: 12,
   zIndex: 10,
+  marginBottom: 12,
 }
 
 const appIcon: any = {
@@ -545,24 +546,25 @@ const closeBtn: any = {
 }
 
 const sectionCard: any = {
-  marginTop: 14,
+  marginTop: 12,
   borderRadius: 22,
   border: '1px solid #e2e8f0',
-  background: 'rgba(255,255,255,0.9)',
+  background: 'rgba(255,255,255,0.92)',
   boxShadow: '0 10px 22px rgba(15, 23, 42, 0.05)',
   overflow: 'hidden',
 }
 
 const sectionHeaderBtn: any = {
   width: '100%',
-  padding: 14,
+  padding: '12px 14px',
   border: 'none',
-  background: 'linear-gradient(180deg, rgba(255,255,255,0.98), rgba(248,250,252,0.88))',
+  background: '#ffffff',
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'space-between',
   cursor: 'pointer',
   color: '#0f172a',
+  transition: 'all 0.15s ease',
 }
 
 const sectionIconWrap: any = {
@@ -583,46 +585,79 @@ const chip: any = { padding: '6px 10px', borderRadius: 999, border: '1px solid #
 const sectionBody: any = { padding: 14 }
 
 const label: any = { fontSize: 10, fontWeight: 900, color: '#94a3b8', letterSpacing: 0.6, marginBottom: 6, display: 'block' }
-const input: any = { width: '100%', padding: 12, borderRadius: 12, border: '1px solid #e2e8f0', background: '#f8fafc', fontWeight: 800, fontSize: 14, outline: 'none' }
+const input: any = {
+  width: '100%',
+  padding: 12,
+  borderRadius: 12,
+  border: '1px solid #e2e8f0',
+  background: '#f8fafc',
+  fontWeight: 800,
+  fontSize: 14,
+  outline: 'none',
+}
 const textarea: any = { ...input, height: 72, resize: 'none' }
 const field: any = { marginBottom: 12 }
 const grid2: any = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }
 
-const primaryBtn: any = { width: '100%', background: '#0f172a', color: '#fff', border: 'none', padding: 16, borderRadius: 14, fontWeight: 900, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, cursor: 'pointer', boxShadow: '0 12px 18px rgba(15,23,42,0.18)' }
+const primaryBtn: any = {
+  width: '100%',
+  background: '#0f172a',
+  color: '#fff',
+  border: 'none',
+  padding: 16,
+  borderRadius: 14,
+  fontWeight: 900,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: 10,
+  cursor: 'pointer',
+  boxShadow: '0 12px 18px rgba(15,23,42,0.18)',
+}
 const successBtn: any = { ...primaryBtn, background: '#059669', boxShadow: '0 12px 18px rgba(5,150,105,0.18)' }
 
 const msgError: any = { marginTop: 10, color: '#dc2626', fontSize: 13, fontWeight: 900 }
 const msgSuccess: any = { marginTop: 10, color: '#059669', fontSize: 13, fontWeight: 900 }
 
-/* --- Feature card (matches photo vibe) --- */
+/* --- Feature card (tighter mobile) --- */
 const featureCard: any = { borderRadius: 24, border: '1px solid #e2e8f0', background: '#fff', overflow: 'hidden' }
-const featureHeaderRow: any = { padding: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #eef2f7' }
+const featureHeaderRow: any = { padding: 14, display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #eef2f7' }
 const featureHeaderLeft: any = { display: 'flex', alignItems: 'center', gap: 12 }
-const featureIconOuter: any = { width: 64, height: 64, borderRadius: 24, background: '#fff7ed', border: '1px solid #fde68a', display: 'flex', alignItems: 'center', justifyContent: 'center' }
+const featureIconOuter: any = {
+  width: 58,
+  height: 58,
+  borderRadius: 22,
+  background: '#fff7ed',
+  border: '1px solid #fde68a',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+}
 const featureKicker: any = { fontSize: 12, fontWeight: 900, color: '#64748b', letterSpacing: 0.6 }
-const featureTitle: any = { fontSize: 24, fontWeight: 900, color: '#0f172a', marginTop: 2 }
-const featureChip: any = { padding: '10px 18px', borderRadius: 999, border: '1px solid #e2e8f0', fontWeight: 900, background: '#fff' }
+const featureTitle: any = { fontSize: 22, fontWeight: 900, color: '#0f172a', marginTop: 2, lineHeight: 1.1 }
+const featureChip: any = { padding: '9px 16px', borderRadius: 999, border: '1px solid #e2e8f0', fontWeight: 900, background: '#fff' }
 
-const featureInnerCard: any = { margin: 16, padding: 18, borderRadius: 24, border: '1px solid #e2e8f0', background: '#fff' }
+const featureInnerCard: any = { margin: 14, padding: 16, borderRadius: 22, border: '1px solid #e2e8f0', background: '#fff' }
 const shieldPill: any = { width: 56, height: 56, borderRadius: 18, background: '#ecfdf5', border: '1px solid #bbf7d0', display: 'flex', alignItems: 'center', justifyContent: 'center' }
-const featureMainTitle: any = { fontSize: 22, fontWeight: 900, color: '#0f172a' }
-const featureMainSub: any = { fontSize: 16, fontWeight: 800, color: '#64748b', marginTop: 6 }
-const featureFootNote: any = { padding: '0 16px 16px', fontSize: 14, fontWeight: 800, color: '#94a3b8' }
+const featureMainTitle: any = { fontSize: 20, fontWeight: 900, color: '#0f172a' }
+const featureMainSub: any = { fontSize: 14, fontWeight: 800, color: '#64748b', marginTop: 6 }
+const featureFootNote: any = { padding: '0 16px 14px', fontSize: 13, fontWeight: 800, color: '#94a3b8' }
 
 const onPill = (on: boolean): any => ({
-  padding: '10px 16px',
+  padding: '9px 14px',
   borderRadius: 999,
   border: `2px solid ${on ? '#86efac' : '#e2e8f0'}`,
   fontWeight: 900,
   background: '#fff',
   color: on ? '#16a34a' : '#64748b',
-  minWidth: 62,
+  minWidth: 58,
   textAlign: 'center',
+  fontSize: 14,
 })
 
 const iosSwitch = (on: boolean): any => ({
-  width: 68,
-  height: 38,
+  width: 66,
+  height: 36,
   borderRadius: 999,
   background: on ? '#16a34a' : '#cbd5e1',
   border: '1px solid #e2e8f0',
@@ -635,8 +670,8 @@ const iosSwitch = (on: boolean): any => ({
 })
 
 const iosKnob = (on: boolean): any => ({
-  width: 30,
-  height: 30,
+  width: 28,
+  height: 28,
   borderRadius: 999,
   background: '#fff',
   boxShadow: '0 10px 18px rgba(15,23,42,0.22)',
@@ -663,7 +698,17 @@ const supportToggle: any = {
   justifyContent: 'space-between',
 }
 
-const supportIcon: any = { width: 36, height: 36, borderRadius: 14, background: '#f1f5f9', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#0f172a' }
+const supportIcon: any = {
+  width: 36,
+  height: 36,
+  borderRadius: 14,
+  background: '#f1f5f9',
+  border: '1px solid #e2e8f0',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  color: '#0f172a',
+}
 const supportTitle: any = { fontSize: 13, fontWeight: 900, color: '#0f172a' }
 const supportSub: any = { fontSize: 11, fontWeight: 800, color: '#64748b', marginTop: 4 }
 
