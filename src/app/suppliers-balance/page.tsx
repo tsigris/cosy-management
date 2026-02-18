@@ -51,10 +51,10 @@ function BalancesContent() {
   const [loading, setLoading] = useState(true)
   const [selectedEntityId, setSelectedEntityId] = useState<string>('all')
 
-  // NEW: Keep all transactions so we can show history on expand
+  // Keep all transactions so we can show history on expand
   const [allTransactions, setAllTransactions] = useState<any[]>([])
 
-  // NEW: expanded accordion row
+  // expanded accordion row
   const [expandedId, setExpandedId] = useState<string | null>(null)
 
   // ✅ Reset dropdown selection κάθε φορά που αλλάζει mode (για να μη σκάει)
@@ -64,21 +64,19 @@ function BalancesContent() {
   }, [viewMode])
 
   // ✅ Badge/Label mapping (includes Maintenance category + Revenue sources)
-  // ✅ NEW: Αν viewMode === 'income', badge = πράσινο "ΑΠΑΙΤΗΣΗ" για ΟΛΑ τα rows
+  // ✅ If viewMode === 'income', badge = green "ΑΠΑΙΤΗΣΗ" for all rows
   const getEntityBadge = useCallback(
     (entity: any) => {
       if (viewMode === 'income') {
         return { text: 'ΑΠΑΙΤΗΣΗ', bg: '#ecfdf5', color: '#065f46' }
       }
 
-      // Suppliers are always goods
       if (entity?.entityType === 'supplier') {
         return { text: 'ΕΜΠΟΡΕΥΜΑΤΑ', bg: '#f1f5f9', color: colors.secondaryText }
       }
 
-      // Assets: map sub_category (or category fallback) to labels
       const sub = normalize(entity?.sub_category)
-      const cat = normalize(entity?.category) // fallback if you ever store it here
+      const cat = normalize(entity?.category)
 
       const isMaintenance = sub === 'maintenance' || cat === 'maintenance'
       const isUtility = sub === 'utility' || cat === 'utility'
@@ -100,7 +98,6 @@ function BalancesContent() {
   // -----------------------------
   const getTxDate = (t: any) => {
     if (!t) return null
-    // Prefer created_at (timestamp with time)
     const raw = t.created_at || t.date
     const d = raw ? new Date(raw) : null
     return d && !isNaN(d.getTime()) ? d : null
@@ -152,6 +149,9 @@ function BalancesContent() {
     const latestCreditDate = creditTxs.length ? getTxDate(creditTxs[0]) : null
     const oldestCreditDate = creditTxs.length ? getTxDate(creditTxs[creditTxs.length - 1]) : null
 
+    // ✅ NEW: latest settlement date
+    const latestSettlementDate = settlementTxs.length ? getTxDate(settlementTxs[0]) : null
+
     const totalCreditAmount = creditTxs.reduce((acc, t) => acc + Math.abs(Number(t.amount) || 0), 0)
     const totalSettlementAmount = settlementTxs.reduce((acc, t) => acc + Math.abs(Number(t.amount) || 0), 0)
 
@@ -160,6 +160,7 @@ function BalancesContent() {
       settlementTxs,
       latestCreditDate,
       oldestCreditDate,
+      latestSettlementDate, // ✅ NEW
       totalCreditAmount,
       totalSettlementAmount,
     }
@@ -174,14 +175,13 @@ function BalancesContent() {
     try {
       setLoading(true)
 
-      // Φέρνουμε πάντα τις συναλλαγές (θα φιλτράρουμε per-mode)
       const transRes = await supabase.from('transactions').select('*').eq('store_id', storeIdFromUrl)
       if (transRes.error) throw transRes.error
       const transactions = transRes.data || []
       setAllTransactions(transactions)
 
       // -------------------------
-      // MODE: ΕΞΟΔΑ (Suppliers + Fixed Assets Maintenance/Utility/Other)
+      // MODE: EXPENSES
       // balance = Credit(is_credit:true) - Paid(type: debt_payment)
       // -------------------------
       if (viewMode === 'expenses') {
@@ -241,8 +241,8 @@ function BalancesContent() {
       }
 
       // -------------------------
-      // MODE: ΕΣΟΔΑ (Revenue Sources)
-      // balance = Credit(is_credit:true) - Received(είσπραξη παλαιού χρέους)
+      // MODE: INCOME (Revenue Sources)
+      // balance = Credit(is_credit:true) - Received(types)
       // -------------------------
       const revRes = await supabase.from('revenue_sources').select('*').eq('store_id', storeIdFromUrl)
       if (revRes.error) throw revRes.error
@@ -295,7 +295,6 @@ function BalancesContent() {
 
   const totalDisplay = filteredData.reduce((acc, s) => acc + (Number(s.balance) || 0), 0)
 
-  // ✅ Dynamic total card color
   const totalCardBg = viewMode === 'income' ? colors.accentGreen : colors.primaryDark
   const totalLabel =
     viewMode === 'income' ? 'ΣΥΝΟΛΙΚΟ ΑΝΟΙΧΤΟ ΥΠΟΛΟΙΠΟ ΕΣΟΔΩΝ' : 'ΣΥΝΟΛΙΚΟ ΑΝΟΙΧΤΟ ΥΠΟΛΟΙΠΟ ΕΞΟΔΩΝ'
@@ -356,7 +355,7 @@ function BalancesContent() {
           </button>
         </div>
 
-        {/* SELECT FILTER (✅ removed Filter icon) */}
+        {/* SELECT FILTER (no Filter icon) */}
         <div style={{ marginBottom: '18px' }}>
           <div style={{ position: 'relative' }}>
             <select value={selectedEntityId} onChange={(e) => setSelectedEntityId(e.target.value)} style={selectStyle}>
@@ -477,7 +476,7 @@ function BalancesContent() {
                           </button>
                         </div>
 
-                        {/* ✅ NEW: “ΠΟΤΕ ΠΕΡΑΣΤΗΚΕ ΤΟ ΧΡΕΟΣ” + totals */}
+                        {/* MINI SUMMARY */}
                         <div style={miniSummaryRow}>
                           <div style={miniPill}>
                             <span style={miniPillLabel}>Πρώτη καταχώρηση</span>
@@ -485,22 +484,31 @@ function BalancesContent() {
                               {history.oldestCreditDate ? formatTxDate(history.oldestCreditDate) : '—'}
                             </span>
                           </div>
+
                           <div style={miniPill}>
                             <span style={miniPillLabel}>Τελευταία καταχώρηση</span>
                             <span style={miniPillValue}>
                               {history.latestCreditDate ? formatTxDate(history.latestCreditDate) : '—'}
                             </span>
                           </div>
+
+                          {/* ✅ NEW: last settlement */}
                           <div style={miniPill}>
-                            <span style={miniPillLabel}>
-                              {viewMode === 'income' ? 'Σύνολο απαιτήσεων' : 'Σύνολο χρεώσεων'}
+                            <span style={miniPillLabel}>{viewMode === 'income' ? 'Τελευταία είσπραξη' : 'Τελευταία εξόφληση'}</span>
+                            <span style={miniPillValue}>
+                              {history.latestSettlementDate
+                                ? `${formatTxDate(history.latestSettlementDate)} (${daysAgoLabel(history.latestSettlementDate)})`
+                                : '—'}
                             </span>
+                          </div>
+
+                          <div style={miniPill}>
+                            <span style={miniPillLabel}>{viewMode === 'income' ? 'Σύνολο απαιτήσεων' : 'Σύνολο χρεώσεων'}</span>
                             <span style={miniPillValue}>{history.totalCreditAmount.toFixed(2)}€</span>
                           </div>
+
                           <div style={miniPill}>
-                            <span style={miniPillLabel}>
-                              {viewMode === 'income' ? 'Σύνολο εισπράξεων' : 'Σύνολο εξοφλήσεων'}
-                            </span>
+                            <span style={miniPillLabel}>{viewMode === 'income' ? 'Σύνολο εισπράξεων' : 'Σύνολο εξοφλήσεων'}</span>
                             <span style={miniPillValue}>{history.totalSettlementAmount.toFixed(2)}€</span>
                           </div>
                         </div>
@@ -680,7 +688,6 @@ const backBtnStyle: any = {
   border: `1px solid ${colors.border}`,
 }
 
-// Switcher
 const switcherWrap: any = {
   display: 'flex',
   background: '#e2e8f0',
