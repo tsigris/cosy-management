@@ -8,7 +8,19 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { format, startOfMonth, endOfMonth } from 'date-fns'
 import { el } from 'date-fns/locale'
 import { toast, Toaster } from 'sonner'
-import { Coins, Users, ShoppingBag, Lightbulb, Wrench, Landmark, Printer, BarChart3, Calendar, Filter, ListFilter } from 'lucide-react'
+import {
+  Coins,
+  Users,
+  ShoppingBag,
+  Lightbulb,
+  Wrench,
+  Landmark,
+  Printer,
+  BarChart3,
+  Calendar,
+  Filter,
+  ListFilter
+} from 'lucide-react'
 
 /* ---------------- PALETTE ---------------- */
 const colors = {
@@ -52,7 +64,6 @@ type PrintMode = 'summary' | 'full'
 
 /* ---------------- HELPERS ---------------- */
 const toGreekDate = (yyyyMMdd: string) => {
-  // input: 2026-02-28
   if (!yyyyMMdd) return ''
   const [y, m, d] = String(yyyyMMdd).split('-')
   if (!y || !m || !d) return yyyyMMdd
@@ -415,35 +426,22 @@ function AnalysisContent() {
     return []
   }, [detailMode, staff, suppliers, revenueSources, maintenanceWorkers])
 
-  const DetailIcon = useMemo(() => {
-    if (detailMode === 'staff') return Users
-    if (detailMode === 'supplier') return ShoppingBag
-    if (detailMode === 'revenue_source') return Landmark
-    if (detailMode === 'maintenance') return Wrench
-    return null
-  }, [detailMode])
-
-  const detailLabel = useMemo(() => {
-    if (detailMode === 'staff') return 'Λεπτομέρεια'
-    if (detailMode === 'supplier') return 'Λεπτομέρεια'
-    if (detailMode === 'revenue_source') return 'Λεπτομέρεια'
-    if (detailMode === 'maintenance') return 'Λεπτομέρεια'
-    return ''
-  }, [detailMode])
-
-  /* -------- Premium Date Field (matches mockup) -------- */
+  /* ---------------- FIXED DATE FIELD (works iPhone + Android) ----------------
+     - Το input date είναι ΠΑΝΩ σε όλο το “pill” (άρα ανοίγει παντού)
+     - Αλλά είναι σχεδόν αόρατο
+     - Από κάτω/πίσω δείχνουμε εμείς dd/MM/yyyy
+  */
   const DateField = ({
     label,
     value,
-    onChange,
-    side
+    onChange
   }: {
     label: string
     value: string
     onChange: (v: string) => void
-    side: 'from' | 'to'
   }) => {
-    const ref = useRef<HTMLInputElement | null>(null)
+    const inputRef = useRef<HTMLInputElement | null>(null)
+
     return (
       <div style={filterBox}>
         <div style={filterIconWrap}>
@@ -453,27 +451,29 @@ function AnalysisContent() {
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={filterLabel}>{label}</div>
 
-          {/* Display pill */}
-          <button
-            type="button"
-            style={datePillBtn}
-            onClick={() => ref.current?.showPicker?.() ?? ref.current?.click()}
-            aria-label={label}
+          <div
+            style={datePillWrap}
+            onClick={() => {
+              // extra nudge: σε iOS κάποιες φορές βοηθά
+              inputRef.current?.focus()
+              // showPicker σε Chrome/Android
+              ;(inputRef.current as any)?.showPicker?.()
+            }}
           >
-            <span style={datePillText}>{toGreekDate(value)}</span>
-            <span style={chev}>▾</span>
-          </button>
+            {/* Αυτό είναι το ορατό κείμενο */}
+            <div style={datePillText}>{toGreekDate(value) || '—'}</div>
+            <div style={chev}>▾</div>
 
-          {/* Hidden native picker */}
-          <input
-            ref={ref}
-            type="date"
-            value={value}
-            onChange={(e) => onChange(e.target.value)}
-            style={hiddenDateInput}
-            aria-hidden="true"
-            tabIndex={-1}
-          />
+            {/* Αυτό είναι το πραγματικό input (πάνω από όλα) */}
+            <input
+              ref={inputRef}
+              type="date"
+              value={value}
+              onChange={(e) => onChange(e.target.value)}
+              style={dateInputOverlay}
+              aria-label={label}
+            />
+          </div>
         </div>
       </div>
     )
@@ -493,7 +493,7 @@ function AnalysisContent() {
           </p>
         </div>
 
-        {/* Header card (mockup style) */}
+        {/* Header card */}
         <div style={headerCard} className="no-print">
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <div style={headerIcon}>
@@ -520,7 +520,7 @@ function AnalysisContent() {
           {startDate} → {endDate}
         </div>
 
-        {/* Filters card (2x2 like mockup) */}
+        {/* Filters card */}
         <div style={filtersCard} className="no-print">
           <div style={filtersHeaderRow}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -535,8 +535,8 @@ function AnalysisContent() {
           </div>
 
           <div style={filtersGrid}>
-            <DateField label="ΑΠΟ" value={startDate} onChange={setStartDate} side="from" />
-            <DateField label="ΕΩΣ" value={endDate} onChange={setEndDate} side="to" />
+            <DateField label="ΑΠΟ" value={startDate} onChange={setStartDate} />
+            <DateField label="ΕΩΣ" value={endDate} onChange={setEndDate} />
 
             <div style={filterBox}>
               <div style={filterIconWrap}>
@@ -625,7 +625,7 @@ function AnalysisContent() {
           </div>
         </div>
 
-        {/* Category Breakdown */}
+        {/* Category Breakdown (FIXED labels) */}
         <div style={sectionCard} data-print-section="true">
           <div style={sectionHeader}>
             <div>
@@ -710,14 +710,16 @@ function AnalysisContent() {
           )}
         </div>
 
-        {/* Transactions list (full view always visible in UI) */}
+        {/* Transactions list */}
         <div style={sectionCard} data-print-section="true">
           <div style={sectionHeader}>
             <div>
               <div style={sectionTitle}>Κινήσεις Περιόδου</div>
               <div style={sectionSub}>Λίστα κινήσεων με οντότητα, ποσό και σημειώσεις</div>
             </div>
-            <div style={countPill}>Εγγραφές <b style={{ marginLeft: 8 }}>{periodList.length}</b></div>
+            <div style={countPill}>
+              Εγγραφές <b style={{ marginLeft: 8 }}>{periodList.length}</b>
+            </div>
           </div>
 
           {loading ? (
@@ -946,6 +948,8 @@ const filterIconWrap: any = {
   flexShrink: 0
 }
 const filterLabel: any = { fontSize: 12, fontWeight: 900, color: colors.secondary, letterSpacing: 0.6, marginBottom: 8 }
+
+/* select pill */
 const selectPill: any = {
   width: '100%',
   padding: '14px 14px',
@@ -959,8 +963,9 @@ const selectPill: any = {
   minWidth: 0
 }
 
-/* Date display pill button */
-const datePillBtn: any = {
+/* FIXED Date pill wrapper */
+const datePillWrap: any = {
+  position: 'relative',
   width: '100%',
   padding: '14px 14px',
   borderRadius: 16,
@@ -970,8 +975,8 @@ const datePillBtn: any = {
   alignItems: 'center',
   justifyContent: 'space-between',
   gap: 12,
-  cursor: 'pointer',
-  minWidth: 0
+  minWidth: 0,
+  overflow: 'hidden'
 }
 const datePillText: any = {
   fontSize: 18,
@@ -984,13 +989,19 @@ const datePillText: any = {
 }
 const chev: any = { fontWeight: 900, color: colors.secondary, flexShrink: 0 }
 
-/* Hidden date input (still triggers native picker) */
-const hiddenDateInput: any = {
+/* IMPORTANT: input covers the whole pill (tap works on iPhone & Android) */
+const dateInputOverlay: any = {
   position: 'absolute',
-  opacity: 0,
-  pointerEvents: 'none',
-  width: 0,
-  height: 0
+  inset: 0,
+  width: '100%',
+  height: '100%',
+  opacity: 0.01, // όχι 0, για να μη “σβήσει”/μην ακυρωθεί σε iOS
+  border: 'none',
+  background: 'transparent',
+  color: 'transparent',
+  WebkitAppearance: 'none',
+  appearance: 'none',
+  cursor: 'pointer'
 }
 
 /* KPIs */
@@ -1044,7 +1055,6 @@ const totalPill: any = {
   color: colors.primary,
   whiteSpace: 'nowrap'
 }
-
 const monthPill: any = {
   padding: '10px 14px',
   borderRadius: 999,
@@ -1055,7 +1065,6 @@ const monthPill: any = {
   color: colors.primary,
   whiteSpace: 'nowrap'
 }
-
 const countPill: any = {
   padding: '10px 14px',
   borderRadius: 999,
@@ -1077,17 +1086,34 @@ const hintBox: any = {
   color: colors.secondary
 }
 
-/* Category rows (bar row like mockup) */
-const catRow: any = { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }
-const catLeft: any = { display: 'flex', alignItems: 'center', gap: 10, minWidth: 0, flex: 1 }
-const catIconCircle: any = { width: 40, height: 40, borderRadius: 999, border: `1px solid ${colors.border}`, background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }
-const catName: any = { fontSize: 16, fontWeight: 900, color: colors.primary, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }
-
-const catMid: any = { display: 'flex', alignItems: 'center', gap: 10, flex: 1 }
+/* Category rows (FIXED: no truncation) */
+const catRow: any = { display: 'grid', gridTemplateColumns: 'minmax(160px, 1fr) minmax(120px, 1fr) auto', alignItems: 'center', gap: 12 }
+const catLeft: any = { display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }
+const catIconCircle: any = {
+  width: 40,
+  height: 40,
+  borderRadius: 999,
+  border: `1px solid ${colors.border}`,
+  background: '#fff',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  flexShrink: 0
+}
+const catName: any = {
+  fontSize: 16,
+  fontWeight: 900,
+  color: colors.primary,
+  whiteSpace: 'normal',
+  overflow: 'visible',
+  textOverflow: 'clip',
+  lineHeight: 1.15
+}
+const catMid: any = { display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }
 const catPct: any = { width: 44, textAlign: 'right', fontSize: 14, fontWeight: 900, color: colors.secondary, flexShrink: 0 }
-const catBarTrack: any = { height: 10, borderRadius: 999, background: '#eef2f7', flex: 1, overflow: 'hidden' }
+const catBarTrack: any = { height: 10, borderRadius: 999, background: '#eef2f7', flex: 1, overflow: 'hidden', minWidth: 60 }
 const catBarFill: any = { height: 10, borderRadius: 999 }
-const catAmount: any = { width: 120, textAlign: 'right', fontSize: 16, fontWeight: 900, whiteSpace: 'nowrap', flexShrink: 0 }
+const catAmount: any = { width: 120, textAlign: 'right', fontSize: 16, fontWeight: 900, whiteSpace: 'nowrap' }
 
 /* Staff rows */
 const staffRow: any = {
@@ -1100,20 +1126,34 @@ const staffRow: any = {
   background: '#fff',
   padding: 14
 }
-const avatarCircle: any = { width: 40, height: 40, borderRadius: 999, background: '#eef2ff', border: `1px solid ${colors.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, color: colors.indigo }
+const avatarCircle: any = {
+  width: 40,
+  height: 40,
+  borderRadius: 999,
+  background: '#eef2ff',
+  border: `1px solid ${colors.border}`,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  fontWeight: 900,
+  color: colors.indigo
+}
 const staffName: any = { fontSize: 15, fontWeight: 900, color: colors.primary, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }
-const paidBadge: any = { marginTop: 6, display: 'inline-flex', padding: '6px 10px', borderRadius: 999, background: '#f1f5f9', border: `1px solid ${colors.border}`, fontSize: 12, fontWeight: 900, color: colors.secondary }
+const paidBadge: any = {
+  marginTop: 6,
+  display: 'inline-flex',
+  padding: '6px 10px',
+  borderRadius: 999,
+  background: '#f1f5f9',
+  border: `1px solid ${colors.border}`,
+  fontSize: 12,
+  fontWeight: 900,
+  color: colors.secondary
+}
 const staffAmount: any = { fontSize: 16, fontWeight: 900, color: '#0ea5e9', whiteSpace: 'nowrap' }
 
 /* Tx list */
-const txRow: any = {
-  display: 'flex',
-  gap: 12,
-  borderRadius: 18,
-  border: `1px solid ${colors.border}`,
-  background: '#fff',
-  padding: 14
-}
+const txRow: any = { display: 'flex', gap: 12, borderRadius: 18, border: `1px solid ${colors.border}`, background: '#fff', padding: 14 }
 const txIconPill: any = { width: 46, height: 46, borderRadius: 18, background: '#f8fafc', border: `1px solid ${colors.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }
 const txTop: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }
 const txDate: any = { fontSize: 14, fontWeight: 900, color: colors.secondary, whiteSpace: 'nowrap' }
