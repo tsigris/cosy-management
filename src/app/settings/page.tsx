@@ -8,7 +8,7 @@ import Link from 'next/link'
 import * as XLSX from 'xlsx'
 import { toast, Toaster } from 'sonner'
 import {
-  Settings,
+  Settings as SettingsIcon,
   X,
   Download,
   Save,
@@ -16,13 +16,17 @@ import {
   Info,
   Monitor,
   ShieldCheck,
-  Building2,
   User2,
+  Building2,
   Database,
-  Sparkles,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react'
 
 function SettingsContent() {
+  const searchParams = useSearchParams()
+  const storeId = searchParams.get('store')
+
   // --- Personal Profile State ---
   const [profileLoading, setProfileLoading] = useState(true)
   const [profileName, setProfileName] = useState('')
@@ -31,7 +35,33 @@ function SettingsContent() {
   const [profileSuccess, setProfileSuccess] = useState('')
   const [userId, setUserId] = useState<string | null>(null)
 
-  // Fetch current user's profile
+  // Store/settings
+  const [loading, setLoading] = useState(true)
+  const [isExporting, setIsExporting] = useState(false)
+  const [showContact, setShowContact] = useState(false)
+
+  const [exportAllData, setExportAllData] = useState(false)
+  const [startDate, setStartDate] = useState(
+    new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0]
+  )
+  const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0])
+
+  const [zEnabled, setZEnabled] = useState<boolean>(true)
+  const [zSaving, setZSaving] = useState(false)
+
+  const [formData, setFormData] = useState({
+    name: '',
+    company_name: '',
+    afm: '',
+    phone: '',
+    address: '',
+    email: '',
+  })
+
+  // Accordion states (premium experience)
+  const [openSection, setOpenSection] = useState<'profile' | 'business' | 'appearance' | 'backup' | 'support'>('business')
+
+  // Fetch profile
   useEffect(() => {
     ;(async () => {
       setProfileLoading(true)
@@ -43,15 +73,18 @@ function SettingsContent() {
           error: userError,
         } = await supabase.auth.getUser()
         if (userError || !user) throw new Error('Δεν βρέθηκε χρήστης')
+
         setUserId(user.id)
+
         const { data: profile, error: profileError } = await supabase
           .from('profiles')
           .select('username')
           .eq('id', user.id)
           .maybeSingle()
+
         if (profileError) throw profileError
         setProfileName(profile?.username || '')
-      } catch (err: any) {
+      } catch (err) {
         setProfileError('Σφάλμα φόρτωσης προφίλ')
       } finally {
         setProfileLoading(false)
@@ -59,7 +92,6 @@ function SettingsContent() {
     })()
   }, [])
 
-  // Save profile username
   const handleProfileSave = async () => {
     if (!userId) return
     setProfileSaveLoading(true)
@@ -69,41 +101,14 @@ function SettingsContent() {
       const { error } = await supabase.from('profiles').update({ username: profileName.trim() }).eq('id', userId)
       if (error) throw error
       setProfileSuccess('Το όνομα ενημερώθηκε!')
-    } catch (err: any) {
+      toast.success('Το προφίλ αποθηκεύτηκε ✅')
+    } catch (err) {
       setProfileError('Σφάλμα αποθήκευσης')
+      toast.error('Σφάλμα αποθήκευσης')
     } finally {
       setProfileSaveLoading(false)
     }
   }
-
-  const searchParams = useSearchParams()
-  const storeId = searchParams.get('store')
-
-  const [loading, setLoading] = useState(true)
-  const [isExporting, setIsExporting] = useState(false)
-  const [showContact, setShowContact] = useState(false)
-
-  const [exportAllData, setExportAllData] = useState(false)
-  const [startDate, setStartDate] = useState(
-    new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0]
-  )
-  const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0])
-
-  // ✅ Z Toggle state
-  const [zEnabled, setZEnabled] = useState<boolean>(true)
-  const [zSaving, setZSaving] = useState(false)
-
-  // small status line (purely visual)
-  const [lastSavedHint, setLastSavedHint] = useState<string>('')
-
-  const [formData, setFormData] = useState({
-    name: '', // Store Name
-    company_name: '',
-    afm: '',
-    phone: '',
-    address: '',
-    email: '', // User Email
-  })
 
   const fetchStoreSettings = useCallback(async () => {
     if (!storeId) return
@@ -113,23 +118,19 @@ function SettingsContent() {
         data: { user },
       } = await supabase.auth.getUser()
 
-      // stores (+ z_enabled)
       const { data: store, error } = await supabase.from('stores').select('*').eq('id', storeId).single()
       if (error) throw error
 
-      if (store) {
-        setFormData({
-          name: store.name || '',
-          company_name: store.company_name || '',
-          afm: store.afm || '',
-          phone: store.phone || '',
-          address: store.address || '',
-          email: user?.email || '',
-        })
+      setFormData({
+        name: store?.name || '',
+        company_name: store?.company_name || '',
+        afm: store?.afm || '',
+        phone: store?.phone || '',
+        address: store?.address || '',
+        email: user?.email || '',
+      })
 
-        // default true if null/undefined
-        setZEnabled(store?.z_enabled === false ? false : true)
-      }
+      setZEnabled(store?.z_enabled === false ? false : true)
     } catch (err) {
       toast.error('Αποτυχία φόρτωσης ρυθμίσεων')
     } finally {
@@ -141,26 +142,46 @@ function SettingsContent() {
     fetchStoreSettings()
   }, [fetchStoreSettings])
 
-  // ✅ instant save for Z toggle
+  // Toggle Z (instant save)
   const handleToggleZ = async () => {
     if (!storeId) return
     const next = !zEnabled
     setZEnabled(next)
-
     setZSaving(true)
-    setLastSavedHint('Αποθήκευση ρύθμισης…')
+
     try {
       const { error } = await supabase.from('stores').update({ z_enabled: next }).eq('id', storeId)
       if (error) throw error
       toast.success(next ? 'Το Ζ θα εμφανίζεται στην αρχική ✅' : 'Το Ζ αφαιρέθηκε από την αρχική ✅')
-      setLastSavedHint('Αποθηκεύτηκε ✅')
-      setTimeout(() => setLastSavedHint(''), 2000)
     } catch (e) {
       setZEnabled(!next)
       toast.error('Σφάλμα: δεν αποθηκεύτηκε η ρύθμιση Ζ')
-      setLastSavedHint('')
     } finally {
       setZSaving(false)
+    }
+  }
+
+  async function handleSaveStore() {
+    if (!storeId) return
+    setLoading(true)
+    try {
+      const { error } = await supabase
+        .from('stores')
+        .update({
+          name: formData.name.toUpperCase(),
+          company_name: formData.company_name,
+          afm: formData.afm,
+          phone: formData.phone,
+          address: formData.address,
+        })
+        .eq('id', storeId)
+
+      if (error) throw error
+      toast.success('Οι αλλαγές αποθηκεύτηκαν στο κατάστημα ✅')
+    } catch (error) {
+      toast.error('Σφάλμα κατά την αποθήκευση')
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -169,10 +190,7 @@ function SettingsContent() {
     setIsExporting(true)
     try {
       let transQuery = supabase.from('transactions').select('*').eq('store_id', storeId)
-
-      if (!exportAllData) {
-        transQuery = transQuery.gte('date', startDate).lte('date', endDate)
-      }
+      if (!exportAllData) transQuery = transQuery.gte('date', startDate).lte('date', endDate)
 
       const [trans, sups, assets, emps] = await Promise.all([
         transQuery.order('date', { ascending: false }),
@@ -208,266 +226,264 @@ function SettingsContent() {
       }
 
       XLSX.writeFile(wb, `Backup_${formData.name}_${new Date().toISOString().split('T')[0]}.xlsx`)
-      toast.success('Η εξαγωγή ολοκληρώθηκε!')
-    } catch (error: any) {
+      toast.success('Η εξαγωγή ολοκληρώθηκε ✅')
+    } catch (error) {
       toast.error('Σφάλμα εξαγωγής')
     } finally {
       setIsExporting(false)
     }
   }
 
-  async function handleSave() {
-    if (!storeId) return
-    setLoading(true)
-    setLastSavedHint('Αποθήκευση…')
-    try {
-      const { error } = await supabase
-        .from('stores')
-        .update({
-          name: formData.name.toUpperCase(),
-          company_name: formData.company_name,
-          afm: formData.afm,
-          phone: formData.phone,
-          address: formData.address,
-        })
-        .eq('id', storeId)
-
-      if (error) throw error
-      toast.success('Οι αλλαγές αποθηκεύτηκαν στο κατάστημα!')
-      setLastSavedHint('Αποθηκεύτηκε ✅')
-      setTimeout(() => setLastSavedHint(''), 2000)
-    } catch (error: any) {
-      toast.error('Σφάλμα κατά την αποθήκευση')
-      setLastSavedHint('')
-    } finally {
-      setLoading(false)
-    }
+  const Section = ({
+    id,
+    icon,
+    title,
+    subtitle,
+    children,
+  }: {
+    id: 'profile' | 'business' | 'appearance' | 'backup' | 'support'
+    icon: any
+    title: string
+    subtitle: string
+    children: any
+  }) => {
+    const open = openSection === id
+    return (
+      <div style={sectionCard}>
+        <button
+          type="button"
+          onClick={() => setOpenSection(open ? 'business' : id)}
+          style={{ ...sectionHeaderBtn, borderBottomLeftRadius: open ? 0 : 22, borderBottomRightRadius: open ? 0 : 22 }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={sectionIconWrap}>{icon}</div>
+            <div style={{ textAlign: 'left' }}>
+              <div style={sectionTitle}>{title}</div>
+              <div style={sectionSub}>{subtitle}</div>
+            </div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={chip}>{id === 'appearance' ? 'Store' : ' '}</span>
+            {open ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+          </div>
+        </button>
+        {open && <div style={sectionBody}>{children}</div>}
+      </div>
+    )
   }
 
   return (
     <div style={pageWrap}>
       <Toaster richColors position="top-center" />
 
-      <div style={containerNarrow}>
-        {/* Premium Header */}
-        <div style={topHeader}>
-          <div style={topHeaderLeft}>
-            <div style={topIcon}>
-              <Settings size={20} />
+      <div style={container}>
+        {/* Top App Header */}
+        <div style={topBar}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={appIcon}>
+              <SettingsIcon size={20} />
             </div>
             <div>
-              <div style={topTitleRow}>
-                <h1 style={titleStyle}>Ρυθμίσεις</h1>
-                <span style={premiumBadge}>
-                  <Sparkles size={12} /> PREMIUM
-                </span>
-              </div>
-              <p style={subtitleStyle}>{formData.name || 'ΚΑΤΑΣΤΗΜΑ'}</p>
+              <div style={topTitle}>Ρυθμίσεις</div>
+              <div style={topSubtitle}>{(formData.name || 'ΚΑΤΑΣΤΗΜΑ').toUpperCase()}</div>
             </div>
           </div>
 
-          <div style={topHeaderRight}>
-            {lastSavedHint ? <span style={saveHintPill}>{lastSavedHint}</span> : <span style={saveHintGhost}> </span>}
-            <Link href={`/?store=${storeId}`} style={backBtnStyle} aria-label="back">
-              <X size={20} />
-            </Link>
-          </div>
+          <Link href={`/?store=${storeId}`} style={closeBtn} aria-label="close">
+            <X size={20} />
+          </Link>
         </div>
 
-        {/* --- PERSONAL PROFILE SECTION --- */}
-        <section style={sectionCard}>
-          <div style={sectionHead}>
-            <div style={sectionIcon('#EEF2FF', '#4338CA')}>
-              <User2 size={18} />
-            </div>
-            <div style={{ flex: 1 }}>
-              <p style={sectionKicker}>ΠΡΟΣΩΠΙΚΟ</p>
-              <h2 style={sectionTitle}>Προφίλ</h2>
-            </div>
-          </div>
-
-          <div style={contentCard}>
-            <div style={inputGroup}>
-              <label style={labelStyle}>Το όνομά μου (username)</label>
-              <input
-                style={{ ...inputStyle, fontSize: '16px' }}
-                value={profileName}
-                onChange={(e) => setProfileName(e.target.value)}
-                disabled={profileLoading || profileSaveLoading}
-                placeholder="Το όνομά σας..."
-              />
-              <p style={fieldHint}>Χρησιμοποιείται για εμφανίσεις/δημιουργό κινήσεων.</p>
-            </div>
-
-            <button
-              onClick={handleProfileSave}
-              disabled={profileLoading || profileSaveLoading}
-              style={{ ...primaryBtn, opacity: profileLoading || profileSaveLoading ? 0.75 : 1 }}
-            >
-              <Save size={18} /> {profileSaveLoading ? 'ΑΠΟΘΗΚΕΥΣΗ...' : 'ΑΠΟΘΗΚΕΥΣΗ ΟΝΟΜΑΤΟΣ'}
-            </button>
-
-            {profileError && <div style={msgError}>{profileError}</div>}
-            {profileSuccess && <div style={msgSuccess}>{profileSuccess}</div>}
-          </div>
-        </section>
-
-        {/* --- STORE SETTINGS SECTION --- */}
-        <section style={sectionCard}>
-          <div style={sectionHead}>
-            <div style={sectionIcon('#ECFDF5', '#047857')}>
-              <Building2 size={18} />
-            </div>
-            <div style={{ flex: 1 }}>
-              <p style={sectionKicker}>ΕΠΙΧΕΙΡΗΣΗ</p>
-              <h2 style={sectionTitle}>Στοιχεία Καταστήματος</h2>
-            </div>
-          </div>
-
-          <div style={contentCard}>
-            <div style={inputGroup}>
-              <label style={labelStyle}>ΤΙΤΛΟΣ ΚΑΤΑΣΤΗΜΑΤΟΣ (ΕΜΦΑΝΙΣΗ)</label>
-              <input
-                style={inputStyle}
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              />
-            </div>
-
-            <div style={inputGroup}>
-              <label style={labelStyle}>ΕΠΩΝΥΜΙΑ ΕΤΑΙΡΕΙΑΣ</label>
-              <input
-                style={inputStyle}
-                value={formData.company_name}
-                onChange={(e) => setFormData({ ...formData, company_name: e.target.value })}
-                placeholder="π.χ. ΑΦΟΙ ΠΑΠΑΔΟΠΟΥΛΟΙ Ο.Ε."
-              />
-            </div>
-
-            <div style={gridStyle}>
-              <div>
-                <label style={labelStyle}>Α.Φ.Μ.</label>
-                <input style={inputStyle} value={formData.afm} onChange={(e) => setFormData({ ...formData, afm: e.target.value })} />
-              </div>
-              <div>
-                <label style={labelStyle}>ΤΗΛΕΦΩΝΟ</label>
-                <input style={inputStyle} value={formData.phone} onChange={(e) => setFormData({ ...formData, phone: e.target.value })} />
-              </div>
-            </div>
-
-            <div style={inputGroup}>
-              <label style={labelStyle}>ΔΙΕΥΘΥΝΣΗ</label>
-              <textarea style={textareaStyle} value={formData.address} onChange={(e) => setFormData({ ...formData, address: e.target.value })} />
-            </div>
-
-            {/* ✅ Feature: Z Toggle */}
-            <div style={divider} />
-            <div style={featureWrap}>
-              <div style={featureHead}>
-                <div style={sectionIcon('#FFF7ED', '#9A3412')}>
-                  <Monitor size={18} />
+        {/* Sections */}
+        <Section
+          id="appearance"
+          icon={<Monitor size={18} color="#9A3412" />}
+          title="Εμφάνιση"
+          subtitle="Dashboard Features & προβολές"
+        >
+          {/* ✅ Keep this EXACT look (photo-style) */}
+          <div style={featureCard}>
+            <div style={featureHeaderRow}>
+              <div style={featureHeaderLeft}>
+                <div style={featureIconOuter}>
+                  <Monitor size={22} color="#7c2d12" />
                 </div>
+                <div>
+                  <div style={featureKicker}>ΕΜΦΑΝΙΣΗ</div>
+                  <div style={featureTitle}>Dashboard Features</div>
+                </div>
+              </div>
+              <div style={featureChip}>Store</div>
+            </div>
+
+            <div style={featureInnerCard}>
+              <div style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
+                <div style={shieldPill}>
+                  <ShieldCheck size={22} color="#16a34a" />
+                </div>
+
                 <div style={{ flex: 1 }}>
-                  <p style={sectionKicker}>ΕΜΦΑΝΙΣΗ</p>
-                  <h3 style={featureTitle}>Dashboard Features</h3>
+                  <div style={featureMainTitle}>Εμφάνιση Ζ στην αρχική</div>
+                  <div style={featureMainSub}>Το κουμπί Ζ φαίνεται στο Dashboard</div>
                 </div>
-                <span style={chip}>Store</span>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <div style={onPill(zEnabled)}>{zEnabled ? 'ON' : 'OFF'}</div>
+                  <button
+                    type="button"
+                    onClick={handleToggleZ}
+                    disabled={zSaving || loading}
+                    style={{ ...iosSwitch(zEnabled), opacity: zSaving || loading ? 0.7 : 1 }}
+                    aria-label="toggle z"
+                  >
+                    <div style={iosKnob(zEnabled)} />
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div style={featureFootNote}>(Όταν είναι OFF, το Z εξαφανίζεται από την αρχική.)</div>
+          </div>
+        </Section>
+
+        <Section
+          id="business"
+          icon={<Building2 size={18} color="#0f172a" />}
+          title="Επιχείρηση"
+          subtitle="Στοιχεία καταστήματος & τιμολόγησης"
+        >
+          <div style={grid2}>
+            <div style={field}>
+              <label style={label}>ΤΙΤΛΟΣ ΚΑΤΑΣΤΗΜΑΤΟΣ (ΕΜΦΑΝΙΣΗ)</label>
+              <input style={input} value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} />
+            </div>
+
+            <div style={field}>
+              <label style={label}>ΤΗΛΕΦΩΝΟ</label>
+              <input style={input} value={formData.phone} onChange={(e) => setFormData({ ...formData, phone: e.target.value })} />
+            </div>
+          </div>
+
+          <div style={field}>
+            <label style={label}>ΕΠΩΝΥΜΙΑ ΕΤΑΙΡΕΙΑΣ</label>
+            <input
+              style={input}
+              value={formData.company_name}
+              onChange={(e) => setFormData({ ...formData, company_name: e.target.value })}
+              placeholder="π.χ. ΑΦΟΙ ΠΑΠΑΔΟΠΟΥΛΟΙ Ο.Ε."
+            />
+          </div>
+
+          <div style={grid2}>
+            <div style={field}>
+              <label style={label}>Α.Φ.Μ.</label>
+              <input style={input} value={formData.afm} onChange={(e) => setFormData({ ...formData, afm: e.target.value })} />
+            </div>
+            <div style={field}>
+              <label style={label}>EMAIL (LOGGED IN)</label>
+              <input style={{ ...input, opacity: 0.8 }} value={formData.email} disabled />
+            </div>
+          </div>
+
+          <div style={field}>
+            <label style={label}>ΔΙΕΥΘΥΝΣΗ</label>
+            <textarea style={textarea} value={formData.address} onChange={(e) => setFormData({ ...formData, address: e.target.value })} />
+          </div>
+
+          <button onClick={handleSaveStore} disabled={loading} style={{ ...primaryBtn, opacity: loading ? 0.7 : 1 }}>
+            <Save size={18} /> {loading ? 'ΑΠΟΘΗΚΕΥΣΗ...' : 'ΕΝΗΜΕΡΩΣΗ ΚΑΤΑΣΤΗΜΑΤΟΣ'}
+          </button>
+        </Section>
+
+        <Section id="profile" icon={<User2 size={18} color="#0f172a" />} title="Προφίλ" subtitle="Όνομα χρήστη & εμφανίσεις">
+          <div style={field}>
+            <label style={label}>Το όνομά μου (username)</label>
+            <input
+              style={{ ...input, fontSize: '16px' }}
+              value={profileName}
+              onChange={(e) => setProfileName(e.target.value)}
+              disabled={profileLoading || profileSaveLoading}
+              placeholder="Το όνομά σας..."
+            />
+          </div>
+
+          <button
+            onClick={handleProfileSave}
+            disabled={profileLoading || profileSaveLoading}
+            style={{ ...primaryBtn, opacity: profileLoading || profileSaveLoading ? 0.7 : 1 }}
+          >
+            <Save size={18} /> {profileSaveLoading ? 'ΑΠΟΘΗΚΕΥΣΗ...' : 'ΑΠΟΘΗΚΕΥΣΗ ΟΝΟΜΑΤΟΣ'}
+          </button>
+
+          {profileError && <div style={msgError}>{profileError}</div>}
+          {profileSuccess && <div style={msgSuccess}>{profileSuccess}</div>}
+        </Section>
+
+        <Section id="backup" icon={<Database size={18} color="#0f172a" />} title="Backup" subtitle="Εξαγωγή δεδομένων σε Excel">
+          <div style={backupCard}>
+            <div style={backupRow}>
+              <div>
+                <div style={backupTitle}>Εξαγωγή δεδομένων</div>
+                <div style={backupSub}>Δημιούργησε αρχείο Excel για αποθήκευση/ασφάλεια.</div>
               </div>
 
-              <button
-                type="button"
-                onClick={handleToggleZ}
-                disabled={zSaving || loading}
-                style={{
-                  ...toggleRowBtn,
-                  opacity: zSaving || loading ? 0.75 : 1,
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <div style={toggleIconBox(zEnabled)}>
-                    <ShieldCheck size={18} color={zEnabled ? '#059669' : '#64748b'} />
-                  </div>
-                  <div style={{ textAlign: 'left' }}>
-                    <div style={{ fontWeight: 900, fontSize: 13, color: '#0f172a' }}>Εμφάνιση Ζ στην αρχική</div>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b' }}>
-                      {zEnabled ? 'Το κουμπί Ζ φαίνεται στο Dashboard' : 'Το κουμπί Ζ είναι κρυφό από το Dashboard'}
-                    </div>
-                  </div>
-                </div>
-
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <div style={pill(zEnabled ? '#059669' : '#cbd5e1', zEnabled ? '#059669' : '#64748b')}>
-                    {zEnabled ? 'ON' : 'OFF'}
-                  </div>
-                  <div style={switchOuter(zEnabled)}>
-                    <div style={switchInner(zEnabled)} />
-                  </div>
-                </div>
-              </button>
-
-              <p style={fieldHint}>(Όταν είναι OFF, το Ζ εξαφανίζεται από την αρχική.)</p>
-            </div>
-
-            <button onClick={handleSave} disabled={loading} style={{ ...primaryBtn, marginTop: 8, opacity: loading ? 0.75 : 1 }}>
-              <Save size={18} /> {loading ? 'ΑΠΟΘΗΚΕΥΣΗ...' : 'ΕΝΗΜΕΡΩΣΗ ΚΑΤΑΣΤΗΜΑΤΟΣ'}
-            </button>
-          </div>
-        </section>
-
-        {/* --- BACKUP SECTION --- */}
-        <section style={sectionCard}>
-          <div style={sectionHead}>
-            <div style={sectionIcon('#F1F5F9', '#0F172A')}>
-              <Database size={18} />
-            </div>
-            <div style={{ flex: 1 }}>
-              <p style={sectionKicker}>ΔΕΔΟΜΕΝΑ</p>
-              <h2 style={sectionTitle}>Backup</h2>
-            </div>
-          </div>
-
-          <div style={contentCard}>
-            <div style={checkboxContainer}>
-              <input type="checkbox" id="exportAll" checked={exportAllData} onChange={(e) => setExportAllData(e.target.checked)} />
-              <label htmlFor="exportAll" style={{ fontSize: '13px', fontWeight: '800', color: '#0f172a' }}>
-                Πλήρες Backup (Όλες οι εγγραφές)
-              </label>
+              <div style={backupToggleBox}>
+                <input
+                  type="checkbox"
+                  id="exportAll"
+                  checked={exportAllData}
+                  onChange={(e) => setExportAllData(e.target.checked)}
+                />
+                <label htmlFor="exportAll" style={backupToggleLabel}>
+                  Πλήρες Backup
+                </label>
+              </div>
             </div>
 
             {!exportAllData && (
-              <div style={gridStyle}>
-                <input type="date" style={inputStyle} value={startDate} onChange={(e) => setStartDate(e.target.value)} />
-                <input type="date" style={inputStyle} value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+              <div style={grid2}>
+                <div style={field}>
+                  <label style={label}>Από</label>
+                  <input type="date" style={input} value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+                </div>
+                <div style={field}>
+                  <label style={label}>Έως</label>
+                  <input type="date" style={input} value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+                </div>
               </div>
             )}
 
-            <button onClick={handleExportAll} disabled={isExporting} style={{ ...successBtn, opacity: isExporting ? 0.75 : 1 }}>
+            <button onClick={handleExportAll} disabled={isExporting} style={{ ...successBtn, opacity: isExporting ? 0.7 : 1 }}>
               <Download size={18} /> {isExporting ? 'ΕΞΑΓΩΓΗ...' : 'ΛΗΨΗ ΑΡΧΕΙΟΥ EXCEL'}
             </button>
-
-            <p style={fieldHint}>
-              Προτείνεται να κρατάς backup ανά τακτά χρονικά διαστήματα.
-            </p>
           </div>
-        </section>
+        </Section>
 
-        {/* --- SUPPORT --- */}
-        <div style={{ textAlign: 'center', marginTop: '8px' }}>
-          <button onClick={() => setShowContact(!showContact)} style={supportToggleStyle}>
-            <Info size={14} /> Υποστήριξη & Διαγραφή
+        <Section id="support" icon={<Info size={18} color="#0f172a" />} title="Υποστήριξη" subtitle="Επικοινωνία & διαγραφή">
+          <button onClick={() => setShowContact(!showContact)} style={supportToggle}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={supportIcon}>
+                <Info size={16} />
+              </div>
+              <div style={{ textAlign: 'left' }}>
+                <div style={supportTitle}>Υποστήριξη & Διαγραφή</div>
+                <div style={supportSub}>Άνοιξε επιλογές επικοινωνίας και ενημέρωση.</div>
+              </div>
+            </div>
+            {showContact ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
           </button>
-        </div>
 
-        {showContact && (
-          <div style={supportCardStyle}>
-            <p style={{ fontSize: '13px', color: '#64748b', marginBottom: '15px', fontWeight: 700 }}>
-              Για προβλήματα ή οριστική διαγραφή του καταστήματος <b style={{ color: '#0f172a' }}>{formData.name}</b>, επικοινωνήστε μαζί μας.
-            </p>
-            <button onClick={() => window.open(`https://wa.me/306942216191`, '_blank')} style={waBtnStyle}>
-              <MessageCircle size={18} /> WHATSAPP SUPPORT
-            </button>
-          </div>
-        )}
+          {showContact && (
+            <div style={supportCard}>
+              <p style={supportText}>
+                Για προβλήματα ή οριστική διαγραφή του καταστήματος <b>{formData.name}</b>, επικοινωνήστε μαζί μας.
+              </p>
+              <button onClick={() => window.open(`https://wa.me/306942216191`, '_blank')} style={waBtnStyle}>
+                <MessageCircle size={18} /> WHATSAPP SUPPORT
+              </button>
+            </div>
+          )}
+        </Section>
 
         <div style={{ height: 24 }} />
       </div>
@@ -475,276 +491,184 @@ function SettingsContent() {
   )
 }
 
-/* -------------------- STYLES (Premium) -------------------- */
+/* ---------------- STYLES ---------------- */
 const pageWrap: any = {
   minHeight: '100dvh',
-  padding: '20px',
   background:
     'radial-gradient(1200px 600px at 20% -10%, #eef2ff 0%, rgba(238,242,255,0) 55%), radial-gradient(1200px 600px at 90% 0%, #ecfdf5 0%, rgba(236,253,245,0) 55%), #f8fafc',
+  padding: 20,
 }
 
-const containerNarrow: any = { maxWidth: '520px', margin: '0 auto', paddingBottom: '90px' }
+const container: any = { maxWidth: 540, margin: '0 auto', paddingBottom: 90 }
 
-const topHeader: any = {
-  position: 'sticky',
-  top: 12,
-  zIndex: 20,
+const topBar: any = {
   display: 'flex',
   justifyContent: 'space-between',
   alignItems: 'center',
-  gap: 12,
   padding: 14,
-  borderRadius: 20,
+  borderRadius: 22,
   border: '1px solid #e2e8f0',
-  background: 'rgba(255,255,255,0.85)',
+  background: 'rgba(255,255,255,0.92)',
   backdropFilter: 'blur(10px)',
-  boxShadow: '0 10px 30px rgba(15,23,42,0.06)',
-  marginBottom: 16,
+  boxShadow: '0 14px 28px rgba(15, 23, 42, 0.06)',
+  position: 'sticky',
+  top: 12,
+  zIndex: 10,
 }
 
-const topHeaderLeft: any = { display: 'flex', alignItems: 'center', gap: 12 }
-const topHeaderRight: any = { display: 'flex', alignItems: 'center', gap: 10 }
-
-const topIcon: any = {
+const appIcon: any = {
   width: 44,
   height: 44,
   borderRadius: 16,
+  background: '#fff',
   border: '1px solid #e2e8f0',
-  background: '#ffffff',
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
   color: '#0f172a',
 }
 
-const topTitleRow: any = { display: 'flex', alignItems: 'center', gap: 10 }
-const titleStyle: any = { fontWeight: '900', fontSize: '18px', margin: 0, color: '#0f172a' }
-const subtitleStyle: any = { margin: 0, fontSize: '10px', color: '#6366f1', fontWeight: '900', letterSpacing: '0.6px' }
+const topTitle: any = { fontSize: 16, fontWeight: 900, color: '#0f172a', margin: 0 }
+const topSubtitle: any = { fontSize: 10, fontWeight: 900, color: '#6366f1', letterSpacing: 0.6 }
 
-const premiumBadge: any = {
-  display: 'inline-flex',
-  alignItems: 'center',
-  gap: 6,
-  padding: '6px 10px',
-  borderRadius: 999,
+const closeBtn: any = {
+  width: 44,
+  height: 44,
+  borderRadius: 16,
+  background: '#fff',
   border: '1px solid #e2e8f0',
-  background: '#ffffff',
-  fontSize: 10,
-  fontWeight: 900,
-  color: '#0f172a',
-}
-
-const backBtnStyle: any = {
-  backgroundColor: '#fff',
-  padding: '10px',
-  borderRadius: '14px',
-  border: '1px solid #e2e8f0',
-  color: '#94a3b8',
-  display: 'inline-flex',
+  display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
+  color: '#94a3b8',
+  textDecoration: 'none',
 }
-
-const saveHintPill: any = {
-  padding: '8px 10px',
-  borderRadius: 999,
-  background: '#f1f5f9',
-  border: '1px solid #e2e8f0',
-  fontSize: 11,
-  fontWeight: 900,
-  color: '#0f172a',
-}
-const saveHintGhost: any = { width: 140 }
 
 const sectionCard: any = {
   marginTop: 14,
-  borderRadius: 24,
+  borderRadius: 22,
   border: '1px solid #e2e8f0',
-  background: 'rgba(255,255,255,0.8)',
-  backdropFilter: 'blur(6px)',
-  boxShadow: '0 10px 30px rgba(15,23,42,0.05)',
+  background: 'rgba(255,255,255,0.9)',
+  boxShadow: '0 10px 22px rgba(15, 23, 42, 0.05)',
   overflow: 'hidden',
 }
 
-const sectionHead: any = {
-  padding: 18,
-  display: 'flex',
-  alignItems: 'center',
-  gap: 12,
-  borderBottom: '1px solid #eef2f7',
-  background: 'linear-gradient(180deg, rgba(255,255,255,0.95), rgba(248,250,252,0.7))',
-}
-
-const sectionIcon = (bg: string, color: string): any => ({
-  width: 42,
-  height: 42,
-  borderRadius: 16,
-  background: bg,
-  border: '1px solid #e2e8f0',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  color,
-})
-
-const sectionKicker: any = { margin: 0, fontSize: 10, fontWeight: 900, color: '#64748b', letterSpacing: '0.8px' }
-const sectionTitle: any = { margin: 0, fontSize: 15, fontWeight: 900, color: '#0f172a' }
-
-const contentCard: any = { padding: 18 }
-
-const labelStyle: any = { fontSize: '10px', color: '#94a3b8', fontWeight: '900', marginBottom: '6px', display: 'block', letterSpacing: '0.6px' }
-
-const inputStyle: any = {
+const sectionHeaderBtn: any = {
   width: '100%',
-  padding: '12px',
-  borderRadius: '12px',
-  border: '1px solid #e2e8f0',
-  fontSize: '14px',
-  fontWeight: '700',
-  backgroundColor: '#f8fafc',
-  outline: 'none',
-}
-
-const textareaStyle: any = { ...inputStyle, height: '70px', resize: 'none' }
-const inputGroup: any = { marginBottom: 14 }
-const gridStyle: any = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }
-const divider: any = { height: 1, backgroundColor: '#eef2f7', margin: '18px 0' }
-
-const fieldHint: any = { margin: '8px 0 0 0', fontSize: 11, fontWeight: 700, color: '#64748b' }
-
-const primaryBtn: any = {
-  width: '100%',
-  backgroundColor: '#0f172a',
-  color: 'white',
-  padding: '16px',
-  borderRadius: '14px',
-  border: 'none',
-  fontWeight: '900',
-  cursor: 'pointer',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  gap: '10px',
-  boxShadow: '0 10px 20px rgba(15,23,42,0.18)',
-}
-
-const successBtn: any = {
-  ...primaryBtn,
-  backgroundColor: '#059669',
-  boxShadow: '0 10px 20px rgba(5,150,105,0.18)',
-}
-
-const msgError: any = { marginTop: 10, color: '#dc2626', fontSize: 13, fontWeight: 800 }
-const msgSuccess: any = { marginTop: 10, color: '#059669', fontSize: 13, fontWeight: 900 }
-
-const checkboxContainer: any = {
-  display: 'flex',
-  alignItems: 'center',
-  gap: 10,
-  marginBottom: 14,
-  padding: 12,
-  backgroundColor: '#f8fafc',
-  borderRadius: 14,
-  border: '1px solid #e2e8f0',
-}
-
-const featureWrap: any = {
-  border: '1px solid #e2e8f0',
-  borderRadius: 18,
   padding: 14,
-  background: 'linear-gradient(180deg, #ffffff, #f8fafc)',
-}
-
-const featureHead: any = { display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }
-const featureTitle: any = { margin: 0, fontSize: 14, fontWeight: 900, color: '#0f172a' }
-
-const chip: any = {
-  padding: '6px 10px',
-  borderRadius: 999,
-  border: '1px solid #e2e8f0',
-  background: '#ffffff',
-  fontSize: 10,
-  fontWeight: 900,
+  border: 'none',
+  background: 'linear-gradient(180deg, rgba(255,255,255,0.98), rgba(248,250,252,0.88))',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  cursor: 'pointer',
   color: '#0f172a',
 }
 
-const toggleRowBtn: any = {
+const sectionIconWrap: any = {
+  width: 44,
+  height: 44,
+  borderRadius: 16,
+  background: '#fff',
+  border: '1px solid #e2e8f0',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+}
+
+const sectionTitle: any = { fontSize: 14, fontWeight: 900 }
+const sectionSub: any = { fontSize: 11, fontWeight: 700, color: '#64748b', marginTop: 2 }
+const chip: any = { padding: '6px 10px', borderRadius: 999, border: '1px solid #e2e8f0', background: '#fff', fontSize: 10, fontWeight: 900, color: '#0f172a' }
+
+const sectionBody: any = { padding: 14 }
+
+const label: any = { fontSize: 10, fontWeight: 900, color: '#94a3b8', letterSpacing: 0.6, marginBottom: 6, display: 'block' }
+const input: any = { width: '100%', padding: 12, borderRadius: 12, border: '1px solid #e2e8f0', background: '#f8fafc', fontWeight: 800, fontSize: 14, outline: 'none' }
+const textarea: any = { ...input, height: 72, resize: 'none' }
+const field: any = { marginBottom: 12 }
+const grid2: any = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }
+
+const primaryBtn: any = { width: '100%', background: '#0f172a', color: '#fff', border: 'none', padding: 16, borderRadius: 14, fontWeight: 900, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, cursor: 'pointer', boxShadow: '0 12px 18px rgba(15,23,42,0.18)' }
+const successBtn: any = { ...primaryBtn, background: '#059669', boxShadow: '0 12px 18px rgba(5,150,105,0.18)' }
+
+const msgError: any = { marginTop: 10, color: '#dc2626', fontSize: 13, fontWeight: 900 }
+const msgSuccess: any = { marginTop: 10, color: '#059669', fontSize: 13, fontWeight: 900 }
+
+/* --- Feature card (matches photo vibe) --- */
+const featureCard: any = { borderRadius: 24, border: '1px solid #e2e8f0', background: '#fff', overflow: 'hidden' }
+const featureHeaderRow: any = { padding: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #eef2f7' }
+const featureHeaderLeft: any = { display: 'flex', alignItems: 'center', gap: 12 }
+const featureIconOuter: any = { width: 64, height: 64, borderRadius: 24, background: '#fff7ed', border: '1px solid #fde68a', display: 'flex', alignItems: 'center', justifyContent: 'center' }
+const featureKicker: any = { fontSize: 12, fontWeight: 900, color: '#64748b', letterSpacing: 0.6 }
+const featureTitle: any = { fontSize: 24, fontWeight: 900, color: '#0f172a', marginTop: 2 }
+const featureChip: any = { padding: '10px 18px', borderRadius: 999, border: '1px solid #e2e8f0', fontWeight: 900, background: '#fff' }
+
+const featureInnerCard: any = { margin: 16, padding: 18, borderRadius: 24, border: '1px solid #e2e8f0', background: '#fff' }
+const shieldPill: any = { width: 56, height: 56, borderRadius: 18, background: '#ecfdf5', border: '1px solid #bbf7d0', display: 'flex', alignItems: 'center', justifyContent: 'center' }
+const featureMainTitle: any = { fontSize: 22, fontWeight: 900, color: '#0f172a' }
+const featureMainSub: any = { fontSize: 16, fontWeight: 800, color: '#64748b', marginTop: 6 }
+const featureFootNote: any = { padding: '0 16px 16px', fontSize: 14, fontWeight: 800, color: '#94a3b8' }
+
+const onPill = (on: boolean): any => ({
+  padding: '10px 16px',
+  borderRadius: 999,
+  border: `2px solid ${on ? '#86efac' : '#e2e8f0'}`,
+  fontWeight: 900,
+  background: '#fff',
+  color: on ? '#16a34a' : '#64748b',
+  minWidth: 62,
+  textAlign: 'center',
+})
+
+const iosSwitch = (on: boolean): any => ({
+  width: 68,
+  height: 38,
+  borderRadius: 999,
+  background: on ? '#16a34a' : '#cbd5e1',
+  border: '1px solid #e2e8f0',
+  padding: 4,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: on ? 'flex-end' : 'flex-start',
+  cursor: 'pointer',
+  boxShadow: on ? '0 14px 24px rgba(22,163,74,0.28)' : 'none',
+})
+
+const iosKnob = (on: boolean): any => ({
+  width: 30,
+  height: 30,
+  borderRadius: 999,
+  background: '#fff',
+  boxShadow: '0 10px 18px rgba(15,23,42,0.22)',
+})
+
+/* --- Backup --- */
+const backupCard: any = { border: '1px solid #e2e8f0', background: '#fff', borderRadius: 18, padding: 14 }
+const backupRow: any = { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 12 }
+const backupTitle: any = { fontSize: 14, fontWeight: 900, color: '#0f172a' }
+const backupSub: any = { fontSize: 12, fontWeight: 700, color: '#64748b', marginTop: 4 }
+const backupToggleBox: any = { display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 14, border: '1px solid #e2e8f0', background: '#f8fafc' }
+const backupToggleLabel: any = { fontSize: 12, fontWeight: 900, color: '#0f172a' }
+
+/* --- Support --- */
+const supportToggle: any = {
   width: '100%',
   border: '1px solid #e2e8f0',
-  background: '#ffffff',
-  padding: '14px',
-  borderRadius: '16px',
+  background: '#fff',
+  borderRadius: 18,
+  padding: 14,
   cursor: 'pointer',
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'space-between',
-  gap: '12px',
 }
 
-const toggleIconBox = (on: boolean): any => ({
-  width: 38,
-  height: 38,
-  borderRadius: 14,
-  background: on ? '#ecfdf5' : '#f1f5f9',
-  border: '1px solid #e2e8f0',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-})
+const supportIcon: any = { width: 36, height: 36, borderRadius: 14, background: '#f1f5f9', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#0f172a' }
+const supportTitle: any = { fontSize: 13, fontWeight: 900, color: '#0f172a' }
+const supportSub: any = { fontSize: 11, fontWeight: 800, color: '#64748b', marginTop: 4 }
 
-const pill = (borderColor: string, textColor: string): any => ({
-  padding: '6px 10px',
-  borderRadius: 999,
-  border: `1px solid ${borderColor}`,
-  background: '#ffffff',
-  color: textColor,
-  fontSize: 11,
-  fontWeight: 900,
-  letterSpacing: '0.5px',
-})
-
-const switchOuter = (on: boolean): any => ({
-  width: 46,
-  height: 26,
-  borderRadius: 999,
-  background: on ? '#059669' : '#cbd5e1',
-  border: '1px solid #e2e8f0',
-  padding: 3,
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: on ? 'flex-end' : 'flex-start',
-})
-
-const switchInner = (on: boolean): any => ({
-  width: 20,
-  height: 20,
-  borderRadius: 999,
-  background: '#ffffff',
-  boxShadow: '0 6px 12px rgba(0,0,0,0.12)',
-})
-
-const supportToggleStyle: any = {
-  background: 'none',
-  border: 'none',
-  color: '#94a3b8',
-  fontSize: '12px',
-  fontWeight: '800',
-  cursor: 'pointer',
-  display: 'inline-flex',
-  alignItems: 'center',
-  gap: '6px',
-  padding: '8px 10px',
-}
-
-const supportCardStyle: any = {
-  marginTop: 12,
-  padding: 18,
-  backgroundColor: 'white',
-  borderRadius: 22,
-  border: '1px solid #fee2e2',
-  textAlign: 'center',
-  boxShadow: '0 10px 25px rgba(220,38,38,0.06)',
-}
+const supportCard: any = { marginTop: 12, padding: 16, borderRadius: 18, border: '1px solid #fee2e2', background: '#fff', textAlign: 'center' }
+const supportText: any = { fontSize: 13, fontWeight: 800, color: '#64748b', marginBottom: 14 }
 
 const waBtnStyle: any = {
   width: '100%',
@@ -759,7 +683,7 @@ const waBtnStyle: any = {
   alignItems: 'center',
   justifyContent: 'center',
   gap: '8px',
-  boxShadow: '0 12px 22px rgba(37,211,102,0.18)',
+  boxShadow: '0 12px 18px rgba(37,211,102,0.18)',
 }
 
 export default function SettingsPage() {
