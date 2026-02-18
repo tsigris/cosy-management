@@ -7,7 +7,7 @@ import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { format, startOfMonth, endOfMonth } from 'date-fns'
 import { toast, Toaster } from 'sonner'
-import { Coins, Users, ShoppingBag, Lightbulb, Wrench, Landmark, Printer } from 'lucide-react'
+import { Coins, Users, ShoppingBag, Lightbulb, Wrench, Printer } from 'lucide-react'
 
 // --- MODERN PREMIUM PALETTE ---
 const colors = {
@@ -60,6 +60,10 @@ function AnalysisContent() {
   const [suppliers, setSuppliers] = useState<any[]>([])
   const [revenueSources, setRevenueSources] = useState<any[]>([])
   const [maintenanceWorkers, setMaintenanceWorkers] = useState<any[]>([])
+
+  // ✅ BALANCES / DRAWER (from views)
+  const [balances, setBalances] = useState<any>(null)
+  const [drawer, setDrawer] = useState<any>(null)
 
   // ✅ Smart Dynamic Filters
   const [filterA, setFilterA] = useState<FilterA>('Όλες')
@@ -210,13 +214,37 @@ function AnalysisContent() {
         .in('sub_category', ['worker', 'Maintenance', 'maintenance'])
         .order('name', { ascending: true })
 
+      // ✅ balances (cash/bank/total) + cash drawer (for endDate)
+      const balancesPromise = supabase
+        .from('v_financial_balances')
+        .select('*')
+        .eq('store_id', storeId)
+        .maybeSingle()
+
+      const drawerPromise = supabase
+        .from('v_cash_drawer_today')
+        .select('*')
+        .eq('store_id', storeId)
+        .eq('date', endDate)
+        .maybeSingle()
+
       const [
         { data: tx, error: txErr },
         { data: staffData, error: staffErr },
         { data: supData, error: supErr },
         { data: revData, error: revErr },
         { data: maintData, error: maintErr },
-      ] = await Promise.all([txQuery, staffQuery, suppliersQuery, revenueSourcesQuery, maintenanceQuery])
+        { data: balData, error: balErr },
+        { data: drawerData, error: drawerErr },
+      ] = await Promise.all([
+        txQuery,
+        staffQuery,
+        suppliersQuery,
+        revenueSourcesQuery,
+        maintenanceQuery,
+        balancesPromise,
+        drawerPromise,
+      ])
 
       if (txErr) throw txErr
       if (staffErr) throw staffErr
@@ -224,22 +252,46 @@ function AnalysisContent() {
       if (revErr) throw revErr
       if (maintErr) throw maintErr
 
+      // If the views don't exist yet, don't kill the page—just hide those KPIs
+      if (balErr) console.warn('v_financial_balances error:', balErr)
+      if (drawerErr) console.warn('v_cash_drawer_today error:', drawerErr)
+
       setTransactions(tx || [])
       setStaff(staffData || [])
       setSuppliers(supData || [])
       setRevenueSources(revData || [])
       setMaintenanceWorkers((maintData || []).filter((x: any) => String(x?.name || '').trim().length > 0))
+
+      setBalances(balData || null)
+      setDrawer(drawerData || null)
     } catch (err) {
       console.error(err)
       toast.error('Σφάλμα φόρτωσης δεδομένων')
     } finally {
       setLoading(false)
     }
-  }, [router, storeId])
+  }, [router, storeId, endDate])
 
   useEffect(() => {
     loadData()
   }, [loadData])
+
+  // ✅ refresh balances/drawer when date changes (so Z day drawer follows "ΕΩΣ")
+  useEffect(() => {
+    if (!storeId || storeId === 'null') return
+    ;(async () => {
+      try {
+        const [{ data: balData }, { data: drawerData }] = await Promise.all([
+          supabase.from('v_financial_balances').select('*').eq('store_id', storeId).maybeSingle(),
+          supabase.from('v_cash_drawer_today').select('*').eq('store_id', storeId).eq('date', endDate).maybeSingle(),
+        ])
+        setBalances(balData || null)
+        setDrawer(drawerData || null)
+      } catch (e) {
+        console.warn(e)
+      }
+    })()
+  }, [storeId, endDate])
 
   useEffect(() => {
     let nextMode: DetailMode = 'none'
@@ -430,6 +482,8 @@ function AnalysisContent() {
   // ✅ stable, cross-device date display (not affected by input rendering)
   const rangeText = useMemo(() => `${startDate} → ${endDate}`, [startDate, endDate])
 
+  const money = useCallback((n: any) => `${Number(n || 0).toFixed(2)}€`, [])
+
   return (
     <div style={iphoneWrapper} data-print-root="true">
       <Toaster position="top-center" richColors />
@@ -469,7 +523,7 @@ function AnalysisContent() {
           {rangeText}
         </div>
 
-        {/* FILTERS (✅ NEW: 1x1 Tiles - stable on iPhone/Android) */}
+        {/* FILTERS */}
         <div style={filterCard} className="no-print">
           <div style={filterHeaderRow}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -486,13 +540,7 @@ function AnalysisContent() {
               <div style={tileIcon}>📅</div>
               <div style={tileBody}>
                 <div style={tileLabel}>ΑΠΟ</div>
-                <input
-                  type="date"
-                  value={startDate}
-                  onChange={(e) => setStartDate(e.target.value)}
-                  style={tileControl}
-                  inputMode="none"
-                />
+                <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} style={tileControl} inputMode="none" />
               </div>
             </div>
 
@@ -500,13 +548,7 @@ function AnalysisContent() {
               <div style={tileIcon}>📅</div>
               <div style={tileBody}>
                 <div style={tileLabel}>ΕΩΣ</div>
-                <input
-                  type="date"
-                  value={endDate}
-                  onChange={(e) => setEndDate(e.target.value)}
-                  style={tileControl}
-                  inputMode="none"
-                />
+                <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} style={tileControl} inputMode="none" />
               </div>
             </div>
 
@@ -599,6 +641,35 @@ function AnalysisContent() {
           </div>
         </div>
 
+        {/* ✅ NEW: BALANCES + CASH DRAWER KPIs */}
+        <div style={balancesGrid} data-print-section="true">
+          <div style={smallKpiCard}>
+            <div style={smallKpiLabel}>Υπόλοιπο Μετρητών</div>
+            <div style={smallKpiValue}>{balances ? money(balances.cash_balance) : '—'}</div>
+            <div style={smallKpiHint}>Μετρητά + Μετρητά (Z)</div>
+          </div>
+
+          <div style={smallKpiCard}>
+            <div style={smallKpiLabel}>Υπόλοιπο Τράπεζας</div>
+            <div style={smallKpiValue}>{balances ? money(balances.bank_balance) : '—'}</div>
+            <div style={smallKpiHint}>Κάρτα + Τράπεζα</div>
+          </div>
+
+          <div style={smallKpiCard}>
+            <div style={smallKpiLabel}>Σύνολο Καθαρό</div>
+            <div style={smallKpiValue}>{balances ? money(balances.total_balance) : '—'}</div>
+            <div style={smallKpiHint}>Cash + Bank (+ όλα)</div>
+          </div>
+
+          <div style={smallKpiCard}>
+            <div style={smallKpiLabel}>Ταμείο Ημέρας (Z)</div>
+            <div style={smallKpiValue}>{drawer ? money(drawer.total_cash_drawer) : '—'}</div>
+            <div style={smallKpiHint}>
+              {drawer ? `Z: ${money(drawer.z_cash)} • Extra: ${money(drawer.extra_cash)}` : `Για την ημερομηνία ΕΩΣ: ${endDate}`}
+            </div>
+          </div>
+        </div>
+
         {/* ✅ CATEGORY BREAKDOWN */}
         <div style={sectionCard} data-print-section="true">
           <div style={sectionTitleRow}>
@@ -662,7 +733,16 @@ function AnalysisContent() {
                 {staffDetailsThisMonth.map((s) => (
                   <div key={s.name} style={rowItem}>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
-                      <div style={{ fontSize: 16, fontWeight: 900, color: colors.primary, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      <div
+                        style={{
+                          fontSize: 16,
+                          fontWeight: 900,
+                          color: colors.primary,
+                          whiteSpace: 'nowrap',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                        }}
+                      >
                         {String(s.name || '').toUpperCase()}
                       </div>
                       <div style={{ fontSize: 13, fontWeight: 800, color: colors.secondary }}>Καταβλήθηκε</div>
@@ -706,7 +786,7 @@ function AnalysisContent() {
                   const pillBr = isInc ? '#d1fae5' : isTip ? '#fde68a' : '#ffe4e6'
                   const pillTx = isInc ? colors.success : isTip ? '#92400e' : colors.danger
 
-                  const pm = String(t.payment_method || '').trim()
+                  const pm = String((t.payment_method ?? t.method ?? '') || '').trim()
 
                   return (
                     <div key={t.id ?? `${t.date}-${t.created_at}-${absAmt}`} style={listRow} data-print-row="true">
@@ -963,6 +1043,39 @@ const kpiValue: any = { marginTop: 10, fontSize: 24, fontWeight: 950 }
 const kpiTrack: any = { marginTop: 12, height: 8, borderRadius: 999, background: '#e5e7eb', overflow: 'hidden' }
 const kpiFill: any = { height: 8, borderRadius: 999 }
 
+// ✅ NEW: balances grid styles
+const balancesGrid: any = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 12 }
+
+const smallKpiCard: any = {
+  background: '#ffffff',
+  border: '1px solid rgba(15, 23, 42, 0.08)',
+  borderRadius: 18,
+  padding: 14,
+  boxShadow: '0 10px 24px rgba(15, 23, 42, 0.06)',
+}
+
+const smallKpiLabel: any = {
+  fontSize: 12,
+  fontWeight: 900,
+  color: '#64748b',
+  letterSpacing: 0.4,
+  textTransform: 'uppercase',
+}
+
+const smallKpiValue: any = {
+  fontSize: 20,
+  fontWeight: 1000,
+  color: '#0f172a',
+  marginTop: 8,
+}
+
+const smallKpiHint: any = {
+  fontSize: 12,
+  color: '#94a3b8',
+  marginTop: 6,
+  fontWeight: 700,
+}
+
 // Sections
 const sectionCard: any = {
   marginTop: 14,
@@ -976,7 +1089,16 @@ const sectionCard: any = {
 const sectionTitleRow: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, marginBottom: 12 }
 const sectionTitle: any = { margin: 0, fontSize: 18, fontWeight: 950, color: colors.primary }
 const sectionSub: any = { marginTop: 4, fontSize: 12, fontWeight: 850, color: colors.secondary }
-const sectionPill: any = { padding: '10px 14px', borderRadius: 999, border: `1px solid ${colors.border}`, background: '#fff', fontSize: 13, fontWeight: 950, color: colors.primary, whiteSpace: 'nowrap' }
+const sectionPill: any = {
+  padding: '10px 14px',
+  borderRadius: 999,
+  border: `1px solid ${colors.border}`,
+  background: '#fff',
+  fontSize: 13,
+  fontWeight: 950,
+  color: colors.primary,
+  whiteSpace: 'nowrap',
+}
 
 const hintBox: any = {
   padding: 14,
@@ -988,7 +1110,7 @@ const hintBox: any = {
   color: colors.secondary,
 }
 
-// Category rows (✅ fixes “suppliers & others” alignment / truncation)
+// Category rows
 const catRow: any = {
   display: 'grid',
   gridTemplateColumns: '1fr 120px 110px',
