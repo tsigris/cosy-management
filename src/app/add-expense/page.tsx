@@ -135,7 +135,6 @@ function groupFromSubCategory(sub: any): AssetGroup {
   if (s === 'utility' || s === 'utilities') return 'utility'
   if (s === 'maintenance' || s === 'worker') return 'maintenance'
   if (s === 'other') return 'other'
-  // στο manage-lists τα Maintenance έρχονται και με κεφαλαίο
   if (String(sub || '').trim() === 'Maintenance') return 'maintenance'
   return 'other'
 }
@@ -345,7 +344,6 @@ function AddExpenseForm() {
     return m
   }, [smartItems])
 
-  // ✅ χωρίς "τελευταίες" — αν δεν γράφει query, δεν δείχνει τίποτα
   const filtered = useMemo(() => {
     const q = smartQuery.trim()
     if (!q) return []
@@ -514,7 +512,7 @@ function AddExpenseForm() {
                 setSmartOpen(true)
               }}
               onFocus={() => setSmartOpen(true)}
-              placeholder="Αναζήτηση... (π.χ. ΔΕΗ / deh / Τζηλιος / tzhlios)"
+              placeholder="Αναζήτηση"
               style={inputStyle}
               autoCapitalize="none"
               autoCorrect="off"
@@ -555,19 +553,17 @@ function AddExpenseForm() {
                           style={resultRow}
                         >
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                            <div style={{ fontSize: 15, fontWeight: 900, color: colors.primaryDark }}>
-                              {item.name}
-                            </div>
+                            <div style={{ fontSize: 15, fontWeight: 900, color: colors.primaryDark }}>{item.name}</div>
                             <div style={{ fontSize: 12, fontWeight: 700, color: colors.secondaryText }}>
                               {item.kind === 'supplier'
                                 ? 'Προμηθευτής'
-                                : (item.group === 'maintenance'
-                                    ? 'Συντήρηση'
-                                    : item.group === 'staff'
-                                      ? 'Προσωπικό'
-                                      : item.group === 'utility'
-                                        ? 'Λογαριασμός'
-                                        : 'Λοιπά')}
+                                : item.group === 'maintenance'
+                                  ? 'Συντήρηση'
+                                  : item.group === 'staff'
+                                    ? 'Προσωπικό'
+                                    : item.group === 'utility'
+                                      ? 'Λογαριασμός'
+                                      : 'Λοιπά'}
                             </div>
                           </div>
                         </button>
@@ -589,14 +585,7 @@ function AddExpenseForm() {
           )}
 
           <label style={{ ...labelStyle, marginTop: 20 }}>Ποσό (€)</label>
-          <input
-            type="number"
-            inputMode="decimal"
-            value={amount}
-            onChange={e => setAmount(e.target.value)}
-            style={inputStyle}
-            placeholder="0.00"
-          />
+          <input type="number" inputMode="decimal" value={amount} onChange={e => setAmount(e.target.value)} style={inputStyle} placeholder="0.00" />
 
           <div
             onClick={() => setNoInvoice(!noInvoice)}
@@ -711,13 +700,7 @@ function AddExpenseForm() {
                 ) : (
                   <label style={uploadPlaceholder}>
                     <span style={{ fontSize: 14, fontWeight: 900 }}>📷 Επιλογή φωτογραφίας</span>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      capture="environment"
-                      onChange={handleImageChange}
-                      style={{ display: 'none' }}
-                    />
+                    <input type="file" accept="image/*" capture="environment" onChange={handleImageChange} style={{ display: 'none' }} />
                   </label>
                 )}
               </div>
@@ -736,12 +719,8 @@ function AddExpenseForm() {
               }}
             >
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                <span style={{ fontSize: 14, fontWeight: 900 }}>
-                  {loading ? 'Αποθήκευση...' : editId ? 'Ενημέρωση' : 'Καταχώρηση'}
-                </span>
-                <span style={{ fontSize: 14, opacity: 0.85, fontWeight: 800, marginTop: 6 }}>
-                  Καθαρό ταμείο: {currentBalance.toFixed(2)}€
-                </span>
+                <span style={{ fontSize: 14, fontWeight: 900 }}>{loading ? 'Αποθήκευση...' : editId ? 'Ενημέρωση' : 'Καταχώρηση'}</span>
+                <span style={{ fontSize: 14, opacity: 0.85, fontWeight: 800, marginTop: 6 }}>Καθαρό ταμείο: {currentBalance.toFixed(2)}€</span>
               </div>
             </button>
           </div>
