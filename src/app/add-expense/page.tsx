@@ -18,24 +18,9 @@ const colors = {
   white: '#ffffff',
 }
 
-type ExpenseCategoryKey = 'suppliers' | 'worker' | 'utility' | 'staff' | 'other'
-
-const CATEGORY_UI: Array<{
-  key: ExpenseCategoryKey
-  icon: string
-  label: string
-  dbCategory: 'Εμπορεύματα' | 'Maintenance' | 'Utilities' | 'Staff' | 'Other'
-}> = [
-  { key: 'suppliers', icon: '🛒', label: 'Εμπορεύματα', dbCategory: 'Εμπορεύματα' },
-  { key: 'worker', icon: '🔧', label: 'Συντήρηση', dbCategory: 'Maintenance' },
-  { key: 'utility', icon: '💡', label: 'Λογαριασμοί', dbCategory: 'Utilities' },
-  { key: 'staff', icon: '👤', label: 'Προσωπικό', dbCategory: 'Staff' },
-  { key: 'other', icon: '📦', label: 'Λοιπά', dbCategory: 'Other' },
-]
-
 type SmartItem =
   | { kind: 'supplier'; id: string; name: string }
-  | { kind: 'asset'; id: string; name: string; sub_category: string; uiKey: ExpenseCategoryKey }
+  | { kind: 'asset'; id: string; name: string; sub_category: string | null; rf_code?: string | null }
 
 // -----------------------------
 // ✅ SEARCH HELPERS (Greeklish + Fuzzy)
@@ -48,11 +33,10 @@ function normalizeForSearch(input: any) {
   return stripDiacritics(String(input || '').toLowerCase().trim())
 }
 
-// Greek -> Greeklish (basic but solid for names)
+// Greek -> Greeklish (basic + useful)
 function greekToGreeklish(input: string) {
   let out = normalizeForSearch(input)
 
-  // Digraphs first
   const digraphs: Array<[RegExp, string]> = [
     [/ου/g, 'ou'],
     [/αι/g, 'ai'],
@@ -70,7 +54,6 @@ function greekToGreeklish(input: string) {
   ]
   for (const [re, rep] of digraphs) out = out.replace(re, rep)
 
-  // Single letters
   const map: Record<string, string> = {
     α: 'a',
     β: 'v',
@@ -78,7 +61,7 @@ function greekToGreeklish(input: string) {
     δ: 'd',
     ε: 'e',
     ζ: 'z',
-    η: 'h', // -> deh for ΔΕΗ
+    η: 'h', // deh for ΔΕΗ
     θ: 'th',
     ι: 'i',
     κ: 'k',
@@ -107,57 +90,83 @@ function greekToGreeklish(input: string) {
 /**
  * Fuzzy normalize:
  * - Treats (h,i,y) as same-ish for Greek vowels (η/ι/υ) in Greeklish context
- * - Also collapses common combos: ei/oi/yi -> i, ou -> u (optional), etc.
- * This makes "dei" match "deh" and also match Greek "ΔΕΗ".
+ * - Collapses common combos: ei/oi/yi -> i, ou -> u
+ * So "dei" matches "deh" matches "ΔΕΗ"
  */
 function fuzzyLatin(s: string) {
   let out = normalizeForSearch(s)
 
-  // Collapse common multi-letter vowel sounds to simpler forms
   out = out
     .replace(/ei/g, 'i')
     .replace(/oi/g, 'i')
     .replace(/yi/g, 'i')
     .replace(/ou/g, 'u')
-    .replace(/ai/g, 'e') // optional simplification
-    .replace(/th/g, 't') // optional: θ -> t for very fuzzy search
+    .replace(/ai/g, 'e')
 
-  // Collapse h / i / y in latin to i (so h≈i≈y)
   out = out.replace(/[hy]/g, 'i')
-
-  // Remove non letters/numbers (keeps searching forgiving)
   out = out.replace(/[^a-z0-9]/g, '')
-
   return out
 }
 
-function matchesSmartQuery(name: string, query: string) {
+function matchesSmartQuery(item: SmartItem, query: string) {
   const qRaw = normalizeForSearch(query)
   if (!qRaw) return true
 
-  const nRaw = normalizeForSearch(name)
-  if (nRaw.includes(qRaw)) return true
+  const fields = [
+    String(item.name || ''),
+    item.kind === 'asset' ? String(item.rf_code || '') : '',
+    item.kind === 'asset' ? String(item.sub_category || '') : '',
+  ].filter(Boolean)
 
-  const nGreeklish = greekToGreeklish(name)
-  if (nGreeklish.includes(qRaw)) return true
+  for (const field of fields) {
+    const nRaw = normalizeForSearch(field)
+    if (nRaw.includes(qRaw)) return true
 
-  // ✅ FUZZY PASS: makes "dei" match "deh"
-  const qF = fuzzyLatin(query)
-  const nF1 = fuzzyLatin(name) // if name itself is latin
-  if (nF1.includes(qF)) return true
+    const nGreeklish = greekToGreeklish(field)
+    if (nGreeklish.includes(qRaw)) return true
 
-  const nF2 = fuzzyLatin(nGreeklish) // if name is greek -> greeklish -> fuzzy
-  if (nF2.includes(qF)) return true
+    const qF = fuzzyLatin(query)
+    const nF1 = fuzzyLatin(field)
+    if (nF1.includes(qF)) return true
+
+    const nF2 = fuzzyLatin(nGreeklish)
+    if (nF2.includes(qF)) return true
+  }
 
   return false
 }
 
-function groupTitleForKey(key: ExpenseCategoryKey) {
-  if (key === 'suppliers') return 'ΠΡΟΜΗΘΕΥΤΕΣ'
-  if (key === 'staff') return 'ΠΡΟΣΩΠΙΚΟ'
-  if (key === 'worker') return 'ΣΥΝΤΗΡΗΣΗ'
-  if (key === 'utility') return 'ΛΟΓΑΡΙΑΣΜΟΙ'
+function normalizeSubCategory(sub: any) {
+  const s = String(sub || '').trim()
+  const low = s.toLowerCase()
+  // keep original values but map for grouping
+  if (low === 'maintenance') return 'Maintenance'
+  if (low === 'staff') return 'staff'
+  if (low === 'utility' || low === 'utilities') return 'utility'
+  if (low === 'other') return 'other'
+  // sometimes in DB it may already be Maintenance
+  if (s === 'Maintenance') return 'Maintenance'
+  return s || 'other'
+}
+
+function groupTitleForItem(item: SmartItem) {
+  if (item.kind === 'supplier') return 'ΠΡΟΜΗΘΕΥΤΕΣ'
+
+  const sub = normalizeSubCategory(item.sub_category)
+  if (sub === 'utility') return 'ΛΟΓΑΡΙΑΣΜΟΙ'
+  if (sub === 'staff') return 'ΠΡΟΣΩΠΙΚΟ'
+  if (sub === 'Maintenance') return 'ΣΥΝΤΗΡΗΣΗ'
   return 'ΛΟΙΠΑ'
+}
+
+function categoryForItem(item: SmartItem) {
+  // this is INTERNAL ONLY (no UI). Keeps consistency for Analysis.
+  if (item.kind === 'supplier') return 'Εμπορεύματα'
+  const sub = normalizeSubCategory(item.sub_category)
+  if (sub === 'utility') return 'Utilities'
+  if (sub === 'staff') return 'Staff'
+  if (sub === 'Maintenance') return 'Maintenance'
+  return 'Other'
 }
 
 function AddExpenseForm() {
@@ -173,10 +182,7 @@ function AddExpenseForm() {
 
   const [amount, setAmount] = useState('')
   const [method, setMethod] = useState<'Μετρητά' | 'Τράπεζα'>('Μετρητά')
-
-  // ✅ NOTES uppercase too (if you don't want, tell me)
   const [notes, setNotes] = useState('')
-
   const [isCredit, setIsCredit] = useState(false)
   const [isAgainstDebt, setIsAgainstDebt] = useState(searchParams.get('mode') === 'debt')
   const [noInvoice, setNoInvoice] = useState(false)
@@ -184,7 +190,7 @@ function AddExpenseForm() {
   const [imageFile, setImageFile] = useState<File | null>(null)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
 
-  const [currentUsername, setCurrentUsername] = useState('ΧΡΗΣΤΗΣ')
+  const [currentUsername, setCurrentUsername] = useState('Χρήστης')
   const [loading, setLoading] = useState(true)
 
   const [storeId, setStoreId] = useState<string | null>(urlStoreId)
@@ -194,8 +200,8 @@ function AddExpenseForm() {
 
   const [dayStats, setDayStats] = useState({ income: 0, expenses: 0 })
 
-  const [expenseCategory, setExpenseCategory] = useState<ExpenseCategoryKey>('suppliers')
-  const [selectedItemId, setSelectedItemId] = useState<string>('')
+  // ✅ Selected entity (no category UI)
+  const [selectedEntity, setSelectedEntity] = useState<{ kind: 'supplier' | 'asset'; id: string } | null>(null)
 
   const [isSupModalOpen, setIsSupModalOpen] = useState(false)
   const [newSupName, setNewSupName] = useState('')
@@ -207,28 +213,6 @@ function AddExpenseForm() {
   // ✅ RECENTS
   const [recentIds, setRecentIds] = useState<string[]>([])
   const smartBoxRef = useRef<HTMLDivElement | null>(null)
-
-  const dbCategoryFromKey = useCallback((key: ExpenseCategoryKey) => {
-    return CATEGORY_UI.find(c => c.key === key)?.dbCategory || 'Other'
-  }, [])
-
-  const keyFromDbCategory = useCallback((cat: string | null | undefined): ExpenseCategoryKey => {
-    if (cat === 'Εμπορεύματα') return 'suppliers'
-    if (cat === 'Maintenance') return 'worker'
-    if (cat === 'Utilities') return 'utility'
-    if (cat === 'Staff') return 'staff'
-    return 'other'
-  }, [])
-
-  const keyFromFixedAssetSubCategory = useCallback((subCategory: any): ExpenseCategoryKey => {
-    const sub = String(subCategory || '').trim().toLowerCase()
-    if (sub === 'maintenance') return 'worker'
-    if (sub === 'worker') return 'worker'
-    if (sub === 'staff') return 'staff'
-    if (sub === 'utility' || sub === 'utilities') return 'utility'
-    if (sub === 'other') return 'other'
-    return 'other'
-  }, [])
 
   // ✅ click outside to close results
   useEffect(() => {
@@ -248,17 +232,17 @@ function AddExpenseForm() {
     if (raw) {
       try {
         const parsed = JSON.parse(raw)
-        if (Array.isArray(parsed)) setRecentIds(parsed.slice(0, 8))
+        if (Array.isArray(parsed)) setRecentIds(parsed.slice(0, 10))
       } catch {}
     }
   }, [urlStoreId])
 
-  const saveRecent = (id: string) => {
+  const saveRecent = (key: string) => {
     if (typeof window === 'undefined') return
-    const key = `expense_recents_${urlStoreId || 'default'}`
+    const storageKey = `expense_recents_${urlStoreId || 'default'}`
     setRecentIds(prev => {
-      const next = [id, ...prev.filter(x => x !== id)].slice(0, 8)
-      localStorage.setItem(key, JSON.stringify(next))
+      const next = [key, ...prev.filter(x => x !== key)].slice(0, 10)
+      localStorage.setItem(storageKey, JSON.stringify(next))
       return next
     })
   }
@@ -286,15 +270,15 @@ function AddExpenseForm() {
         .eq('id', session.user.id)
         .maybeSingle()
 
-      if (profile) setCurrentUsername(String(profile.username || 'ADMIN').toUpperCase())
+      if (profile) setCurrentUsername(profile.username || 'Admin')
 
+      // ✅ IMPORTANT: bring ALL fixed_assets of the store (no sub_category filter, so you will see everyone)
       const [sRes, fRes, tRes] = await Promise.all([
         supabase.from('suppliers').select('*').eq('store_id', activeStoreId).order('name'),
         supabase
           .from('fixed_assets')
-          .select('id, name, sub_category')
+          .select('id, name, sub_category, rf_code')
           .eq('store_id', activeStoreId)
-          .in('sub_category', ['staff', 'Maintenance', 'utility', 'other'])
           .order('name'),
         supabase.from('transactions').select('amount, type').eq('store_id', activeStoreId).eq('date', selectedDate),
       ])
@@ -317,6 +301,7 @@ function AddExpenseForm() {
         setDayStats({ income: inc, expenses: exp })
       }
 
+      // ✅ Edit Mode
       if (editId) {
         const { data: tx } = await supabase
           .from('transactions')
@@ -328,46 +313,50 @@ function AddExpenseForm() {
         if (tx) {
           setAmount(Math.abs(tx.amount).toString())
           setMethod(tx.method === 'Τράπεζα' ? 'Τράπεζα' : 'Μετρητά')
-          setNotes(String(tx.notes || '').toUpperCase())
+          setNotes(tx.notes || '')
           setIsCredit(!!tx.is_credit)
           setIsAgainstDebt(tx.type === 'debt_payment')
           setNoInvoice((tx.notes || '').includes('ΧΩΡΙΣ ΤΙΜΟΛΟΓΙΟ'))
 
-          const inferredKey = keyFromDbCategory(tx.category)
-          setExpenseCategory(inferredKey)
+          const kind: 'supplier' | 'asset' = tx.supplier_id ? 'supplier' : 'asset'
+          const id = tx.supplier_id || tx.fixed_asset_id || ''
 
-          const itemId = inferredKey === 'suppliers' ? tx.supplier_id || '' : tx.fixed_asset_id || ''
-          setSelectedItemId(itemId)
-
-          if (itemId) {
-            const found =
-              inferredKey === 'suppliers' ? supData.find((x: any) => x.id === itemId) : faData.find((x: any) => x.id === itemId)
-            setSmartQuery(String(found?.name || '').toUpperCase())
+          if (id) {
+            setSelectedEntity({ kind, id })
+            if (kind === 'supplier') {
+              const found = supData.find((x: any) => x.id === id)
+              setSmartQuery(found?.name || '')
+            } else {
+              const found = faData.find((x: any) => x.id === id)
+              setSmartQuery(found?.name || '')
+            }
+          } else {
+            setSelectedEntity(null)
+            setSmartQuery('')
           }
         }
       } else {
+        // ✅ Preselect from URL
         if (urlSupId) {
-          setExpenseCategory('suppliers')
-          setSelectedItemId(urlSupId)
+          setSelectedEntity({ kind: 'supplier', id: urlSupId })
           const found = supData.find((x: any) => x.id === urlSupId)
-          setSmartQuery(String(found?.name || '').toUpperCase())
+          setSmartQuery(found?.name || '')
         } else if (urlAssetId) {
+          setSelectedEntity({ kind: 'asset', id: urlAssetId })
           const found = faData.find((x: any) => x.id === urlAssetId)
-          const inferredKey = keyFromFixedAssetSubCategory(found?.sub_category)
-          setExpenseCategory(inferredKey)
-          setSelectedItemId(urlAssetId)
-          setSmartQuery(String(found?.name || '').toUpperCase())
+          setSmartQuery(found?.name || '')
         } else {
-          setSelectedItemId('')
+          setSelectedEntity(null)
           setSmartQuery('')
         }
       }
     } catch (error) {
       console.error(error)
+      toast.error('Σφάλμα φόρτωσης')
     } finally {
       setLoading(false)
     }
-  }, [editId, keyFromDbCategory, keyFromFixedAssetSubCategory, router, selectedDate, urlStoreId, urlSupId, urlAssetId])
+  }, [editId, router, selectedDate, urlStoreId, urlSupId, urlAssetId])
 
   useEffect(() => {
     loadFormData()
@@ -376,18 +365,22 @@ function AddExpenseForm() {
   const currentBalance = useMemo(() => dayStats.income - dayStats.expenses, [dayStats])
 
   const smartItems = useMemo(() => {
-    const s: SmartItem[] = suppliers.map((x: any) => ({ kind: 'supplier', id: x.id, name: x.name || '' }))
+    const s: SmartItem[] = suppliers.map((x: any) => ({
+      kind: 'supplier',
+      id: String(x.id),
+      name: x.name || '',
+    }))
 
     const a: SmartItem[] = fixedAssets.map((x: any) => ({
       kind: 'asset',
-      id: x.id,
+      id: String(x.id),
       name: x.name || '',
-      sub_category: x.sub_category || '',
-      uiKey: keyFromFixedAssetSubCategory(x.sub_category),
+      sub_category: x.sub_category ?? null,
+      rf_code: x.rf_code ?? null,
     }))
 
     return [...s, ...a]
-  }, [suppliers, fixedAssets, keyFromFixedAssetSubCategory])
+  }, [suppliers, fixedAssets])
 
   const recentItems = useMemo(() => {
     if (!recentIds.length) return []
@@ -396,16 +389,17 @@ function AddExpenseForm() {
   }, [recentIds, smartItems])
 
   const groupedResults = useMemo(() => {
-    const list = smartQuery.trim()
-      ? smartItems.filter(i => matchesSmartQuery(i.name, smartQuery)).slice(0, 40)
+    const q = smartQuery.trim()
+
+    const list = q
+      ? smartItems.filter(i => matchesSmartQuery(i, q)).slice(0, 60)
       : recentItems.length
       ? recentItems
-      : smartItems.slice(0, 15)
+      : smartItems.slice(0, 25)
 
     const groups: Record<string, SmartItem[]> = {}
     for (const item of list) {
-      const groupKey = item.kind === 'supplier' ? 'suppliers' : item.uiKey
-      const title = groupTitleForKey(groupKey as ExpenseCategoryKey)
+      const title = groupTitleForItem(item)
       if (!groups[title]) groups[title] = []
       groups[title].push(item)
     }
@@ -413,19 +407,11 @@ function AddExpenseForm() {
   }, [smartQuery, smartItems, recentItems])
 
   const pickSmartItem = (item: SmartItem) => {
-    setSmartQuery(String(item.name || '').toUpperCase())
+    setSmartQuery(item.name || '')
     setSmartOpen(false)
 
-    if (item.kind === 'supplier') {
-      setExpenseCategory('suppliers')
-      setSelectedItemId(item.id)
-      saveRecent(`supplier:${item.id}`)
-      return
-    }
-
-    setExpenseCategory(item.uiKey)
-    setSelectedItemId(item.id)
-    saveRecent(`asset:${item.id}`)
+    setSelectedEntity({ kind: item.kind, id: item.id })
+    saveRecent(`${item.kind}:${item.id}`)
   }
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -437,8 +423,8 @@ function AddExpenseForm() {
   }
 
   const handleSave = async () => {
-    if (!amount || Number(amount) <= 0) return toast.error('ΣΥΜΠΛΗΡΩΣΤΕ ΤΟ ΠΟΣΟ')
-    if (!selectedItemId) return toast.error('ΕΠΙΛΕΞΤΕ ΔΙΚΑΙΟΥΧΟ ΑΠΟ ΤΗΝ ΑΝΑΖΗΤΗΣΗ')
+    if (!amount || Number(amount) <= 0) return toast.error('Συμπληρώστε το ποσό')
+    if (!selectedEntity?.id) return toast.error('Επιλέξτε δικαιούχο από την αναζήτηση')
 
     setLoading(true)
 
@@ -446,6 +432,7 @@ function AddExpenseForm() {
       const {
         data: { session },
       } = await supabase.auth.getSession()
+
       if (!session) {
         setLoading(false)
         return router.push('/login')
@@ -458,10 +445,25 @@ function AddExpenseForm() {
 
       if (!activeStoreId) {
         setLoading(false)
-        return toast.error('ΔΕΝ ΒΡΕΘΗΚΕ ΚΑΤΑΣΤΗΜΑ (STORE)')
+        return toast.error('Δεν βρέθηκε κατάστημα (store)')
       }
 
-      const dbCategory = dbCategoryFromKey(expenseCategory)
+      // Find selected item (for category + safety)
+      const selectedItem =
+        selectedEntity.kind === 'supplier'
+          ? ({ kind: 'supplier', ...(suppliers.find((x: any) => String(x.id) === String(selectedEntity.id)) || {}) } as any)
+          : ({ kind: 'asset', ...(fixedAssets.find((x: any) => String(x.id) === String(selectedEntity.id)) || {}) } as any)
+
+      const internalCategory =
+        selectedEntity.kind === 'supplier'
+          ? 'Εμπορεύματα'
+          : (() => {
+              const sub = normalizeSubCategory(selectedItem?.sub_category)
+              if (sub === 'utility') return 'Utilities'
+              if (sub === 'staff') return 'Staff'
+              if (sub === 'Maintenance') return 'Maintenance'
+              return 'Other'
+            })()
 
       const payload: any = {
         amount: -Math.abs(Number(amount)),
@@ -472,16 +474,13 @@ function AddExpenseForm() {
         user_id: session.user.id,
         store_id: activeStoreId,
 
-        supplier_id: expenseCategory === 'suppliers' ? selectedItemId : null,
-        fixed_asset_id: expenseCategory === 'suppliers' ? null : selectedItemId,
+        supplier_id: selectedEntity.kind === 'supplier' ? selectedEntity.id : null,
+        fixed_asset_id: selectedEntity.kind === 'asset' ? selectedEntity.id : null,
 
-        category: dbCategory,
+        // ✅ No category UI, but keep category consistent in DB
+        category: internalCategory,
         created_by_name: currentUsername,
-        notes: noInvoice
-          ? notes
-            ? `${notes} (ΧΩΡΙΣ ΤΙΜΟΛΟΓΙΟ)`
-            : 'ΧΩΡΙΣ ΤΙΜΟΛΟΓΙΟ'
-          : notes,
+        notes: noInvoice ? (notes ? `${notes} (ΧΩΡΙΣ ΤΙΜΟΛΟΓΙΟ)` : 'ΧΩΡΙΣ ΤΙΜΟΛΟΓΙΟ') : notes,
       }
 
       if (imageFile && !noInvoice && !editId) {
@@ -505,21 +504,36 @@ function AddExpenseForm() {
 
       if (error) throw error
 
-      toast.success(editId ? 'Η ΚΙΝΗΣΗ ΕΝΗΜΕΡΩΘΗΚΕ!' : 'Η ΚΙΝΗΣΗ ΚΑΤΑΧΩΡΗΘΗΚΕ!')
+      toast.success(editId ? 'Η κίνηση ενημερώθηκε!' : 'Η κίνηση καταχωρήθηκε!')
       router.push(`/?date=${selectedDate}&store=${activeStoreId}`)
       router.refresh()
     } catch (error: any) {
-      toast.error(error?.message || 'ΚΑΤΙ ΠΗΓΕ ΣΤΡΑΒΑ')
+      toast.error(error?.message || 'Κάτι πήγε στραβά')
       setLoading(false)
     }
   }
 
-  const onPickCategory = (key: ExpenseCategoryKey) => {
-    setExpenseCategory(key)
-    setSelectedItemId('')
-    setSmartQuery('')
-    setSmartOpen(true)
-  }
+  const selectedLabel = useMemo(() => {
+    if (!selectedEntity?.id) return null
+    if (selectedEntity.kind === 'supplier') {
+      const found = suppliers.find((x: any) => String(x.id) === String(selectedEntity.id))
+      return found?.name || smartQuery || ''
+    }
+    const found = fixedAssets.find((x: any) => String(x.id) === String(selectedEntity.id))
+    return found?.name || smartQuery || ''
+  }, [selectedEntity, suppliers, fixedAssets, smartQuery])
+
+  const selectedBadge = useMemo(() => {
+    if (!selectedEntity?.id) return ''
+    if (selectedEntity.kind === 'supplier') return 'Προμηθευτής'
+
+    const found = fixedAssets.find((x: any) => String(x.id) === String(selectedEntity.id))
+    const sub = normalizeSubCategory(found?.sub_category)
+    if (sub === 'utility') return 'Λογαριασμός'
+    if (sub === 'staff') return 'Προσωπικό'
+    if (sub === 'Maintenance') return 'Συντήρηση'
+    return 'Πάγιο'
+  }, [selectedEntity, fixedAssets])
 
   return (
     <div style={iphoneWrapper}>
@@ -529,32 +543,32 @@ function AddExpenseForm() {
           <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
             <div style={logoBoxStyle}>💸</div>
             <div>
-              <h1 style={{ fontWeight: 800, fontSize: 16, margin: 0 }}>{editId ? 'ΔΙΟΡΘΩΣΗ' : 'ΕΞΟΔΟ'}</h1>
+              <h1 style={{ fontWeight: 800, fontSize: 16, margin: 0 }}>{editId ? 'Διόρθωση' : 'Έξοδο'}</h1>
               <p style={{ margin: 0, fontSize: 16, color: colors.secondaryText, fontWeight: 700 }}>
-                {new Date(selectedDate).toLocaleDateString('el-GR', { day: 'numeric', month: 'long' }).toUpperCase()}
+                {new Date(selectedDate).toLocaleDateString('el-GR', { day: 'numeric', month: 'long' })}
               </p>
             </div>
           </div>
 
-          <Link href={`/?store=${urlStoreId || storeId || ''}`} style={backBtnStyle}>
+          <Link href={`/?store=${urlStoreId || storeId || ''}&date=${selectedDate}`} style={backBtnStyle}>
             ✕
           </Link>
         </div>
 
         <div style={formCard}>
           {/* SMART SEARCH */}
-          <label style={labelStyle}>ΔΙΚΑΙΟΥΧΟΣ (SMART SEARCH)</label>
+          <label style={labelStyle}>Δικαιούχος (Smart Search)</label>
 
           <div ref={smartBoxRef} style={{ position: 'relative' }}>
             <input
               value={smartQuery}
               onChange={e => {
-                setSmartQuery(String(e.target.value || '').toUpperCase())
-                setSelectedItemId('')
+                setSmartQuery(e.target.value)
+                setSelectedEntity(null)
                 setSmartOpen(true)
               }}
               onFocus={() => setSmartOpen(true)}
-              placeholder="🔎 ΓΡΑΨΕ ΟΝΟΜΑ... (DEI/DEH, ΔΕΗ, TZILIOS...)"
+              placeholder="🔎 Γράψε όνομα... (ΔΕΗ / dei / deh / ΤΖΗΛΙΟΣ / Ενοίκιο...)"
               style={inputStyle}
             />
 
@@ -563,7 +577,7 @@ function AddExpenseForm() {
                 type="button"
                 onClick={() => {
                   setSmartQuery('')
-                  setSelectedItemId('')
+                  setSelectedEntity(null)
                   setSmartOpen(true)
                 }}
                 style={clearBtn}
@@ -576,7 +590,7 @@ function AddExpenseForm() {
               <div style={resultsPanel}>
                 {Object.keys(groupedResults).length === 0 ? (
                   <div style={{ padding: 14, fontSize: 16, fontWeight: 800, color: colors.secondaryText }}>
-                    ΔΕΝ ΒΡΕΘΗΚΕ ΑΠΟΤΕΛΕΣΜΑ
+                    Δεν βρέθηκε αποτέλεσμα
                   </div>
                 ) : (
                   Object.entries(groupedResults).map(([group, items]) => (
@@ -590,10 +604,18 @@ function AddExpenseForm() {
                           style={resultRow}
                         >
                           <div style={{ fontSize: 16, fontWeight: 900, color: colors.primaryDark }}>
-                            {String(item.name || '').toUpperCase()}
+                            {String(item.name || '')}
                           </div>
-                          <div style={{ fontSize: 16, fontWeight: 800, color: colors.secondaryText }}>
-                            {item.kind === 'supplier' ? 'ΠΡΟΜΗΘΕΥΤΗΣ' : 'ΠΑΓΙΟ'}
+                          <div style={{ fontSize: 14, fontWeight: 800, color: colors.secondaryText }}>
+                            {item.kind === 'supplier'
+                              ? 'Προμηθευτής'
+                              : normalizeSubCategory(item.sub_category) === 'utility'
+                                ? `Λογαριασμός${item.rf_code ? ` • RF: ${item.rf_code}` : ''}`
+                                : normalizeSubCategory(item.sub_category) === 'staff'
+                                  ? 'Προσωπικό'
+                                  : normalizeSubCategory(item.sub_category) === 'Maintenance'
+                                    ? 'Συντήρηση'
+                                    : 'Πάγιο'}
                           </div>
                         </button>
                       ))}
@@ -604,45 +626,19 @@ function AddExpenseForm() {
             )}
           </div>
 
-          {!!selectedItemId && !!smartQuery && (
+          {!!selectedEntity?.id && !!selectedLabel && (
             <div style={selectedBox}>
-              ΕΠΙΛΟΓΗ: <span style={{ fontWeight: 900 }}>{String(smartQuery).toUpperCase()}</span>
+              Επιλογή: <span style={{ fontWeight: 900 }}>{selectedLabel}</span> <span style={{ opacity: 0.75 }}>({selectedBadge})</span>
             </div>
           )}
 
-          {expenseCategory === 'suppliers' && (
-            <div style={{ marginTop: 12 }}>
-              <button type="button" onClick={() => setIsSupModalOpen(true)} style={addSupplierBtn}>
-                + ΝΕΟΣ ΠΡΟΜΗΘΕΥΤΗΣ
-              </button>
-            </div>
-          )}
-
-          {/* Category Buttons (optional override) */}
-          <label style={{ ...labelStyle, marginTop: 20 }}>ΚΑΤΗΓΟΡΙΑ ΕΞΟΔΟΥ</label>
-          <div style={categoryRow}>
-            {CATEGORY_UI.map(c => {
-              const active = expenseCategory === c.key
-              return (
-                <button
-                  key={c.key}
-                  type="button"
-                  onClick={() => onPickCategory(c.key)}
-                  style={{
-                    ...categoryBtn,
-                    backgroundColor: active ? colors.primaryDark : colors.white,
-                    border: `1px solid ${active ? colors.primaryDark : colors.border}`,
-                    color: active ? 'white' : colors.primaryDark,
-                  }}
-                >
-                  <span style={{ fontSize: 16 }}>{c.icon}</span>
-                  <span style={{ fontSize: 16, fontWeight: 800 }}>{String(c.label || '').toUpperCase()}</span>
-                </button>
-              )
-            })}
+          <div style={{ marginTop: 12 }}>
+            <button type="button" onClick={() => setIsSupModalOpen(true)} style={addSupplierBtn}>
+              + Νέος Προμηθευτής
+            </button>
           </div>
 
-          <label style={{ ...labelStyle, marginTop: 20 }}>ΠΟΣΟ (€)</label>
+          <label style={{ ...labelStyle, marginTop: 20 }}>Ποσό (€)</label>
           <input
             type="number"
             inputMode="decimal"
@@ -671,11 +667,11 @@ function AddExpenseForm() {
               {noInvoice && '✓'}
             </div>
             <span style={{ fontSize: 16, fontWeight: 800, color: noInvoice ? colors.accentRed : colors.primaryDark }}>
-              ΧΩΡΙΣ ΤΙΜΟΛΟΓΙΟ
+              Χωρίς τιμολόγιο
             </span>
           </div>
 
-          <label style={{ ...labelStyle, marginTop: 20 }}>ΜΕΘΟΔΟΣ ΠΛΗΡΩΜΗΣ</label>
+          <label style={{ ...labelStyle, marginTop: 20 }}>Μέθοδος πληρωμής</label>
           <div style={{ display: 'flex', gap: 12, marginTop: 8 }}>
             <button
               type="button"
@@ -689,7 +685,7 @@ function AddExpenseForm() {
                 color: method === 'Μετρητά' && !isCredit ? 'white' : colors.secondaryText,
               }}
             >
-              💵 ΜΕΤΡΗΤΑ
+              💵 Μετρητά
             </button>
             <button
               type="button"
@@ -703,7 +699,7 @@ function AddExpenseForm() {
                 color: method === 'Τράπεζα' && !isCredit ? 'white' : colors.secondaryText,
               }}
             >
-              🏛️ ΤΡΑΠΕΖΑ
+              🏛️ Τράπεζα
             </button>
           </div>
 
@@ -720,7 +716,7 @@ function AddExpenseForm() {
                 style={checkboxStyle}
               />
               <label htmlFor="credit" style={checkLabel}>
-                ΕΠΙ ΠΙΣΤΩΣΕΙ (ΝΕΟ ΧΡΕΟΣ)
+                Επί πιστώσει (νέο χρέος)
               </label>
             </div>
 
@@ -736,21 +732,17 @@ function AddExpenseForm() {
                 style={checkboxStyle}
               />
               <label htmlFor="against" style={{ ...checkLabel, color: isAgainstDebt ? colors.accentBlue : colors.primaryDark }}>
-                ΕΝΑΝΤΙ ΠΑΛΑΙΟΥ ΧΡΕΟΥ
+                Έναντι παλαιού χρέους
               </label>
             </div>
           </div>
 
-          <label style={{ ...labelStyle, marginTop: 20 }}>ΣΗΜΕΙΩΣΕΙΣ</label>
-          <textarea
-            value={notes}
-            onChange={e => setNotes(String(e.target.value || '').toUpperCase())}
-            style={{ ...inputStyle, height: 80 }}
-          />
+          <label style={{ ...labelStyle, marginTop: 20 }}>Σημειώσεις</label>
+          <textarea value={notes} onChange={e => setNotes(e.target.value)} style={{ ...inputStyle, height: 80 }} />
 
           {!editId && !noInvoice && (
             <div style={{ marginTop: 20 }}>
-              <label style={labelStyle}>📸 ΦΩΤΟΓΡΑΦΙΑ ΤΙΜΟΛΟΓΙΟΥ</label>
+              <label style={labelStyle}>📸 Φωτογραφία τιμολογίου</label>
               <div style={imageUploadContainer}>
                 {imagePreview ? (
                   <div style={{ position: 'relative', width: '100%', height: 140 }}>
@@ -768,7 +760,7 @@ function AddExpenseForm() {
                   </div>
                 ) : (
                   <label style={uploadPlaceholder}>
-                    <span style={{ fontSize: 16 }}>📷 ΕΠΙΛΟΓΗ ΦΩΤΟΓΡΑΦΙΑΣ</span>
+                    <span style={{ fontSize: 16 }}>📷 Επιλογή φωτογραφίας</span>
                     <input type="file" accept="image/*" capture="environment" onChange={handleImageChange} style={{ display: 'none' }} />
                   </label>
                 )}
@@ -789,10 +781,10 @@ function AddExpenseForm() {
             >
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
                 <span style={{ fontSize: 16, fontWeight: 900 }}>
-                  {loading ? 'SYNCING...' : editId ? 'ΕΝΗΜΕΡΩΣΗ ΔΕΔΟΜΕΝΩΝ' : 'ΟΛΟΚΛΗΡΩΣΗ ΕΞΟΔΟΥ'}
+                  {loading ? 'SYNCING...' : editId ? 'Ενημέρωση δεδομένων' : 'Ολοκλήρωση εξόδου'}
                 </span>
                 <span style={{ fontSize: 16, opacity: 0.85, fontWeight: 800, marginTop: 6 }}>
-                  ΚΑΘΑΡΟ ΤΑΜΕΙΟ: {currentBalance.toFixed(2)}€
+                  Καθαρό ταμείο: {currentBalance.toFixed(2)}€
                 </span>
               </div>
             </button>
@@ -803,13 +795,13 @@ function AddExpenseForm() {
       {isSupModalOpen && (
         <div style={modalOverlay}>
           <div style={modalCard}>
-            <h2 style={{ fontSize: 16, margin: '0 0 15px', fontWeight: 900 }}>ΝΕΟΣ ΠΡΟΜΗΘΕΥΤΗΣ</h2>
+            <h2 style={{ fontSize: 16, margin: '0 0 15px', fontWeight: 900 }}>Νέος Προμηθευτής</h2>
 
             <input
               value={newSupName}
-              onChange={e => setNewSupName(String(e.target.value || '').toUpperCase())}
+              onChange={e => setNewSupName(e.target.value)}
               style={{ ...inputStyle, marginBottom: 15 }}
-              placeholder="ΟΝΟΜΑ"
+              placeholder="Όνομα"
             />
 
             <button
@@ -822,7 +814,7 @@ function AddExpenseForm() {
                   (typeof window !== 'undefined' ? localStorage.getItem('active_store_id') : null) ||
                   storeId
 
-                if (!activeStoreId) return toast.error('ΔΕΝ ΒΡΕΘΗΚΕ ΚΑΤΑΣΤΗΜΑ (STORE)')
+                if (!activeStoreId) return toast.error('Δεν βρέθηκε κατάστημα (store)')
 
                 const { data, error } = await supabase
                   .from('suppliers')
@@ -834,20 +826,19 @@ function AddExpenseForm() {
 
                 if (data) {
                   setSuppliers(prev => [...prev, data].sort((a, b) => String(a.name).localeCompare(String(b.name))))
-                  setExpenseCategory('suppliers')
-                  setSelectedItemId(data.id)
-                  setSmartQuery(String(data.name || '').toUpperCase())
+                  setSelectedEntity({ kind: 'supplier', id: data.id })
+                  setSmartQuery(data.name || '')
                   setSmartOpen(false)
                   saveRecent(`supplier:${data.id}`)
 
                   setIsSupModalOpen(false)
                   setNewSupName('')
-                  toast.success('ΠΡΟΣΤΕΘΗΚΕ!')
+                  toast.success('Προστέθηκε!')
                 }
               }}
               style={saveBtn}
             >
-              ΠΡΟΣΘΗΚΗ
+              Προσθήκη
             </button>
 
             <button
@@ -858,7 +849,7 @@ function AddExpenseForm() {
               }}
               style={cancelBtn}
             >
-              ΑΚΥΡΩΣΗ
+              Ακύρωση
             </button>
           </div>
         </div>
@@ -867,9 +858,7 @@ function AddExpenseForm() {
   )
 }
 
-// -----------------------------
 // STYLES
-// -----------------------------
 const iphoneWrapper: any = {
   backgroundColor: colors.bgLight,
   minHeight: '100dvh',
@@ -916,10 +905,9 @@ const inputStyle: any = {
   borderRadius: 12,
   border: `1px solid ${colors.border}`,
   fontSize: 16,
-  fontWeight: 800,
+  fontWeight: 700,
   backgroundColor: colors.bgLight,
   boxSizing: 'border-box',
-  textTransform: 'uppercase', // ✅ ALWAYS CAPS in UI
 }
 
 const methodBtn: any = {
@@ -949,19 +937,6 @@ const checkboxBox: any = {
 const creditPanel: any = { backgroundColor: colors.bgLight, padding: 16, borderRadius: 14, border: `1px solid ${colors.border}`, marginTop: 20 }
 const checkboxStyle: any = { width: 20, height: 20 }
 const checkLabel: any = { fontSize: 16, fontWeight: 900, color: colors.primaryDark }
-
-const categoryRow: any = { display: 'flex', gap: 10, flexWrap: 'wrap' }
-const categoryBtn: any = {
-  display: 'flex',
-  alignItems: 'center',
-  gap: 8,
-  padding: '12px 12px',
-  borderRadius: 14,
-  cursor: 'pointer',
-  fontSize: 16,
-  fontWeight: 900,
-  userSelect: 'none',
-}
 
 const addSupplierBtn: any = {
   width: '100%',
@@ -1002,6 +977,7 @@ const removeImageBtn: any = {
   fontWeight: 900,
 }
 
+// modal
 const modalOverlay: any = {
   position: 'fixed',
   top: 0,
@@ -1039,7 +1015,7 @@ const resultsPanel: any = {
   border: `1px solid ${colors.border}`,
   borderRadius: 14,
   background: colors.white,
-  maxHeight: 320,
+  maxHeight: 360,
   overflowY: 'auto',
 }
 const groupHeader: any = {
@@ -1069,12 +1045,12 @@ const selectedBox: any = {
   backgroundColor: colors.bgLight,
   border: `1px solid ${colors.border}`,
   fontSize: 16,
-  fontWeight: 800,
+  fontWeight: 700,
 }
 
 export default function AddExpensePage() {
   return (
-    <Suspense fallback={<div style={{ fontSize: 16, padding: 20 }}>ΦΟΡΤΩΣΗ...</div>}>
+    <Suspense fallback={<div style={{ fontSize: 16, padding: 20 }}>Φόρτωση...</div>}>
       <AddExpenseForm />
     </Suspense>
   )
