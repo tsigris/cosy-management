@@ -5,9 +5,17 @@ import { useEffect, useState, Suspense, useMemo, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { format, startOfMonth, endOfMonth } from 'date-fns'
+import {
+  format,
+  startOfMonth,
+  endOfMonth,
+  parseISO,
+  subDays,
+  addDays,
+  differenceInCalendarDays
+} from 'date-fns'
 import { toast, Toaster } from 'sonner'
-import { Coins, Users, ShoppingBag, Lightbulb, Wrench, Landmark } from 'lucide-react'
+import { Coins, Users, ShoppingBag, Lightbulb, Wrench, Landmark, Printer } from 'lucide-react'
 
 // --- MODERN PREMIUM PALETTE ---
 const colors = {
@@ -119,7 +127,6 @@ function AnalysisContent() {
         .order('name', { ascending: true })
 
       // ✅ Maintenance workers: accept both legacy values ('worker') and normalized ('Maintenance')
-      // (we fetch from fixed_assets and filter safely client-side too)
       const maintenanceQuery = supabase
         .from('fixed_assets')
         .select('id, name, sub_category')
@@ -183,13 +190,11 @@ function AnalysisContent() {
     const sub = String(subRaw || '').trim()
 
     // ✅ RENAME / DATA RULE:
-    // if sub_category is 'worker' OR 'Maintenance' -> 'Maintenance'
     if (sub === 'staff') return 'Staff'
     if (sub === 'utility') return 'Utilities'
     if (sub === 'other') return 'Other'
     if (sub === 'worker' || sub === 'Maintenance') return 'Maintenance'
 
-    // also support case-insensitive values just in case
     const lower = sub.toLowerCase()
     if (lower === 'worker' || lower === 'maintenance') return 'Maintenance'
     if (lower === 'staff') return 'Staff'
@@ -229,7 +234,7 @@ function AnalysisContent() {
         return found?.name || 'Προμηθευτής'
       }
 
-      // maintenance (often worker without supplier) - try fixed asset name if exists
+      // maintenance
       if (t.fixed_asset_id) {
         const joinedName = t.fixed_assets?.name
         if (joinedName) return joinedName
@@ -258,7 +263,24 @@ function AnalysisContent() {
     return null
   }, [])
 
-  // --- filtered period data ---
+  // --- date math for previous period ---
+  const prevRange = useMemo(() => {
+    // inclusive period length
+    const s = parseISO(startDate)
+    const e = parseISO(endDate)
+    const len = Math.max(1, differenceInCalendarDays(e, s) + 1)
+
+    const prevEnd = subDays(s, 1)
+    const prevStart = subDays(prevEnd, len - 1)
+
+    return {
+      prevStart: format(prevStart, 'yyyy-MM-dd'),
+      prevEnd: format(prevEnd, 'yyyy-MM-dd'),
+      len
+    }
+  }, [startDate, endDate])
+
+  // --- filtered period data (current) ---
   const periodTx = useMemo(() => {
     if (!storeId || storeId === 'null') return []
     return transactions
@@ -266,70 +288,156 @@ function AnalysisContent() {
       .filter((t) => t.date >= startDate && t.date <= endDate)
   }, [transactions, storeId, startDate, endDate])
 
-  // ✅ SMART FILTER LOGIC (date + category + optional detail)
-  const filteredTx = useMemo(() => {
-    const key = filterAToKey(filterA)
+  // --- filtered period data (previous) ---
+  const prevPeriodTx = useMemo(() => {
+    if (!storeId || storeId === 'null') return []
+    return transactions
+      .filter((t) => t.store_id === storeId)
+      .filter((t) => t.date >= prevRange.prevStart && t.date <= prevRange.prevEnd)
+  }, [transactions, storeId, prevRange.prevStart, prevRange.prevEnd])
 
-    return periodTx.filter((t) => {
-      // FilterA: Έσοδα (special)
-      if (filterA === 'Έσοδα') {
-        const isIncomeLike = t.type === 'income' || t.type === 'income_collection' || t.type === 'debt_received'
-        if (!isIncomeLike) return false
-      }
+  // ✅ SMART FILTER LOGIC (date + category + optional detail) - reusable
+  const applySmartFilters = useCallback(
+    (baseTx: any[]) => {
+      const key = filterAToKey(filterA)
 
-      // FilterA: expense categories (uses normalization)
-      if (filterA !== 'Όλες' && filterA !== 'Έσοδα') {
-        if (normalizeExpenseCategory(t) !== key) return false
-      }
+      return baseTx.filter((t) => {
+        // FilterA: Έσοδα (special)
+        if (filterA === 'Έσοδα') {
+          const isIncomeLike = t.type === 'income' || t.type === 'income_collection' || t.type === 'debt_received'
+          if (!isIncomeLike) return false
+        }
 
-      // Detail filter
-      if (detailMode === 'staff' && detailId !== 'all') {
-        if (String(t.fixed_asset_id) !== String(detailId)) return false
-      }
-      if (detailMode === 'supplier' && detailId !== 'all') {
-        if (String(t.supplier_id) !== String(detailId)) return false
-      }
-      if (detailMode === 'revenue_source' && detailId !== 'all') {
-        if (String(t.revenue_source_id) !== String(detailId)) return false
-      }
-      if (detailMode === 'maintenance' && detailId !== 'all') {
-        if (String(t.fixed_asset_id) !== String(detailId)) return false
-      }
+        // FilterA: expense categories (uses normalization)
+        if (filterA !== 'Όλες' && filterA !== 'Έσοδα') {
+          if (normalizeExpenseCategory(t) !== key) return false
+        }
 
-      return true
-    })
-  }, [periodTx, filterA, detailMode, detailId, filterAToKey, normalizeExpenseCategory])
+        // Detail filter
+        if (detailMode === 'staff' && detailId !== 'all') {
+          if (String(t.fixed_asset_id) !== String(detailId)) return false
+        }
+        if (detailMode === 'supplier' && detailId !== 'all') {
+          if (String(t.supplier_id) !== String(detailId)) return false
+        }
+        if (detailMode === 'revenue_source' && detailId !== 'all') {
+          if (String(t.revenue_source_id) !== String(detailId)) return false
+        }
+        if (detailMode === 'maintenance' && detailId !== 'all') {
+          if (String(t.fixed_asset_id) !== String(detailId)) return false
+        }
 
-  // ✅ KPI totals with Tips separated + Z cash net support
-  const kpis = useMemo(() => {
-    const income = filteredTx
+        return true
+      })
+    },
+    [filterA, detailMode, detailId, filterAToKey, normalizeExpenseCategory]
+  )
+
+  const filteredTx = useMemo(() => applySmartFilters(periodTx), [applySmartFilters, periodTx])
+  const prevFilteredTx = useMemo(() => applySmartFilters(prevPeriodTx), [applySmartFilters, prevPeriodTx])
+
+  // --- KPI calculator (includes cash/bank split; tips separated) ---
+  const calcKPIs = useCallback((txs: any[]) => {
+    const income = txs
       .filter((t) => t.type === 'income' || t.type === 'income_collection' || t.type === 'debt_received')
       .reduce((acc, t) => acc + (Number(t.amount) || 0), 0)
 
-    // ✅ tips must NOT affect net profit/cash net
-    const tips = filteredTx
+    const tips = txs
       .filter((t) => t.type === 'tip_entry')
       .reduce((acc, t) => acc + Math.abs(Number(t.amount) || 0), 0)
 
-    const expenses = filteredTx
+    const expenses = txs
       .filter((t) => t.type === 'expense' || t.type === 'debt_payment')
       .reduce((acc, t) => acc + Math.abs(Number(t.amount) || 0), 0)
 
     const netProfit = income - expenses
 
-    // ✅ Z cash net (same day): cash-in minus cash-out (tips excluded)
-    const cashIn = filteredTx
-      .filter((t) => (t.type === 'income' || t.type === 'income_collection' || t.type === 'debt_received') && String(t.payment_method || '').toLowerCase() === 'cash')
+    const pmLower = (t: any) => String(t.payment_method || '').trim().toLowerCase()
+    const isCash = (t: any) => pmLower(t) === 'cash' || pmLower(t) === 'μετρητά' || pmLower(t) === 'μετρητα'
+    const isBank = (t: any) => pmLower(t) === 'bank' || pmLower(t) === 'τραπεζα' || pmLower(t) === 'τράπεζα'
+
+    const cashIn = txs
+      .filter((t) => (t.type === 'income' || t.type === 'income_collection' || t.type === 'debt_received') && isCash(t))
       .reduce((acc, t) => acc + (Number(t.amount) || 0), 0)
 
-    const cashOut = filteredTx
-      .filter((t) => (t.type === 'expense' || t.type === 'debt_payment') && String(t.payment_method || '').toLowerCase() === 'cash')
+    const cashOut = txs
+      .filter((t) => (t.type === 'expense' || t.type === 'debt_payment') && isCash(t))
       .reduce((acc, t) => acc + Math.abs(Number(t.amount) || 0), 0)
 
-    const cashNet = cashIn - cashOut
+    const bankIn = txs
+      .filter((t) => (t.type === 'income' || t.type === 'income_collection' || t.type === 'debt_received') && isBank(t))
+      .reduce((acc, t) => acc + (Number(t.amount) || 0), 0)
 
-    return { income, expenses, tips, netProfit, cashNet, cashIn, cashOut }
-  }, [filteredTx])
+    const bankOut = txs
+      .filter((t) => (t.type === 'expense' || t.type === 'debt_payment') && isBank(t))
+      .reduce((acc, t) => acc + Math.abs(Number(t.amount) || 0), 0)
+
+    const cashBalance = cashIn - cashOut
+    const bankBalance = bankIn - bankOut
+
+    // ✅ Z cash net (same day): cash-in minus cash-out (tips excluded)
+    const cashNet = cashBalance
+
+    return {
+      income,
+      expenses,
+      tips,
+      netProfit,
+      cashNet,
+      cashIn,
+      cashOut,
+      cashBalance,
+      bankBalance,
+      bankIn,
+      bankOut
+    }
+  }, [])
+
+  // ✅ KPI totals (current + previous) + % change
+  const kpis = useMemo(() => {
+    const current = calcKPIs(filteredTx)
+    const previous = calcKPIs(prevFilteredTx)
+
+    const pct = (curr: number, prev: number) => {
+      const c = Number(curr) || 0
+      const p = Number(prev) || 0
+      if (p === 0) {
+        if (c === 0) return { kind: 'none' as const, value: 0 }
+        return { kind: 'na' as const, value: 0 } // cannot compute
+      }
+      return { kind: 'ok' as const, value: ((c - p) / Math.abs(p)) * 100 }
+    }
+
+    return {
+      current,
+      previous,
+      change: {
+        tips: pct(current.tips, previous.tips),
+        income: pct(current.income, previous.income),
+        expenses: pct(current.expenses, previous.expenses),
+        net: pct(isZReport ? current.cashNet : current.netProfit, isZReport ? previous.cashNet : previous.netProfit),
+        cashBal: pct(current.cashBalance, previous.cashBalance),
+        bankBal: pct(current.bankBalance, previous.bankBalance)
+      }
+    }
+  }, [filteredTx, prevFilteredTx, calcKPIs, isZReport])
+
+  const renderChange = useCallback((chg: { kind: 'ok' | 'na' | 'none'; value: number }) => {
+    if (chg.kind === 'none') {
+      return <span style={{ fontSize: 16, fontWeight: 900, color: colors.secondary }}>0%</span>
+    }
+    if (chg.kind === 'na') {
+      return <span style={{ fontSize: 16, fontWeight: 900, color: colors.secondary }}>—</span>
+    }
+    const v = chg.value
+    const up = v >= 0
+    const c = up ? colors.success : colors.danger
+    return (
+      <span style={{ fontSize: 16, fontWeight: 900, color: c, whiteSpace: 'nowrap' }}>
+        {up ? '▲' : '▼'} {Math.abs(v).toFixed(0)}%
+      </span>
+    )
+  }, [])
 
   // --- CATEGORY BREAKDOWN (based on filteredTx) ---
   const categoryBreakdown = useMemo(() => {
@@ -401,9 +509,50 @@ function AnalysisContent() {
     return ''
   }, [detailMode])
 
+  const onPrint = useCallback(() => {
+    try {
+      window.print()
+    } catch (e) {
+      toast.error('Δεν υποστηρίζεται εκτύπωση σε αυτή τη συσκευή/περιηγητή.')
+    }
+  }, [])
+
   return (
-    <div style={iphoneWrapper}>
+    <div style={iphoneWrapper} id="print-area">
       <Toaster position="top-center" richColors />
+
+      {/* ✅ PRINT STYLES */}
+      <style jsx global>{`
+        @media print {
+          html,
+          body {
+            background: #ffffff !important;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+          }
+          #print-area {
+            position: static !important;
+            padding: 0 !important;
+            background: #ffffff !important;
+            overflow: visible !important;
+          }
+          [data-no-print='true'] {
+            display: none !important;
+          }
+          /* Inputs look ugly on print */
+          input,
+          select,
+          textarea {
+            border: 0 !important;
+            background: transparent !important;
+            padding: 0 !important;
+          }
+          /* Remove shadows for clean PDF */
+          * {
+            box-shadow: none !important;
+          }
+        }
+      `}</style>
 
       <div style={{ maxWidth: 560, margin: '0 auto', paddingBottom: 120 }}>
         {/* HEADER */}
@@ -413,16 +562,26 @@ function AnalysisContent() {
             <div>
               <h1 style={titleStyle}>{isZReport ? 'Αναφορά Ημέρας (Ζ)' : 'Ανάλυση'}</h1>
               <p style={subLabelStyle}>{isZReport ? 'ΚΑΘΑΡΟ ΤΑΜΕΙΟ ΗΜΕΡΑΣ' : 'ΠΛΗΡΗΣ ΟΙΚΟΝΟΜΙΚΗ ΕΙΚΟΝΑ'}</p>
+              <div style={{ marginTop: 6, fontSize: 16, fontWeight: 900, color: colors.secondary }}>
+                Σύγκριση με προηγούμενη περίοδο: {prevRange.prevStart} → {prevRange.prevEnd}
+              </div>
             </div>
           </div>
 
-          <Link href={`/?store=${storeId}`} style={backBtnStyle}>
-            ✕
-          </Link>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }} data-no-print="true">
+            <button onClick={onPrint} style={printBtnStyle} type="button" aria-label="Εκτύπωση Αναφοράς">
+              <Printer size={18} />
+              Εκτύπωση Αναφοράς
+            </button>
+
+            <Link href={`/?store=${storeId}`} style={backBtnStyle}>
+              ✕
+            </Link>
+          </div>
         </div>
 
         {/* FILTERS */}
-        <div style={filterCard}>
+        <div style={filterCard} data-no-print="true">
           <div style={{ display: 'flex', gap: 12 }}>
             <div style={{ flex: 1 }}>
               <label style={dateLabel}>ΑΠΟ</label>
@@ -450,7 +609,7 @@ function AnalysisContent() {
               </select>
             </div>
 
-            {/* ✅ Filter B (now for Προσωπικό / Εμπορεύματα / Έσοδα / Συντήρηση) */}
+            {/* ✅ Filter B */}
             {detailMode !== 'none' && (
               <div>
                 <label style={dateLabel}>
@@ -477,72 +636,101 @@ function AnalysisContent() {
           </div>
         </div>
 
-        {/* ✅ KPIs (Tips separated; Z shows cash net as main “net”) */}
+        {/* ✅ KPIs (with trends) */}
         <div style={kpiGrid}>
           {/* Tips KPI */}
           <div style={{ ...kpiCard, borderColor: '#fde68a', backgroundColor: '#fffbeb' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center' }}>
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 16, fontWeight: 900, color: '#92400e' }}>
                 <Coins size={18} />
                 Σύνολο Tips
               </span>
-              <span style={{ fontSize: 16, fontWeight: 900, color: '#92400e' }}>+</span>
+              {renderChange(kpis.change.tips)}
             </div>
-            <div style={{ fontSize: 28, fontWeight: 900, color: colors.primary, marginTop: 10 }}>{kpis.tips.toLocaleString('el-GR')}€</div>
+            <div style={{ fontSize: 28, fontWeight: 900, color: colors.primary, marginTop: 10 }}>
+              {kpis.current.tips.toLocaleString('el-GR')}€
+            </div>
           </div>
 
           <div style={{ ...kpiCard, borderColor: '#d1fae5', backgroundColor: '#ecfdf5' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center' }}>
               <span style={{ fontSize: 16, fontWeight: 900, color: colors.success }}>Έσοδα</span>
-              <span style={{ fontSize: 16, fontWeight: 900, color: colors.success }}>+</span>
+              {renderChange(kpis.change.income)}
             </div>
-            <div style={{ fontSize: 28, fontWeight: 900, color: colors.primary, marginTop: 10 }}>{kpis.income.toLocaleString('el-GR')}€</div>
+            <div style={{ fontSize: 28, fontWeight: 900, color: colors.primary, marginTop: 10 }}>
+              {kpis.current.income.toLocaleString('el-GR')}€
+            </div>
           </div>
 
           <div style={{ ...kpiCard, borderColor: '#ffe4e6', backgroundColor: '#fff1f2' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center' }}>
               <span style={{ fontSize: 16, fontWeight: 900, color: colors.danger }}>Έξοδα</span>
-              <span style={{ fontSize: 16, fontWeight: 900, color: colors.danger }}>-</span>
+              {renderChange(kpis.change.expenses)}
             </div>
-            <div style={{ fontSize: 28, fontWeight: 900, color: colors.primary, marginTop: 10 }}>{kpis.expenses.toLocaleString('el-GR')}€</div>
+            <div style={{ fontSize: 28, fontWeight: 900, color: colors.primary, marginTop: 10 }}>
+              {kpis.current.expenses.toLocaleString('el-GR')}€
+            </div>
           </div>
 
           {/* ✅ Net card becomes “Καθαρό Ταμείο” for Z (same day) */}
           <div
             style={{
               ...kpiCard,
-              borderColor: (isZReport ? kpis.cashNet : kpis.netProfit) >= 0 ? '#d1fae5' : '#ffe4e6',
-              backgroundColor: (isZReport ? kpis.cashNet : kpis.netProfit) >= 0 ? '#f0fdf4' : '#fff1f2'
+              borderColor: (isZReport ? kpis.current.cashNet : kpis.current.netProfit) >= 0 ? '#d1fae5' : '#ffe4e6',
+              backgroundColor: (isZReport ? kpis.current.cashNet : kpis.current.netProfit) >= 0 ? '#f0fdf4' : '#fff1f2'
             }}
           >
-            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
-              <span style={{ fontSize: 16, fontWeight: 900, color: colors.primary }}>{isZReport ? 'Καθαρό Ταμείο' : 'Καθαρό Κέρδος'}</span>
-              <span
-                style={{
-                  fontSize: 16,
-                  fontWeight: 900,
-                  color: (isZReport ? kpis.cashNet : kpis.netProfit) >= 0 ? colors.success : colors.danger
-                }}
-              >
-                {(isZReport ? kpis.cashNet : kpis.netProfit) >= 0 ? '▲' : '▼'}
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center' }}>
+              <span style={{ fontSize: 16, fontWeight: 900, color: colors.primary }}>
+                {isZReport ? 'Καθαρό Ταμείο' : 'Καθαρό Κέρδος'}
               </span>
+              {renderChange(kpis.change.net)}
             </div>
 
             <div
               style={{
                 fontSize: 28,
                 fontWeight: 900,
-                color: (isZReport ? kpis.cashNet : kpis.netProfit) >= 0 ? colors.success : colors.danger,
+                color: (isZReport ? kpis.current.cashNet : kpis.current.netProfit) >= 0 ? colors.success : colors.danger,
                 marginTop: 10
               }}
             >
-              {(isZReport ? kpis.cashNet : kpis.netProfit) >= 0 ? '+' : ''}
-              {(isZReport ? kpis.cashNet : kpis.netProfit).toLocaleString('el-GR')}€
+              {(isZReport ? kpis.current.cashNet : kpis.current.netProfit) >= 0 ? '+' : ''}
+              {(isZReport ? kpis.current.cashNet : kpis.current.netProfit).toLocaleString('el-GR')}€
             </div>
 
             <div style={{ marginTop: 8, fontSize: 16, fontWeight: 800, color: colors.secondary }}>
               * Το Net δεν επηρεάζεται από Tips.
               {isZReport ? ' (Ταμείο = Μετρητά Έσοδα - Μετρητά Έξοδα)' : ''}
+            </div>
+          </div>
+
+          {/* ✅ CASH/BANK SPLIT (small cards) */}
+          <div style={splitGrid}>
+            <div style={{ ...miniCard, borderColor: '#dbeafe', backgroundColor: '#eff6ff' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
+                <span style={{ fontSize: 16, fontWeight: 900, color: '#2563eb' }}>Υπόλοιπο Μετρητών</span>
+                {renderChange(kpis.change.cashBal)}
+              </div>
+              <div style={{ fontSize: 22, fontWeight: 900, color: colors.primary, marginTop: 8 }}>
+                {(kpis.current.cashBalance >= 0 ? '+' : '') + kpis.current.cashBalance.toLocaleString('el-GR')}€
+              </div>
+              <div style={{ marginTop: 6, fontSize: 16, fontWeight: 800, color: colors.secondary }}>
+                In: {kpis.current.cashIn.toLocaleString('el-GR')}€ • Out: {kpis.current.cashOut.toLocaleString('el-GR')}€
+              </div>
+            </div>
+
+            <div style={{ ...miniCard, borderColor: '#e9d5ff', backgroundColor: '#faf5ff' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
+                <span style={{ fontSize: 16, fontWeight: 900, color: colors.indigo }}>Υπόλοιπο Τραπέζης</span>
+                {renderChange(kpis.change.bankBal)}
+              </div>
+              <div style={{ fontSize: 22, fontWeight: 900, color: colors.primary, marginTop: 8 }}>
+                {(kpis.current.bankBalance >= 0 ? '+' : '') + kpis.current.bankBalance.toLocaleString('el-GR')}€
+              </div>
+              <div style={{ marginTop: 6, fontSize: 16, fontWeight: 800, color: colors.secondary }}>
+                In: {kpis.current.bankIn.toLocaleString('el-GR')}€ • Out: {kpis.current.bankOut.toLocaleString('el-GR')}€
+              </div>
             </div>
           </div>
         </div>
@@ -551,7 +739,9 @@ function AnalysisContent() {
         <div style={sectionCard}>
           <div style={sectionTitleRow}>
             <h3 style={sectionTitle}>Έξοδα ανά Κατηγορία</h3>
-            <div style={{ fontSize: 16, fontWeight: 900, color: colors.secondary }}>Σύνολο: {categoryBreakdown.total.toLocaleString('el-GR')}€</div>
+            <div style={{ fontSize: 16, fontWeight: 900, color: colors.secondary }}>
+              Σύνολο: {categoryBreakdown.total.toLocaleString('el-GR')}€
+            </div>
           </div>
 
           {categoryBreakdown.total <= 0 ? (
@@ -609,7 +799,7 @@ function AnalysisContent() {
           )}
         </div>
 
-        {/* ✅ DETAILED TRANSACTIONS LIST (now shows date, name, notes, payment method) */}
+        {/* ✅ DETAILED TRANSACTIONS LIST */}
         <div style={sectionCard}>
           <div style={sectionTitleRow}>
             <h3 style={sectionTitle}>Κινήσεις Περιόδου</h3>
@@ -704,7 +894,7 @@ function AnalysisContent() {
                       {/* Row 3: Notes */}
                       {!!t.notes && <div style={{ fontSize: 16, fontWeight: 800, color: colors.secondary }}>{t.notes}</div>}
 
-                      {/* ✅ Row 4: Payment Method */}
+                      {/* Row 4: Payment Method */}
                       {!!pm && (
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 16, fontWeight: 800, color: colors.secondary }}>
                           <span style={{ fontWeight: 900 }}>Μέθοδος:</span> {pm}
@@ -771,6 +961,20 @@ const backBtnStyle: any = {
   fontSize: 16
 }
 
+const printBtnStyle: any = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 8,
+  padding: '10px 12px',
+  borderRadius: 12,
+  border: `1px solid ${colors.border}`,
+  backgroundColor: colors.surface,
+  color: colors.primary,
+  fontSize: 16,
+  fontWeight: 900,
+  cursor: 'pointer'
+}
+
 const filterCard: any = {
   backgroundColor: colors.surface,
   padding: 16,
@@ -809,6 +1013,19 @@ const kpiCard: any = {
   borderRadius: 18,
   border: `1px solid ${colors.border}`,
   padding: 16
+}
+
+const splitGrid: any = {
+  display: 'grid',
+  gridTemplateColumns: '1fr 1fr',
+  gap: 12
+}
+
+const miniCard: any = {
+  backgroundColor: colors.surface,
+  borderRadius: 18,
+  border: `1px solid ${colors.border}`,
+  padding: 14
 }
 
 const sectionCard: any = {
