@@ -10,7 +10,6 @@ import {
   ChevronLeft,
   Receipt,
   CreditCard,
-  Filter,
   Hash,
   Landmark,
   Calendar,
@@ -357,10 +356,9 @@ function BalancesContent() {
           </button>
         </div>
 
-        {/* SELECT FILTER */}
+        {/* SELECT FILTER (✅ removed Filter icon) */}
         <div style={{ marginBottom: '18px' }}>
           <div style={{ position: 'relative' }}>
-            <Filter size={16} style={{ position: 'absolute', left: '12px', top: '16px', color: colors.secondaryText }} />
             <select value={selectedEntityId} onChange={(e) => setSelectedEntityId(e.target.value)} style={selectStyle}>
               <option value="all">{selectTitle}</option>
               {data.map((s) => (
@@ -474,36 +472,44 @@ function BalancesContent() {
                             </span>
                           </div>
 
-                          <button
-                            style={closeMiniBtn}
-                            onClick={() => setExpandedId(null)}
-                            title="Κλείσιμο"
-                          >
+                          <button style={closeMiniBtn} onClick={() => setExpandedId(null)} title="Κλείσιμο">
                             <X size={14} />
                           </button>
                         </div>
 
-                        {/* MINI SUMMARY */}
+                        {/* ✅ NEW: “ΠΟΤΕ ΠΕΡΑΣΤΗΚΕ ΤΟ ΧΡΕΟΣ” + totals */}
                         <div style={miniSummaryRow}>
                           <div style={miniPill}>
-                            <span style={miniPillLabel}>Καταχωρήσεις</span>
-                            <span style={miniPillValue}>{history.creditTxs.length}</span>
-                          </div>
-                          <div style={miniPill}>
-                            <span style={miniPillLabel}>{viewMode === 'income' ? 'Εισπράξεις' : 'Εξοφλήσεις'}</span>
-                            <span style={miniPillValue}>{history.settlementTxs.length}</span>
-                          </div>
-                          <div style={miniPill}>
-                            <span style={miniPillLabel}>Από</span>
+                            <span style={miniPillLabel}>Πρώτη καταχώρηση</span>
                             <span style={miniPillValue}>
                               {history.oldestCreditDate ? formatTxDate(history.oldestCreditDate) : '—'}
                             </span>
+                          </div>
+                          <div style={miniPill}>
+                            <span style={miniPillLabel}>Τελευταία καταχώρηση</span>
+                            <span style={miniPillValue}>
+                              {history.latestCreditDate ? formatTxDate(history.latestCreditDate) : '—'}
+                            </span>
+                          </div>
+                          <div style={miniPill}>
+                            <span style={miniPillLabel}>
+                              {viewMode === 'income' ? 'Σύνολο απαιτήσεων' : 'Σύνολο χρεώσεων'}
+                            </span>
+                            <span style={miniPillValue}>{history.totalCreditAmount.toFixed(2)}€</span>
+                          </div>
+                          <div style={miniPill}>
+                            <span style={miniPillLabel}>
+                              {viewMode === 'income' ? 'Σύνολο εισπράξεων' : 'Σύνολο εξοφλήσεων'}
+                            </span>
+                            <span style={miniPillValue}>{history.totalSettlementAmount.toFixed(2)}€</span>
                           </div>
                         </div>
 
                         {/* CREDIT / DEBT ENTRIES */}
                         <div style={sectionTitle}>
-                          {viewMode === 'income' ? `Απαιτήσεις (${history.creditTxs.length})` : `Χρεώσεις (${history.creditTxs.length})`}
+                          {viewMode === 'income'
+                            ? `Απαιτήσεις (${history.creditTxs.length})`
+                            : `Χρεώσεις (${history.creditTxs.length})`}
                         </div>
 
                         {history.creditTxs.length === 0 ? (
@@ -528,9 +534,7 @@ function BalancesContent() {
                                       {note}
                                     </div>
                                   </div>
-                                  <div style={txAmount}>
-                                    {Math.abs(Number(t.amount) || 0).toFixed(2)}€
-                                  </div>
+                                  <div style={txAmount}>{Math.abs(Number(t.amount) || 0).toFixed(2)}€</div>
                                 </div>
                               )
                             })}
@@ -614,13 +618,12 @@ function BalancesContent() {
                       onClick={(e) => {
                         e.stopPropagation()
                         if (isIncome) {
-                          // mode=debt -> add-income should save type='debt_payment'
                           router.push(`/add-income?store=${storeIdFromUrl}&sourceId=${s.id}&mode=debt`)
                         } else {
                           router.push(
-                            `/add-expense?store=${storeIdFromUrl}&${
-                              s.entityType === 'supplier' ? 'supId' : 'assetId'
-                            }=${s.id}&mode=debt`
+                            `/add-expense?store=${storeIdFromUrl}&${s.entityType === 'supplier' ? 'supId' : 'assetId'}=${
+                              s.id
+                            }&mode=debt`
                           )
                         }
                       }}
@@ -752,7 +755,7 @@ const emptyStateStyle: any = {
 
 const selectStyle: any = {
   width: '100%',
-  padding: '14px 14px 14px 40px',
+  padding: '14px',
   borderRadius: '14px',
   border: `1px solid ${colors.border}`,
   fontSize: '13px',
