@@ -428,6 +428,42 @@ function AnalysisContent() {
     return { income, expenses, tips, netProfit }
   }, [filteredTx])
 
+  // ✅ Z BREAKDOWN (μόνο όταν startDate === endDate)
+  const zBreakdown = useMemo(() => {
+    if (!isZReport) {
+      return {
+        zCash: 0,
+        zPos: 0,
+        blackCash: 0,
+        totalTurnover: 0,
+        blackPct: 0,
+      }
+    }
+
+    // Παίρνουμε ΟΛΕΣ τις κινήσεις της ημέρας (όχι filteredTx, γιατί μπορεί να έχεις φίλτρα)
+    const zTx = periodTx
+      .filter((t) => t.category === 'Εσοδα Ζ')
+      .filter((t) => t.type === 'income') // το Ζ σου μπαίνει ως income
+      .map((t) => ({
+        amount: Number(t.amount) || 0,
+        method: String((t.method ?? t.payment_method ?? '') || '').trim(),
+        notes: String(t.notes || '').trim(),
+      }))
+
+    const zCash = zTx.filter((t) => t.method === 'Μετρητά (Z)').reduce((a, t) => a + t.amount, 0)
+    const zPos = zTx.filter((t) => t.method === 'Κάρτα').reduce((a, t) => a + t.amount, 0)
+
+    // “Χωρίς απόδειξη”: στο DailyZ μπαίνει method: 'Μετρητά' + notes: 'ΧΩΡΙΣ ΣΗΜΑΝΣΗ'
+    const blackCash = zTx
+      .filter((t) => t.notes === 'ΧΩΡΙΣ ΣΗΜΑΝΣΗ' || t.method === 'Χωρίς Απόδειξη')
+      .reduce((a, t) => a + t.amount, 0)
+
+    const totalTurnover = zCash + zPos + blackCash
+    const blackPct = totalTurnover > 0 ? (blackCash / totalTurnover) * 100 : 0
+
+    return { zCash, zPos, blackCash, totalTurnover, blackPct }
+  }, [isZReport, periodTx])
+
   const categoryBreakdown = useMemo(() => {
     const expenseTx = filteredTx.filter((t) => t.type === 'expense' || t.type === 'debt_payment')
     const result: Record<string, number> = {}
@@ -670,6 +706,84 @@ function AnalysisContent() {
           </div>
         </div>
 
+        {/* ✅ Z REPORT BREAKDOWN – μόνο όταν είναι ίδια μέρα */}
+        {isZReport && (
+          <div style={balancesGrid} data-print-section="true">
+            <div
+              style={{
+                ...smallKpiCard,
+                border: '1px solid rgba(15, 23, 42, 0.10)',
+                background: 'linear-gradient(180deg, #eef2ff, #ffffff)',
+              }}
+            >
+              <div style={smallKpiLabel}>Z Breakdown</div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 10 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 900 }}>
+                  <span style={{ color: '#64748b' }}>Μετρητά (Z)</span>
+                  <span style={{ color: '#0f172a' }}>{money(zBreakdown.zCash)}</span>
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 900 }}>
+                  <span style={{ color: '#64748b' }}>POS (Z)</span>
+                  <span style={{ color: '#0f172a' }}>{money(zBreakdown.zPos)}</span>
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 900 }}>
+                  <span style={{ color: '#64748b' }}>Σύνολο ημέρας</span>
+                  <span style={{ color: '#0f172a' }}>{money(zBreakdown.totalTurnover)}</span>
+                </div>
+              </div>
+
+              <div style={{ ...smallKpiHint, marginTop: 10 }}>Ημέρα: {startDate}</div>
+            </div>
+
+            <div
+              style={{
+                ...smallKpiCard,
+                border:
+                  zBreakdown.blackPct > 10
+                    ? '1px solid #f43f5e'
+                    : zBreakdown.blackPct > 5
+                    ? '1px solid #f59e0b'
+                    : '1px solid #10b981',
+                background:
+                  zBreakdown.blackPct > 10
+                    ? 'linear-gradient(180deg, #fff1f2, #ffffff)'
+                    : zBreakdown.blackPct > 5
+                    ? 'linear-gradient(180deg, #fffbeb, #ffffff)'
+                    : 'linear-gradient(180deg, #ecfdf5, #ffffff)',
+              }}
+            >
+              <div style={smallKpiLabel}>Μαύρα (Χωρίς Απόδειξη)</div>
+
+              <div
+                style={{
+                  fontSize: 22,
+                  fontWeight: 1000,
+                  marginTop: 8,
+                  color: zBreakdown.blackPct > 10 ? '#f43f5e' : zBreakdown.blackPct > 5 ? '#f59e0b' : '#10b981',
+                }}
+              >
+                {money(zBreakdown.blackCash)}
+              </div>
+
+              <div
+                style={{
+                  fontSize: 13,
+                  fontWeight: 950,
+                  marginTop: 6,
+                  color: zBreakdown.blackPct > 10 ? '#f43f5e' : zBreakdown.blackPct > 5 ? '#f59e0b' : '#10b981',
+                }}
+              >
+                {zBreakdown.blackPct.toFixed(1)}% του τζίρου ημέρας
+              </div>
+
+              <div style={smallKpiHint}>Cash σύνολο (Z + Μαύρα): {money(zBreakdown.zCash + zBreakdown.blackCash)}</div>
+            </div>
+          </div>
+        )}
+
         {/* ✅ CATEGORY BREAKDOWN */}
         <div style={sectionCard} data-print-section="true">
           <div style={sectionTitleRow}>
@@ -838,10 +952,18 @@ function AnalysisContent() {
         {/* ✅ PRINT BUTTON + MODE TOGGLE */}
         <div className="no-print" style={printWrap}>
           <div style={printModeSwitchWrap}>
-            <button type="button" onClick={() => setPrintMode('summary')} style={{ ...printModeBtn, ...(printMode === 'summary' ? printModeBtnActive : {}) }}>
+            <button
+              type="button"
+              onClick={() => setPrintMode('summary')}
+              style={{ ...printModeBtn, ...(printMode === 'summary' ? printModeBtnActive : {}) }}
+            >
               Σύνοψη
             </button>
-            <button type="button" onClick={() => setPrintMode('full')} style={{ ...printModeBtn, ...(printMode === 'full' ? printModeBtnActive : {}) }}>
+            <button
+              type="button"
+              onClick={() => setPrintMode('full')}
+              style={{ ...printModeBtn, ...(printMode === 'full' ? printModeBtnActive : {}) }}
+            >
               Πλήρες
             </button>
           </div>
