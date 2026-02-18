@@ -120,6 +120,17 @@ function BalancesContent() {
 
   const money = (n: any) => (Math.abs(Number(n) || 0)).toFixed(2)
 
+  // ✅ NEW: chip style by mode (income -> green, expenses -> blue)
+  const amountChipStyle = (mode: ViewMode): any => {
+    const isIncome = mode === 'income'
+    return {
+      ...miniAmountChip,
+      background: isIncome ? '#ecfdf5' : '#eff6ff',
+      border: isIncome ? '1px solid #a7f3d0' : '1px solid #bfdbfe',
+      color: isIncome ? '#065f46' : '#1d4ed8',
+    }
+  }
+
   const getEntityTransactions = (entity: any, transactions: any[], mode: ViewMode) => {
     const isIncome = mode === 'income'
 
@@ -145,7 +156,6 @@ function BalancesContent() {
     const latestCreditDate = creditTxs.length ? getTxDate(creditTxs[0]) : null
     const oldestCreditDate = creditTxs.length ? getTxDate(creditTxs[creditTxs.length - 1]) : null
 
-    // ✅ NEW: latest settlement date + amount
     const latestSettlementTx = settlementTxs.length ? settlementTxs[0] : null
     const latestSettlementDate = latestSettlementTx ? getTxDate(latestSettlementTx) : null
     const latestSettlementAmount = latestSettlementTx ? Math.abs(Number(latestSettlementTx.amount) || 0) : null
@@ -461,18 +471,22 @@ function BalancesContent() {
                             </span>
                           </div>
 
-                          {/* ✅ UPDATED: last settlement shows DATE + DAYS + AMOUNT */}
+                          {/* ✅ COLORED CHIP */}
                           <div style={miniPill}>
                             <span style={miniPillLabel}>
                               {viewMode === 'income' ? 'Τελευταία είσπραξη' : 'Τελευταία εξόφληση'}
                             </span>
-                            <span style={miniPillValue}>
-                              {history.latestSettlementDate
-                                ? `${formatTxDate(history.latestSettlementDate)} (${daysAgoLabel(history.latestSettlementDate)}) • ${money(
-                                    history.latestSettlementAmount
-                                  )}€`
-                                : '—'}
-                            </span>
+
+                            {history.latestSettlementDate ? (
+                              <span style={{ ...miniPillValue, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                                <span>
+                                  {formatTxDate(history.latestSettlementDate)} ({daysAgoLabel(history.latestSettlementDate)})
+                                </span>
+                                <span style={amountChipStyle(viewMode)}>{money(history.latestSettlementAmount)}€</span>
+                              </span>
+                            ) : (
+                              <span style={miniPillValue}>—</span>
+                            )}
                           </div>
 
                           <div style={miniPill}>
@@ -488,6 +502,7 @@ function BalancesContent() {
                           </div>
                         </div>
 
+                        {/* υπόλοιπο αρχείο 그대로 */}
                         <div style={sectionTitle}>
                           {viewMode === 'income'
                             ? `Απαιτήσεις (${history.creditTxs.length})`
@@ -795,6 +810,18 @@ const miniPillValue: any = {
   fontSize: 10,
   fontWeight: 950,
   color: colors.primaryDark,
+}
+
+// base chip (overridden by amountChipStyle)
+const miniAmountChip: any = {
+  fontSize: 10,
+  fontWeight: 950,
+  padding: '4px 10px',
+  borderRadius: 999,
+  border: `1px solid ${colors.border}`,
+  background: '#f1f5f9',
+  color: colors.primaryDark,
+  letterSpacing: 0.2,
 }
 
 const sectionTitle: any = {
