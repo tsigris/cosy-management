@@ -55,7 +55,7 @@ function AnalysisContent() {
   const [transactions, setTransactions] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
 
-  // ✅ Extra: transactions current month (for Staff panel to stay correct even if user selects other range)
+  // ✅ transactions current month (for Staff panel to stay correct even if user selects other range)
   const [monthTransactions, setMonthTransactions] = useState<any[]>([])
 
   // lists for dynamic filters + correct party names
