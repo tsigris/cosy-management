@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useState, useMemo, useRef } from 'react'
+import { useEffect, useState, useMemo, useRef, useCallback } from 'react'
 import { clearSessionCache, getSessionCached, supabase } from '@/lib/supabase'
 import { readStoresCache, refreshStoresCache, type StoreCard } from '@/lib/stores'
 import { useRouter } from 'next/navigation'
@@ -68,18 +68,18 @@ export default function SelectStorePage() {
     return () => clearInterval(id)
   }, [])
 
-  const handleSelect = (storeId: string) => {
+  const handleSelect = useCallback((storeId: string) => {
     // ✅ Hard refresh για να καθαρίζει εντελώς state/data
     window.location.href = `/?store=${storeId}`
-  }
+  }, [])
 
-  const maybeAutoRedirectSingleStore = (stores: StoreCard[]) => {
+  const maybeAutoRedirectSingleStore = useCallback((stores: StoreCard[]) => {
     if (hasAutoRedirected.current) return false
     if (stores.length !== 1) return false
     hasAutoRedirected.current = true
     handleSelect(stores[0].id)
     return true
-  }
+  }, [handleSelect])
 
   useEffect(() => {
     let isMounted = true
@@ -120,7 +120,7 @@ export default function SelectStorePage() {
           }
           maybeAutoRedirectSingleStore(fresh.stores)
         })
-        .catch((err: any) => {
+        .catch((err: unknown) => {
           console.error('Fetch error:', err)
           if (!hasCachedStores) {
             toast.error('Πρόβλημα κατά την ανάκτηση των καταστημάτων')
@@ -135,7 +135,7 @@ export default function SelectStorePage() {
     return () => {
       isMounted = false
     }
-  }, [router])
+  }, [router, maybeAutoRedirectSingleStore])
 
   // ✅ Global summary (all stores)
   const globalStats = useMemo(() => {
