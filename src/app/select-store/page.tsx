@@ -8,6 +8,7 @@ import { toast, Toaster } from 'sonner'
 export default function SelectStorePage() {
   const [userStores, setUserStores] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [accessWarning, setAccessWarning] = useState('')
   const router = useRouter()
 
   // ✅ Stripe-like "LIVE" datetime label (auto updates)
@@ -67,6 +68,7 @@ export default function SelectStorePage() {
   const fetchStoresData = useCallback(async () => {
     try {
       setLoading(true)
+      setAccessWarning('')
 
       const {
         data: { session }
@@ -77,15 +79,60 @@ export default function SelectStorePage() {
         return
       }
 
+      const userId = session.user.id
+
+      // Auto-heal owner access: αν ο χρήστης είναι owner αλλά λείπει από store_access,
+      // προσπαθούμε να τον προσθέσουμε ως admin.
+      const { data: ownedStores, error: ownedStoresError } = await supabase
+        .from('stores')
+        .select('id, name')
+        .eq('owner_id', userId)
+
+      if (ownedStoresError) {
+        throw ownedStoresError
+      }
+
+      const { data: myAccessBeforeRepair, error: beforeRepairError } = await supabase
+        .from('store_access')
+        .select('store_id')
+        .eq('user_id', userId)
+
+      if (beforeRepairError) {
+        throw beforeRepairError
+      }
+
+      const existingAccessStoreIds = new Set((myAccessBeforeRepair || []).map((row: any) => String(row.store_id)))
+      const missingOwnedStores = (ownedStores || []).filter((store: any) => !existingAccessStoreIds.has(String(store.id)))
+
+      if (missingOwnedStores.length > 0) {
+        const repairRows = missingOwnedStores.map((store: any) => ({
+          store_id: store.id,
+          user_id: userId,
+          role: 'admin',
+        }))
+
+        const { error: repairError } = await supabase
+          .from('store_access')
+          .upsert(repairRows, { onConflict: 'store_id,user_id' })
+
+        if (repairError) {
+          console.error('Owner access auto-repair failed:', repairError)
+          setAccessWarning('Δεν έγινε αυτόματη επιδιόρθωση δικαιωμάτων. Επικοινωνήστε με διαχειριστή για επαναφορά πρόσβασης.')
+        } else {
+          toast.success('Επαναφέρθηκαν δικαιώματα owner σε καταστήματα που έλειπαν ✅')
+        }
+      }
+
       // 1) Ανάκτηση προσβάσεων
       const { data: access, error } = await supabase
         .from('store_access')
         .select('store_id, stores(id, name)')
-        .eq('user_id', session.user.id)
+        .eq('user_id', userId)
 
       if (error) throw error
       if (!access || access.length === 0) {
         setUserStores([])
+        setAccessWarning('Δεν έχετε δικαιώματα πρόσβασης σε κανένα κατάστημα (store_access).')
         return
       }
 
@@ -210,11 +257,20 @@ export default function SelectStorePage() {
       )}
 
       {userStores.length === 0 ? (
-        <div style={emptyStateStyle}>
-          <Store size={40} color="#cbd5e1" style={{ margin: '0 auto 15px' }} />
-          <p style={{ fontWeight: '700', color: '#64748b' }}>Δεν βρέθηκαν καταστήματα.</p>
-          <p style={{ fontSize: '12px', color: '#94a3b8' }}>Δημιουργήστε το πρώτο σας κατάστημα για να ξεκινήσετε.</p>
-        </div>
+        <>
+          {accessWarning && (
+            <div style={warningBoxStyle}>
+              <p style={warningTitleStyle}>Προειδοποίηση πρόσβασης</p>
+              <p style={warningTextStyle}>{accessWarning}</p>
+            </div>
+          )}
+
+          <div style={emptyStateStyle}>
+            <Store size={40} color="#cbd5e1" style={{ margin: '0 auto 15px' }} />
+            <p style={{ fontWeight: '700', color: '#64748b' }}>Δεν βρέθηκαν καταστήματα.</p>
+            <p style={{ fontSize: '12px', color: '#94a3b8' }}>Δημιουργήστε το πρώτο σας κατάστημα για να ξεκινήσετε.</p>
+          </div>
+        </>
       ) : (
         <div style={{ display: 'grid', gap: '15px' }}>
           {userStores.map((store: any) => (
@@ -356,3 +412,22 @@ const logoutBtnStyle: any = {
   gap: '8px'
 }
 const emptyStateStyle: any = { textAlign: 'center', padding: '50px 20px', backgroundColor: 'white', borderRadius: '24px', border: '1px solid #e2e8f0' }
+const warningBoxStyle: any = {
+  marginBottom: '12px',
+  padding: '14px',
+  backgroundColor: '#fff7ed',
+  border: '1px solid #fed7aa',
+  borderRadius: '16px',
+}
+const warningTitleStyle: any = {
+  margin: '0 0 6px 0',
+  color: '#9a3412',
+  fontSize: '12px',
+  fontWeight: '900',
+}
+const warningTextStyle: any = {
+  margin: 0,
+  color: '#c2410c',
+  fontSize: '12px',
+  fontWeight: '700',
+}
