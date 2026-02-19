@@ -55,6 +55,9 @@ function AnalysisContent() {
   const [transactions, setTransactions] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
 
+  // ✅ Extra: transactions current month (for Staff panel to stay correct even if user selects other range)
+  const [monthTransactions, setMonthTransactions] = useState<any[]>([])
+
   // lists for dynamic filters + correct party names
   const [staff, setStaff] = useState<any[]>([])
   const [suppliers, setSuppliers] = useState<any[]>([])
@@ -182,10 +185,25 @@ function AnalysisContent() {
       } = await supabase.auth.getSession()
       if (!session) return router.push('/login')
 
+      // ✅ SaaS FIX: fetch only selected period (keeps page fast for big data)
       const txQuery = supabase
         .from('transactions')
         .select('*, suppliers(id, name), fixed_assets(id, name, sub_category), revenue_sources(id, name)')
         .eq('store_id', storeId)
+        .gte('date', startDate)
+        .lte('date', endDate)
+        .order('date', { ascending: false })
+
+      // ✅ Keep "Staff this month" correct regardless of selected range
+      const monthStart = format(startOfMonth(new Date()), 'yyyy-MM-dd')
+      const monthEnd = format(endOfMonth(new Date()), 'yyyy-MM-dd')
+
+      const monthTxQuery = supabase
+        .from('transactions')
+        .select('*, suppliers(id, name), fixed_assets(id, name, sub_category), revenue_sources(id, name)')
+        .eq('store_id', storeId)
+        .gte('date', monthStart)
+        .lte('date', monthEnd)
         .order('date', { ascending: false })
 
       const staffQuery = supabase
@@ -215,23 +233,20 @@ function AnalysisContent() {
         .order('name', { ascending: true })
 
       // ✅ balances (cash/bank/total) + cash drawer (for endDate)
-      const balancesPromise = supabase
-        .from('v_financial_balances')
-        .select('*')
-        .eq('store_id', storeId)
-        .maybeSingle()
+      const balancesPromise = supabase.from('v_financial_balances').select('*').eq('store_id', storeId).maybeSingle()
 
       const drawerPromise = supabase
         .from('v_cash_drawer_today')
         .select('*')
-          .eq('store_id', storeId)
-          .lte('date', endDate)
-          .order('date', { ascending: false })
-          .limit(1)
-          .maybeSingle()
+        .eq('store_id', storeId)
+        .lte('date', endDate)
+        .order('date', { ascending: false })
+        .limit(1)
+        .maybeSingle()
 
       const [
         { data: tx, error: txErr },
+        { data: monthTx, error: monthTxErr },
         { data: staffData, error: staffErr },
         { data: supData, error: supErr },
         { data: revData, error: revErr },
@@ -240,6 +255,7 @@ function AnalysisContent() {
         { data: drawerData, error: drawerErr },
       ] = await Promise.all([
         txQuery,
+        monthTxQuery,
         staffQuery,
         suppliersQuery,
         revenueSourcesQuery,
@@ -249,6 +265,7 @@ function AnalysisContent() {
       ])
 
       if (txErr) throw txErr
+      if (monthTxErr) throw monthTxErr
       if (staffErr) throw staffErr
       if (supErr) throw supErr
       if (revErr) throw revErr
@@ -259,6 +276,8 @@ function AnalysisContent() {
       if (drawerErr) console.warn('v_cash_drawer_today error:', drawerErr)
 
       setTransactions(tx || [])
+      setMonthTransactions(monthTx || [])
+
       setStaff(staffData || [])
       setSuppliers(supData || [])
       setRevenueSources(revData || [])
@@ -272,7 +291,7 @@ function AnalysisContent() {
     } finally {
       setLoading(false)
     }
-  }, [router, storeId, endDate])
+  }, [router, storeId, startDate, endDate])
 
   useEffect(() => {
     loadData()
@@ -285,7 +304,8 @@ function AnalysisContent() {
       try {
         const [{ data: balData }, { data: drawerData }] = await Promise.all([
           supabase.from('v_financial_balances').select('*').eq('store_id', storeId).maybeSingle(),
-          supabase.from('v_cash_drawer_today')
+          supabase
+            .from('v_cash_drawer_today')
             .select('*')
             .eq('store_id', storeId)
             .lte('date', endDate)
@@ -385,9 +405,10 @@ function AnalysisContent() {
     return null
   }, [])
 
+  // ✅ Now transactions are already fetched for the date range, but keep this as safety
   const periodTx = useMemo(() => {
     if (!storeId || storeId === 'null') return []
-    return transactions.filter((t) => t.store_id === storeId).filter((t) => t.date >= startDate && t.date <= endDate)
+    return transactions.filter((t) => t.date >= startDate && t.date <= endDate)
   }, [transactions, storeId, startDate, endDate])
 
   const filteredTx = useMemo(() => {
@@ -432,26 +453,18 @@ function AnalysisContent() {
       .reduce((acc, t) => acc + Math.abs(Number(t.amount) || 0), 0)
 
     const netProfit = income - expenses
-
     return { income, expenses, tips, netProfit }
   }, [filteredTx])
 
   // ✅ Z BREAKDOWN (μόνο όταν startDate === endDate)
   const zBreakdown = useMemo(() => {
     if (!isZReport) {
-      return {
-        zCash: 0,
-        zPos: 0,
-        blackCash: 0,
-        totalTurnover: 0,
-        blackPct: 0,
-      }
+      return { zCash: 0, zPos: 0, blackCash: 0, totalTurnover: 0, blackPct: 0 }
     }
 
-    // Παίρνουμε ΟΛΕΣ τις κινήσεις της ημέρας (όχι filteredTx, γιατί μπορεί να έχεις φίλτρα)
     const zTx = periodTx
       .filter((t) => t.category === 'Εσοδα Ζ')
-      .filter((t) => t.type === 'income') // το Ζ σου μπαίνει ως income
+      .filter((t) => t.type === 'income')
       .map((t) => ({
         amount: Number(t.amount) || 0,
         method: String((t.method ?? t.payment_method ?? '') || '').trim(),
@@ -461,7 +474,6 @@ function AnalysisContent() {
     const zCash = zTx.filter((t) => t.method === 'Μετρητά (Z)').reduce((a, t) => a + t.amount, 0)
     const zPos = zTx.filter((t) => t.method === 'Κάρτα').reduce((a, t) => a + t.amount, 0)
 
-    // “Χωρίς απόδειξη”: στο DailyZ μπαίνει method: 'Μετρητά' + notes: 'ΧΩΡΙΣ ΣΗΜΑΝΣΗ'
     const blackCash = zTx
       .filter((t) => t.notes === 'ΧΩΡΙΣ ΣΗΜΑΝΣΗ' || t.method === 'Χωρίς Απόδειξη')
       .reduce((a, t) => a + t.amount, 0)
@@ -491,12 +503,7 @@ function AnalysisContent() {
   const staffDetailsThisMonth = useMemo(() => {
     if (!storeId || storeId === 'null') return [] as Array<{ name: string; amount: number }>
 
-    const monthStart = format(startOfMonth(new Date()), 'yyyy-MM-dd')
-    const monthEnd = format(endOfMonth(new Date()), 'yyyy-MM-dd')
-
-    const staffTxs = transactions
-      .filter((t) => t.store_id === storeId)
-      .filter((t) => t.date >= monthStart && t.date <= monthEnd)
+    const staffTxs = monthTransactions
       .filter((t) => t.type === 'expense' || t.type === 'debt_payment')
       .filter((t) => normalizeExpenseCategory(t) === 'Staff')
 
@@ -509,7 +516,7 @@ function AnalysisContent() {
     return Object.entries(byStaff)
       .map(([name, amount]) => ({ name, amount }))
       .sort((a, b) => b.amount - a.amount)
-  }, [transactions, storeId, normalizeExpenseCategory, staff])
+  }, [monthTransactions, storeId, normalizeExpenseCategory, staff])
 
   const periodList = useMemo(() => {
     return [...filteredTx].sort((a, b) => String(b.date).localeCompare(String(a.date)))
@@ -523,9 +530,7 @@ function AnalysisContent() {
     return []
   }, [detailMode, staff, suppliers, revenueSources, maintenanceWorkers])
 
-  // ✅ stable, cross-device date display (not affected by input rendering)
   const rangeText = useMemo(() => `${startDate} → ${endDate}`, [startDate, endDate])
-
   const money = useCallback((n: any) => `${Number(n || 0).toFixed(2)}€`, [])
 
   return (
@@ -706,30 +711,15 @@ function AnalysisContent() {
           </div>
 
           <div style={smallKpiCard}>
-              <div style={smallKpiLabel}>
-                Ταμείο Ημέρας (Z)
-              </div>
+            <div style={smallKpiLabel}>Ταμείο Ημέρας (Z)</div>
 
-              <div style={smallKpiValue}>
-                {drawer ? money(drawer.total_cash_drawer) : '—'}
-              </div>
+            <div style={smallKpiValue}>{drawer ? money(drawer.total_cash_drawer) : '—'}</div>
 
-              <div style={smallKpiHint}>
-                {drawer
-                  ? `Ημερομηνία Ζ: ${drawer.date}`
-                  : `Δεν βρέθηκε Ζ έως: ${endDate}`}
-              </div>
+            <div style={smallKpiHint}>{drawer ? `Ημερομηνία Ζ: ${drawer.date}` : `Δεν βρέθηκε Ζ έως: ${endDate}`}</div>
 
-              <div style={{
-                fontSize: 11,
-                fontWeight: 700,
-                color: '#94a3b8',
-                marginTop: 4
-              }}>
-                {drawer
-                  ? `Z: ${money(drawer.z_cash)} • Extra: ${money(drawer.extra_cash)}`
-                  : ''}
-              </div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', marginTop: 4 }}>
+              {drawer ? `Z: ${money(drawer.z_cash)} • Extra: ${money(drawer.extra_cash)}` : ''}
+            </div>
           </div>
         </div>
 
