@@ -61,9 +61,16 @@ function EmployeesContent() {
     lastTips: [] as Array<{ id: string; name: string; date: string; amount: number }>,
   })
   const [showTipsList, setShowTipsList] = useState(false)
+  const [isAmountFocused, setIsAmountFocused] = useState(false)
 
   const availableYears: number[] = []
   for (let y = 2024; y <= new Date().getFullYear(); y++) availableYears.push(y)
+
+  const monthlyDayOptions = [
+    { value: '22', label: '22 (8 ρεπό)' },
+    { value: '26', label: '26 (4 ρεπό)' },
+    { value: '30', label: '30 (Όλες)' },
+  ]
 
   // ✅ Form Data (includes monthly_days)
   const [formData, setFormData] = useState({
@@ -701,6 +708,8 @@ function EmployeesContent() {
     return d.toLocaleString('el-GR', { month: 'long', year: 'numeric' }).toUpperCase()
   }, [])
 
+  const isEditMode = Boolean(editingId)
+
   return (
     <div style={iphoneWrapper}>
       <Toaster position="top-center" richColors />
@@ -921,7 +930,13 @@ function EmployeesContent() {
 
         {/* FORM */}
         {isAdding && (
-          <div style={{ ...formCard, borderColor: editingId ? '#f59e0b' : colors.primaryDark }}>
+          <div
+            style={{
+              ...formCard,
+              borderColor: isEditMode ? '#f59e0b' : colors.primaryDark,
+              boxShadow: isEditMode ? '0 8px 18px rgba(245, 158, 11, 0.18)' : formCard.boxShadow,
+            }}
+          >
             <label style={labelStyle}>Ονοματεπώνυμο *</label>
             <input
               value={formData.full_name}
@@ -944,36 +959,45 @@ function EmployeesContent() {
               <div style={{ display: 'flex', gap: '12px', flex: 1 }}>
                 <div style={{ flex: 1 }}>
                   <label style={labelStyle}>{payBasis === 'monthly' ? 'Μισθός (€) *' : 'Ημερομίσθιο (€) *'}</label>
-                  <input
-                    type="number"
-                    inputMode="decimal"
-                    value={payBasis === 'monthly' ? formData.monthly_salary : formData.daily_rate}
-                    onFocus={(e) => {
-                      if (e.target.value === '0')
-                        setFormData({ ...formData, [payBasis === 'monthly' ? 'monthly_salary' : 'daily_rate']: '' })
-                    }}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        [payBasis === 'monthly' ? 'monthly_salary' : 'daily_rate']: e.target.value,
-                      })
-                    }
-                    style={inputStyle}
-                    placeholder="0"
-                  />
+                  <div style={amountInputWrap}>
+                    <input
+                      type="number"
+                      inputMode="decimal"
+                      value={payBasis === 'monthly' ? formData.monthly_salary : formData.daily_rate}
+                      onFocus={(e) => {
+                        setIsAmountFocused(true)
+                        if (e.target.value === '0')
+                          setFormData({ ...formData, [payBasis === 'monthly' ? 'monthly_salary' : 'daily_rate']: '' })
+                      }}
+                      onBlur={() => setIsAmountFocused(false)}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          [payBasis === 'monthly' ? 'monthly_salary' : 'daily_rate']: e.target.value,
+                        })
+                      }
+                      style={{ ...amountInputStyle, ...(isAmountFocused ? amountInputFocusedStyle : null) }}
+                      placeholder="0"
+                    />
+                    <span style={euroAdornmentStyle}>€</span>
+                  </div>
                 </div>
 
                 {payBasis === 'monthly' && (
                   <div style={{ flex: 1 }}>
                     <label style={labelStyle}>Μέρες Μήνα</label>
-                    <input
-                      type="number"
-                      inputMode="numeric"
-                      value={formData.monthly_days}
-                      onChange={(e) => setFormData({ ...formData, monthly_days: e.target.value })}
-                      style={inputStyle}
-                      placeholder="25"
-                    />
+                    <div style={daysSelectorRow}>
+                      {monthlyDayOptions.map((option) => (
+                        <button
+                          key={option.value}
+                          type="button"
+                          onClick={() => setFormData({ ...formData, monthly_days: option.value })}
+                          style={formData.monthly_days === option.value ? dayToggleActive : dayToggleInactive}
+                        >
+                          {option.label}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 )}
               </div>
@@ -1017,9 +1041,9 @@ function EmployeesContent() {
             <button
               onClick={handleSave}
               disabled={loading}
-              style={{ ...saveBtnStyle, backgroundColor: editingId ? '#f59e0b' : colors.primaryDark }}
+              style={{ ...saveBtnStyle, backgroundColor: isEditMode ? '#f59e0b' : colors.primaryDark }}
             >
-              {loading ? 'ΓΙΝΕΤΑΙ ΑΠΟΘΗΚΕΥΣΗ...' : editingId ? 'ΕΝΗΜΕΡΩΣΗ ΣΤΟΙΧΕΙΩΝ' : 'ΑΠΟΘΗΚΕΥΣΗ'}
+              {loading ? 'ΓΙΝΕΤΑΙ ΑΠΟΘΗΚΕΥΣΗ...' : isEditMode ? 'ΕΝΗΜΕΡΩΣΗ ΣΤΟΙΧΕΙΩΝ' : 'ΑΠΟΘΗΚΕΥΣΗ'}
             </button>
           </div>
         )}
@@ -1371,6 +1395,61 @@ const inputStyle: any = {
   backgroundColor: colors.bgLight,
   boxSizing: 'border-box',
   outline: 'none',
+}
+
+const amountInputWrap: any = {
+  position: 'relative',
+}
+
+const amountInputStyle: any = {
+  ...inputStyle,
+  paddingRight: '38px',
+}
+
+const amountInputFocusedStyle: any = {
+  border: `2px solid ${colors.primaryDark}`,
+  fontSize: '18px',
+}
+
+const euroAdornmentStyle: any = {
+  position: 'absolute',
+  right: '12px',
+  top: '50%',
+  transform: 'translateY(-50%)',
+  fontSize: '16px',
+  fontWeight: 900,
+  color: colors.secondaryText,
+  pointerEvents: 'none',
+}
+
+const daysSelectorRow: any = {
+  display: 'flex',
+  gap: '8px',
+  flexWrap: 'wrap',
+}
+
+const dayToggleBase: any = {
+  flex: '1 1 120px',
+  minHeight: '46px',
+  borderRadius: '12px',
+  fontWeight: 800,
+  fontSize: '11px',
+  cursor: 'pointer',
+  padding: '8px 10px',
+}
+
+const dayToggleActive: any = {
+  ...dayToggleBase,
+  backgroundColor: colors.primaryDark,
+  color: 'white',
+  border: `1px solid ${colors.primaryDark}`,
+}
+
+const dayToggleInactive: any = {
+  ...dayToggleBase,
+  backgroundColor: colors.bgLight,
+  color: colors.secondaryText,
+  border: `1px solid ${colors.border}`,
 }
 
 const saveBtnStyle: any = {
