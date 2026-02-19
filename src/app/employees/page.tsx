@@ -1215,21 +1215,35 @@ function EmployeesContent() {
                     <div style={{ display: 'flex', gap: '10px' }}>
                       <button
                         onClick={() => {
-                          setPayBasis((emp.pay_basis as PayBasis) || 'monthly')
+                          const nextPayBasis: PayBasis = (emp.pay_basis as PayBasis) || 'monthly'
+                          const monthlySalaryValue =
+                            nextPayBasis === 'monthly'
+                              ? emp.monthly_salary != null
+                                ? String(emp.monthly_salary)
+                                : ''
+                              : ''
+                          const dailyRateValue =
+                            nextPayBasis === 'daily'
+                              ? emp.daily_rate != null
+                                ? String(emp.daily_rate)
+                                : ''
+                              : ''
+
+                          setPayBasis(nextPayBasis)
                           setFormData({
                             full_name: emp.name || '',
-                            position: '',
-                            amka: '',
-                            iban: '',
-                            bank_name: 'Εθνική Τράπεζα',
-                            monthly_salary: emp.monthly_salary != null ? String(emp.monthly_salary) : '',
-                            daily_rate: emp.daily_rate != null ? String(emp.daily_rate) : '',
+                            position: emp.position || '',
+                            amka: emp.amka || '',
+                            iban: emp.iban || '',
+                            bank_name: emp.bank_name || 'Εθνική Τράπεζα',
+                            monthly_salary: monthlySalaryValue,
+                            daily_rate: dailyRateValue,
                             monthly_days: emp.monthly_days != null ? String(emp.monthly_days) : '25',
-                            start_date: new Date().toISOString().split('T')[0],
+                            start_date: emp.start_date || new Date().toISOString().split('T')[0],
                           })
                           setEditingId(emp.id)
                           setIsAdding(true)
-                          window.scrollTo(0, 0)
+                          window.scrollTo({ top: 0, behavior: 'smooth' })
                         }}
                         style={editBtn}
                       >
