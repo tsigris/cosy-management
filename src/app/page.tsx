@@ -246,6 +246,81 @@ function DashboardContent() {
     }
   }
 
+  const Z_MASTER_ROW_ID = '__z_master__'
+
+  const isZTransaction = useCallback((t: any) => {
+    const category = String(t?.category || '')
+      .trim()
+      .toLowerCase()
+    const method = String(t?.method || t?.payment_method || '')
+      .trim()
+      .toLowerCase()
+    const notes = String(t?.notes || '')
+      .trim()
+      .toLowerCase()
+
+    const categoryLooksZ = category === 'ζ' || category === 'εσοδα ζ' || category.includes(' ζ') || category.endsWith('ζ')
+    const looksLikeDayClose = method.includes('(ζ)') || notes.includes('ζ ταμειακης') || notes === 'χωρις σημανση'
+
+    return categoryLooksZ || (t?.type === 'income' && looksLikeDayClose)
+  }, [])
+
+  const displayTransactions = useMemo(() => {
+    const zTx = transactions.filter((t) => isZTransaction(t))
+
+    if (zTx.length <= 1) {
+      return transactions.map((t) => ({ kind: 'normal' as const, id: String(t.id), tx: t }))
+    }
+
+    const zTotal = zTx.reduce((acc, t) => acc + (Number(t.amount) || 0), 0)
+    const methodTotals = zTx.reduce((acc: Record<string, number>, t) => {
+      const key = String(t?.method || 'Άλλο').trim() || 'Άλλο'
+      acc[key] = (acc[key] || 0) + (Number(t.amount) || 0)
+      return acc
+    }, {})
+
+    const zBreakdown = Object.entries(methodTotals)
+      .map(([method, amount]) => ({ method, amount }))
+      .sort((a, b) => b.amount - a.amount)
+
+    const rows: Array<
+      | { kind: 'normal'; id: string; tx: any }
+      | {
+          kind: 'z-master'
+          id: string
+          amount: number
+          created_at: string | null
+          created_by_name: string | null
+          itemsCount: number
+          breakdown: Array<{ method: string; amount: number }>
+        }
+    > = []
+
+    let zInserted = false
+
+    for (const t of transactions) {
+      if (!isZTransaction(t)) {
+        rows.push({ kind: 'normal', id: String(t.id), tx: t })
+        continue
+      }
+
+      if (!zInserted) {
+        rows.push({
+          kind: 'z-master',
+          id: Z_MASTER_ROW_ID,
+          amount: zTotal,
+          created_at: zTx[0]?.created_at || null,
+          created_by_name: zTx[0]?.created_by_name || null,
+          itemsCount: zTx.length,
+          breakdown: zBreakdown,
+        })
+        zInserted = true
+      }
+    }
+
+    return rows
+  }, [transactions, isZTransaction])
+
   const totals = useMemo(() => {
     const income = transactions.filter((t) => t.type === 'income').reduce((acc, t) => acc + (Number(t.amount) || 0), 0)
 
@@ -431,33 +506,40 @@ function DashboardContent() {
       </div>
 
       <div style={listContainer}>
-        <p style={listHeader}>ΚΙΝΗΣΕΙΣ ΗΜΕΡΑΣ ({transactions.length})</p>
+        <p style={listHeader}>ΚΙΝΗΣΕΙΣ ΗΜΕΡΑΣ ({displayTransactions.length})</p>
 
         {loading ? (
           <div style={{ textAlign: 'center', padding: '40px' }}>
             <div style={spinnerStyle}></div>
           </div>
-        ) : transactions.length === 0 ? (
+        ) : displayTransactions.length === 0 ? (
           <div style={emptyStateStyle}>Δεν υπάρχουν κινήσεις</div>
         ) : (
-          transactions.map((t) => {
-            const txTitleText = getEntityLabelFromTx(t)
-            const entityKey = getEntityKeyFromTx(t)
+          displayTransactions.map((row) => {
+            const isZMaster = row.kind === 'z-master'
+            const t = row.kind === 'normal' ? row.tx : null
+            const txId = row.id
+            const txTitleText = isZMaster ? 'ΚΛΕΙΣΙΜΟ Ζ' : getEntityLabelFromTx(t)
+            const entityKey = !isZMaster && t ? getEntityKeyFromTx(t) : null
             const ytd = entityKey ? ytdCache[entityKey] : undefined
-            const isIncomeTx = t.type === 'income'
+            const isIncomeTx = isZMaster ? true : t?.type === 'income'
+            const txMethod = isZMaster ? 'Συγκεντρωτική εγγραφή' : t?.method
+            const txCreatedAt = isZMaster ? row.created_at : t?.created_at
+            const txCreatedBy = isZMaster ? row.created_by_name : t?.created_by_name
+            const txAmountValue = isZMaster ? row.amount : Number(t?.amount) || 0
 
             return (
-              <div key={t.id} style={{ marginBottom: '12px' }}>
+              <div key={txId} style={{ marginBottom: '12px' }}>
                 <div
                   style={{
                     ...txRow,
-                    borderRadius: expandedTx === t.id ? '20px 20px 0 0' : '20px',
-                    borderBottom: expandedTx === t.id ? `1px dashed ${colors.border}` : `1px solid ${colors.border}`,
+                    borderRadius: expandedTx === txId ? '20px 20px 0 0' : '20px',
+                    borderBottom: expandedTx === txId ? `1px dashed ${colors.border}` : `1px solid ${colors.border}`,
                   }}
                   onClick={() => {
-                    const next = expandedTx === t.id ? null : t.id
+                    const next = expandedTx === txId ? null : txId
                     setExpandedTx(next)
-                    if (next) loadYtdForTx(t)
+                    if (next && !isZMaster && t) loadYtdForTx(t)
                   }}
                 >
                   <div style={txIconContainer(isIncomeTx)}>
@@ -467,95 +549,110 @@ function DashboardContent() {
                   <div style={{ flex: 1, marginLeft: '12px' }}>
                     <p style={txTitle}>
                       {txTitleText}
-                      {t.is_credit && <span style={creditBadgeStyle}>ΠΙΣΤΩΣΗ</span>}
+                      {!isZMaster && t?.is_credit && <span style={creditBadgeStyle}>ΠΙΣΤΩΣΗ</span>}
+                      {isZMaster && <span style={creditBadgeStyle}>{row.itemsCount} ΚΙΝΗΣΕΙΣ</span>}
                     </p>
                     <p style={txMeta}>
-                      {t.method} • {t.created_at ? format(parseISO(t.created_at), 'HH:mm') : '--:--'} •{' '}
-                      {t.created_by_name || 'Admin'}
+                      {txMethod} • {txCreatedAt ? format(parseISO(txCreatedAt), 'HH:mm') : '--:--'} • {txCreatedBy || 'Admin'}
                     </p>
                   </div>
 
                   <p style={{ ...txAmount, color: isIncomeTx ? colors.accentGreen : colors.accentRed }}>
                     {isIncomeTx ? '+' : '-'}
-                    {Math.abs(Number(t.amount) || 0).toFixed(2)}€
+                    {Math.abs(txAmountValue).toFixed(2)}€
                   </p>
                 </div>
 
-                {expandedTx === t.id && (
+                {expandedTx === txId && (
                   <div style={actionPanel}>
-                    <button
-                      onClick={() =>
-                        router.push(`/add-${isIncomeTx ? 'income' : 'expense'}?editId=${t.id}&store=${storeIdFromUrl}`)
-                      }
-                      style={editRowBtn}
-                    >
-                      Επεξεργασία
-                    </button>
-                    <button onClick={() => handleDelete(t.id)} style={deleteRowBtn}>
-                      Διαγραφή
-                    </button>
+                    {isZMaster ? (
+                      <div style={zBreakdownCard}>
+                        <p style={ytdTitle}>ΑΝΑΛΥΣΗ ΚΛΕΙΣΙΜΑΤΟΣ Ζ</p>
+                        <p style={ytdSubTitle}>Ανάλυση ανά μέθοδο</p>
 
-                    {/* YTD card */}
-                    <div style={ytdCard}>
-                      <p style={ytdTitle}>ΣΥΝΟΨΗ ΕΤΟΥΣ (YTD)</p>
-                      <p style={ytdSubTitle}>
-                        Από {yearStartStr} έως {businessTodayStr}
-                      </p>
+                        {row.breakdown.map((item) => (
+                          <div key={item.method} style={zBreakdownRow}>
+                            <span style={ytdLabel}>{item.method}</span>
+                            <span style={ytdValueGreen}>{money(item.amount)}€</span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <>
+                        <button
+                          onClick={() =>
+                            router.push(`/add-${isIncomeTx ? 'income' : 'expense'}?editId=${t.id}&store=${storeIdFromUrl}`)
+                          }
+                          style={editRowBtn}
+                        >
+                          Επεξεργασία
+                        </button>
+                        <button onClick={() => handleDelete(t.id)} style={deleteRowBtn}>
+                          Διαγραφή
+                        </button>
 
-                      {!entityKey ? (
-                        <p style={ytdHint}>
-                          Δεν υπάρχει συνδεδεμένη καρτέλα (supplier / asset / revenue source) σε αυτή την κίνηση.
-                        </p>
-                      ) : ytd?.loading ? (
-                        <p style={ytdLoading}>Υπολογισμός…</p>
-                      ) : entityKey.startsWith('rev:') ? (
-                        <>
-                          <div style={ytdRow}>
-                            <span style={ytdLabel}>Τζίρος έτους</span>
-                            <span style={ytdValueGreen}>{money(ytd?.turnoverIncome)}€</span>
-                          </div>
-                          <div style={ytdRow}>
-                            <span style={ytdLabel}>Εισπράξεις έτους</span>
-                            <span style={ytdValue}>{money(ytd?.receivedIncome)}€</span>
-                          </div>
-                          <div style={ytdRow}>
-                            <span style={ytdLabel}>Ανοιχτό υπόλοιπο</span>
-                            <span
-                              style={{
-                                ...ytdValue,
-                                color: (Number(ytd?.openIncome) || 0) > 0 ? colors.accentRed : colors.accentGreen,
-                              }}
-                            >
-                              {money(ytd?.openIncome)}€
-                            </span>
-                          </div>
-                          <p style={ytdHint}>Πηγή: {txTitleText.toUpperCase()}</p>
-                        </>
-                      ) : (
-                        <>
-                          <div style={ytdRow}>
-                            <span style={ytdLabel}>Έξοδα έτους</span>
-                            <span style={ytdValueRed}>{money(ytd?.totalExpenses)}€</span>
-                          </div>
-                          <div style={ytdRow}>
-                            <span style={ytdLabel}>Πληρωμές έτους</span>
-                            <span style={ytdValue}>{money(ytd?.payments)}€</span>
-                          </div>
-                          <div style={ytdRow}>
-                            <span style={ytdLabel}>Ανοιχτό υπόλοιπο</span>
-                            <span
-                              style={{
-                                ...ytdValue,
-                                color: (Number(ytd?.openExpense) || 0) > 0 ? colors.accentRed : colors.accentGreen,
-                              }}
-                            >
-                              {money(ytd?.openExpense)}€
-                            </span>
-                          </div>
-                          <p style={ytdHint}>Οντότητα: {txTitleText.toUpperCase()}</p>
-                        </>
-                      )}
-                    </div>
+                        <div style={ytdCard}>
+                          <p style={ytdTitle}>ΣΥΝΟΨΗ ΕΤΟΥΣ (YTD)</p>
+                          <p style={ytdSubTitle}>
+                            Από {yearStartStr} έως {businessTodayStr}
+                          </p>
+
+                          {!entityKey ? (
+                            <p style={ytdHint}>
+                              Δεν υπάρχει συνδεδεμένη καρτέλα (supplier / asset / revenue source) σε αυτή την κίνηση.
+                            </p>
+                          ) : ytd?.loading ? (
+                            <p style={ytdLoading}>Υπολογισμός…</p>
+                          ) : entityKey.startsWith('rev:') ? (
+                            <>
+                              <div style={ytdRow}>
+                                <span style={ytdLabel}>Τζίρος έτους</span>
+                                <span style={ytdValueGreen}>{money(ytd?.turnoverIncome)}€</span>
+                              </div>
+                              <div style={ytdRow}>
+                                <span style={ytdLabel}>Εισπράξεις έτους</span>
+                                <span style={ytdValue}>{money(ytd?.receivedIncome)}€</span>
+                              </div>
+                              <div style={ytdRow}>
+                                <span style={ytdLabel}>Ανοιχτό υπόλοιπο</span>
+                                <span
+                                  style={{
+                                    ...ytdValue,
+                                    color: (Number(ytd?.openIncome) || 0) > 0 ? colors.accentRed : colors.accentGreen,
+                                  }}
+                                >
+                                  {money(ytd?.openIncome)}€
+                                </span>
+                              </div>
+                              <p style={ytdHint}>Πηγή: {txTitleText.toUpperCase()}</p>
+                            </>
+                          ) : (
+                            <>
+                              <div style={ytdRow}>
+                                <span style={ytdLabel}>Έξοδα έτους</span>
+                                <span style={ytdValueRed}>{money(ytd?.totalExpenses)}€</span>
+                              </div>
+                              <div style={ytdRow}>
+                                <span style={ytdLabel}>Πληρωμές έτους</span>
+                                <span style={ytdValue}>{money(ytd?.payments)}€</span>
+                              </div>
+                              <div style={ytdRow}>
+                                <span style={ytdLabel}>Ανοιχτό υπόλοιπο</span>
+                                <span
+                                  style={{
+                                    ...ytdValue,
+                                    color: (Number(ytd?.openExpense) || 0) > 0 ? colors.accentRed : colors.accentGreen,
+                                  }}
+                                >
+                                  {money(ytd?.openExpense)}€
+                                </span>
+                              </div>
+                              <p style={ytdHint}>Οντότητα: {txTitleText.toUpperCase()}</p>
+                            </>
+                          )}
+                        </div>
+                      </>
+                    )}
                   </div>
                 )}
               </div>
@@ -765,6 +862,21 @@ const ytdValueGreen: any = { fontSize: '12px', fontWeight: '900', color: colors.
 const ytdValueRed: any = { fontSize: '12px', fontWeight: '900', color: colors.accentRed }
 const ytdHint: any = { margin: '10px 0 0 0', fontSize: '10px', fontWeight: '800', color: colors.secondaryText }
 const ytdLoading: any = { margin: '10px 0 0 0', fontSize: '12px', fontWeight: '800', color: colors.secondaryText }
+
+const zBreakdownCard: any = {
+  width: '100%',
+  padding: '14px',
+  borderRadius: '16px',
+  border: `1px solid ${colors.border}`,
+  background: '#f8fafc',
+}
+const zBreakdownRow: any = {
+  display: 'flex',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+  gap: '10px',
+  marginTop: '10px',
+}
 
 const emptyStateStyle: any = { textAlign: 'center', padding: '40px 20px', color: colors.secondaryText, fontWeight: '600', fontSize: '13px' }
 const spinnerStyle: any = { width: '24px', height: '24px', border: '3px solid #f3f3f3', borderTop: '3px solid #6366f1', borderRadius: '50%', animation: 'spin 1s linear infinite', margin: '0 auto' }
