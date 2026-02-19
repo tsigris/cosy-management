@@ -457,27 +457,33 @@ function AnalysisContent() {
   }, [filteredTx])
 
   // ✅ Z BREAKDOWN (μόνο όταν startDate === endDate)
+  // FIXED per your rules:
+  // 1) zCash: method === 'Μετρητά (Z)'
+  // 2) zPos:  method === 'Κάρτα'
+  // 3) blackCash: (notes==='ΧΩΡΙΣ ΣΗΜΑΝΣΗ' OR method==='Μετρητά') AND category==='Εσοδα Ζ' AND method!=='Μετρητά (Z)'
   const zBreakdown = useMemo(() => {
     if (!isZReport) {
       return { zCash: 0, zPos: 0, blackCash: 0, totalTurnover: 0, blackPct: 0 }
     }
 
-    const incomeRows = periodTx
+    const rows = periodTx
       .filter((t) => t.type === 'income')
-      .map((t) => ({
-        amount: Number(t.amount) || 0,
-        category: String(t.category || '').trim(),
-        method: String((t.method ?? t.payment_method ?? '') || '').trim(),
-        notes: String(t.notes || '').trim(),
-      }))
+      .map((t) => {
+        const method = String((t.method ?? t.payment_method ?? '') || '').trim()
+        const notes = String(t.notes || '').trim()
+        const category = String(t.category || '').trim()
+        const amount = Number(t.amount) || 0
+        return { method, notes, category, amount }
+      })
 
-    const zCash = incomeRows.filter((t) => t.method === 'Μετρητά (Z)').reduce((a, t) => a + t.amount, 0)
-    const zPos = incomeRows.filter((t) => t.method === 'Κάρτα').reduce((a, t) => a + t.amount, 0)
+    const zCash = rows.filter((r) => r.method === 'Μετρητά (Z)').reduce((a, r) => a + r.amount, 0)
+    const zPos = rows.filter((r) => r.method === 'Κάρτα').reduce((a, r) => a + r.amount, 0)
 
-    const blackCash = incomeRows
-      .filter((t) => t.category !== 'Εσοδα Ζ')
-      .filter((t) => t.method === 'Μετρητά' || t.notes === 'ΧΩΡΙΣ ΣΗΜΑΝΣΗ')
-      .reduce((a, t) => a + t.amount, 0)
+    const blackCash = rows
+      .filter((r) => r.category === 'Εσοδα Ζ')
+      .filter((r) => r.method !== 'Μετρητά (Z)') // όχι το επίσημο Z Cash
+      .filter((r) => r.notes === 'ΧΩΡΙΣ ΣΗΜΑΝΣΗ' || r.method === 'Μετρητά')
+      .reduce((a, r) => a + r.amount, 0)
 
     const totalTurnover = zCash + zPos + blackCash
     const blackPct = totalTurnover > 0 ? (blackCash / totalTurnover) * 100 : 0
@@ -556,7 +562,8 @@ function AnalysisContent() {
 
         if (method === 'Μετρητά (Z)') zCash += rowAmount
         if (method === 'Κάρτα') zPos += rowAmount
-        if (notes === 'ΧΩΡΙΣ ΣΗΜΑΝΣΗ' || method === 'Χωρίς Απόδειξη') extra += rowAmount
+        // “Χωρίς Σήμανση” / extra: notes OR method=Μετρητά, αλλά ΟΧΙ επίσημο Z Cash
+        if (method !== 'Μετρητά (Z)' && (notes === 'ΧΩΡΙΣ ΣΗΜΑΝΣΗ' || method === 'Μετρητά')) extra += rowAmount
       }
 
       return {
@@ -566,7 +573,7 @@ function AnalysisContent() {
         category: 'Εσοδα Ζ',
         amount,
         payment_method: 'Z (Σύνολο)',
-        notes: `Z Cash: ${zCash.toFixed(2)}€ • POS: ${zPos.toFixed(2)}€ • Extra: ${extra.toFixed(2)}€`,
+        notes: `Μετρητά (Z): ${zCash.toFixed(2)}€ • Κάρτα (POS): ${zPos.toFixed(2)}€ • Χωρίς Σήμανση: ${extra.toFixed(2)}€`,
         __collapsedZ: true,
       }
     })
@@ -584,10 +591,13 @@ function AnalysisContent() {
 
   const rangeText = useMemo(() => `${startDate} → ${endDate}`, [startDate, endDate])
   const money = useCallback((n: any) => `${Number(n || 0).toFixed(2)}€`, [])
+
+  // ✅ TOTAL CASH DISPLAY
+  // For Z day: Cash KPI should be zCash + blackCash
   const totalCashDisplay = useMemo(() => {
     if (isZReport) return zBreakdown.zCash + zBreakdown.blackCash
     return Number(balances?.cash_balance || 0)
-  }, [isZReport, zBreakdown.zCash, zBreakdown.blackCash, balances])
+  }, [isZReport, zBreakdown, balances])
 
   return (
     <div style={iphoneWrapper} data-print-root="true">
@@ -751,7 +761,7 @@ function AnalysisContent() {
           <div style={smallKpiCard}>
             <div style={smallKpiLabel}>Υπόλοιπο Μετρητών</div>
             <div style={smallKpiValue}>{isZReport || balances ? money(totalCashDisplay) : '—'}</div>
-            <div style={smallKpiHint}>{isZReport ? 'Μετρητά (Z) + Μετρητά (Extra)' : 'Μετρητά + Μετρητά (Z)'}</div>
+            <div style={smallKpiHint}>{isZReport ? 'Μετρητά (Z) + Χωρίς Σήμανση' : 'Μετρητά + Μετρητά (Z)'}</div>
           </div>
 
           <div style={smallKpiCard}>
@@ -798,12 +808,12 @@ function AnalysisContent() {
                 </div>
 
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 900 }}>
-                  <span style={{ color: '#64748b' }}>Κάρτα</span>
+                  <span style={{ color: '#64748b' }}>Κάρτα (POS)</span>
                   <span style={{ color: '#0f172a' }}>{money(zBreakdown.zPos)}</span>
                 </div>
 
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 900 }}>
-                  <span style={{ color: '#64748b' }}>Χωρίς Απόδειξη</span>
+                  <span style={{ color: '#64748b' }}>Χωρίς Σήμανση</span>
                   <span style={{ color: '#0f172a' }}>{money(zBreakdown.blackCash)}</span>
                 </div>
 
@@ -833,7 +843,7 @@ function AnalysisContent() {
                     : 'linear-gradient(180deg, #ecfdf5, #ffffff)',
               }}
             >
-              <div style={smallKpiLabel}>Μαύρα (Χωρίς Απόδειξη)</div>
+              <div style={smallKpiLabel}>Χωρίς Σήμανση</div>
 
               <div
                 style={{
@@ -857,7 +867,7 @@ function AnalysisContent() {
                 {zBreakdown.blackPct.toFixed(1)}% του τζίρου ημέρας
               </div>
 
-              <div style={smallKpiHint}>Cash σύνολο (Z + Μαύρα): {money(zBreakdown.zCash + zBreakdown.blackCash)}</div>
+              <div style={smallKpiHint}>Cash σύνολο (Z + Χωρίς Σήμανση): {money(zBreakdown.zCash + zBreakdown.blackCash)}</div>
             </div>
           </div>
         )}
