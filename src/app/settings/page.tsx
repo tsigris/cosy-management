@@ -1,7 +1,7 @@
 'use client'
 export const dynamic = 'force-dynamic'
 
-import { useEffect, useState, Suspense, useCallback, useRef } from 'react'
+import { useEffect, useState, Suspense, useCallback, useRef, type Dispatch, type SetStateAction, type ReactNode } from 'react'
 import { supabase } from '@/lib/supabase'
 import PermissionGuard from '@/components/PermissionGuard'
 import { useSearchParams } from 'next/navigation'
@@ -25,6 +25,64 @@ import {
 } from 'lucide-react'
 
 type SectionId = 'profile' | 'business' | 'appearance' | 'backup' | 'support'
+
+function SectionCard({
+  id,
+  icon,
+  title,
+  subtitle,
+  children,
+  openSection,
+  setOpenSection,
+  chipRight,
+}: {
+  id: SectionId
+  icon: any
+  title: string
+  subtitle: string
+  children: any
+  openSection: SectionId | null
+  setOpenSection: Dispatch<SetStateAction<SectionId | null>>
+  chipRight?: ReactNode
+}) {
+  const open = openSection === id
+  const wrapRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    if (!open) return
+    setTimeout(() => {
+      wrapRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }, 60)
+  }, [open])
+
+  return (
+    <div ref={wrapRef} style={sectionCard}>
+      <button
+        type="button"
+        onClick={() => setOpenSection(open ? null : id)}
+        style={{
+          ...sectionHeaderBtn,
+          borderBottomLeftRadius: open ? 0 : 22,
+          borderBottomRightRadius: open ? 0 : 22,
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={sectionIconWrap}>{icon}</div>
+          <div style={{ textAlign: 'left' }}>
+            <div style={sectionTitle}>{title}</div>
+            <div style={sectionSub}>{subtitle}</div>
+          </div>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          {chipRight}
+          {open ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+        </div>
+      </button>
+
+      <AnimatedBody open={open}>{children}</AnimatedBody>
+    </div>
+  )
+}
 
 function AnimatedBody({ open, children }: { open: boolean; children: any }) {
   const innerRef = useRef<HTMLDivElement | null>(null)
@@ -287,59 +345,6 @@ function SettingsContent() {
     }
   }
 
-  const Section = ({
-    id,
-    icon,
-    title,
-    subtitle,
-    children,
-  }: {
-    id: SectionId
-    icon: any
-    title: string
-    subtitle: string
-    children: any
-  }) => {
-    const open = openSection === id
-    const wrapRef = useRef<HTMLDivElement | null>(null)
-
-    // ✅ Scroll to the section when it opens (iOS feel)
-    useEffect(() => {
-      if (!open) return
-      setTimeout(() => {
-        wrapRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-      }, 60)
-    }, [open])
-
-    return (
-      <div ref={wrapRef} style={sectionCard}>
-        <button
-          type="button"
-          onClick={() => setOpenSection(open ? null : id)}
-          style={{
-            ...sectionHeaderBtn,
-            borderBottomLeftRadius: open ? 0 : 22,
-            borderBottomRightRadius: open ? 0 : 22,
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <div style={sectionIconWrap}>{icon}</div>
-            <div style={{ textAlign: 'left' }}>
-              <div style={sectionTitle}>{title}</div>
-              <div style={sectionSub}>{subtitle}</div>
-            </div>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            {id === 'appearance' ? <span style={chip}>Store</span> : null}
-            {open ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
-          </div>
-        </button>
-
-        <AnimatedBody open={open}>{children}</AnimatedBody>
-      </div>
-    )
-  }
-
   return (
     <PermissionGuard storeId={storeId}>
       {({ isAdmin, isLoading: checkingPermission }) => (
@@ -367,7 +372,15 @@ function SettingsContent() {
         {!checkingPermission && !isAdmin && <div style={readOnlyBannerStyle}>Read-only access</div>}
 
         {/* Sections */}
-        <Section id="appearance" icon={<Monitor size={18} color="#9A3412" />} title="Εμφάνιση" subtitle="Dashboard Features & προβολές">
+        <SectionCard
+          id="appearance"
+          icon={<Monitor size={18} color="#9A3412" />}
+          title="Εμφάνιση"
+          subtitle="Dashboard Features & προβολές"
+          openSection={openSection}
+          setOpenSection={setOpenSection}
+          chipRight={<span style={chip}>Store</span>}
+        >
           <div style={featureCard}>
             <div style={featureHeaderRow}>
               <div style={featureHeaderLeft}>
@@ -414,9 +427,16 @@ function SettingsContent() {
 
             <div style={featureFootNote}>(Όταν είναι OFF, το Z εξαφανίζεται από την αρχική.)</div>
           </div>
-        </Section>
+        </SectionCard>
 
-        <Section id="business" icon={<Building2 size={18} color="#0f172a" />} title="Επιχείρηση" subtitle="Στοιχεία καταστήματος & τιμολόγησης">
+        <SectionCard
+          id="business"
+          icon={<Building2 size={18} color="#0f172a" />}
+          title="Επιχείρηση"
+          subtitle="Στοιχεία καταστήματος & τιμολόγησης"
+          openSection={openSection}
+          setOpenSection={setOpenSection}
+        >
           <div style={grid2}>
             <div style={field}>
               <label style={label}>ΤΙΤΛΟΣ ΚΑΤΑΣΤΗΜΑΤΟΣ (ΕΜΦΑΝΙΣΗ)</label>
@@ -460,9 +480,16 @@ function SettingsContent() {
               <Save size={18} /> {loading ? 'ΑΠΟΘΗΚΕΥΣΗ...' : 'ΕΝΗΜΕΡΩΣΗ ΚΑΤΑΣΤΗΜΑΤΟΣ'}
             </button>
           )}
-        </Section>
+        </SectionCard>
 
-        <Section id="profile" icon={<User2 size={18} color="#0f172a" />} title="Προφίλ" subtitle="Όνομα χρήστη & εμφανίσεις">
+        <SectionCard
+          id="profile"
+          icon={<User2 size={18} color="#0f172a" />}
+          title="Προφίλ"
+          subtitle="Όνομα χρήστη & εμφανίσεις"
+          openSection={openSection}
+          setOpenSection={setOpenSection}
+        >
           <div style={field}>
             <label style={label}>Το όνομά μου (username)</label>
             <input
@@ -486,9 +513,16 @@ function SettingsContent() {
 
           {profileError && <div style={msgError}>{profileError}</div>}
           {profileSuccess && <div style={msgSuccess}>{profileSuccess}</div>}
-        </Section>
+        </SectionCard>
 
-        <Section id="backup" icon={<Database size={18} color="#0f172a" />} title="Backup" subtitle="Εξαγωγή δεδομένων σε Excel">
+        <SectionCard
+          id="backup"
+          icon={<Database size={18} color="#0f172a" />}
+          title="Backup"
+          subtitle="Εξαγωγή δεδομένων σε Excel"
+          openSection={openSection}
+          setOpenSection={setOpenSection}
+        >
           <div style={backupCard}>
             <div style={backupRow}>
               <div>
@@ -521,9 +555,16 @@ function SettingsContent() {
               <Download size={18} /> {isExporting ? 'ΕΞΑΓΩΓΗ...' : 'ΛΗΨΗ ΑΡΧΕΙΟΥ EXCEL'}
             </button>
           </div>
-        </Section>
+        </SectionCard>
 
-        <Section id="support" icon={<Info size={18} color="#0f172a" />} title="Υποστήριξη" subtitle="Επικοινωνία & διαγραφή">
+        <SectionCard
+          id="support"
+          icon={<Info size={18} color="#0f172a" />}
+          title="Υποστήριξη"
+          subtitle="Επικοινωνία & διαγραφή"
+          openSection={openSection}
+          setOpenSection={setOpenSection}
+        >
           <button onClick={() => setShowContact(!showContact)} style={supportToggle}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <div style={supportIcon}>
@@ -547,7 +588,7 @@ function SettingsContent() {
               </button>
             </div>
           )}
-        </Section>
+        </SectionCard>
 
         <div style={{ height: 24 }} />
       </div>
