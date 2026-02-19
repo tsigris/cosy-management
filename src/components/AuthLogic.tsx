@@ -14,6 +14,8 @@ export function AuthLogic() {
     const isPublicPath = publicPaths.some(path => pathname.startsWith(path))
     
     const storeInUrl = searchParams.get('store')
+    const currentPath = `${pathname}${searchParams.toString() ? `?${searchParams.toString()}` : ''}`
+    const loginWithNext = `/login?next=${encodeURIComponent(currentPath || '/')}`
 
     const checkAuth = async () => {
       const { data: { session } } = await supabase.auth.getSession()
@@ -21,14 +23,13 @@ export function AuthLogic() {
       // 1. ΑΝ ΔΕΝ ΥΠΑΡΧΕΙ SESSION -> LOGIN
       if (!session) {
         if (!isPublicPath) {
-          window.location.href = '/login'
+          window.location.href = loginWithNext
         }
         return
       }
 
       // 2. ΑΝ ΥΠΑΡΧΕΙ SESSION ΑΛΛΑ ΟΧΙ STORE ID ΣΤΟ URL (Και δεν είμαστε σε public path)
       if (!isPublicPath && !storeInUrl) {
-        console.log("No store ID in URL, redirecting to select-store...")
         router.push('/select-store')
         return
       }

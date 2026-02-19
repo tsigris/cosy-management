@@ -345,7 +345,6 @@ function EmployeesContent() {
       setOtHours('')
       fetchInitialData()
     } catch (error) {
-      console.log(error)
       console.error(error)
       toast.error('Αποτυχία καταγραφής υπερωρίας.')
     }

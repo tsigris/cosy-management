@@ -50,8 +50,6 @@ function FixedAssetsContent() {
         .order('name')
 
       if (assetsErr) throw assetsErr
-      
-      console.log("DEBUG ASSETS FROM DB:", assetsData); // <--- ΕΔΩ ΘΑ ΔΕΙΣ ΑΝ ΦΕΡΝΕΙ ΔΕΔΟΜΕΝΑ
 
       let currentAssets = assetsData || []
 

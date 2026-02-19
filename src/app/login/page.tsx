@@ -114,7 +114,8 @@ function LoginContent() {
       setEmailConfirmationPending(false)
 
       if (data.user) {
-        router.replace(safeNextPath || '/select-store')
+        const nextAfterLogin = getSafeNextPath(searchParams.get('next'))
+        router.push(nextAfterLogin || '/select-store')
       }
     } catch (err: any) {
       toast.error(err.message || 'Παρουσιάστηκε πρόβλημα κατά τη σύνδεση.')
