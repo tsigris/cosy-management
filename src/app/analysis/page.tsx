@@ -460,7 +460,6 @@ function AnalysisContent() {
   }, [filteredTx])
 
   // ✅ Z BREAKDOWN (μόνο όταν startDate === endDate)
-  // FIXED per Supabase rules:
   // 1) zCash: method === 'Μετρητά (Z)'
   // 2) zPos:  method === 'Κάρτα'
   // 3) blackCash: category === 'Εσοδα Ζ' AND (notes === 'ΧΩΡΙΣ ΣΗΜΑΝΣΗ' OR method === 'Μετρητά') BUT NOT method === 'Μετρητά (Z)'
@@ -478,14 +477,13 @@ function AnalysisContent() {
         const amount = Number(t.amount) || 0
         return { method, notes, category, amount }
       })
-      // ✅ IMPORTANT: only Z-category rows participate in breakdown
       .filter((r) => r.category === 'Εσοδα Ζ')
 
     const zCash = rows.filter((r) => r.method === 'Μετρητά (Z)').reduce((a, r) => a + r.amount, 0)
     const zPos = rows.filter((r) => r.method === 'Κάρτα').reduce((a, r) => a + r.amount, 0)
 
     const blackCash = rows
-      .filter((r) => r.method !== 'Μετρητά (Z)') // exclude official Z cash
+      .filter((r) => r.method !== 'Μετρητά (Z)')
       .filter((r) => r.notes === 'ΧΩΡΙΣ ΣΗΜΑΝΣΗ' || r.method === 'Μετρητά')
       .reduce((a, r) => a + r.amount, 0)
 
@@ -581,9 +579,9 @@ function AnalysisContent() {
         category: 'Εσοδα Ζ',
         amount,
         payment_method: 'Z (Σύνολο)',
-        notes: `Μετρητά (Z): ${zCash.toFixed(2)}€ • Κάρτα (POS): ${zPos.toFixed(2)}€ • Χωρίς Σήμανση: ${withoutMarking.toFixed(
+        notes: `Μετρητά (Z): ${zCash.toFixed(2)}€ • Κάρτα (POS): ${zPos.toFixed(
           2
-        )}€`,
+        )}€ • Χωρίς Σήμανση: ${withoutMarking.toFixed(2)}€`,
         __collapsedZ: true,
       }
     })
@@ -603,8 +601,7 @@ function AnalysisContent() {
   const money = useCallback((n: any) => `${Number(n || 0).toFixed(2)}€`, [])
 
   // ✅ TOTAL CASH DISPLAY
-  // FIXED:
-  // When isZReport === true => (zCash + blackCash - cashExpensesToday)
+  // Z day: (zCash + blackCash - cashExpensesToday)
   const totalCashDisplay = useMemo(() => {
     if (isZReport) return zBreakdown.zCash + zBreakdown.blackCash - cashExpensesToday
     return Number(balances?.cash_balance || 0)
@@ -782,10 +779,7 @@ function AnalysisContent() {
               <div style={{ ...kpiLabel, color: '#fff' }}>{isZReport ? 'Πραγματικό Συρτάρι' : 'Καθαρό Κέρδος'}</div>
               <div style={{ ...kpiSign, color: '#fff' }}>{bigKpiValue >= 0 ? '▲' : '▼'}</div>
             </div>
-
             <div style={{ ...kpiValue, color: '#fff' }}>{bigKpiValue.toLocaleString('el-GR')}€</div>
-
-            {/* ✅ CHANGED PER YOUR REQUEST */}
             <div style={{ fontSize: 13, fontWeight: 800, opacity: 0.85, marginTop: 6 }}>
               {isZReport ? 'Μετρητά (Z) + Χωρίς Σήμανση - Έξοδα' : 'Έσοδα - Έξοδα'}
             </div>
@@ -821,6 +815,7 @@ function AnalysisContent() {
 
             <div style={smallKpiHint}>{drawer ? `Ημερομηνία Ζ: ${drawer.date}` : `Δεν βρέθηκε Ζ έως: ${endDate}`}</div>
 
+            {/* ✅ REQUIRED LABELS */}
             <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', marginTop: 4 }}>
               {drawer || isZReport ? `Z: ${money(drawerZCash)} • Χωρίς Σήμανση: ${money(drawerWithoutMarking)}` : ''}
             </div>
@@ -881,14 +876,14 @@ function AnalysisContent() {
                   zBreakdown.blackPct > 10
                     ? '1px solid #f43f5e'
                     : zBreakdown.blackPct > 5
-                      ? '1px solid #f59e0b'
-                      : '1px solid #10b981',
+                    ? '1px solid #f59e0b'
+                    : '1px solid #10b981',
                 background:
                   zBreakdown.blackPct > 10
                     ? 'linear-gradient(180deg, #fff1f2, #ffffff)'
                     : zBreakdown.blackPct > 5
-                      ? 'linear-gradient(180deg, #fffbeb, #ffffff)'
-                      : 'linear-gradient(180deg, #ecfdf5, #ffffff)',
+                    ? 'linear-gradient(180deg, #fffbeb, #ffffff)'
+                    : 'linear-gradient(180deg, #ecfdf5, #ffffff)',
               }}
             >
               <div style={smallKpiLabel}>Χωρίς Σήμανση</div>
@@ -1080,16 +1075,7 @@ function AnalysisContent() {
                         {!!t.notes && <div style={{ fontSize: 14, fontWeight: 800, color: colors.secondary }}>{t.notes}</div>}
 
                         {!!pm && (
-                          <div
-                            style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: 8,
-                              fontSize: 13,
-                              fontWeight: 800,
-                              color: colors.secondary,
-                            }}
-                          >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 800, color: colors.secondary }}>
                             <span style={{ fontWeight: 900 }}>Μέθοδος:</span> {pm}
                           </div>
                         )}
