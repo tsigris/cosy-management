@@ -460,10 +460,10 @@ function AnalysisContent() {
   }, [filteredTx])
 
   // ✅ Z BREAKDOWN (μόνο όταν startDate === endDate)
-  // FIXED per your rules:
+  // FIXED per rules:
   // 1) zCash: method === 'Μετρητά (Z)'
   // 2) zPos:  method === 'Κάρτα'
-  // 3) blackCash: category === 'Εσοδα Ζ' AND (notes==='ΧΩΡΙΣ ΣΗΜΑΝΣΗ' OR method==='Μετρητά') AND method!=='Μετρητά (Z)'
+  // 3) blackCash: method === 'Μετρητά' AND notes === 'ΧΩΡΙΣ ΣΗΜΑΝΣΗ'
   const zBreakdown = useMemo(() => {
     if (!isZReport) {
       return { zCash: 0, zPos: 0, blackCash: 0, totalTurnover: 0, blackPct: 0 }
@@ -483,9 +483,8 @@ function AnalysisContent() {
     const zPos = rows.filter((r) => r.method === 'Κάρτα').reduce((a, r) => a + r.amount, 0)
 
     const blackCash = rows
-      .filter((r) => r.category === 'Εσοδα Ζ')
-      .filter((r) => r.method !== 'Μετρητά (Z)') // όχι το επίσημο Z Cash
-      .filter((r) => r.notes === 'ΧΩΡΙΣ ΣΗΜΑΝΣΗ' || r.method === 'Μετρητά')
+      .filter((r) => r.method === 'Μετρητά')
+      .filter((r) => r.notes === 'ΧΩΡΙΣ ΣΗΜΑΝΣΗ')
       .reduce((a, r) => a + r.amount, 0)
 
     const totalTurnover = zCash + zPos + blackCash
@@ -601,11 +600,11 @@ function AnalysisContent() {
   const money = useCallback((n: any) => `${Number(n || 0).toFixed(2)}€`, [])
 
   // ✅ TOTAL CASH DISPLAY
-  // For Z day: (zCash + blackCash) - cash expenses made with "Μετρητά"
+  // For Z day: zCash + blackCash
   const totalCashDisplay = useMemo(() => {
-    if (isZReport) return zBreakdown.zCash + zBreakdown.blackCash - cashExpensesToday
+    if (isZReport) return zBreakdown.zCash + zBreakdown.blackCash
     return Number(balances?.cash_balance || 0)
-  }, [isZReport, zBreakdown, cashExpensesToday, balances])
+  }, [isZReport, zBreakdown, balances])
 
   // ✅ For the big dark KPI on Z day we want the REAL drawer target too
   const bigKpiValue = useMemo(() => {
@@ -781,7 +780,7 @@ function AnalysisContent() {
             </div>
             <div style={{ ...kpiValue, color: '#fff' }}>{bigKpiValue.toLocaleString('el-GR')}€</div>
             <div style={{ fontSize: 13, fontWeight: 800, opacity: 0.85, marginTop: 6 }}>
-              {isZReport ? 'Μετρητά (Z) + Χωρίς Σήμανση - Έξοδα Μετρητά' : 'Έσοδα - Έξοδα'}
+              {isZReport ? 'Μετρητά (Z) + Χωρίς Σήμανση' : 'Έσοδα - Έξοδα'}
             </div>
           </div>
         </div>
@@ -792,7 +791,7 @@ function AnalysisContent() {
             <div style={smallKpiLabel}>Υπόλοιπο Μετρητών</div>
             <div style={smallKpiValue}>{isZReport || balances ? money(totalCashDisplay) : '—'}</div>
             <div style={smallKpiHint}>
-              {isZReport ? 'Μετρητά (Z) + Χωρίς Σήμανση - Έξοδα Μετρητά' : 'Μετρητά + Μετρητά (Z)'}
+              {isZReport ? 'Μετρητά (Z) + Χωρίς Σήμανση' : 'Μετρητά + Μετρητά (Z)'}
             </div>
           </div>
 
@@ -855,8 +854,8 @@ function AnalysisContent() {
                 </div>
 
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 900 }}>
-                  <span style={{ color: '#64748b' }}>Έξοδα (Μετρητά)</span>
-                  <span style={{ color: colors.danger }}>- {money(cashExpensesToday)}</span>
+                  <span style={{ color: '#64748b' }}>Έξοδα (Μετρητά) - Πληροφοριακά</span>
+                  <span style={{ color: colors.danger }}>{money(cashExpensesToday)}</span>
                 </div>
 
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 1000, fontSize: 18 }}>
