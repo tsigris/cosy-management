@@ -5,18 +5,59 @@ import { supabase } from '@/lib/supabase'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { toast, Toaster } from 'sonner'
+import { Mail } from 'lucide-react'
+
+const getEmailRedirectUrl = () => {
+  const envUrl = process.env.NEXT_PUBLIC_SITE_URL || process.env.NEXT_PUBLIC_APP_URL
+
+  if (envUrl) {
+    return `${envUrl.replace(/\/$/, '')}/login`
+  }
+
+  if (typeof window !== 'undefined') {
+    return `${window.location.origin}/login`
+  }
+
+  return '/login'
+}
 
 function RegisterForm() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [username, setUsername] = useState('')
   const [loading, setLoading] = useState(false)
+  const [resendLoading, setResendLoading] = useState(false)
   const [emailConfirmationPending, setEmailConfirmationPending] = useState(false)
   const router = useRouter()
   const searchParams = useSearchParams()
 
   // Παίρνουμε τον κωδικό πρόσκλησης (store ID) από το URL
   const inviteCode = searchParams.get('invite') 
+
+  const handleResendConfirmationEmail = async () => {
+    if (!email) {
+      toast.error('Συμπλήρωσε πρώτα το email σου.')
+      return
+    }
+
+    setResendLoading(true)
+    try {
+      const { error } = await supabase.auth.resend({
+        type: 'signup',
+        email: email.trim(),
+        options: {
+          emailRedirectTo: getEmailRedirectUrl()
+        }
+      })
+
+      if (error) throw error
+      toast.success('Στάλθηκε νέο email επιβεβαίωσης.')
+    } catch (error: any) {
+      toast.error(error.message || 'Αποτυχία επαναποστολής email.')
+    } finally {
+      setResendLoading(false)
+    }
+  }
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -34,12 +75,30 @@ function RegisterForm() {
         email: email.trim(),
         password: password.trim(),
         options: {
-          emailRedirectTo: `${window.location.origin}/login`,
+          emailRedirectTo: getEmailRedirectUrl(),
           data: { username: username || email.split('@')[0] }
         }
       })
 
-      if (authError) throw authError
+      if (authError) {
+        if (/user already registered/i.test(authError.message)) {
+          const { error: resendError } = await supabase.auth.resend({
+            type: 'signup',
+            email: email.trim(),
+            options: {
+              emailRedirectTo: getEmailRedirectUrl()
+            }
+          })
+
+          if (!resendError) {
+            setEmailConfirmationPending(true)
+            toast.success('Ο λογαριασμός υπάρχει ήδη αλλά δεν έχει επιβεβαιωθεί. Στείλαμε νέο email επιβεβαίωσης.')
+            return
+          }
+        }
+
+        throw authError
+      }
       
       const user = authData.user
       if (!user) throw new Error('Η εγγραφή απέτυχε. Δοκιμάστε ξανά.')
@@ -140,9 +199,20 @@ function RegisterForm() {
       
       {emailConfirmationPending ? (
         <div style={confirmationWrapStyle}>
+          <div style={confirmationIconWrapStyle}>
+            <Mail size={26} color="#0f172a" strokeWidth={2.2} />
+          </div>
           <p style={confirmationTextStyle}>
             Η εγγραφή ολοκληρώθηκε. Επιβεβαιώστε το email σας και μετά συνδεθείτε από τη σελίδα login.
           </p>
+          <button
+            type="button"
+            onClick={handleResendConfirmationEmail}
+            disabled={resendLoading}
+            style={{ ...resendBtnStyle, opacity: resendLoading ? 0.7 : 1 }}
+          >
+            {resendLoading ? 'ΓΙΝΕΤΑΙ ΑΠΟΣΤΟΛΗ...' : 'ΕΠΑΝΑΠΟΣΤΟΛΗ EMAIL'}
+          </button>
           <Link href="/login" style={confirmLoginBtnStyle}>ΜΕΤΑΒΑΣΗ ΣΤΟ LOGIN</Link>
         </div>
       ) : (
@@ -221,7 +291,9 @@ const labelStyle: any = { fontSize: '10px', fontWeight: '800', color: '#94a3b8',
 const inputStyle: any = { width: '100%', padding: '14px', borderRadius: '12px', border: '1px solid #e2e8f0', fontSize: '15px', outline: 'none', backgroundColor: '#f8fafc', boxSizing: 'border-box' };
 const submitBtnStyle: any = { color: '#ffffff', padding: '16px', borderRadius: '14px', border: 'none', fontWeight: '800', cursor: 'pointer', fontSize: '15px' };
 const confirmationWrapStyle: any = { backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '14px', padding: '16px', textAlign: 'center' };
+const confirmationIconWrapStyle: any = { width: '52px', height: '52px', margin: '0 auto 10px auto', borderRadius: '999px', backgroundColor: '#e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center' };
 const confirmationTextStyle: any = { margin: '0 0 14px 0', color: '#334155', fontSize: '14px', lineHeight: '1.5' };
+const resendBtnStyle: any = { display: 'block', width: '100%', margin: '0 0 10px 0', color: '#0f172a', backgroundColor: '#ffffff', padding: '12px 16px', borderRadius: '12px', border: '1px solid #cbd5e1', fontWeight: '800', fontSize: '13px', cursor: 'pointer' };
 const confirmLoginBtnStyle: any = { display: 'inline-block', color: '#ffffff', backgroundColor: '#0f172a', padding: '12px 16px', borderRadius: '12px', textDecoration: 'none', fontWeight: '800', fontSize: '13px' };
 const footerStyle: any = { marginTop: '25px', textAlign: 'center', paddingTop: '20px', borderTop: '1px solid #f1f5f9' };
 const linkStyle: any = { color: '#64748b', fontWeight: '700', textDecoration: 'none', fontSize: '12px' };
