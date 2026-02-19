@@ -7,17 +7,17 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { format, subHours } from 'date-fns'
 
-// ✅ ΑΛΕΞΙΣΦΑΙΡΕΣ ΣΤΑΘΕΡΕΣ (Constants) για αποφυγή λαθών πληκτρολόγησης
+// ✅ ΟΡΙΣΤΙΚΕΣ ΣΤΑΘΕΡΕΣ ΓΙΑ ΑΠΟΛΥΤΗ ΤΑΥΤΙΣΗ ΜΕ ΤΗΝ ΑΝΑΛΥΣΗ
 const Z_METHODS = {
-  CASH: 'Μετρητά (Z)', // Latin Z
-  CARD: 'Κάρτα',
-  NO_TAX: 'Μετρητά', // method για "ΧΩΡΙΣ ΣΗΜΑΝΣΗ" (extra)
+  CASH: 'Μετρητά (Z)', // Επίσημο Ζ (Latin Z)
+  CARD: 'Κάρτα', // POS
+  NO_TAX: 'Χωρίς Απόδειξη', // ⬅️ Πιο καθαρό label για τη λίστα
 } as const
 
 const Z_NOTES = {
   OFFICIAL: 'Ζ ΤΑΜΕΙΑΚΗΣ',
   OFFICIAL_POS: 'Ζ ΤΑΜΕΙΑΚΗΣ (POS)',
-  BLACK: 'ΧΩΡΙΣ ΣΗΜΑΝΣΗ',
+  BLACK: 'ΧΩΡΙΣ ΣΗΜΑΝΣΗ', // ⬅️ Το "κλειδί" για την Ανάλυση
 } as const
 
 const Z_CATEGORY = 'Εσοδα Ζ' as const
@@ -88,7 +88,7 @@ function DailyZContent() {
 
     setLoading(true)
 
-    // ✅ Σβήνουμε ΟΛΕΣ τις εγγραφές που ανήκουν στο κλείσιμο Ζ αυτής της ημέρας
+    // ✅ Σβήνουμε ΟΛΕΣ τις εγγραφές του Z κλεισίματος (category + date + store)
     const { error } = await supabase
       .from('transactions')
       .delete()
@@ -117,7 +117,7 @@ function DailyZContent() {
     const incomeTransactions = [
       {
         amount: Number(cashZ),
-        method: Z_METHODS.CASH, // ✅ Μετρητά (Z) με Latin Z
+        method: Z_METHODS.CASH, // ✅ Μετρητά (Z)
         notes: Z_NOTES.OFFICIAL,
         type: 'income',
         date,
@@ -137,8 +137,8 @@ function DailyZContent() {
       },
       {
         amount: Number(noTax),
-        method: Z_METHODS.NO_TAX, // ✅ Μετρητά (extra)
-        notes: Z_NOTES.BLACK, // ✅ ΧΩΡΙΣ ΣΗΜΑΝΣΗ (το "κλειδί" για Ανάλυση)
+        method: Z_METHODS.NO_TAX, // ✅ Χωρίς Απόδειξη (clean label)
+        notes: Z_NOTES.BLACK, // ✅ ΧΩΡΙΣ ΣΗΜΑΝΣΗ (κλειδί για Ανάλυση)
         type: 'income',
         date,
         category: Z_CATEGORY, // ✅ ΠΑΝΤΑ Εσοδα Ζ
@@ -266,12 +266,12 @@ const mainWrapperStyle: any = {
   minHeight: '100dvh',
   padding: '16px',
   fontFamily: 'sans-serif',
-  position: 'absolute', // ✅ Κλειδώνει το container
+  position: 'absolute',
   top: 0,
   left: 0,
   right: 0,
   bottom: 0,
-  overflowY: 'auto', // ✅ Επιτρέπει το scrolling στον υπολογιστή
+  overflowY: 'auto',
 }
 
 const cardStyle: any = {
@@ -320,32 +320,11 @@ const sectionBox = { marginBottom: '20px', padding: '18px', borderRadius: '22px'
 const sectionTitle = { fontSize: '10px', fontWeight: '900', color: '#64748b', marginBottom: '15px', letterSpacing: '0.5px' }
 const fieldBox = { marginBottom: '15px' }
 const labelStyle = { fontSize: '10px', fontWeight: '900', color: '#94a3b8', marginBottom: '5px', display: 'block' }
-const inputStyle: any = {
-  width: '100%',
-  border: 'none',
-  background: 'transparent',
-  fontSize: '22px',
-  fontWeight: 'bold',
-  color: '#1e293b',
-  outline: 'none',
-  borderBottom: '2px solid #f1f5f9',
-  padding: '8px 0',
-}
+const inputStyle: any = { width: '100%', border: 'none', background: 'transparent', fontSize: '22px', fontWeight: 'bold', color: '#1e293b', outline: 'none', borderBottom: '2px solid #f1f5f9', padding: '8px 0' }
 const dateInputStyle = { width: '100%', padding: '12px', borderRadius: '12px', border: '1px solid #e2e8f0', fontSize: '16px', fontWeight: 'bold' as const }
 const totalDisplay = { textAlign: 'center' as const, padding: '20px', marginBottom: '25px', backgroundColor: '#f8fafc', borderRadius: '20px', border: '1px solid #e2e8f0' }
 const saveBtn: any = { width: '100%', padding: '20px', color: 'white', borderRadius: '18px', border: 'none', fontWeight: '900', fontSize: '16px' }
-const backBtnStyle: any = {
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  textDecoration: 'none',
-  background: '#f1f5f9',
-  width: '40px',
-  height: '40px',
-  borderRadius: '12px',
-  fontSize: '20px',
-  color: '#64748b',
-}
+const backBtnStyle: any = { display: 'flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none', background: '#f1f5f9', width: '40px', height: '40px', borderRadius: '12px', fontSize: '20px', color: '#64748b' }
 
 export default function DailyZPage() {
   return (
