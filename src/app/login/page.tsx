@@ -148,11 +148,11 @@ function LoginContent() {
             </button>
           </div>
         )}
-        <form onSubmit={handleLogin} style={formStyle}>
+        <form onSubmit={handleLogin} action="javascript:void(0);" method="post" style={formStyle}>
           <div style={fieldGroup}>
-            <label style={labelStyle}>EMAIL</label>
+            <label htmlFor="username" style={labelStyle}>EMAIL</label>
             <input 
-              id="login-email"
+              id="username"
               type="email" 
               name="email"
               autoComplete="email"
@@ -164,9 +164,9 @@ function LoginContent() {
             />
           </div>
           <div style={fieldGroup}>
-            <label style={labelStyle}>ΚΩΔΙΚΟΣ ΠΡΟΣΒΑΣΗΣ</label>
+            <label htmlFor="password" style={labelStyle}>ΚΩΔΙΚΟΣ ΠΡΟΣΒΑΣΗΣ</label>
             <input 
-              id="login-password"
+              id="password"
               type="password" 
               name="password"
               autoComplete="current-password"
