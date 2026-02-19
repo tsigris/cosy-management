@@ -9,15 +9,15 @@ import { format, subHours } from 'date-fns'
 
 // ✅ ΟΡΙΣΤΙΚΕΣ ΣΤΑΘΕΡΕΣ ΓΙΑ ΑΠΟΛΥΤΗ ΤΑΥΤΙΣΗ ΜΕ ΤΗΝ ΑΝΑΛΥΣΗ
 const Z_METHODS = {
-  CASH: 'Μετρητά (Z)', // Επίσημο Ζ (Latin Z)
-  CARD: 'Κάρτα', // POS
-  NO_TAX: 'Χωρίς Απόδειξη', // ⬅️ Πιο καθαρό label για τη λίστα
+  CASH: 'Μετρητά (Z)', // ✅ Επίσημο Ζ (Latin Z)
+  CARD: 'Κάρτα', // ✅ POS
+  NO_TAX: 'Χωρίς Απόδειξη', // ✅ Clean label στη λίστα
 } as const
 
 const Z_NOTES = {
   OFFICIAL: 'Ζ ΤΑΜΕΙΑΚΗΣ',
   OFFICIAL_POS: 'Ζ ΤΑΜΕΙΑΚΗΣ (POS)',
-  BLACK: 'ΧΩΡΙΣ ΣΗΜΑΝΣΗ', // ⬅️ Το "κλειδί" για την Ανάλυση
+  BLACK: 'ΧΩΡΙΣ ΣΗΜΑΝΣΗ', // ✅ Το "κλειδί" για την Ανάλυση
 } as const
 
 const Z_CATEGORY = 'Εσοδα Ζ' as const
@@ -59,6 +59,7 @@ function DailyZContent() {
       .eq('date', date)
       .eq('store_id', storeId)
       .limit(1)
+
     setIsAlreadyClosed(data && data.length > 0 ? true : false)
   }, [date, storeId])
 
@@ -71,6 +72,7 @@ function DailyZContent() {
       const {
         data: { user },
       } = await supabase.auth.getUser()
+
       if (user) {
         const { data } = await supabase.from('profiles').select('username').eq('id', user.id).maybeSingle()
         if (data?.username) setUsername(data.username)
@@ -191,6 +193,7 @@ function DailyZContent() {
 
         <div style={sectionBox}>
           <p style={sectionTitle}>💰 ΕΙΣΠΡΑΞΕΙΣ ΒΑΡΔΙΑΣ</p>
+
           <div style={fieldBox}>
             <label style={labelStyle}>💵 ΜΕΤΡΗΤΑ (Z)</label>
             <input
@@ -203,6 +206,7 @@ function DailyZContent() {
               placeholder="0.00"
             />
           </div>
+
           <div style={fieldBox}>
             <label style={labelStyle}>💳 ΚΑΡΤΑ / POS (Z)</label>
             <input
@@ -215,6 +219,7 @@ function DailyZContent() {
               placeholder="0.00"
             />
           </div>
+
           <div style={fieldBox}>
             <label style={labelStyle}>🧾 ΧΩΡΙΣ ΑΠΟΔΕΙΞΗ</label>
             <input
@@ -236,9 +241,7 @@ function DailyZContent() {
 
         <div style={totalDisplay}>
           <p style={labelStyle}>ΣΥΝΟΛΙΚΟΣ ΤΖΙΡΟΣ</p>
-          <h2 style={{ fontSize: '32px', margin: 0, fontWeight: '900', color: '#0f172a' }}>
-            {totalSales.toFixed(2)}€
-          </h2>
+          <h2 style={{ fontSize: '32px', margin: 0, fontWeight: '900', color: '#0f172a' }}>{totalSales.toFixed(2)}€</h2>
         </div>
 
         <button
@@ -295,6 +298,7 @@ const warningBox = {
   border: '1px solid #fecaca',
   textAlign: 'center' as const,
 }
+
 const viewBtn = {
   backgroundColor: '#1e293b',
   color: 'white',
@@ -305,6 +309,7 @@ const viewBtn = {
   fontWeight: '900',
   cursor: 'pointer',
 }
+
 const unlockBtn = {
   backgroundColor: '#be123c',
   color: 'white',
@@ -315,16 +320,87 @@ const unlockBtn = {
   fontWeight: '900',
   cursor: 'pointer',
 }
-const userLabelStyle = { marginBottom: '20px', padding: '10px', backgroundColor: '#f1f5f9', borderRadius: '12px', textAlign: 'center' as const }
+
+const userLabelStyle = {
+  marginBottom: '20px',
+  padding: '10px',
+  backgroundColor: '#f1f5f9',
+  borderRadius: '12px',
+  textAlign: 'center' as const,
+}
+
 const sectionBox = { marginBottom: '20px', padding: '18px', borderRadius: '22px', border: '1px solid #e2e8f0' }
-const sectionTitle = { fontSize: '10px', fontWeight: '900', color: '#64748b', marginBottom: '15px', letterSpacing: '0.5px' }
+
+const sectionTitle = {
+  fontSize: '10px',
+  fontWeight: '900',
+  color: '#64748b',
+  marginBottom: '15px',
+  letterSpacing: '0.5px',
+}
+
 const fieldBox = { marginBottom: '15px' }
-const labelStyle = { fontSize: '10px', fontWeight: '900', color: '#94a3b8', marginBottom: '5px', display: 'block' }
-const inputStyle: any = { width: '100%', border: 'none', background: 'transparent', fontSize: '22px', fontWeight: 'bold', color: '#1e293b', outline: 'none', borderBottom: '2px solid #f1f5f9', padding: '8px 0' }
-const dateInputStyle = { width: '100%', padding: '12px', borderRadius: '12px', border: '1px solid #e2e8f0', fontSize: '16px', fontWeight: 'bold' as const }
-const totalDisplay = { textAlign: 'center' as const, padding: '20px', marginBottom: '25px', backgroundColor: '#f8fafc', borderRadius: '20px', border: '1px solid #e2e8f0' }
-const saveBtn: any = { width: '100%', padding: '20px', color: 'white', borderRadius: '18px', border: 'none', fontWeight: '900', fontSize: '16px' }
-const backBtnStyle: any = { display: 'flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none', background: '#f1f5f9', width: '40px', height: '40px', borderRadius: '12px', fontSize: '20px', color: '#64748b' }
+
+const labelStyle = {
+  fontSize: '10px',
+  fontWeight: '900',
+  color: '#94a3b8',
+  marginBottom: '5px',
+  display: 'block',
+}
+
+const inputStyle: any = {
+  width: '100%',
+  border: 'none',
+  background: 'transparent',
+  fontSize: '22px',
+  fontWeight: 'bold',
+  color: '#1e293b',
+  outline: 'none',
+  borderBottom: '2px solid #f1f5f9',
+  padding: '8px 0',
+}
+
+const dateInputStyle = {
+  width: '100%',
+  padding: '12px',
+  borderRadius: '12px',
+  border: '1px solid #e2e8f0',
+  fontSize: '16px',
+  fontWeight: 'bold' as const,
+}
+
+const totalDisplay = {
+  textAlign: 'center' as const,
+  padding: '20px',
+  marginBottom: '25px',
+  backgroundColor: '#f8fafc',
+  borderRadius: '20px',
+  border: '1px solid #e2e8f0',
+}
+
+const saveBtn: any = {
+  width: '100%',
+  padding: '20px',
+  color: 'white',
+  borderRadius: '18px',
+  border: 'none',
+  fontWeight: '900',
+  fontSize: '16px',
+}
+
+const backBtnStyle: any = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  textDecoration: 'none',
+  background: '#f1f5f9',
+  width: '40px',
+  height: '40px',
+  borderRadius: '12px',
+  fontSize: '20px',
+  color: '#64748b',
+}
 
 export default function DailyZPage() {
   return (

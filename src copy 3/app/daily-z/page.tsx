@@ -83,7 +83,7 @@ export default function DailyZPage() {
 
     const activeStoreId = typeof window !== 'undefined' ? localStorage.getItem('active_store_id') : null;
     const incomeTransactions = [
-      { amount: Number(cashZ), method: 'Μετρητά (Ζ)', notes: 'Ζ ΤΑΜΕΙΑΚΗΣ', type: 'income', date, category: 'Εσοδα Ζ', created_by_name: username, store_id: activeStoreId },
+      { amount: Number(cashZ), method: 'Μετρητά (Z)', notes: 'Ζ ΤΑΜΕΙΑΚΗΣ', type: 'income', date, category: 'Εσοδα Ζ', created_by_name: username, store_id: activeStoreId },
       { amount: Number(posZ), method: 'Κάρτα', notes: 'Ζ ΤΑΜΕΙΑΚΗΣ (POS)', type: 'income', date, category: 'Εσοδα Ζ', created_by_name: username, store_id: activeStoreId },
       { amount: Number(noTax), method: 'Μετρητά', notes: 'ΧΩΡΙΣ ΣΗΜΑΝΣΗ', type: 'income', date, category: 'Εσοδα Ζ', created_by_name: username, store_id: activeStoreId }
     ].filter(t => t.amount > 0)

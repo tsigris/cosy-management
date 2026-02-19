@@ -576,7 +576,12 @@ function AnalysisContent() {
 
         if (method === 'Μετρητά (Z)') zCash += rowAmount
         if (method === 'Κάρτα') zPos += rowAmount
-        if (method !== 'Μετρητά (Z)' && (notes === 'ΧΩΡΙΣ ΣΗΜΑΝΣΗ' || method === 'Μετρητά')) withoutMarking += rowAmount
+        if (
+          method !== 'Μετρητά (Z)' &&
+          (notes === 'ΧΩΡΙΣ ΣΗΜΑΝΣΗ' || method === 'Μετρητά' || method === 'Χωρίς Απόδειξη')
+        ) {
+          withoutMarking += rowAmount
+        }
       }
 
       return {
