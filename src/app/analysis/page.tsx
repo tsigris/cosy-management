@@ -803,7 +803,7 @@ function AnalysisContent() {
                 </div>
 
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 900 }}>
-                  <span style={{ color: '#64748b' }}>Μετρητά (Extra)</span>
+                  <span style={{ color: '#64748b' }}>Χωρίς Απόδειξη</span>
                   <span style={{ color: '#0f172a' }}>{money(zBreakdown.blackCash)}</span>
                 </div>
 
