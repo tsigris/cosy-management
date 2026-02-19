@@ -246,6 +246,29 @@ function DashboardContent() {
     }
   }
 
+  const handleEditZ = async (date: string) => {
+    router.push(`/daily-z?store=${storeIdFromUrl}&date=${date}`)
+  }
+
+  const handleDeleteZ = async (date: string) => {
+    if (!confirm('Διαγραφή Κλεισίματος Ζ;')) return
+
+    const { error } = await supabase
+      .from('transactions')
+      .delete()
+      .eq('store_id', storeIdFromUrl)
+      .eq('category', 'Εσοδα Ζ')
+      .eq('date', date)
+
+    if (error) {
+      toast.error('Σφάλμα διαγραφής Ζ')
+      return
+    }
+
+    toast.success('Το Ζ διαγράφηκε')
+    loadDashboard()
+  }
+
   const Z_MASTER_ROW_ID = '__z_master__'
 
   const isZTransaction = useCallback((t: any) => {
@@ -288,6 +311,7 @@ function DashboardContent() {
       | {
           kind: 'z-master'
           id: string
+          date: string
           amount: number
           created_at: string | null
           created_by_name: string | null
@@ -308,6 +332,7 @@ function DashboardContent() {
         rows.push({
           kind: 'z-master',
           id: Z_MASTER_ROW_ID,
+          date: zTx[0]?.date || selectedDate,
           amount: zTotal,
           created_at: zTx[0]?.created_at || null,
           created_by_name: zTx[0]?.created_by_name || null,
@@ -517,7 +542,7 @@ function DashboardContent() {
         ) : (
           displayTransactions.map((row) => {
             const isZMaster = row.kind === 'z-master'
-            const t = row.kind === 'normal' ? row.tx : null
+            const t = row.kind === 'normal' ? row.tx : ({ __collapsedZ: true, date: row.date } as any)
             const txId = row.id
             const txTitleText = isZMaster ? 'ΚΛΕΙΣΙΜΟ Ζ' : getEntityLabelFromTx(t)
             const entityKey = !isZMaster && t ? getEntityKeyFromTx(t) : null
@@ -576,6 +601,48 @@ function DashboardContent() {
                             <span style={ytdValueGreen}>{money(item.amount)}€</span>
                           </div>
                         ))}
+
+                        {t.__collapsedZ && (
+                          <div
+                            style={{
+                              display: 'flex',
+                              gap: 10,
+                              marginTop: 12,
+                            }}
+                          >
+                            <button
+                              onClick={() => handleEditZ(t.date)}
+                              style={{
+                                flex: 1,
+                                padding: '10px',
+                                borderRadius: 10,
+                                border: '1px solid #6366f1',
+                                background: '#eef2ff',
+                                color: '#4338ca',
+                                fontWeight: 900,
+                                cursor: 'pointer',
+                              }}
+                            >
+                              Επεξεργασία
+                            </button>
+
+                            <button
+                              onClick={() => handleDeleteZ(t.date)}
+                              style={{
+                                flex: 1,
+                                padding: '10px',
+                                borderRadius: 10,
+                                border: '1px solid #fca5a5',
+                                background: '#fff1f2',
+                                color: '#dc2626',
+                                fontWeight: 900,
+                                cursor: 'pointer',
+                              }}
+                            >
+                              Διαγραφή
+                            </button>
+                          </div>
+                        )}
                       </div>
                     ) : (
                       <>
