@@ -11,6 +11,7 @@ function RegisterForm() {
   const [password, setPassword] = useState('')
   const [username, setUsername] = useState('')
   const [loading, setLoading] = useState(false)
+  const [emailConfirmationPending, setEmailConfirmationPending] = useState(false)
   const router = useRouter()
   const searchParams = useSearchParams()
 
@@ -33,6 +34,7 @@ function RegisterForm() {
         email: email.trim(),
         password: password.trim(),
         options: {
+          emailRedirectTo: `${window.location.origin}/login`,
           data: { username: username || email.split('@')[0] }
         }
       })
@@ -75,11 +77,12 @@ function RegisterForm() {
         finalStoreId = newStore.id
 
         // Δίνουμε ρόλο admin στον ιδιοκτήτη
-        await supabase.from('store_access').insert([{
+        const { error: adminAccessError } = await supabase.from('store_access').insert([{
           user_id: user.id,
           store_id: finalStoreId,
           role: 'admin'
         }])
+        if (adminAccessError) throw adminAccessError
 
         // Δημιουργία Βασικών Παγίων για το νέο κατάστημα
         const defaultAssets = [
@@ -87,10 +90,24 @@ function RegisterForm() {
           { name: 'ΛΟΓΙΣΤΗΣ', store_id: finalStoreId },
           { name: 'ΔΕΗ / ΡΕΥΜΑ', store_id: finalStoreId }
         ]
-        await supabase.from('fixed_assets').insert(defaultAssets)
+        const { error: assetsError } = await supabase.from('fixed_assets').insert(defaultAssets)
+        if (assetsError) throw assetsError
       }
 
-      // 3. ΟΛΟΚΛΗΡΩΣΗ & REDIRECT
+      // 3. ΕΛΕΓΧΟΣ EMAIL CONFIRMATION
+      const requiresEmailConfirmation = authData.session === null
+
+      if (requiresEmailConfirmation) {
+        setEmailConfirmationPending(true)
+        toast.success(
+          inviteCode
+            ? 'Η εγγραφή έγινε! Παρακαλώ ελέγξτε το email σας για να ενεργοποιήσετε το λογαριασμό σας. Πρέπει πρώτα να επιβεβαιώσετε το email πριν συνδεθείτε στο κατάστημα.'
+            : 'Η εγγραφή έγινε! Παρακαλώ ελέγξτε το email σας για να ενεργοποιήσετε το λογαριασμό σας.'
+        )
+        return
+      }
+
+      // 4. ΟΛΟΚΛΗΡΩΣΗ & REDIRECT
       toast.success('Η εγγραφή ολοκληρώθηκε!')
       
       // Αποθηκεύουμε το active store για να ξέρει το dashboard τι να δείξει
@@ -121,50 +138,59 @@ function RegisterForm() {
         </p>
       </div>
       
-      <form onSubmit={handleSignUp} style={formStyle}>
-        <div>
-          <label style={labelStyle}>ΟΝΟΜΑ ΧΡΗΣΤΗ</label>
-          <input 
-            type="text" 
-            value={username} 
-            onChange={e => setUsername(e.target.value)} 
-            style={inputStyle} 
-            placeholder="π.χ. Γιάννης" 
-          />
+      {emailConfirmationPending ? (
+        <div style={confirmationWrapStyle}>
+          <p style={confirmationTextStyle}>
+            Η εγγραφή ολοκληρώθηκε. Επιβεβαιώστε το email σας και μετά συνδεθείτε από τη σελίδα login.
+          </p>
+          <Link href="/login" style={confirmLoginBtnStyle}>ΜΕΤΑΒΑΣΗ ΣΤΟ LOGIN</Link>
         </div>
+      ) : (
+        <form onSubmit={handleSignUp} style={formStyle}>
+          <div>
+            <label style={labelStyle}>ΟΝΟΜΑ ΧΡΗΣΤΗ</label>
+            <input 
+              type="text" 
+              value={username} 
+              onChange={e => setUsername(e.target.value)} 
+              style={inputStyle} 
+              placeholder="π.χ. Γιάννης" 
+            />
+          </div>
 
-        <div>
-          <label style={labelStyle}>EMAIL</label>
-          <input 
-            type="email" 
-            value={email} 
-            onChange={e => setEmail(e.target.value)} 
-            style={inputStyle} 
-            placeholder="email@example.com" 
-            required 
-          />
-        </div>
+          <div>
+            <label style={labelStyle}>EMAIL</label>
+            <input 
+              type="email" 
+              value={email} 
+              onChange={e => setEmail(e.target.value)} 
+              style={inputStyle} 
+              placeholder="email@example.com" 
+              required 
+            />
+          </div>
 
-        <div>
-          <label style={labelStyle}>ΚΩΔΙΚΟΣ ΠΡΟΣΒΑΣΗΣ</label>
-          <input 
-            type="password" 
-            value={password} 
-            onChange={e => setPassword(e.target.value)} 
-            style={inputStyle} 
-            placeholder="6+ χαρακτήρες" 
-            required 
-          />
-        </div>
+          <div>
+            <label style={labelStyle}>ΚΩΔΙΚΟΣ ΠΡΟΣΒΑΣΗΣ</label>
+            <input 
+              type="password" 
+              value={password} 
+              onChange={e => setPassword(e.target.value)} 
+              style={inputStyle} 
+              placeholder="6+ χαρακτήρες" 
+              required 
+            />
+          </div>
 
-        <button 
-          type="submit" 
-          disabled={loading} 
-          style={{...submitBtnStyle, backgroundColor: loading ? '#94a3b8' : '#0f172a'}}
-        >
-          {loading ? 'ΓΙΝΕΤΑΙ ΕΓΓΡΑΦΗ...' : (inviteCode ? 'ΑΠΟΔΟΧΗ & ΕΙΣΟΔΟΣ' : 'ΔΗΜΙΟΥΡΓΙΑ ΛΟΓΑΡΙΑΣΜΟΥ')}
-        </button>
-      </form>
+          <button 
+            type="submit" 
+            disabled={loading} 
+            style={{...submitBtnStyle, backgroundColor: loading ? '#94a3b8' : '#0f172a'}}
+          >
+            {loading ? 'ΓΙΝΕΤΑΙ ΕΓΓΡΑΦΗ...' : (inviteCode ? 'ΑΠΟΔΟΧΗ & ΕΙΣΟΔΟΣ' : 'ΔΗΜΙΟΥΡΓΙΑ ΛΟΓΑΡΙΑΣΜΟΥ')}
+          </button>
+        </form>
+      )}
 
       <div style={footerStyle}>
         <Link href="/login" style={linkStyle}>← ΕΧΩ ΗΔΗ ΛΟΓΑΡΙΑΣΜΟ</Link>
@@ -194,5 +220,8 @@ const formStyle: any = { display: 'flex', flexDirection: 'column', gap: '20px' }
 const labelStyle: any = { fontSize: '10px', fontWeight: '800', color: '#94a3b8', marginBottom: '6px', display: 'block' };
 const inputStyle: any = { width: '100%', padding: '14px', borderRadius: '12px', border: '1px solid #e2e8f0', fontSize: '15px', outline: 'none', backgroundColor: '#f8fafc', boxSizing: 'border-box' };
 const submitBtnStyle: any = { color: '#ffffff', padding: '16px', borderRadius: '14px', border: 'none', fontWeight: '800', cursor: 'pointer', fontSize: '15px' };
+const confirmationWrapStyle: any = { backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '14px', padding: '16px', textAlign: 'center' };
+const confirmationTextStyle: any = { margin: '0 0 14px 0', color: '#334155', fontSize: '14px', lineHeight: '1.5' };
+const confirmLoginBtnStyle: any = { display: 'inline-block', color: '#ffffff', backgroundColor: '#0f172a', padding: '12px 16px', borderRadius: '12px', textDecoration: 'none', fontWeight: '800', fontSize: '13px' };
 const footerStyle: any = { marginTop: '25px', textAlign: 'center', paddingTop: '20px', borderTop: '1px solid #f1f5f9' };
 const linkStyle: any = { color: '#64748b', fontWeight: '700', textDecoration: 'none', fontSize: '12px' };
