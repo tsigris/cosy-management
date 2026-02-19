@@ -231,7 +231,10 @@ function RegisterForm() {
           <div>
             <label style={labelStyle}>ΟΝΟΜΑ ΧΡΗΣΤΗ</label>
             <input 
+              id="register-username"
               type="text" 
+              name="username"
+              autoComplete="username"
               value={username} 
               onChange={e => setUsername(e.target.value)} 
               style={inputStyle} 
@@ -242,7 +245,10 @@ function RegisterForm() {
           <div>
             <label style={labelStyle}>EMAIL</label>
             <input 
+              id="register-email"
               type="email" 
+              name="email"
+              autoComplete="email"
               value={email} 
               onChange={e => setEmail(e.target.value)} 
               style={inputStyle} 
@@ -254,7 +260,10 @@ function RegisterForm() {
           <div>
             <label style={labelStyle}>ΚΩΔΙΚΟΣ ΠΡΟΣΒΑΣΗΣ</label>
             <input 
+              id="register-password"
               type="password" 
+              name="password"
+              autoComplete="new-password"
               value={password} 
               onChange={e => setPassword(e.target.value)} 
               style={inputStyle} 

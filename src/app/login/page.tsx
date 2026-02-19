@@ -152,9 +152,10 @@ function LoginContent() {
           <div style={fieldGroup}>
             <label style={labelStyle}>EMAIL</label>
             <input 
+              id="login-email"
               type="email" 
-              name="email" // Για αποθήκευση κωδικού
-              autoComplete="username" // Για αποθήκευση κωδικού
+              name="email"
+              autoComplete="email"
               value={email} 
               onChange={e => setEmail(e.target.value)} 
               style={inputStyle} 
@@ -165,9 +166,10 @@ function LoginContent() {
           <div style={fieldGroup}>
             <label style={labelStyle}>ΚΩΔΙΚΟΣ ΠΡΟΣΒΑΣΗΣ</label>
             <input 
+              id="login-password"
               type="password" 
-              name="password" // Για αποθήκευση κωδικού
-              autoComplete="current-password" // Για αποθήκευση κωδικού
+              name="password"
+              autoComplete="current-password"
               value={password} 
               onChange={e => setPassword(e.target.value)} 
               style={inputStyle} 
