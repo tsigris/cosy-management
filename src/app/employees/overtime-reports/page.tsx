@@ -44,7 +44,7 @@ function EmployeesContent() {
   const [showInactive, setShowInactive] = useState(false)
 
   // States για overtime modal
-  const [otModal, setOtModal] = useState<{ empId: string; name: string } | null>(null)
+  const [otModal, setOtModal] = useState<{ empId: string; name: string; overtimeId?: string } | null>(null)
   const [otHours, setOtHours] = useState('')
 
   // Quick Tips (create)
@@ -266,6 +266,12 @@ function EmployeesContent() {
     return overtimes.filter((ot) => ot.employee_id === empId).reduce((acc, curr) => acc + Number(curr.hours), 0)
   }
 
+  const getPendingOvertimes = (empId: string) => {
+    return overtimes
+      .filter((ot) => ot.employee_id === empId)
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+  }
+
   // ✅ Καταγραφή νέας υπερωρίας (store_id from URL) - uses employee_id
   async function handleQuickOvertime() {
     if (!otHours || !otModal) return
@@ -274,31 +280,52 @@ function EmployeesContent() {
       return
     }
 
+    const hoursNum = Number(otHours)
+    if (!Number.isFinite(hoursNum) || hoursNum <= 0) {
+      toast.error('Βάλε έγκυρες ώρες υπερωρίας.')
+      return
+    }
+
     try {
-      const { error } = await supabase.from('employee_overtimes').insert([
-        {
-          employee_id: otModal.empId,
-          store_id: storeId,
-          hours: Number(otHours),
-          date: new Date().toISOString().split('T')[0],
-          is_paid: false,
-        },
-      ])
+      let error: any = null
+
+      if (otModal.overtimeId) {
+        const { error: updateError } = await supabase
+          .from('employee_overtimes')
+          .update({ hours: hoursNum })
+          .eq('id', otModal.overtimeId)
+        error = updateError
+      } else {
+        const { error: insertError } = await supabase.from('employee_overtimes').insert([
+          {
+            employee_id: otModal.empId,
+            store_id: storeId,
+            hours: hoursNum,
+            date: new Date().toISOString().split('T')[0],
+            is_paid: false,
+          },
+        ])
+        error = insertError
+      }
 
       if (error) {
         console.error(error)
-        toast.error('Αποτυχία καταγραφής υπερωρίας.')
+        toast.error('Αποτυχία αποθήκευσης υπερωρίας.')
         return
       }
 
-      toast.success(`Προστέθηκαν ${otHours} ώρες στην ${otModal.name}`)
+      if (otModal.overtimeId) {
+        toast.success(`Ενημερώθηκαν ${otHours} ώρες για την ${otModal.name}`)
+      } else {
+        toast.success(`Προστέθηκαν ${otHours} ώρες στην ${otModal.name}`)
+      }
       setOtModal(null)
       setOtHours('')
-      refreshAndTopBound()
+      fetchInitialData()
     } catch (error) {
       console.log(error)
       console.error(error)
-      toast.error('Αποτυχία καταγραφής υπερωρίας.')
+      toast.error('Αποτυχία αποθήκευσης υπερωρίας.')
     }
   }
 
@@ -584,6 +611,20 @@ function EmployeesContent() {
     refreshAndTopBound()
   }
 
+  async function handleDeleteOvertime(overtimeId: string) {
+    if (!confirm('Διαγραφή αυτής της εκκρεμούς υπερωρίας;')) return
+
+    const { error } = await supabase.from('employee_overtimes').delete().eq('id', overtimeId)
+    if (error) {
+      console.error(error)
+      toast.error('Αποτυχία διαγραφής υπερωρίας.')
+      return
+    }
+
+    toast.success('Η υπερωρία διαγράφηκε ✅')
+    fetchInitialData()
+  }
+
   const resetForm = () => {
     setFormData({
       full_name: '',
@@ -689,7 +730,7 @@ function EmployeesContent() {
         {otModal && (
           <div style={modalOverlay}>
             <div style={modalCard}>
-              <h3 style={{ margin: 0, fontSize: '16px' }}>Καταγραφή Υπερωρίας</h3>
+              <h3 style={{ margin: 0, fontSize: '16px' }}>{otModal.overtimeId ? 'Επεξεργασία Υπερωρίας' : 'Καταγραφή Υπερωρίας'}</h3>
               <p style={{ fontSize: '12px', color: colors.secondaryText }}>{otModal.name}</p>
               <input
                 type="number"
@@ -703,11 +744,17 @@ function EmployeesContent() {
                 autoFocus
               />
               <div style={{ display: 'flex', gap: '10px', marginTop: '20px' }}>
-                <button onClick={() => setOtModal(null)} style={cancelBtnSmall}>
+                <button
+                  onClick={() => {
+                    setOtModal(null)
+                    setOtHours('')
+                  }}
+                  style={cancelBtnSmall}
+                >
                   ΑΚΥΡΟ
                 </button>
                 <button onClick={handleQuickOvertime} style={saveBtnSmall}>
-                  ΠΡΟΣΘΗΚΗ
+                  {otModal.overtimeId ? 'ΑΠΟΘΗΚΕΥΣΗ' : 'ΠΡΟΣΘΗΚΗ'}
                 </button>
               </div>
             </div>
@@ -906,6 +953,7 @@ function EmployeesContent() {
             const isSelected = selectedEmpId === emp.id
             const daysLeft = getDaysUntilPayment(emp.start_date)
             const pendingOt = getPendingOtHours(emp.id)
+            const pendingOtItems = getPendingOvertimes(emp.id)
 
             // if is_active column missing, treat as active
             const isInactive = emp.is_active === false
@@ -942,6 +990,7 @@ function EmployeesContent() {
                           onClick={(e) => {
                             e.stopPropagation()
                             setOtModal({ empId: emp.id, name: emp.name })
+                            setOtHours('')
                           }}
                           style={quickOtBtn}
                         >
@@ -978,6 +1027,35 @@ function EmployeesContent() {
                       <p style={{ margin: '3px 0 0 0', fontWeight: '600', color: colors.accentBlue, fontSize: '11px' }}>{emp.iban || 'Δεν ορίστηκε IBAN'}</p>
                       {pendingOt > 0 && (
                         <p style={{ margin: '8px 0 0 0', fontWeight: '800', color: '#c2410c', fontSize: '11px' }}>⚠️ ΕΚΚΡΕΜΟΥΝ: {pendingOt} ώρες υπερωρίας</p>
+                      )}
+
+                      {pendingOtItems.length > 0 && (
+                        <div style={pendingOtListWrap}>
+                          {pendingOtItems.map((ot) => (
+                            <div key={ot.id} style={pendingOtRow}>
+                              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                <span style={{ fontSize: '10px', color: colors.secondaryText, fontWeight: 700 }}>{new Date(ot.date).toLocaleDateString('el-GR')}</span>
+                                <span style={{ fontSize: '11px', color: '#c2410c', fontWeight: 900 }}>{Number(ot.hours).toFixed(2)} ώρες</span>
+                              </div>
+
+                              <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                                <button
+                                  style={miniIconBtn}
+                                  title="Επεξεργασία υπερωρίας"
+                                  onClick={() => {
+                                    setOtModal({ empId: emp.id, name: emp.name, overtimeId: ot.id })
+                                    setOtHours(String(ot.hours))
+                                  }}
+                                >
+                                  <Pencil size={14} />
+                                </button>
+                                <button style={miniIconBtnDanger} title="Διαγραφή υπερωρίας" onClick={() => handleDeleteOvertime(ot.id)}>
+                                  <Trash2 size={14} />
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
                       )}
                     </div>
 
@@ -1278,6 +1356,8 @@ const tipsMonthSelect: any = { padding: '8px 10px', borderRadius: '12px', border
 
 const miniIconBtn: any = { width: '34px', height: '34px', borderRadius: '10px', border: `1px solid ${colors.border}`, backgroundColor: '#ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: colors.primaryDark }
 const miniIconBtnDanger: any = { ...miniIconBtn, border: '1px solid #fecaca', backgroundColor: '#fef2f2', color: colors.accentRed }
+const pendingOtListWrap: any = { marginTop: '10px', display: 'flex', flexDirection: 'column', gap: '8px' }
+const pendingOtRow: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 10px', borderRadius: '10px', border: `1px solid ${colors.border}`, backgroundColor: '#ffffff' }
 
 export default function EmployeesPage() {
   return (
