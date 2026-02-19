@@ -76,7 +76,7 @@ function AnalysisContent() {
   // ✅ CASH DRAWER (from view)
   const [drawer, setDrawer] = useState<any>(null)
 
-  // ✅ NEW: computed balances (cash/bank/credit) - CORRECT logic (no credit affects cash/bank)
+  // ✅ computed balances (cash/bank/credit) - CORRECT logic (no credit affects cash/bank)
   const [calcBalances, setCalcBalances] = useState<CalcBalances | null>(null)
 
   // ✅ Smart Dynamic Filters
@@ -186,24 +186,13 @@ function AnalysisContent() {
     return String((t.method ?? t.payment_method ?? '') || '').trim()
   }, [])
 
-  // ✅ helper: normalize string for robust matching
-  const norm = useCallback((s: any) => String(s ?? '').trim().toLowerCase(), [])
-
-  // ✅ CREDIT DETECTION (FIXED):
-  // 1) is_credit flag
-  // 2) method contains "πιστ" (covers Πίστωση, πιστωση, κλπ)
-  // 3) debt_payment / debt_received ALWAYS considered credit movements
+  // ✅ CREDIT DETECTION: use BOTH signals
   const isCreditTx = useCallback(
     (t: any) => {
-      const method = norm(getMethod(t))
-
-      if (t?.is_credit === true) return true
-      if (method.includes('πιστ')) return true
-      if (t?.type === 'debt_payment' || t?.type === 'debt_received') return true
-
-      return false
+      const method = getMethod(t)
+      return t?.is_credit === true || method === 'Πίστωση'
     },
-    [getMethod, norm]
+    [getMethod]
   )
 
   // ✅ CASH / BANK classification
@@ -379,7 +368,7 @@ function AnalysisContent() {
 
       setDrawer(drawerData || null)
 
-      // ✅ CRITICAL: compute balances correctly (no credit affects cash/bank)
+      // ✅ compute balances correctly (no credit affects cash/bank)
       await calcBalancesFromDb()
     } catch (err) {
       console.error(err)
@@ -518,20 +507,24 @@ function AnalysisContent() {
     })
   }, [periodTx, filterA, detailMode, detailId, filterAToKey, normalizeExpenseCategory])
 
+  // ✅ KPIs: τα "Έξοδα" και το "Καθαρό Κέρδος" ΔΕΝ πρέπει να μετράνε την Πίστωση.
   const kpis = useMemo(() => {
     const income = filteredTx
       .filter((t) => t.type === 'income' || t.type === 'income_collection' || t.type === 'debt_received')
       .reduce((acc, t) => acc + (Number(t.amount) || 0), 0)
 
-    const tips = filteredTx.filter((t) => t.type === 'tip_entry').reduce((acc, t) => acc + Math.abs(Number(t.amount) || 0), 0)
-
-    const expenses = filteredTx
-      .filter((t) => t.type === 'expense' || t.type === 'debt_payment')
+    const tips = filteredTx
+      .filter((t) => t.type === 'tip_entry')
       .reduce((acc, t) => acc + Math.abs(Number(t.amount) || 0), 0)
 
-    const netProfit = income - expenses
-    return { income, expenses, tips, netProfit }
-  }, [filteredTx])
+    const expensesPaid = filteredTx
+      .filter((t) => t.type === 'expense' || t.type === 'debt_payment')
+      .filter((t) => !isCreditTx(t))
+      .reduce((acc, t) => acc + Math.abs(Number(t.amount) || 0), 0)
+
+    const netProfit = income - expensesPaid
+    return { income, expenses: expensesPaid, tips, netProfit }
+  }, [filteredTx, isCreditTx])
 
   // ✅ Z BREAKDOWN (μόνο όταν startDate === endDate)
   // 1) zCash: method === 'Μετρητά (Z)'
@@ -579,8 +572,12 @@ function AnalysisContent() {
       .reduce((acc, t) => acc + Math.abs(Number(t.amount) || 0), 0)
   }, [isZReport, periodTx, getMethod, isCreditTx])
 
+  // ✅ CATEGORY BREAKDOWN: ΜΗΝ μετράει Πίστωση στα έξοδα ανά κατηγορία
   const categoryBreakdown = useMemo(() => {
-    const expenseTx = filteredTx.filter((t) => t.type === 'expense' || t.type === 'debt_payment')
+    const expenseTx = filteredTx
+      .filter((t) => t.type === 'expense' || t.type === 'debt_payment')
+      .filter((t) => !isCreditTx(t))
+
     const result: Record<string, number> = {}
     let total = 0
 
@@ -593,7 +590,7 @@ function AnalysisContent() {
 
     for (const c of CATEGORY_META) result[c.key] = result[c.key] || 0
     return { result, total }
-  }, [filteredTx, normalizeExpenseCategory])
+  }, [filteredTx, normalizeExpenseCategory, isCreditTx])
 
   const staffDetailsThisMonth = useMemo(() => {
     if (!storeId || storeId === 'null') return [] as Array<{ name: string; amount: number }>
@@ -601,6 +598,7 @@ function AnalysisContent() {
     const staffTxs = monthTransactions
       .filter((t) => t.type === 'expense' || t.type === 'debt_payment')
       .filter((t) => normalizeExpenseCategory(t) === 'Staff')
+      .filter((t) => !isCreditTx(t)) // ✅ και εδώ, για να μη φαίνεται πίστωση ως μισθοδοσία
 
     const byStaff: Record<string, number> = {}
     for (const t of staffTxs) {
@@ -611,7 +609,7 @@ function AnalysisContent() {
     return Object.entries(byStaff)
       .map(([name, amount]) => ({ name, amount }))
       .sort((a, b) => b.amount - a.amount)
-  }, [monthTransactions, storeId, normalizeExpenseCategory, staff])
+  }, [monthTransactions, storeId, normalizeExpenseCategory, staff, isCreditTx])
 
   const collapsedPeriodList = useMemo(() => {
     const sortedTx = [...filteredTx].sort((a, b) => String(b.date).localeCompare(String(a.date)))
@@ -839,7 +837,7 @@ function AnalysisContent() {
             </div>
             <div style={{ ...kpiValue, color: '#fff' }}>{bigKpiValue.toLocaleString('el-GR')}€</div>
             <div style={{ fontSize: 13, fontWeight: 800, opacity: 0.85, marginTop: 6 }}>
-              {isZReport ? 'Μετρητά (Z) + Χωρίς Σήμανση - Έξοδα' : 'Έσοδα - Έξοδα'}
+              {isZReport ? 'Μετρητά (Z) + Χωρίς Σήμανση - Έξοδα' : 'Έσοδα - Έξοδα (χωρίς Πίστωση)'}
             </div>
           </div>
         </div>
@@ -980,7 +978,7 @@ function AnalysisContent() {
           <div style={sectionTitleRow}>
             <div>
               <h3 style={sectionTitle}>Έξοδα ανά Κατηγορία</h3>
-              <div style={sectionSub}>Κατανομή της περιόδου (χωρίς έσοδα)</div>
+              <div style={sectionSub}>Κατανομή της περιόδου (χωρίς έσοδα / χωρίς πίστωση)</div>
             </div>
             <div style={sectionPill}>Σύνολο: {categoryBreakdown.total.toLocaleString('el-GR')}€</div>
           </div>
@@ -1026,7 +1024,7 @@ function AnalysisContent() {
             <div style={sectionTitleRow}>
               <div>
                 <h3 style={sectionTitle}>Μισθοδοσία ανά Υπάλληλο</h3>
-                <div style={sectionSub}>Τρέχων μήνας (για γρήγορη εικόνα)</div>
+                <div style={sectionSub}>Τρέχων μήνας (για γρήγορη εικόνα) — χωρίς πίστωση</div>
               </div>
               <div style={sectionPill}>{format(new Date(), 'MMMM yyyy')}</div>
             </div>
@@ -1129,7 +1127,7 @@ function AnalysisContent() {
                           </div>
                         )}
 
-                        {isCreditTx(t) && (
+                        {(t.is_credit === true || pm === 'Πίστωση') && (
                           <div style={{ fontSize: 12, fontWeight: 900, color: colors.danger }}>
                             ⚠️ ΠΙΣΤΩΣΗ (δεν επηρεάζει Cash/Bank)
                           </div>
