@@ -249,14 +249,14 @@ function EmployeesContent() {
     toast.success(nextValue ? 'Ο υπάλληλος ενεργοποιήθηκε ✅' : 'Ο υπάλληλος απενεργοποιήθηκε 🚫')
   }
 
-  // ✅ Υπολογισμός εκκρεμών ωρών (uses fixed_asset_id)
+  // ✅ Υπολογισμός εκκρεμών ωρών (uses employee_id)
   const getPendingOtHours = (empId: string) => {
     return overtimes
-      .filter((ot) => ot.fixed_asset_id === empId)
+      .filter((ot) => ot.employee_id === empId)
       .reduce((acc, curr) => acc + Number(curr.hours), 0)
   }
 
-  // ✅ Καταγραφή νέας υπερωρίας (store_id from URL) - uses fixed_asset_id
+  // ✅ Καταγραφή νέας υπερωρίας (store_id from URL) - uses employee_id
   async function handleQuickOvertime() {
     if (!otHours || !otModal) return
     if (!storeId || storeId === 'null') {
@@ -264,9 +264,15 @@ function EmployeesContent() {
       return
     }
 
+    const isValidEmployeeId = employees.some((emp) => emp.id === otModal.empId)
+    if (!isValidEmployeeId) {
+      toast.error('Μη έγκυρος υπάλληλος για καταγραφή υπερωρίας.')
+      return
+    }
+
     const { error } = await supabase.from('employee_overtimes').insert([
       {
-        fixed_asset_id: otModal.empId, // ✅ changed
+        employee_id: otModal.empId,
         store_id: storeId,
         hours: Number(otHours),
         date: new Date().toISOString().split('T')[0],
