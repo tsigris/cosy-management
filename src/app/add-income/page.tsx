@@ -400,88 +400,7 @@ function AddIncomeForm() {
         </div>
 
         <div style={formCard}>
-          <label style={labelStyle}>ΠΟΣΟ (€)</label>
-          <input
-            type="number"
-            inputMode="decimal"
-            autoFocus
-            value={amount}
-            onChange={e => setAmount(e.target.value)}
-            style={amountInput}
-            placeholder="0.00"
-          />
-
-          <label style={{ ...labelStyle, marginTop: 20 }}>ΜΕΘΟΔΟΣ ΕΙΣΠΡΑΞΗΣ</label>
-          <div style={{ display: 'flex', gap: 12, marginTop: 8 }}>
-            <button
-              type="button"
-              onClick={() => {
-                setMethod('Μετρητά')
-                setIsCredit(false)
-              }}
-              style={{
-                ...methodBtn,
-                backgroundColor: method === 'Μετρητά' && !isCredit ? colors.primaryDark : 'white',
-                color: method === 'Μετρητά' && !isCredit ? 'white' : colors.secondaryText,
-              }}
-            >
-              💵 Μετρητά
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                setMethod('Τράπεζα')
-                setIsCredit(false)
-              }}
-              style={{
-                ...methodBtn,
-                backgroundColor: method === 'Τράπεζα' && !isCredit ? colors.primaryDark : 'white',
-                color: method === 'Τράπεζα' && !isCredit ? 'white' : colors.secondaryText,
-              }}
-            >
-              🏛️ Τράπεζα
-            </button>
-          </div>
-
-          <div style={creditPanel}>
-            <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 10 }}>
-              <input
-                type="checkbox"
-                checked={isCredit}
-                onChange={e => {
-                  setIsCredit(e.target.checked)
-                  if (e.target.checked) setIsAgainstDebt(false)
-                }}
-                id="credit"
-                style={checkboxStyle}
-              />
-              <label htmlFor="credit" style={checkLabel}>
-                ΑΝΑΜΟΝΗ ΕΙΣΠΡΑΞΗΣ (ΠΙΣΤΩΣΗ)
-              </label>
-            </div>
-
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <input
-                type="checkbox"
-                checked={isAgainstDebt}
-                onChange={e => {
-                  setIsAgainstDebt(e.target.checked)
-                  if (e.target.checked) setIsCredit(false)
-                }}
-                id="against"
-                style={checkboxStyle}
-              />
-              <label
-                htmlFor="against"
-                style={{ ...checkLabel, color: isAgainstDebt ? colors.accentBlue : colors.primaryDark }}
-              >
-                ΕΞΟΦΛΗΣΗ ΠΑΛΑΙΟΥ ΧΡΕΟΥ
-              </label>
-            </div>
-          </div>
-
-          <label style={{ ...labelStyle, marginTop: 20 }}>ΠΗΓΗ ΕΣΟΔΟΥ (AIRBNB, ΠΕΛΑΤΗΣ κλπ)</label>
+          <label style={labelStyle}>ΠΗΓΗ ΕΣΟΔΟΥ (AIRBNB, ΠΕΛΑΤΗΣ κλπ)</label>
 
           <div ref={smartBoxRef} style={{ position: 'relative' }}>
             <input
@@ -570,6 +489,87 @@ function AddIncomeForm() {
               Πηγή: <span style={{ fontWeight: 900 }}>{selectedLabel.toUpperCase()}</span>
             </div>
           )}
+
+          <label style={{ ...labelStyle, marginTop: 20 }}>ΠΟΣΟ (€)</label>
+          <input
+            type="number"
+            inputMode="decimal"
+            autoFocus
+            value={amount}
+            onChange={e => setAmount(e.target.value)}
+            style={amountInput}
+            placeholder="0.00"
+          />
+
+          <label style={{ ...labelStyle, marginTop: 20 }}>ΜΕΘΟΔΟΣ ΕΙΣΠΡΑΞΗΣ</label>
+          <div style={{ display: 'flex', gap: 12, marginTop: 8 }}>
+            <button
+              type="button"
+              onClick={() => {
+                setMethod('Μετρητά')
+                setIsCredit(false)
+              }}
+              style={{
+                ...methodBtn,
+                backgroundColor: method === 'Μετρητά' && !isCredit ? colors.primaryDark : 'white',
+                color: method === 'Μετρητά' && !isCredit ? 'white' : colors.secondaryText,
+              }}
+            >
+              💵 Μετρητά
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setMethod('Τράπεζα')
+                setIsCredit(false)
+              }}
+              style={{
+                ...methodBtn,
+                backgroundColor: method === 'Τράπεζα' && !isCredit ? colors.primaryDark : 'white',
+                color: method === 'Τράπεζα' && !isCredit ? 'white' : colors.secondaryText,
+              }}
+            >
+              🏛️ Τράπεζα
+            </button>
+          </div>
+
+          <div style={creditPanel}>
+            <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 10 }}>
+              <input
+                type="checkbox"
+                checked={isCredit}
+                onChange={e => {
+                  setIsCredit(e.target.checked)
+                  if (e.target.checked) setIsAgainstDebt(false)
+                }}
+                id="credit"
+                style={checkboxStyle}
+              />
+              <label htmlFor="credit" style={checkLabel}>
+                ΑΝΑΜΟΝΗ ΕΙΣΠΡΑΞΗΣ (ΠΙΣΤΩΣΗ)
+              </label>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <input
+                type="checkbox"
+                checked={isAgainstDebt}
+                onChange={e => {
+                  setIsAgainstDebt(e.target.checked)
+                  if (e.target.checked) setIsCredit(false)
+                }}
+                id="against"
+                style={checkboxStyle}
+              />
+              <label
+                htmlFor="against"
+                style={{ ...checkLabel, color: isAgainstDebt ? colors.accentBlue : colors.primaryDark }}
+              >
+                ΕΞΟΦΛΗΣΗ ΠΑΛΑΙΟΥ ΧΡΕΟΥ
+              </label>
+            </div>
+          </div>
 
           <label style={{ ...labelStyle, marginTop: 20 }}>ΣΗΜΕΙΩΣΕΙΣ</label>
           <textarea
