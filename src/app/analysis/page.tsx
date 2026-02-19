@@ -778,7 +778,7 @@ function AnalysisContent() {
             </div>
             <div style={{ ...kpiValue, color: '#fff' }}>{bigKpiValue.toLocaleString('el-GR')}€</div>
             <div style={{ fontSize: 13, fontWeight: 800, opacity: 0.85, marginTop: 6 }}>
-              {isZReport ? 'Μετρητά (Z) + Χωρίς Σήμανση - Έξοδα Μετρητά' : 'Income - Expenses'}
+              {isZReport ? 'Μετρητά (Z) + Χωρίς Σήμανση - Έξοδα Μετρητά' : 'Έσοδα - Έξοδα'}
             </div>
           </div>
         </div>
