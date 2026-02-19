@@ -483,8 +483,15 @@ function AnalysisContent() {
     const zPos = rows.filter((r) => r.method === 'Κάρτα').reduce((a, r) => a + r.amount, 0)
 
     const blackCash = rows
-      .filter((r) => r.method !== 'Μετρητά (Z)')
-      .filter((r) => r.notes === 'ΧΩΡΙΣ ΣΗΜΑΝΣΗ' || r.method === 'Μετρητά')
+      .filter((r) =>
+        r.category === 'Εσοδα Ζ' &&
+        (
+          r.notes === 'ΧΩΡΙΣ ΣΗΜΑΝΣΗ' ||
+          r.method === 'Μετρητά' ||
+          r.method === 'Χωρίς Απόδειξη'
+        ) &&
+        r.method !== 'Μετρητά (Z)'
+      )
       .reduce((a, r) => a + r.amount, 0)
 
     const totalTurnover = zCash + zPos + blackCash
