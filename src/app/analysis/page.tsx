@@ -778,7 +778,7 @@ function AnalysisContent() {
             </div>
             <div style={{ ...kpiValue, color: '#fff' }}>{bigKpiValue.toLocaleString('el-GR')}€</div>
             <div style={{ fontSize: 13, fontWeight: 800, opacity: 0.85, marginTop: 6 }}>
-              {isZReport ? 'Μετρητά (Z)+Χωρίς Σήμανση - Έξοδα Μετρητά' : 'Income - Expenses'}
+              {isZReport ? 'Μετρητά (Z) + Χωρίς Σήμανση - Έξοδα Μετρητά' : 'Income - Expenses'}
             </div>
           </div>
         </div>
@@ -789,7 +789,7 @@ function AnalysisContent() {
             <div style={smallKpiLabel}>Υπόλοιπο Μετρητών</div>
             <div style={smallKpiValue}>{isZReport || balances ? money(totalCashDisplay) : '—'}</div>
             <div style={smallKpiHint}>
-              {isZReport ? 'Μετρητά (Z)+Χωρίς Σήμανση - Έξοδα Μετρητά' : 'Μετρητά + Μετρητά (Z)'}
+              {isZReport ? 'Μετρητά (Z) + Χωρίς Σήμανση - Έξοδα Μετρητά' : 'Μετρητά + Μετρητά (Z)'}
             </div>
           </div>
 
@@ -857,7 +857,7 @@ function AnalysisContent() {
                 </div>
 
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 1000 }}>
-                  <span style={{ color: '#0f172a' }}>Πραγματικό Συρτάρι</span>
+                  <span style={{ color: '#0f172a' }}>Σύνολο Συρταριού</span>
                   <span style={{ color: '#0f172a' }}>{money(totalCashDisplay)}</span>
                 </div>
               </div>
@@ -906,7 +906,7 @@ function AnalysisContent() {
                 {zBreakdown.blackPct.toFixed(1)}% του τζίρου ημέρας
               </div>
 
-              <div style={smallKpiHint}>Cash σύνολο (Z + Χωρίς Σήμανση): {money(zBreakdown.zCash + zBreakdown.blackCash)}</div>
+              <div style={smallKpiHint}>Σύνολο Μετρητών (Z + Χωρίς Σήμανση): {money(zBreakdown.zCash + zBreakdown.blackCash)}</div>
             </div>
           </div>
         )}
