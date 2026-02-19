@@ -6,7 +6,7 @@ import { useSearchParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
 import { toast, Toaster } from 'sonner'
-import { ChevronLeft, Wallet, Calculator, Clock, Banknote } from 'lucide-react'
+import { ChevronLeft, Calculator, Clock, Banknote } from 'lucide-react'
 
 const colors = {
   primaryDark: '#1e293b',
@@ -35,6 +35,8 @@ function PayEmployeeContent() {
   
   const [bonus, setBonus] = useState<string>('')
   const [extraOvertimeEuro, setExtraOvertimeEuro] = useState<string>('')
+  const [pendingOvertimeHours, setPendingOvertimeHours] = useState<number>(0)
+  const [paymentMethod, setPaymentMethod] = useState<'Μετρητά' | 'Τράπεζα'>('Μετρητά')
   const [date, setDate] = useState(new Date().toISOString().split('T')[0])
   const [loading, setLoading] = useState(true)
 
@@ -53,6 +55,16 @@ function PayEmployeeContent() {
         setBaseAmount(emp.pay_basis === 'monthly' ? (emp.monthly_salary || 0) : (emp.daily_rate || 0));
         setAgreementDays(emp.monthly_days || 26);
       }
+
+      const { data: overtimeRows, error: overtimeError } = await supabase
+        .from('employee_overtimes')
+        .select('hours')
+        .eq('employee_id', empId)
+        .eq('is_paid', false);
+
+      if (overtimeError) throw overtimeError;
+      const totalPendingHours = (overtimeRows || []).reduce((sum, row) => sum + (Number(row.hours) || 0), 0);
+      setPendingOvertimeHours(totalPendingHours);
     } catch (err) { console.error(err) } finally { setLoading(false) }
   }, [empId, storeId])
 
@@ -74,14 +86,16 @@ function PayEmployeeContent() {
     setLoading(true);
 
     try {
-      const notes = `Εκκαθάριση: ${empName} | Τύπος: ${agreementType === 'monthly' ? 'Μισθός' : 'Ημερομίσθια'} | Bonus: ${bonus || 0}€`;
+      const agreementLabel = agreementType === 'monthly' ? 'Μισθός' : 'Ημερομίσθιο';
+      const daysOrAbsencesLabel = agreementType === 'monthly' ? `Απουσίες: ${absences}` : `Ημέρες: ${workedDays}`;
+      const notes = `Εκκαθάριση ${empName || ''} | ${agreementLabel} | Ημέρες/Απουσίες: ${daysOrAbsencesLabel}`;
 
       // 1. Καταγραφή στα Transactions
       const { error: transError } = await supabase.from('transactions').insert([{
         amount: -Math.abs(totalPayable),
         type: 'expense',
         category: 'Staff',
-        method: 'Μετρητά',
+        method: paymentMethod,
         fixed_asset_id: empId,
         store_id: storeId,
         date: date,
@@ -94,7 +108,7 @@ function PayEmployeeContent() {
       await supabase
         .from('employee_overtimes')
         .update({ is_paid: true })
-        .eq('fixed_asset_id', empId)
+        .eq('employee_id', empId)
         .eq('store_id', storeId)
         .eq('is_paid', false);
 
@@ -162,6 +176,10 @@ function PayEmployeeContent() {
           <div style={{...inputGroup, marginTop: '15px'}}>
             <label style={smallLabel}>ΥΠΕΡΩΡΙΕΣ ΠΡΟΣ ΠΛΗΡΩΜΗ (€)</label>
             <input type="number" value={extraOvertimeEuro} onChange={e => setExtraOvertimeEuro(e.target.value)} style={{...inputStyle, borderColor: colors.accentBlue}} placeholder="0.00" />
+            <div style={overtimeHint}>
+              <Clock size={14} />
+              <span>Εκκρεμούν: {pendingOvertimeHours.toFixed(2)} ώρες</span>
+            </div>
           </div>
 
           <div style={resultBox}>
@@ -174,6 +192,18 @@ function PayEmployeeContent() {
           <div style={{marginTop: '20px'}}>
             <label style={smallLabel}>ΗΜΕΡΟΜΗΝΙΑ ΠΛΗΡΩΜΗΣ</label>
             <input type="date" value={date} onChange={e => setDate(e.target.value)} style={inputStyle} />
+          </div>
+
+          <div style={{ marginTop: '15px' }}>
+            <label style={smallLabel}>ΜΕΘΟΔΟΣ ΠΛΗΡΩΜΗΣ</label>
+            <div style={methodToggleWrap}>
+              <button type="button" onClick={() => setPaymentMethod('Μετρητά')} style={{ ...methodToggleBtn, ...(paymentMethod === 'Μετρητά' ? methodToggleBtnActive : {}) }}>
+                Μετρητά
+              </button>
+              <button type="button" onClick={() => setPaymentMethod('Τράπεζα')} style={{ ...methodToggleBtn, ...(paymentMethod === 'Τράπεζα' ? methodToggleBtnActive : {}) }}>
+                Τράπεζα
+              </button>
+            </div>
           </div>
 
           <button onClick={handleFinalPayment} disabled={loading || totalPayable <= 0} style={payBtn}>
@@ -206,6 +236,10 @@ const resultLabel = { fontSize: '12px', fontWeight: '800', opacity: 0.8 };
 const resultValue = { fontSize: '24px', fontWeight: '900' };
 
 const payBtn: any = { width: '100%', marginTop: '25px', padding: '18px', backgroundColor: colors.accentGreen, color: 'white', border: 'none', borderRadius: '16px', fontSize: '16px', fontWeight: '900', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px' };
+const overtimeHint: any = { marginTop: '8px', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: '700', color: colors.secondaryText };
+const methodToggleWrap: any = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', backgroundColor: colors.bgLight, border: `1px solid ${colors.border}`, borderRadius: '12px', padding: '4px' };
+const methodToggleBtn: any = { border: 'none', borderRadius: '8px', padding: '10px 12px', fontSize: '13px', fontWeight: '800', backgroundColor: 'transparent', color: colors.secondaryText, cursor: 'pointer' };
+const methodToggleBtnActive: any = { backgroundColor: colors.white, color: colors.primaryDark, boxShadow: '0 1px 2px rgba(0,0,0,0.08)' };
 
 const inputGroup = { display: 'flex', flexDirection: 'column' as const };
 
