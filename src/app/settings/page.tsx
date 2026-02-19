@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic'
 
 import { useEffect, useState, Suspense, useCallback, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
+import PermissionGuard from '@/components/PermissionGuard'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import * as XLSX from 'xlsx'
@@ -340,6 +341,8 @@ function SettingsContent() {
   }
 
   return (
+    <PermissionGuard storeId={storeId}>
+      {({ isAdmin, isLoading: checkingPermission }) => (
     <div style={pageWrap}>
       <Toaster richColors position="top-center" />
 
@@ -360,6 +363,8 @@ function SettingsContent() {
             <X size={20} />
           </Link>
         </div>
+
+        {!checkingPermission && !isAdmin && <div style={readOnlyBannerStyle}>Read-only access</div>}
 
         {/* Sections */}
         <Section id="appearance" icon={<Monitor size={18} color="#9A3412" />} title="Εμφάνιση" subtitle="Dashboard Features & προβολές">
@@ -392,15 +397,17 @@ function SettingsContent() {
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                   <div style={onPill(zEnabled)}>{zEnabled ? 'ON' : 'OFF'}</div>
-                  <button
-                    type="button"
-                    onClick={handleToggleZ}
-                    disabled={zSaving || loading}
-                    style={{ ...iosSwitch(zEnabled), opacity: zSaving || loading ? 0.7 : 1 }}
-                    aria-label="toggle z"
-                  >
-                    <div style={iosKnob(zEnabled)} />
-                  </button>
+                  {isAdmin && (
+                    <button
+                      type="button"
+                      onClick={handleToggleZ}
+                      disabled={zSaving || loading}
+                      style={{ ...iosSwitch(zEnabled), opacity: zSaving || loading ? 0.7 : 1 }}
+                      aria-label="toggle z"
+                    >
+                      <div style={iosKnob(zEnabled)} />
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
@@ -448,9 +455,11 @@ function SettingsContent() {
             <textarea style={textarea} value={formData.address} onChange={(e) => setFormData({ ...formData, address: e.target.value })} />
           </div>
 
-          <button onClick={handleSaveStore} disabled={loading} style={{ ...primaryBtn, opacity: loading ? 0.7 : 1 }}>
-            <Save size={18} /> {loading ? 'ΑΠΟΘΗΚΕΥΣΗ...' : 'ΕΝΗΜΕΡΩΣΗ ΚΑΤΑΣΤΗΜΑΤΟΣ'}
-          </button>
+          {isAdmin && (
+            <button onClick={handleSaveStore} disabled={loading} style={{ ...primaryBtn, opacity: loading ? 0.7 : 1 }}>
+              <Save size={18} /> {loading ? 'ΑΠΟΘΗΚΕΥΣΗ...' : 'ΕΝΗΜΕΡΩΣΗ ΚΑΤΑΣΤΗΜΑΤΟΣ'}
+            </button>
+          )}
         </Section>
 
         <Section id="profile" icon={<User2 size={18} color="#0f172a" />} title="Προφίλ" subtitle="Όνομα χρήστη & εμφανίσεις">
@@ -465,13 +474,15 @@ function SettingsContent() {
             />
           </div>
 
-          <button
-            onClick={handleProfileSave}
-            disabled={profileLoading || profileSaveLoading}
-            style={{ ...primaryBtn, opacity: profileLoading || profileSaveLoading ? 0.7 : 1 }}
-          >
-            <Save size={18} /> {profileSaveLoading ? 'ΑΠΟΘΗΚΕΥΣΗ...' : 'ΑΠΟΘΗΚΕΥΣΗ ΟΝΟΜΑΤΟΣ'}
-          </button>
+          {isAdmin && (
+            <button
+              onClick={handleProfileSave}
+              disabled={profileLoading || profileSaveLoading}
+              style={{ ...primaryBtn, opacity: profileLoading || profileSaveLoading ? 0.7 : 1 }}
+            >
+              <Save size={18} /> {profileSaveLoading ? 'ΑΠΟΘΗΚΕΥΣΗ...' : 'ΑΠΟΘΗΚΕΥΣΗ ΟΝΟΜΑΤΟΣ'}
+            </button>
+          )}
 
           {profileError && <div style={msgError}>{profileError}</div>}
           {profileSuccess && <div style={msgSuccess}>{profileSuccess}</div>}
@@ -541,6 +552,8 @@ function SettingsContent() {
         <div style={{ height: 24 }} />
       </div>
     </div>
+      )}
+    </PermissionGuard>
   )
 }
 
@@ -584,6 +597,17 @@ const appIcon: any = {
 
 const topTitle: any = { fontSize: 16, fontWeight: 900, color: '#0f172a', margin: 0 }
 const topSubtitle: any = { fontSize: 10, fontWeight: 900, color: '#6366f1', letterSpacing: 0.6 }
+const readOnlyBannerStyle: any = {
+  marginBottom: 12,
+  padding: '10px 12px',
+  borderRadius: 12,
+  border: '1px solid #cbd5e1',
+  background: '#f8fafc',
+  color: '#475569',
+  fontSize: 12,
+  fontWeight: 800,
+  textAlign: 'center',
+}
 
 const closeBtn: any = {
   width: 44,

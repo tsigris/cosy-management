@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic'
 
 import { useEffect, useState, Suspense, useCallback, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
+import PermissionGuard from '@/components/PermissionGuard'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { toast, Toaster } from 'sonner'
@@ -689,7 +690,11 @@ function EmployeesContent() {
 
     if (error) {
       console.error(error)
-      toast.error('Αποτυχία αποθήκευσης.')
+      toast.error(
+        error.code === '42501'
+          ? 'Δεν έχετε δικαιώματα διαχειριστή για αυτή την ενέργεια'
+          : 'Αποτυχία αποθήκευσης.'
+      )
       setLoading(false)
       return
     }
@@ -785,6 +790,8 @@ function EmployeesContent() {
   const isEditMode = Boolean(editingId)
 
   return (
+    <PermissionGuard storeId={storeId}>
+      {({ isAdmin, isLoading: checkingPermission }) => (
     <div style={iphoneWrapper}>
       <Toaster position="top-center" richColors />
 
@@ -801,6 +808,8 @@ function EmployeesContent() {
             </Link>
           </div>
         </div>
+
+        {!checkingPermission && !isAdmin && <div style={readOnlyBannerStyle}>Read-only access</div>}
 
         {/* ✅ CREATE TIPS MODAL */}
         {tipModal && (
@@ -958,20 +967,24 @@ function EmployeesContent() {
                           {t.amount.toFixed(2)}€
                         </span>
 
-                        <button
-                          style={miniIconBtn}
-                          title="Επεξεργασία"
-                          onClick={() => {
-                            setTipEditModal({ id: t.id, name: t.name, amount: t.amount })
-                            setTipEditAmount(String(t.amount))
-                          }}
-                        >
-                          <Pencil size={16} />
-                        </button>
+                        {isAdmin && (
+                          <button
+                            style={miniIconBtn}
+                            title="Επεξεργασία"
+                            onClick={() => {
+                              setTipEditModal({ id: t.id, name: t.name, amount: t.amount })
+                              setTipEditAmount(String(t.amount))
+                            }}
+                          >
+                            <Pencil size={16} />
+                          </button>
+                        )}
 
-                        <button style={miniIconBtnDanger} title="Διαγραφή" onClick={() => deleteTipTransaction(t.id)}>
-                          <Trash2 size={16} />
-                        </button>
+                        {isAdmin && (
+                          <button style={miniIconBtnDanger} title="Διαγραφή" onClick={() => deleteTipTransaction(t.id)}>
+                            <Trash2 size={16} />
+                          </button>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -983,15 +996,17 @@ function EmployeesContent() {
 
         {/* ADD + SHOW INACTIVE */}
         <div style={{ display: 'flex', gap: '10px', marginBottom: '14px' }}>
-          <button
-            onClick={() => {
-              if (isAdding) resetForm()
-              setIsAdding(!isAdding)
-            }}
-            style={{ ...(isAdding ? cancelBtn : addBtn), marginBottom: 0, flex: 1 }}
-          >
-            {isAdding ? 'ΑΚΥΡΩΣΗ' : '+ ΝΕΟΣ ΥΠΑΛΛΗΛΟΣ'}
-          </button>
+          {isAdmin && (
+            <button
+              onClick={() => {
+                if (isAdding) resetForm()
+                setIsAdding(!isAdding)
+              }}
+              style={{ ...(isAdding ? cancelBtn : addBtn), marginBottom: 0, flex: 1 }}
+            >
+              {isAdding ? 'ΑΚΥΡΩΣΗ' : '+ ΝΕΟΣ ΥΠΑΛΛΗΛΟΣ'}
+            </button>
+          )}
 
           <button
             onClick={() => setShowInactive((v) => !v)}
@@ -1003,7 +1018,7 @@ function EmployeesContent() {
         </div>
 
         {/* FORM */}
-        {isAdding && (
+        {isAdding && isAdmin && (
           <div
             style={{
               ...formCard,
@@ -1222,13 +1237,15 @@ function EmployeesContent() {
                             </div>
 
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                              <button
-                                style={miniIconBtnDanger}
-                                title="Διαγραφή υπερωρίας"
-                                onClick={() => deleteOvertime(ot.id)}
-                              >
-                                <Trash2 size={16} />
-                              </button>
+                              {isAdmin && (
+                                <button
+                                  style={miniIconBtnDanger}
+                                  title="Διαγραφή υπερωρίας"
+                                  onClick={() => deleteOvertime(ot.id)}
+                                >
+                                  <Trash2 size={16} />
+                                </button>
+                              )}
                             </div>
                           </div>
                         ))}
@@ -1288,9 +1305,11 @@ function EmployeesContent() {
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                                   <span>{t.method === 'Τράπεζα' ? '🏦' : '💵'}</span>
                                   <span style={{ fontWeight: '800', color: colors.primaryDark }}>{Number(t.amount).toFixed(2)}€</span>
-                                  <button onClick={() => deleteTransaction(t.id)} style={transDeleteBtn}>
-                                    🗑️
-                                  </button>
+                                  {isAdmin && (
+                                    <button onClick={() => deleteTransaction(t.id)} style={transDeleteBtn}>
+                                      🗑️
+                                    </button>
+                                  )}
                                 </div>
                               </div>
 
@@ -1311,54 +1330,60 @@ function EmployeesContent() {
                     </div>
 
                     <div style={{ display: 'flex', gap: '10px' }}>
-                      <button
-                        onClick={() => {
-                          const nextPayBasis: PayBasis = (emp.pay_basis as PayBasis) || 'monthly'
-                          const monthlySalaryValue =
-                            nextPayBasis === 'monthly'
-                              ? emp.monthly_salary != null
-                                ? String(emp.monthly_salary)
+                      {isAdmin && (
+                        <button
+                          onClick={() => {
+                            const nextPayBasis: PayBasis = (emp.pay_basis as PayBasis) || 'monthly'
+                            const monthlySalaryValue =
+                              nextPayBasis === 'monthly'
+                                ? emp.monthly_salary != null
+                                  ? String(emp.monthly_salary)
+                                  : ''
                                 : ''
-                              : ''
-                          const dailyRateValue =
-                            nextPayBasis === 'daily'
-                              ? emp.daily_rate != null
-                                ? String(emp.daily_rate)
+                            const dailyRateValue =
+                              nextPayBasis === 'daily'
+                                ? emp.daily_rate != null
+                                  ? String(emp.daily_rate)
+                                  : ''
                                 : ''
-                              : ''
 
-                          setPayBasis(nextPayBasis)
-                          setFormData({
-                            full_name: emp.name || '',
-                            position: emp.position || '',
-                            amka: emp.amka || '',
-                            iban: emp.iban || '',
-                            bank_name: emp.bank_name || 'Εθνική Τράπεζα',
-                            monthly_salary: monthlySalaryValue,
-                            daily_rate: dailyRateValue,
-                            monthly_days: emp.monthly_days != null ? String(emp.monthly_days) : '25',
-                            start_date: emp.start_date || new Date().toISOString().split('T')[0],
-                          })
-                          setEditingId(emp.id)
-                          setIsAdding(true)
-                          window.scrollTo({ top: 0, behavior: 'smooth' })
-                        }}
-                        style={editBtn}
-                      >
-                        ΕΠΕΞΕΡΓΑΣΙΑ ✎
-                      </button>
+                            setPayBasis(nextPayBasis)
+                            setFormData({
+                              full_name: emp.name || '',
+                              position: emp.position || '',
+                              amka: emp.amka || '',
+                              iban: emp.iban || '',
+                              bank_name: emp.bank_name || 'Εθνική Τράπεζα',
+                              monthly_salary: monthlySalaryValue,
+                              daily_rate: dailyRateValue,
+                              monthly_days: emp.monthly_days != null ? String(emp.monthly_days) : '25',
+                              start_date: emp.start_date || new Date().toISOString().split('T')[0],
+                            })
+                            setEditingId(emp.id)
+                            setIsAdding(true)
+                            window.scrollTo({ top: 0, behavior: 'smooth' })
+                          }}
+                          style={editBtn}
+                        >
+                          ΕΠΕΞΕΡΓΑΣΙΑ ✎
+                        </button>
+                      )}
 
-                      <button onClick={() => deleteEmployee(emp.id, emp.name)} style={deleteBtn}>
-                        ΔΙΑΓΡΑΦΗ 🗑️
-                      </button>
+                      {isAdmin && (
+                        <button onClick={() => deleteEmployee(emp.id, emp.name)} style={deleteBtn}>
+                          ΔΙΑΓΡΑΦΗ 🗑️
+                        </button>
+                      )}
 
-                      <button
-                        onClick={() => toggleActive(emp.id, emp.is_active)}
-                        style={emp.is_active === false ? activateBtn : deactivateBtn}
-                        title={emp.is_active === false ? 'Ενεργοποίηση υπαλλήλου' : 'Απενεργοποίηση υπαλλήλου'}
-                      >
-                        {emp.is_active === false ? 'ΕΝΕΡΓΟΠΟΙΗΣΗ ✅' : 'ΑΠΕΝΕΡΓΟΠΙΗΣΗ 🚫'}
-                      </button>
+                      {isAdmin && (
+                        <button
+                          onClick={() => toggleActive(emp.id, emp.is_active)}
+                          style={emp.is_active === false ? activateBtn : deactivateBtn}
+                          title={emp.is_active === false ? 'Ενεργοποίηση υπαλλήλου' : 'Απενεργοποίηση υπαλλήλου'}
+                        >
+                          {emp.is_active === false ? 'ΕΝΕΡΓΟΠΟΙΗΣΗ ✅' : 'ΑΠΕΝΕΡΓΟΠΙΗΣΗ 🚫'}
+                        </button>
+                      )}
                     </div>
                   </div>
                 )}
@@ -1374,6 +1399,8 @@ function EmployeesContent() {
         )}
       </div>
     </div>
+      )}
+    </PermissionGuard>
   )
 }
 
@@ -1609,6 +1636,17 @@ const tipsListItem: any = { padding: '10px', borderRadius: '12px', border: `1px 
 
 const miniIconBtn: any = { width: '34px', height: '34px', borderRadius: '10px', border: `1px solid ${colors.border}`, backgroundColor: '#ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: colors.primaryDark }
 const miniIconBtnDanger: any = { ...miniIconBtn, border: '1px solid #fecaca', backgroundColor: '#fef2f2', color: colors.accentRed }
+const readOnlyBannerStyle: any = {
+  marginBottom: '14px',
+  padding: '10px 12px',
+  borderRadius: '12px',
+  border: '1px solid #cbd5e1',
+  backgroundColor: '#f8fafc',
+  color: '#475569',
+  fontSize: '12px',
+  fontWeight: '800',
+  textAlign: 'center',
+}
 const pendingOtListWrap: any = { backgroundColor: '#fff7ed', border: '1px solid #fed7aa', borderRadius: '14px', padding: '12px', marginBottom: '16px' }
 const pendingOtRow: any = {
   display: 'flex',
