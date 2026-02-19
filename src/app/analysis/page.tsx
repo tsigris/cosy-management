@@ -612,6 +612,9 @@ function AnalysisContent() {
     return isZReport ? totalCashDisplay : kpis.netProfit
   }, [isZReport, totalCashDisplay, kpis.netProfit])
 
+  const drawerZCash = isZReport ? zBreakdown.zCash : Number(drawer?.z_cash || 0)
+  const drawerWithoutMarking = isZReport ? zBreakdown.blackCash : Number(drawer?.extra_cash || 0)
+
   return (
     <div style={iphoneWrapper} data-print-root="true">
       <Toaster position="top-center" richColors />
@@ -813,7 +816,7 @@ function AnalysisContent() {
             <div style={smallKpiHint}>{drawer ? `Ημερομηνία Ζ: ${drawer.date}` : `Δεν βρέθηκε Ζ έως: ${endDate}`}</div>
 
             <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', marginTop: 4 }}>
-              {drawer ? `Z: ${money(drawer.z_cash)} • Χωρίς Σήμανση: ${money(drawer.extra_cash)}` : ''}
+              {drawer || isZReport ? `Z: ${money(drawerZCash)} • Χωρίς Σήμανση: ${money(drawerWithoutMarking)}` : ''}
             </div>
           </div>
         </div>
