@@ -257,7 +257,8 @@ function EmployeesContent() {
     }
 
     toast.success(nextValue ? 'Ο υπάλληλος ενεργοποιήθηκε ✅' : 'Ο υπάλληλος απενεργοποιήθηκε 🚫')
-    refreshAndTopBound()
+    fetchInitialData()
+    scrollTop()
   }
 
   // ✅ Υπολογισμός εκκρεμών ωρών (uses fixed_asset_id)
@@ -275,7 +276,7 @@ function EmployeesContent() {
 
     const { error } = await supabase.from('employee_overtimes').insert([
       {
-        fixed_asset_id: otModal.empId,
+        employee_id: otModal.empId,
         store_id: storeId,
         hours: Number(otHours),
         date: new Date().toISOString().split('T')[0],
@@ -491,6 +492,15 @@ function EmployeesContent() {
       is_active: true
     }
 
+    const completeSaveSuccess = () => {
+      toast.success('Αποθηκεύτηκε!')
+      setEditingId(null)
+      setIsAdding(false)
+      resetForm()
+      refreshAndTopBound()
+      setLoading(false)
+    }
+
     // 1st attempt (with is_active)
     const first = editingId
       ? await supabase.from('fixed_assets').update(payload).eq('id', editingId)
@@ -511,12 +521,7 @@ function EmployeesContent() {
         return
       }
 
-      toast.success('Αποθηκεύτηκε!')
-      setEditingId(null)
-      resetForm()
-      setIsAdding(false)
-      refreshAndTopBound()
-      setLoading(false)
+      completeSaveSuccess()
       return
     }
 
@@ -527,12 +532,7 @@ function EmployeesContent() {
       return
     }
 
-    toast.success('Αποθηκεύτηκε!')
-    setEditingId(null)
-    resetForm()
-    setIsAdding(false)
-    refreshAndTopBound()
-    setLoading(false)
+    completeSaveSuccess()
   }
 
   // ✅ Delete staff: delete transactions by fixed_asset_id, then delete fixed_assets

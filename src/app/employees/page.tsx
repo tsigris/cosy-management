@@ -247,6 +247,7 @@ function EmployeesContent() {
     }
 
     toast.success(nextValue ? 'Ο υπάλληλος ενεργοποιήθηκε ✅' : 'Ο υπάλληλος απενεργοποιήθηκε 🚫')
+    fetchInitialData()
   }
 
   // ✅ Υπολογισμός εκκρεμών ωρών (uses employee_id)
