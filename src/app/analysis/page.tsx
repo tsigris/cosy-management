@@ -224,9 +224,11 @@ function AnalysisContent() {
       const drawerPromise = supabase
         .from('v_cash_drawer_today')
         .select('*')
-        .eq('store_id', storeId)
-        .eq('date', endDate)
-        .maybeSingle()
+          .eq('store_id', storeId)
+          .lte('date', endDate)
+          .order('date', { ascending: false })
+          .limit(1)
+          .maybeSingle()
 
       const [
         { data: tx, error: txErr },
@@ -283,7 +285,13 @@ function AnalysisContent() {
       try {
         const [{ data: balData }, { data: drawerData }] = await Promise.all([
           supabase.from('v_financial_balances').select('*').eq('store_id', storeId).maybeSingle(),
-          supabase.from('v_cash_drawer_today').select('*').eq('store_id', storeId).eq('date', endDate).maybeSingle(),
+          supabase.from('v_cash_drawer_today')
+            .select('*')
+            .eq('store_id', storeId)
+            .lte('date', endDate)
+            .order('date', { ascending: false })
+            .limit(1)
+            .maybeSingle(),
         ])
         setBalances(balData || null)
         setDrawer(drawerData || null)
@@ -698,11 +706,30 @@ function AnalysisContent() {
           </div>
 
           <div style={smallKpiCard}>
-            <div style={smallKpiLabel}>Ταμείο Ημέρας (Z)</div>
-            <div style={smallKpiValue}>{drawer ? money(drawer.total_cash_drawer) : '—'}</div>
-            <div style={smallKpiHint}>
-              {drawer ? `Z: ${money(drawer.z_cash)} • Extra: ${money(drawer.extra_cash)}` : `Για την ημερομηνία ΕΩΣ: ${endDate}`}
-            </div>
+              <div style={smallKpiLabel}>
+                Ταμείο Ημέρας (Z)
+              </div>
+
+              <div style={smallKpiValue}>
+                {drawer ? money(drawer.total_cash_drawer) : '—'}
+              </div>
+
+              <div style={smallKpiHint}>
+                {drawer
+                  ? `Ημερομηνία Ζ: ${drawer.date}`
+                  : `Δεν βρέθηκε Ζ έως: ${endDate}`}
+              </div>
+
+              <div style={{
+                fontSize: 11,
+                fontWeight: 700,
+                color: '#94a3b8',
+                marginTop: 4
+              }}>
+                {drawer
+                  ? `Z: ${money(drawer.z_cash)} • Extra: ${money(drawer.extra_cash)}`
+                  : ''}
+              </div>
           </div>
         </div>
 
