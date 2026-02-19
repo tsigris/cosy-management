@@ -405,7 +405,10 @@ function AnalysisContent() {
     return null
   }, [])
 
-  // ✅ Now transactions are already fetched for the date range, but keep this as safety
+  const getMethod = useCallback((t: any) => {
+    return String((t.method ?? t.payment_method ?? '') || '').trim()
+  }, [])
+
   const periodTx = useMemo(() => {
     if (!storeId || storeId === 'null') return []
     return transactions.filter((t) => t.date >= startDate && t.date <= endDate)
@@ -460,7 +463,7 @@ function AnalysisContent() {
   // FIXED per your rules:
   // 1) zCash: method === 'Μετρητά (Z)'
   // 2) zPos:  method === 'Κάρτα'
-  // 3) blackCash: (notes==='ΧΩΡΙΣ ΣΗΜΑΝΣΗ' OR method==='Μετρητά') AND category==='Εσοδα Ζ' AND method!=='Μετρητά (Z)'
+  // 3) blackCash: category === 'Εσοδα Ζ' AND (notes==='ΧΩΡΙΣ ΣΗΜΑΝΣΗ' OR method==='Μετρητά') AND method!=='Μετρητά (Z)'
   const zBreakdown = useMemo(() => {
     if (!isZReport) {
       return { zCash: 0, zPos: 0, blackCash: 0, totalTurnover: 0, blackPct: 0 }
@@ -469,7 +472,7 @@ function AnalysisContent() {
     const rows = periodTx
       .filter((t) => t.type === 'income')
       .map((t) => {
-        const method = String((t.method ?? t.payment_method ?? '') || '').trim()
+        const method = getMethod(t)
         const notes = String(t.notes || '').trim()
         const category = String(t.category || '').trim()
         const amount = Number(t.amount) || 0
@@ -489,7 +492,16 @@ function AnalysisContent() {
     const blackPct = totalTurnover > 0 ? (blackCash / totalTurnover) * 100 : 0
 
     return { zCash, zPos, blackCash, totalTurnover, blackPct }
-  }, [isZReport, periodTx])
+  }, [isZReport, periodTx, getMethod])
+
+  // ✅ CASH EXPENSES (Z day): όλα τα έξοδα της ημέρας που έγιναν με "Μετρητά"
+  const cashExpensesToday = useMemo(() => {
+    if (!isZReport) return 0
+    return periodTx
+      .filter((t) => t.type === 'expense' || t.type === 'debt_payment')
+      .filter((t) => getMethod(t) === 'Μετρητά')
+      .reduce((acc, t) => acc + Math.abs(Number(t.amount) || 0), 0)
+  }, [isZReport, periodTx, getMethod])
 
   const categoryBreakdown = useMemo(() => {
     const expenseTx = filteredTx.filter((t) => t.type === 'expense' || t.type === 'debt_payment')
@@ -525,10 +537,6 @@ function AnalysisContent() {
       .sort((a, b) => b.amount - a.amount)
   }, [monthTransactions, storeId, normalizeExpenseCategory, staff])
 
-  const periodList = useMemo(() => {
-    return [...filteredTx].sort((a, b) => String(b.date).localeCompare(String(a.date)))
-  }, [filteredTx])
-
   const collapsedPeriodList = useMemo(() => {
     const sortedTx = [...filteredTx].sort((a, b) => String(b.date).localeCompare(String(a.date)))
 
@@ -551,19 +559,19 @@ function AnalysisContent() {
       let amount = 0
       let zCash = 0
       let zPos = 0
-      let extra = 0
+      let withoutMarking = 0
 
       for (const row of rows) {
         const rowAmount = Number(row.amount) || 0
         amount += rowAmount
 
-        const method = String((row.method ?? row.payment_method ?? '') || '').trim()
+        const method = getMethod(row)
         const notes = String(row.notes || '').trim()
 
         if (method === 'Μετρητά (Z)') zCash += rowAmount
         if (method === 'Κάρτα') zPos += rowAmount
-        // “Χωρίς Σήμανση” / extra: notes OR method=Μετρητά, αλλά ΟΧΙ επίσημο Z Cash
-        if (method !== 'Μετρητά (Z)' && (notes === 'ΧΩΡΙΣ ΣΗΜΑΝΣΗ' || method === 'Μετρητά')) extra += rowAmount
+        // “Χωρίς Σήμανση”: notes OR method=Μετρητά, αλλά ΟΧΙ επίσημο Z Cash
+        if (method !== 'Μετρητά (Z)' && (notes === 'ΧΩΡΙΣ ΣΗΜΑΝΣΗ' || method === 'Μετρητά')) withoutMarking += rowAmount
       }
 
       return {
@@ -573,13 +581,13 @@ function AnalysisContent() {
         category: 'Εσοδα Ζ',
         amount,
         payment_method: 'Z (Σύνολο)',
-        notes: `Μετρητά (Z): ${zCash.toFixed(2)}€ • Κάρτα (POS): ${zPos.toFixed(2)}€ • Χωρίς Σήμανση: ${extra.toFixed(2)}€`,
+        notes: `Μετρητά (Z): ${zCash.toFixed(2)}€ • Κάρτα (POS): ${zPos.toFixed(2)}€ • Χωρίς Σήμανση: ${withoutMarking.toFixed(2)}€`,
         __collapsedZ: true,
       }
     })
 
     return [...others, ...collapsedZ].sort((a, b) => String(b.date).localeCompare(String(a.date)))
-  }, [filteredTx])
+  }, [filteredTx, getMethod])
 
   const detailOptions = useMemo(() => {
     if (detailMode === 'staff') return staff
@@ -593,11 +601,16 @@ function AnalysisContent() {
   const money = useCallback((n: any) => `${Number(n || 0).toFixed(2)}€`, [])
 
   // ✅ TOTAL CASH DISPLAY
-  // For Z day: Cash KPI should be zCash + blackCash
+  // For Z day: (zCash + blackCash) - cash expenses made with "Μετρητά"
   const totalCashDisplay = useMemo(() => {
-    if (isZReport) return zBreakdown.zCash + zBreakdown.blackCash
+    if (isZReport) return zBreakdown.zCash + zBreakdown.blackCash - cashExpensesToday
     return Number(balances?.cash_balance || 0)
-  }, [isZReport, zBreakdown, balances])
+  }, [isZReport, zBreakdown, cashExpensesToday, balances])
+
+  // ✅ For the big dark KPI on Z day we want the REAL drawer target too
+  const bigKpiValue = useMemo(() => {
+    return isZReport ? totalCashDisplay : kpis.netProfit
+  }, [isZReport, totalCashDisplay, kpis.netProfit])
 
   return (
     <div style={iphoneWrapper} data-print-root="true">
@@ -655,7 +668,13 @@ function AnalysisContent() {
               <div style={tileIcon}>📅</div>
               <div style={tileBody}>
                 <div style={tileLabel}>ΑΠΟ</div>
-                <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} style={tileControl} inputMode="none" />
+                <input
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  style={tileControl}
+                  inputMode="none"
+                />
               </div>
             </div>
 
@@ -663,7 +682,13 @@ function AnalysisContent() {
               <div style={tileIcon}>📅</div>
               <div style={tileBody}>
                 <div style={tileLabel}>ΕΩΣ</div>
-                <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} style={tileControl} inputMode="none" />
+                <input
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  style={tileControl}
+                  inputMode="none"
+                />
               </div>
             </div>
 
@@ -749,10 +774,12 @@ function AnalysisContent() {
           >
             <div style={kpiTopRow}>
               <div style={{ ...kpiLabel, color: '#fff' }}>{isZReport ? 'Καθαρό Ταμείο' : 'Καθαρό Κέρδος'}</div>
-              <div style={{ ...kpiSign, color: '#fff' }}>{kpis.netProfit >= 0 ? '▲' : '▼'}</div>
+              <div style={{ ...kpiSign, color: '#fff' }}>{bigKpiValue >= 0 ? '▲' : '▼'}</div>
             </div>
-            <div style={{ ...kpiValue, color: '#fff' }}>{kpis.netProfit.toLocaleString('el-GR')}€</div>
-            <div style={{ fontSize: 13, fontWeight: 800, opacity: 0.85, marginTop: 6 }}>Income - Expenses</div>
+            <div style={{ ...kpiValue, color: '#fff' }}>{bigKpiValue.toLocaleString('el-GR')}€</div>
+            <div style={{ fontSize: 13, fontWeight: 800, opacity: 0.85, marginTop: 6 }}>
+              {isZReport ? 'Μετρητά (Z)+Χωρίς Σήμανση - Έξοδα Μετρητά' : 'Income - Expenses'}
+            </div>
           </div>
         </div>
 
@@ -761,7 +788,9 @@ function AnalysisContent() {
           <div style={smallKpiCard}>
             <div style={smallKpiLabel}>Υπόλοιπο Μετρητών</div>
             <div style={smallKpiValue}>{isZReport || balances ? money(totalCashDisplay) : '—'}</div>
-            <div style={smallKpiHint}>{isZReport ? 'Μετρητά (Z) + Χωρίς Σήμανση' : 'Μετρητά + Μετρητά (Z)'}</div>
+            <div style={smallKpiHint}>
+              {isZReport ? 'Μετρητά (Z)+Χωρίς Σήμανση - Έξοδα Μετρητά' : 'Μετρητά + Μετρητά (Z)'}
+            </div>
           </div>
 
           <div style={smallKpiCard}>
@@ -820,6 +849,16 @@ function AnalysisContent() {
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 900 }}>
                   <span style={{ color: '#64748b' }}>Σύνολο ημέρας</span>
                   <span style={{ color: '#0f172a' }}>{money(zBreakdown.totalTurnover)}</span>
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 900 }}>
+                  <span style={{ color: '#64748b' }}>Έξοδα (Μετρητά)</span>
+                  <span style={{ color: '#0f172a' }}>{money(cashExpensesToday)}</span>
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 1000 }}>
+                  <span style={{ color: '#0f172a' }}>Πραγματικό Συρτάρι</span>
+                  <span style={{ color: '#0f172a' }}>{money(zBreakdown.zCash + zBreakdown.blackCash - cashExpensesToday)}</span>
                 </div>
               </div>
 
@@ -1014,7 +1053,16 @@ function AnalysisContent() {
                           </div>
                         </div>
 
-                        <div style={{ fontSize: 18, fontWeight: 900, color: colors.primary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        <div
+                          style={{
+                            fontSize: 18,
+                            fontWeight: 900,
+                            color: colors.primary,
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
                           {String(name || '').toUpperCase()}
                         </div>
 
