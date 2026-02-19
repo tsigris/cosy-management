@@ -1031,9 +1031,10 @@ function EmployeesContent() {
 
                       {pendingOtItems.length > 0 && (
                         <div style={pendingOtListWrap}>
+                          <p style={{ margin: 0, fontWeight: '900', color: '#c2410c', fontSize: '11px' }}>ΕΚΚΡΕΜΕΙΣ ΥΠΕΡΩΡΙΕΣ</p>
                           {pendingOtItems.map((ot) => (
                             <div key={ot.id} style={pendingOtRow}>
-                              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                 <span style={{ fontSize: '10px', color: colors.secondaryText, fontWeight: 700 }}>{new Date(ot.date).toLocaleDateString('el-GR')}</span>
                                 <span style={{ fontSize: '11px', color: '#c2410c', fontWeight: 900 }}>{Number(ot.hours).toFixed(2)} ώρες</span>
                               </div>
