@@ -112,7 +112,6 @@ function PermissionsContent() {
       const { error } = await supabase
         .from('store_access')
         .update({ role: 'admin' })
-        .eq('store_id', storeId)
         .eq('user_id', selectedUserForRole.user_id)
         .in('store_id', selectedStores);
 

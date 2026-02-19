@@ -10,7 +10,7 @@ export function AuthLogic() {
 
   useEffect(() => {
     // Σελίδες που ΔΕΝ απαιτούν store_id στο URL
-    const publicPaths = ['/login', '/register', '/signup', '/select-store', '/stores/new']
+    const publicPaths = ['/login', '/register', '/signup', '/select-store', '/stores/new', '/accept-invite']
     const isPublicPath = publicPaths.some(path => pathname.startsWith(path))
     
     const storeInUrl = searchParams.get('store')

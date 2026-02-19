@@ -34,6 +34,24 @@ function RegisterForm() {
   // Παίρνουμε τον κωδικό πρόσκλησης (store ID) από το URL
   const inviteCode = searchParams.get('invite') 
 
+  const validateInvite = async (inviteId: string) => {
+    const response = await fetch('/api/invite/validate', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ inviteId })
+    })
+
+    const payload = await response.json().catch(() => ({ valid: false, storeId: null }))
+
+    if (!response.ok || !payload?.valid || !payload?.storeId) {
+      throw new Error('Η πρόσκληση δεν είναι έγκυρη ή έχει λήξει. Ζητήστε νέο link από τον διαχειριστή.')
+    }
+
+    return String(payload.storeId)
+  }
+
   const handleResendConfirmationEmail = async () => {
     if (!email) {
       toast.error('Συμπλήρωσε πρώτα το email σου.')
@@ -70,6 +88,12 @@ function RegisterForm() {
     setLoading(true)
 
     try {
+      let validatedInviteStoreId = ''
+
+      if (inviteCode) {
+        validatedInviteStoreId = await validateInvite(inviteCode)
+      }
+
       // 1. ΕΓΓΡΑΦΗ ΧΡΗΣΤΗ ΣΤΟ AUTH
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: email.trim(),
@@ -108,7 +132,7 @@ function RegisterForm() {
       // 2. ΕΛΕΓΧΟΣ: ΕΙΝΑΙ ΑΠΟ ΠΡΟΣΚΛΗΣΗ Ή ΝΕΟΣ ADMIN;
       if (inviteCode) {
         // --- ΣΕΝΑΡΙΟ Α: ΕΓΓΡΑΦΗ ΜΕ ΠΡΟΣΚΛΗΣΗ (ΥΠΑΛΛΗΛΟΣ) ---
-        finalStoreId = inviteCode
+        finalStoreId = validatedInviteStoreId
         
         // Συνδέουμε τον χρήστη με το υπάρχον κατάστημα
         const { error: accessError } = await supabase.from('store_access').insert([{
