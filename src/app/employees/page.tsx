@@ -271,26 +271,32 @@ function EmployeesContent() {
       return
     }
 
-    const { error } = await supabase.from('employee_overtimes').insert([
-      {
-        employee_id: otModal.empId,
-        store_id: storeId,
-        hours: Number(otHours),
-        date: new Date().toISOString().split('T')[0],
-        is_paid: false,
-      },
-    ])
+    try {
+      const { error } = await supabase.from('employee_overtimes').insert([
+        {
+          employee_id: otModal.empId,
+          store_id: storeId,
+          hours: Number(otHours),
+          date: new Date().toISOString().split('T')[0],
+          is_paid: false,
+        },
+      ])
 
-    if (error) {
+      if (error) {
+        console.error(error)
+        toast.error('Αποτυχία καταγραφής υπερωρίας.')
+        return
+      }
+
+      toast.success(`Προστέθηκαν ${otHours} ώρες στην ${otModal.name}`)
+      setOtModal(null)
+      setOtHours('')
+      fetchInitialData()
+    } catch (error) {
+      console.log(error)
       console.error(error)
       toast.error('Αποτυχία καταγραφής υπερωρίας.')
-      return
     }
-
-    toast.success(`Προστέθηκαν ${otHours} ώρες στην ${otModal.name}`)
-    setOtModal(null)
-    setOtHours('')
-    fetchInitialData()
   }
 
   // ✅ Καταγραφή νέων Tips σαν transaction (CURRENT MONTH hero uses this via getTipsStats)

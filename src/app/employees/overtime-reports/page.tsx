@@ -261,12 +261,12 @@ function EmployeesContent() {
     scrollTop()
   }
 
-  // ✅ Υπολογισμός εκκρεμών ωρών (uses fixed_asset_id)
+  // ✅ Υπολογισμός εκκρεμών ωρών (uses employee_id)
   const getPendingOtHours = (empId: string) => {
-    return overtimes.filter((ot) => ot.fixed_asset_id === empId).reduce((acc, curr) => acc + Number(curr.hours), 0)
+    return overtimes.filter((ot) => ot.employee_id === empId).reduce((acc, curr) => acc + Number(curr.hours), 0)
   }
 
-  // ✅ Καταγραφή νέας υπερωρίας (store_id from URL) - uses fixed_asset_id
+  // ✅ Καταγραφή νέας υπερωρίας (store_id from URL) - uses employee_id
   async function handleQuickOvertime() {
     if (!otHours || !otModal) return
     if (!storeId || storeId === 'null') {
@@ -274,26 +274,32 @@ function EmployeesContent() {
       return
     }
 
-    const { error } = await supabase.from('employee_overtimes').insert([
-      {
-        employee_id: otModal.empId,
-        store_id: storeId,
-        hours: Number(otHours),
-        date: new Date().toISOString().split('T')[0],
-        is_paid: false
-      }
-    ])
+    try {
+      const { error } = await supabase.from('employee_overtimes').insert([
+        {
+          employee_id: otModal.empId,
+          store_id: storeId,
+          hours: Number(otHours),
+          date: new Date().toISOString().split('T')[0],
+          is_paid: false,
+        },
+      ])
 
-    if (error) {
+      if (error) {
+        console.error(error)
+        toast.error('Αποτυχία καταγραφής υπερωρίας.')
+        return
+      }
+
+      toast.success(`Προστέθηκαν ${otHours} ώρες στην ${otModal.name}`)
+      setOtModal(null)
+      setOtHours('')
+      refreshAndTopBound()
+    } catch (error) {
+      console.log(error)
       console.error(error)
       toast.error('Αποτυχία καταγραφής υπερωρίας.')
-      return
     }
-
-    toast.success(`Προστέθηκαν ${otHours} ώρες στην ${otModal.name}`)
-    setOtModal(null)
-    setOtHours('')
-    refreshAndTopBound()
   }
 
   // ✅ Καταγραφή νέων Tips σαν transaction (ΔΕΝ είναι expense) — type: tip_entry
