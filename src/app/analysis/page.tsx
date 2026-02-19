@@ -522,6 +522,57 @@ function AnalysisContent() {
     return [...filteredTx].sort((a, b) => String(b.date).localeCompare(String(a.date)))
   }, [filteredTx])
 
+  const collapsedPeriodList = useMemo(() => {
+    const sortedTx = [...filteredTx].sort((a, b) => String(b.date).localeCompare(String(a.date)))
+
+    const isZTransaction = (t: any) => t.category === 'Εσοδα Ζ' && t.type === 'income'
+
+    const zByDate: Record<string, any[]> = {}
+    const others: any[] = []
+
+    for (const t of sortedTx) {
+      if (isZTransaction(t)) {
+        const date = String(t.date || '')
+        if (!zByDate[date]) zByDate[date] = []
+        zByDate[date].push(t)
+      } else {
+        others.push(t)
+      }
+    }
+
+    const collapsedZ = Object.entries(zByDate).map(([date, rows]) => {
+      let amount = 0
+      let zCash = 0
+      let zPos = 0
+      let extra = 0
+
+      for (const row of rows) {
+        const rowAmount = Number(row.amount) || 0
+        amount += rowAmount
+
+        const method = String((row.method ?? row.payment_method ?? '') || '').trim()
+        const notes = String(row.notes || '').trim()
+
+        if (method === 'Μετρητά (Z)') zCash += rowAmount
+        if (method === 'Κάρτα') zPos += rowAmount
+        if (notes === 'ΧΩΡΙΣ ΣΗΜΑΝΣΗ' || method === 'Χωρίς Απόδειξη') extra += rowAmount
+      }
+
+      return {
+        id: `z-${date}`,
+        date,
+        type: 'income',
+        category: 'Εσοδα Ζ',
+        amount,
+        payment_method: 'Z (Σύνολο)',
+        notes: `Z Cash: ${zCash.toFixed(2)}€ • POS: ${zPos.toFixed(2)}€ • Extra: ${extra.toFixed(2)}€`,
+        __collapsedZ: true,
+      }
+    })
+
+    return [...others, ...collapsedZ].sort((a, b) => String(b.date).localeCompare(String(a.date)))
+  }, [filteredTx])
+
   const detailOptions = useMemo(() => {
     if (detailMode === 'staff') return staff
     if (detailMode === 'supplier') return suppliers
@@ -894,17 +945,18 @@ function AnalysisContent() {
                 <h3 style={sectionTitle}>Κινήσεις Περιόδου</h3>
                 <div style={sectionSub}>Λίστα κινήσεων με οντότητα, ποσό και σημειώσεις</div>
               </div>
-              <div style={sectionPill}>{periodList.length} εγγραφές</div>
+              <div style={sectionPill}>{collapsedPeriodList.length} εγγραφές</div>
             </div>
 
             {loading ? (
               <div style={hintBox}>Φόρτωση...</div>
-            ) : periodList.length === 0 ? (
+            ) : collapsedPeriodList.length === 0 ? (
               <div style={hintBox}>Δεν υπάρχουν κινήσεις για το φίλτρο που επέλεξες.</div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {periodList.map((t: any) => {
-                  const name = getPartyName(t)
+                {collapsedPeriodList.map((t: any) => {
+                  const isCollapsedZ = !!t.__collapsedZ
+                  const name = isCollapsedZ ? 'Z REPORT (ΣΥΝΟΛΟ)' : getPartyName(t)
                   const amt = Number(t.amount) || 0
                   const absAmt = Math.abs(amt)
 
