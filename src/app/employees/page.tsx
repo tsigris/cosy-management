@@ -44,7 +44,7 @@ function EmployeesContent() {
   const [showInactive, setShowInactive] = useState(false)
 
   // States για overtime modal
-  const [otModal, setOtModal] = useState<{ empId: string; name: string } | null>(null)
+  const [otModal, setOtModal] = useState<{ empId: string; name: string; overtimeId?: string } | null>(null)
   const [otHours, setOtHours] = useState('')
 
   // Quick Tips (create)
@@ -272,23 +272,27 @@ function EmployeesContent() {
     }
 
     try {
-      const { error } = await supabase.from('employee_overtimes').insert([
-        {
-          employee_id: otModal.empId,
-          store_id: storeId,
-          hours: Number(otHours),
-          date: new Date().toISOString().split('T')[0],
-          is_paid: false,
-        },
-      ])
+      const payload = {
+        employee_id: otModal.empId,
+        store_id: storeId,
+        hours: Number(otHours),
+        date: new Date().toISOString().split('T')[0],
+        is_paid: false,
+      }
+
+      const { error } = otModal.overtimeId
+        ? await supabase.from('employee_overtimes').update(payload).eq('id', otModal.overtimeId)
+        : await supabase.from('employee_overtimes').insert([payload])
 
       if (error) {
         console.error(error)
-        toast.error('Αποτυχία καταγραφής υπερωρίας.')
+        toast.error(otModal.overtimeId ? 'Αποτυχία ενημέρωσης υπερωρίας.' : 'Αποτυχία καταγραφής υπερωρίας.')
         return
       }
 
-      toast.success(`Προστέθηκαν ${otHours} ώρες στην ${otModal.name}`)
+      toast.success(
+        otModal.overtimeId ? `Ενημερώθηκαν σε ${otHours} ώρες για ${otModal.name}` : `Προστέθηκαν ${otHours} ώρες στην ${otModal.name}`
+      )
       setOtModal(null)
       setOtHours('')
       fetchInitialData()
@@ -297,6 +301,20 @@ function EmployeesContent() {
       console.error(error)
       toast.error('Αποτυχία καταγραφής υπερωρίας.')
     }
+  }
+
+  async function handleDeleteOvertime(id: string) {
+    if (!confirm('Διαγραφή αυτής της υπερωρίας;')) return
+
+    const { error } = await supabase.from('employee_overtimes').delete().eq('id', id)
+    if (error) {
+      console.error(error)
+      toast.error('Αποτυχία διαγραφής υπερωρίας.')
+      return
+    }
+
+    toast.success('Η υπερωρία διαγράφηκε ✅')
+    fetchInitialData()
   }
 
   // ✅ Καταγραφή νέων Tips σαν transaction (CURRENT MONTH hero uses this via getTipsStats)
@@ -668,7 +686,7 @@ function EmployeesContent() {
         {otModal && (
           <div style={modalOverlay}>
             <div style={modalCard}>
-              <h3 style={{ margin: 0, fontSize: '16px' }}>Καταγραφή Υπερωρίας</h3>
+              <h3 style={{ margin: 0, fontSize: '16px' }}>{otModal.overtimeId ? 'Επεξεργασία Υπερωρίας' : 'Καταγραφή Υπερωρίας'}</h3>
               <p style={{ fontSize: '12px', color: colors.secondaryText }}>{otModal.name}</p>
               <input
                 type="number"
@@ -682,11 +700,17 @@ function EmployeesContent() {
                 autoFocus
               />
               <div style={{ display: 'flex', gap: '10px', marginTop: '20px' }}>
-                <button onClick={() => setOtModal(null)} style={cancelBtnSmall}>
+                <button
+                  onClick={() => {
+                    setOtModal(null)
+                    setOtHours('')
+                  }}
+                  style={cancelBtnSmall}
+                >
                   ΑΚΥΡΟ
                 </button>
                 <button onClick={handleQuickOvertime} style={saveBtnSmall}>
-                  ΠΡΟΣΘΗΚΗ
+                  {otModal.overtimeId ? 'ΑΠΟΘΗΚΕΥΣΗ' : 'ΠΡΟΣΘΗΚΗ'}
                 </button>
               </div>
             </div>
@@ -899,6 +923,9 @@ function EmployeesContent() {
             const isSelected = selectedEmpId === emp.id
             const daysLeft = getDaysUntilPayment(emp.start_date)
             const pendingOt = getPendingOtHours(emp.id)
+            const pendingOtItems = overtimes
+              .filter((ot) => ot.employee_id === emp.id)
+              .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
             const isInactive = emp.is_active === false
 
             return (
@@ -973,6 +1000,45 @@ function EmployeesContent() {
                         <p style={{ margin: '8px 0 0 0', fontWeight: '800', color: '#c2410c', fontSize: '11px' }}>⚠️ ΕΚΚΡΕΜΟΥΝ: {pendingOt} ώρες υπερωρίας</p>
                       )}
                     </div>
+
+                    {pendingOtItems.length > 0 && (
+                      <div style={pendingOtListWrap}>
+                        <p style={{ margin: '0 0 8px 0', fontWeight: 900, fontSize: '10px', color: colors.secondaryText }}>
+                          ΕΚΚΡΕΜΕΙΣ ΥΠΕΡΩΡΙΕΣ
+                        </p>
+                        {pendingOtItems.map((ot) => (
+                          <div key={ot.id} style={pendingOtRow}>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                              <span style={{ fontWeight: 800, fontSize: '11px', color: '#c2410c' }}>{Number(ot.hours).toFixed(2)} ώρες</span>
+                              <span style={{ fontSize: '10px', color: colors.secondaryText, fontWeight: 700 }}>
+                                {new Date(ot.date).toLocaleDateString('el-GR')}
+                              </span>
+                            </div>
+
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <button
+                                style={miniIconBtn}
+                                title="Επεξεργασία υπερωρίας"
+                                onClick={() => {
+                                  setOtModal({ empId: emp.id, name: emp.name, overtimeId: ot.id })
+                                  setOtHours(String(ot.hours))
+                                }}
+                              >
+                                <Pencil size={16} />
+                              </button>
+
+                              <button
+                                style={miniIconBtnDanger}
+                                title="Διαγραφή υπερωρίας"
+                                onClick={() => handleDeleteOvertime(ot.id)}
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
 
                     <div style={filterContainer}>
                       <label style={{ ...labelStyle, margin: 0, flex: 1, alignSelf: 'center' }}>ΕΤΗΣΙΑ ΑΝΑΛΥΣΗ</label>
@@ -1268,6 +1334,17 @@ const tipsListItem: any = { padding: '10px', borderRadius: '12px', border: `1px 
 
 const miniIconBtn: any = { width: '34px', height: '34px', borderRadius: '10px', border: `1px solid ${colors.border}`, backgroundColor: '#ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: colors.primaryDark }
 const miniIconBtnDanger: any = { ...miniIconBtn, border: '1px solid #fecaca', backgroundColor: '#fef2f2', color: colors.accentRed }
+const pendingOtListWrap: any = { backgroundColor: '#fff7ed', border: '1px solid #fed7aa', borderRadius: '14px', padding: '12px', marginBottom: '16px' }
+const pendingOtRow: any = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  padding: '10px',
+  borderRadius: '10px',
+  border: '1px solid #fdba74',
+  backgroundColor: '#fffbeb',
+  marginBottom: '8px',
+}
 
 // ✅ HERO Payroll card styles (Dashboard-like)
 const payrollHeroCard: any = {
