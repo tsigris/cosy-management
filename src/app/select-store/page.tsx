@@ -1,14 +1,16 @@
 'use client'
-import { useEffect, useState, useCallback, useMemo } from 'react'
-import { supabase } from '@/lib/supabase'
+import { useEffect, useState, useMemo, useRef } from 'react'
+import { clearSessionCache, getSessionCached, supabase } from '@/lib/supabase'
+import { readStoresCache, refreshStoresCache, type StoreCard } from '@/lib/stores'
 import { useRouter } from 'next/navigation'
 import { LogOut, Plus, ArrowRight, TrendingUp, TrendingDown, Wallet, Store } from 'lucide-react'
 import { toast, Toaster } from 'sonner'
 
 export default function SelectStorePage() {
-  const [userStores, setUserStores] = useState<any[]>([])
+  const [userStores, setUserStores] = useState<StoreCard[]>([])
   const [loading, setLoading] = useState(true)
   const [accessWarning, setAccessWarning] = useState('')
+  const hasAutoRedirected = useRef(false)
   const router = useRouter()
 
   // ✅ Stripe-like "LIVE" datetime label (auto updates)
@@ -16,6 +18,7 @@ export default function SelectStorePage() {
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
+    clearSessionCache()
     window.location.href = '/login'
   }
 
@@ -65,132 +68,74 @@ export default function SelectStorePage() {
     return () => clearInterval(id)
   }, [])
 
-  const fetchStoresData = useCallback(async () => {
-    try {
+  const handleSelect = (storeId: string) => {
+    // ✅ Hard refresh για να καθαρίζει εντελώς state/data
+    window.location.href = `/?store=${storeId}`
+  }
+
+  const maybeAutoRedirectSingleStore = (stores: StoreCard[]) => {
+    if (hasAutoRedirected.current) return false
+    if (stores.length !== 1) return false
+    hasAutoRedirected.current = true
+    handleSelect(stores[0].id)
+    return true
+  }
+
+  useEffect(() => {
+    let isMounted = true
+
+    const loadStores = async () => {
       setLoading(true)
       setAccessWarning('')
 
-      const {
-        data: { session }
-      } = await supabase.auth.getSession()
-
+      const session = await getSessionCached()
       if (!session) {
-        router.replace('/login')
+        if (isMounted) {
+          setLoading(false)
+          router.replace('/login')
+        }
         return
       }
 
       const userId = session.user.id
+      const cached = readStoresCache(userId)
+      const hasCachedStores = Boolean(cached)
 
-      // Auto-heal owner access: αν ο χρήστης είναι owner αλλά λείπει από store_access,
-      // προσπαθούμε να τον προσθέσουμε ως admin.
-      const { data: ownedStores, error: ownedStoresError } = await supabase
-        .from('stores')
-        .select('id, name')
-        .eq('owner_id', userId)
-
-      if (ownedStoresError) {
-        throw ownedStoresError
-      }
-
-      const { data: myAccessBeforeRepair, error: beforeRepairError } = await supabase
-        .from('store_access')
-        .select('store_id')
-        .eq('user_id', userId)
-
-      if (beforeRepairError) {
-        throw beforeRepairError
-      }
-
-      const existingAccessStoreIds = new Set((myAccessBeforeRepair || []).map((row: any) => String(row.store_id)))
-      const missingOwnedStores = (ownedStores || []).filter((store: any) => !existingAccessStoreIds.has(String(store.id)))
-
-      if (missingOwnedStores.length > 0) {
-        const repairRows = missingOwnedStores.map((store: any) => ({
-          store_id: store.id,
-          user_id: userId,
-          role: 'admin',
-        }))
-
-        const { error: repairError } = await supabase
-          .from('store_access')
-          .upsert(repairRows, { onConflict: 'store_id,user_id' })
-
-        if (repairError) {
-          console.error('Owner access auto-repair failed:', repairError)
-          setAccessWarning('Δεν έγινε αυτόματη επιδιόρθωση δικαιωμάτων. Επικοινωνήστε με διαχειριστή για επαναφορά πρόσβασης.')
-        } else {
-          toast.success('Επαναφέρθηκαν δικαιώματα owner σε καταστήματα που έλειπαν ✅')
+      if (cached && isMounted) {
+        setUserStores(cached.stores)
+        setAccessWarning(cached.accessWarning)
+        setLoading(false)
+        if (maybeAutoRedirectSingleStore(cached.stores)) {
+          return
         }
       }
 
-      // 1) Ανάκτηση προσβάσεων
-      const { data: access, error } = await supabase
-        .from('store_access')
-        .select('store_id, stores(id, name)')
-        .eq('user_id', userId)
-
-      if (error) throw error
-      if (!access || access.length === 0) {
-        setUserStores([])
-        setAccessWarning('Δεν έχετε δικαιώματα πρόσβασης σε κανένα κατάστημα (store_access).')
-        return
-      }
-
-      // 2) Υπολογισμός στατιστικών μήνα
-      const now = new Date()
-      const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10) // YYYY-MM-DD
-
-      const storesWithStats = await Promise.all(
-        access.map(async (item: any) => {
-          const store = item.stores
-          if (!store) return null
-
-          // ✅ summary κινήσεων για κάρτα
-          const { data: trans, error: transErr } = await supabase
-            .from('transactions')
-            .select('amount, type, date')
-            .eq('store_id', store.id)
-            .gte('date', firstDay)
-            .order('date', { ascending: false })
-            .limit(300)
-
-          if (transErr) console.error('Transactions fetch error:', transErr)
-
-          const income =
-            trans
-              ?.filter((t: any) => t.type === 'income')
-              .reduce((acc: number, curr: any) => acc + (Number(curr.amount) || 0), 0) || 0
-
-          const expenses =
-            trans
-              ?.filter((t: any) => t.type === 'expense' || t.type === 'debt_payment')
-              .reduce((acc: number, curr: any) => acc + Math.abs(Number(curr.amount) || 0), 0) || 0
-
-          const lastUpdated = trans?.[0]?.date || null // επειδή order desc
-
-          return {
-            id: store.id,
-            name: store.name,
-            income,
-            expenses,
-            profit: income - expenses,
-            lastUpdated
+      void refreshStoresCache(userId)
+        .then((fresh) => {
+          if (!isMounted) return
+          setUserStores(fresh.stores)
+          setAccessWarning(fresh.accessWarning)
+          if (!hasCachedStores) {
+            setLoading(false)
+          }
+          maybeAutoRedirectSingleStore(fresh.stores)
+        })
+        .catch((err: any) => {
+          console.error('Fetch error:', err)
+          if (!hasCachedStores) {
+            toast.error('Πρόβλημα κατά την ανάκτηση των καταστημάτων')
+          }
+          if (isMounted && !hasCachedStores) {
+            setLoading(false)
           }
         })
-      )
+    }
 
-      setUserStores(storesWithStats.filter(Boolean))
-    } catch (err: any) {
-      console.error('Fetch error:', err)
-      toast.error('Πρόβλημα κατά την ανάκτηση των καταστημάτων')
-    } finally {
-      setLoading(false)
+    void loadStores()
+    return () => {
+      isMounted = false
     }
   }, [router])
-
-  useEffect(() => {
-    fetchStoresData()
-  }, [fetchStoresData])
 
   // ✅ Global summary (all stores)
   const globalStats = useMemo(() => {
@@ -200,17 +145,27 @@ export default function SelectStorePage() {
     return { income, expenses, profit }
   }, [userStores])
 
-  const handleSelect = (storeId: string) => {
-    // ✅ Hard refresh για να καθαρίζει εντελώς state/data
-    window.location.href = `/?store=${storeId}`
-  }
-
   if (loading)
     return (
-      <div style={centerStyle}>
-        <div style={{ textAlign: 'center' }}>
-          <Store className="animate-pulse" size={40} color="#6366f1" style={{ marginBottom: '15px' }} />
-          <p>ΑΝΑΚΤΗΣΗ ΚΑΤΑΣΤΗΜΑΤΩΝ...</p>
+      <div style={containerStyle}>
+        <header style={{ marginBottom: '18px', textAlign: 'center' }}>
+          <div style={skeletonTitleStyle} className="animate-pulse" />
+          <div style={skeletonSubTitleStyle} className="animate-pulse" />
+        </header>
+        <div style={{ display: 'grid', gap: '15px' }}>
+          {[0, 1, 2].map((index) => (
+            <div key={index} style={skeletonCardStyle} className="animate-pulse">
+              <div style={skeletonRowStyle}>
+                <div style={skeletonStoreTitleStyle} />
+                <div style={skeletonCircleStyle} />
+              </div>
+              <div style={skeletonStatsRowStyle}>
+                <div style={skeletonStatStyle} />
+                <div style={skeletonStatStyle} />
+              </div>
+              <div style={skeletonProfitStyle} />
+            </div>
+          ))}
         </div>
       </div>
     )
@@ -336,7 +291,15 @@ export default function SelectStorePage() {
 
 // --- STYLES ---
 const containerStyle: any = { padding: '30px 20px', backgroundColor: '#f8fafc', minHeight: '100dvh', paddingBottom: '60px' }
-const centerStyle: any = { display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', fontWeight: '800', color: '#94a3b8', letterSpacing: '1px' }
+const skeletonTitleStyle: any = { height: '28px', width: '210px', borderRadius: '8px', backgroundColor: '#e2e8f0', margin: '0 auto 10px auto' }
+const skeletonSubTitleStyle: any = { height: '16px', width: '140px', borderRadius: '8px', backgroundColor: '#e2e8f0', margin: '0 auto' }
+const skeletonCardStyle: any = { backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '24px', padding: '24px' }
+const skeletonRowStyle: any = { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }
+const skeletonStoreTitleStyle: any = { height: '20px', width: '160px', borderRadius: '8px', backgroundColor: '#e2e8f0' }
+const skeletonCircleStyle: any = { width: '32px', height: '32px', borderRadius: '50%', backgroundColor: '#e2e8f0' }
+const skeletonStatsRowStyle: any = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '14px' }
+const skeletonStatStyle: any = { height: '58px', borderRadius: '16px', backgroundColor: '#e2e8f0' }
+const skeletonProfitStyle: any = { height: '28px', borderRadius: '10px', backgroundColor: '#e2e8f0' }
 
 // ✅ Stripe-like live row
 const liveRow: any = { marginTop: '10px', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '10px' }

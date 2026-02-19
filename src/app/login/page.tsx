@@ -3,7 +3,8 @@
 export const dynamic = 'force-dynamic'
 
 import { useState, Suspense, useEffect } from 'react'
-import { supabase } from '@/lib/supabase'
+import { getSessionCached, setSessionCache, supabase } from '@/lib/supabase'
+import { prefetchStoresForUser } from '@/lib/stores'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { toast, Toaster } from 'sonner'
@@ -46,8 +47,8 @@ function LoginContent() {
   // Καθαρισμός τυχόν παλιών σκουπιδιών κατά τη φόρτωση της σελίδας
   useEffect(() => {
     const checkSession = async () => {
-      const { data } = await supabase.auth.getSession()
-      if (data.session) {
+      const session = await getSessionCached()
+      if (session) {
          router.replace(safeNextPath || '/select-store')
       }
     }
@@ -112,8 +113,11 @@ function LoginContent() {
       }
 
       setEmailConfirmationPending(false)
+      setSessionCache(data.session ?? null)
 
       if (data.user) {
+        const prefetchUserId = data.session?.user.id || data.user.id
+        void prefetchStoresForUser(prefetchUserId)
         const nextAfterLogin = getSafeNextPath(searchParams.get('next'))
         router.push(nextAfterLogin || '/select-store')
       }
