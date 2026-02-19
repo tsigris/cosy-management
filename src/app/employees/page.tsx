@@ -44,7 +44,7 @@ function EmployeesContent() {
   const [showInactive, setShowInactive] = useState(false)
 
   // States για overtime modal
-  const [otModal, setOtModal] = useState<{ empId: string; name: string; overtimeId?: string } | null>(null)
+  const [otModal, setOtModal] = useState<{ empId: string; name: string } | null>(null)
   const [otHours, setOtHours] = useState('')
 
   // Quick Tips (create)
@@ -257,6 +257,20 @@ function EmployeesContent() {
       .reduce((acc, curr) => acc + Number(curr.hours), 0)
   }
 
+  const getDefaultOvertimeHourlyRate = (empId: string) => {
+    const employee = employees.find((emp) => emp.id === empId)
+    if (!employee) return 0
+
+    const dailyRate = Number(employee.daily_rate)
+    if (Number.isFinite(dailyRate) && dailyRate > 0) return dailyRate / 8
+
+    const monthlySalary = Number(employee.monthly_salary)
+    const monthlyDays = Number(employee.monthly_days) || 25
+    if (Number.isFinite(monthlySalary) && monthlySalary > 0 && monthlyDays > 0) return monthlySalary / (monthlyDays * 8)
+
+    return 0
+  }
+
   // ✅ Καταγραφή νέας υπερωρίας (store_id from URL) - uses employee_id
   async function handleQuickOvertime() {
     if (!otHours || !otModal) return
@@ -272,27 +286,29 @@ function EmployeesContent() {
     }
 
     try {
+      const hoursNum = Number(otHours)
+      if (Number.isNaN(hoursNum) || hoursNum <= 0) {
+        toast.error('Βάλε έγκυρες ώρες υπερωρίας.')
+        return
+      }
+
       const payload = {
         employee_id: otModal.empId,
         store_id: storeId,
-        hours: Number(otHours),
+        hours: hoursNum,
         date: new Date().toISOString().split('T')[0],
         is_paid: false,
       }
 
-      const { error } = otModal.overtimeId
-        ? await supabase.from('employee_overtimes').update(payload).eq('id', otModal.overtimeId)
-        : await supabase.from('employee_overtimes').insert([payload])
+      const { error } = await supabase.from('employee_overtimes').insert([payload])
 
       if (error) {
         console.error(error)
-        toast.error(otModal.overtimeId ? 'Αποτυχία ενημέρωσης υπερωρίας.' : 'Αποτυχία καταγραφής υπερωρίας.')
+        toast.error('Αποτυχία καταγραφής υπερωρίας.')
         return
       }
 
-      toast.success(
-        otModal.overtimeId ? `Ενημερώθηκαν σε ${otHours} ώρες για ${otModal.name}` : `Προστέθηκαν ${otHours} ώρες στην ${otModal.name}`
-      )
+      toast.success(`Προστέθηκαν ${hoursNum} ώρες στην ${otModal.name}`)
       setOtModal(null)
       setOtHours('')
       fetchInitialData()
@@ -303,7 +319,95 @@ function EmployeesContent() {
     }
   }
 
-  async function handleDeleteOvertime(id: string) {
+  async function handleQuickOvertimeAndPayNow() {
+    if (!otHours || !otModal) return
+    if (!storeId || storeId === 'null') {
+      router.replace('/select-store')
+      return
+    }
+
+    const isValidEmployeeId = employees.some((emp) => emp.id === otModal.empId)
+    if (!isValidEmployeeId) {
+      toast.error('Μη έγκυρος υπάλληλος για καταγραφή υπερωρίας.')
+      return
+    }
+
+    const hoursNum = Number(otHours)
+    if (Number.isNaN(hoursNum) || hoursNum <= 0) {
+      toast.error('Βάλε έγκυρες ώρες υπερωρίας.')
+      return
+    }
+
+    const defaultRate = getDefaultOvertimeHourlyRate(otModal.empId)
+    const suggestedAmount = Number((hoursNum * defaultRate).toFixed(2))
+
+    const amountInput = prompt(
+      `Ποσό άμεσης πληρωμής για ${hoursNum} ώρες:`,
+      suggestedAmount > 0 ? String(suggestedAmount) : ''
+    )
+    if (amountInput === null) return
+
+    const amountNum = Number(String(amountInput).replace(',', '.'))
+    if (Number.isNaN(amountNum) || amountNum <= 0) {
+      toast.error('Βάλε έγκυρο ποσό πληρωμής.')
+      return
+    }
+
+    try {
+      const today = new Date().toISOString().split('T')[0]
+      const { data: insertedOt, error: overtimeError } = await supabase
+        .from('employee_overtimes')
+        .insert([
+          {
+            employee_id: otModal.empId,
+            store_id: storeId,
+            hours: hoursNum,
+            date: today,
+            is_paid: true,
+          },
+        ])
+        .select('id')
+        .single()
+
+      if (overtimeError) {
+        console.error(overtimeError)
+        toast.error('Αποτυχία καταγραφής και άμεσης πληρωμής υπερωρίας.')
+        return
+      }
+
+      const { error: transactionError } = await supabase.from('transactions').insert([
+        {
+          store_id: storeId,
+          fixed_asset_id: otModal.empId,
+          amount: amountNum,
+          type: 'expense',
+          category: 'Staff',
+          method: 'Μετρητά',
+          date: today,
+          notes: `Άμεση πληρωμή υπερωρίας: ${hoursNum} ώρες`,
+        },
+      ])
+
+      if (transactionError) {
+        console.error(transactionError)
+        if (insertedOt?.id) {
+          await supabase.from('employee_overtimes').delete().eq('id', insertedOt.id)
+        }
+        toast.error('Η υπερωρία καταγράφηκε, αλλά απέτυχε η συναλλαγή πληρωμής.')
+        return
+      }
+
+      toast.success(`Καταχωρήθηκε και πληρώθηκε άμεσα υπερωρία ${hoursNum} ωρών.`)
+      setOtModal(null)
+      setOtHours('')
+      fetchInitialData()
+    } catch (error) {
+      console.error(error)
+      toast.error('Αποτυχία άμεσης πληρωμής υπερωρίας.')
+    }
+  }
+
+  async function deleteOvertime(id: string) {
     if (!confirm('Διαγραφή αυτής της υπερωρίας;')) return
 
     const { error } = await supabase.from('employee_overtimes').delete().eq('id', id)
@@ -686,7 +790,7 @@ function EmployeesContent() {
         {otModal && (
           <div style={modalOverlay}>
             <div style={modalCard}>
-              <h3 style={{ margin: 0, fontSize: '16px' }}>{otModal.overtimeId ? 'Επεξεργασία Υπερωρίας' : 'Καταγραφή Υπερωρίας'}</h3>
+              <h3 style={{ margin: 0, fontSize: '16px' }}>Καταγραφή Υπερωρίας</h3>
               <p style={{ fontSize: '12px', color: colors.secondaryText }}>{otModal.name}</p>
               <input
                 type="number"
@@ -699,6 +803,7 @@ function EmployeesContent() {
                 style={{ ...inputStyle, marginTop: '15px', textAlign: 'center', fontSize: '24px' }}
                 autoFocus
               />
+
               <div style={{ display: 'flex', gap: '10px', marginTop: '20px' }}>
                 <button
                   onClick={() => {
@@ -710,9 +815,12 @@ function EmployeesContent() {
                   ΑΚΥΡΟ
                 </button>
                 <button onClick={handleQuickOvertime} style={saveBtnSmall}>
-                  {otModal.overtimeId ? 'ΑΠΟΘΗΚΕΥΣΗ' : 'ΠΡΟΣΘΗΚΗ'}
+                  ΚΑΤΑΧΩΡΗΣΗ
                 </button>
               </div>
+              <button onClick={handleQuickOvertimeAndPayNow} style={payNowBtnSmall}>
+                ΚΑΤΑΧΩΡΗΣΗ & ΠΛΗΡΩΜΗ ΤΩΡΑ
+              </button>
             </div>
           </div>
         )}
@@ -1017,20 +1125,9 @@ function EmployeesContent() {
 
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                               <button
-                                style={miniIconBtn}
-                                title="Επεξεργασία υπερωρίας"
-                                onClick={() => {
-                                  setOtModal({ empId: emp.id, name: emp.name, overtimeId: ot.id })
-                                  setOtHours(String(ot.hours))
-                                }}
-                              >
-                                <Pencil size={16} />
-                              </button>
-
-                              <button
                                 style={miniIconBtnDanger}
                                 title="Διαγραφή υπερωρίας"
-                                onClick={() => handleDeleteOvertime(ot.id)}
+                                onClick={() => deleteOvertime(ot.id)}
                               >
                                 <Trash2 size={16} />
                               </button>
@@ -1326,6 +1423,17 @@ const modalOverlay: any = { position: 'fixed', top: 0, left: 0, right: 0, bottom
 const modalCard: any = { backgroundColor: 'white', padding: '25px', borderRadius: '25px', width: '100%', maxWidth: '350px', textAlign: 'center' }
 const saveBtnSmall: any = { flex: 1, padding: '14px', backgroundColor: colors.primaryDark, color: 'white', border: 'none', borderRadius: '12px', fontWeight: '700' }
 const cancelBtnSmall: any = { flex: 1, padding: '14px', backgroundColor: 'white', color: colors.secondaryText, border: `1px solid ${colors.border}`, borderRadius: '12px', fontWeight: '700' }
+const payNowBtnSmall: any = {
+  width: '100%',
+  padding: '14px',
+  marginTop: '10px',
+  backgroundColor: colors.accentGreen,
+  color: 'white',
+  border: 'none',
+  borderRadius: '12px',
+  fontWeight: '800',
+  cursor: 'pointer',
+}
 
 const iconToggleBtn: any = { width: '56px', borderRadius: '16px', border: `1px solid ${colors.border}`, backgroundColor: colors.white, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', boxShadow: '0 4px 12px rgba(0,0,0,0.04)' }
 
