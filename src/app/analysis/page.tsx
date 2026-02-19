@@ -813,7 +813,7 @@ function AnalysisContent() {
             <div style={smallKpiHint}>{drawer ? `Ημερομηνία Ζ: ${drawer.date}` : `Δεν βρέθηκε Ζ έως: ${endDate}`}</div>
 
             <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', marginTop: 4 }}>
-              {drawer ? `Z: ${money(drawer.z_cash)} • Extra: ${money(drawer.extra_cash)}` : ''}
+              {drawer ? `Z: ${money(drawer.z_cash)} • Χωρίς Σήμανση: ${money(drawer.extra_cash)}` : ''}
             </div>
           </div>
         </div>
@@ -858,7 +858,7 @@ function AnalysisContent() {
 
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 1000 }}>
                   <span style={{ color: '#0f172a' }}>Πραγματικό Συρτάρι</span>
-                  <span style={{ color: '#0f172a' }}>{money(zBreakdown.zCash + zBreakdown.blackCash - cashExpensesToday)}</span>
+                  <span style={{ color: '#0f172a' }}>{money(totalCashDisplay)}</span>
                 </div>
               </div>
 
