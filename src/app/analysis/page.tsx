@@ -186,13 +186,24 @@ function AnalysisContent() {
     return String((t.method ?? t.payment_method ?? '') || '').trim()
   }, [])
 
-  // ✅ CREDIT DETECTION: use BOTH signals
+  // ✅ helper: normalize string for robust matching
+  const norm = useCallback((s: any) => String(s ?? '').trim().toLowerCase(), [])
+
+  // ✅ CREDIT DETECTION (FIXED):
+  // 1) is_credit flag
+  // 2) method contains "πιστ" (covers Πίστωση, πιστωση, κλπ)
+  // 3) debt_payment / debt_received ALWAYS considered credit movements
   const isCreditTx = useCallback(
     (t: any) => {
-      const method = getMethod(t)
-      return t?.is_credit === true || method === 'Πίστωση'
+      const method = norm(getMethod(t))
+
+      if (t?.is_credit === true) return true
+      if (method.includes('πιστ')) return true
+      if (t?.type === 'debt_payment' || t?.type === 'debt_received') return true
+
+      return false
     },
-    [getMethod]
+    [getMethod, norm]
   )
 
   // ✅ CASH / BANK classification
@@ -1118,7 +1129,7 @@ function AnalysisContent() {
                           </div>
                         )}
 
-                        {(t.is_credit === true || pm === 'Πίστωση') && (
+                        {isCreditTx(t) && (
                           <div style={{ fontSize: 12, fontWeight: 900, color: colors.danger }}>
                             ⚠️ ΠΙΣΤΩΣΗ (δεν επηρεάζει Cash/Bank)
                           </div>
