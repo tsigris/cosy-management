@@ -773,7 +773,7 @@ function AnalysisContent() {
             }}
           >
             <div style={kpiTopRow}>
-              <div style={{ ...kpiLabel, color: '#fff' }}>{isZReport ? 'Καθαρό Ταμείο' : 'Καθαρό Κέρδος'}</div>
+              <div style={{ ...kpiLabel, color: '#fff' }}>{isZReport ? 'Πραγματικό Συρτάρι' : 'Καθαρό Κέρδος'}</div>
               <div style={{ ...kpiSign, color: '#fff' }}>{bigKpiValue >= 0 ? '▲' : '▼'}</div>
             </div>
             <div style={{ ...kpiValue, color: '#fff' }}>{bigKpiValue.toLocaleString('el-GR')}€</div>
@@ -853,11 +853,11 @@ function AnalysisContent() {
 
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 900 }}>
                   <span style={{ color: '#64748b' }}>Έξοδα (Μετρητά)</span>
-                  <span style={{ color: '#0f172a' }}>{money(cashExpensesToday)}</span>
+                  <span style={{ color: colors.danger }}>- {money(cashExpensesToday)}</span>
                 </div>
 
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 1000 }}>
-                  <span style={{ color: '#0f172a' }}>Σύνολο Συρταριού</span>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 1000, fontSize: 18 }}>
+                  <span style={{ color: '#0f172a' }}>Πραγματικό Συρτάρι</span>
                   <span style={{ color: '#0f172a' }}>{money(totalCashDisplay)}</span>
                 </div>
               </div>
