@@ -8,6 +8,20 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { toast, Toaster } from 'sonner'
 
+const getEmailRedirectUrl = () => {
+  const envUrl = process.env.NEXT_PUBLIC_SITE_URL || process.env.NEXT_PUBLIC_APP_URL
+
+  if (envUrl) {
+    return `${envUrl.replace(/\/$/, '')}/login`
+  }
+
+  if (typeof window !== 'undefined') {
+    return `${window.location.origin}/login`
+  }
+
+  return '/login'
+}
+
 function LoginContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -17,6 +31,8 @@ function LoginContent() {
   const [password, setPassword] = useState('')
   const [enteredPin, setEnteredPin] = useState('')
   const [loading, setLoading] = useState(false)
+  const [resendLoading, setResendLoading] = useState(false)
+  const [emailConfirmationPending, setEmailConfirmationPending] = useState(false)
   const [isFastMode, setIsFastMode] = useState(mode === 'fast')
 
   // Καθαρισμός τυχόν παλιών σκουπιδιών κατά τη φόρτωση της σελίδας
@@ -29,6 +45,31 @@ function LoginContent() {
     }
     checkSession()
   }, [router])
+
+  const handleResendConfirmationEmail = async () => {
+    if (!email) {
+      toast.error('Συμπληρώστε πρώτα το email σας.')
+      return
+    }
+
+    setResendLoading(true)
+    try {
+      const { error } = await supabase.auth.resend({
+        type: 'signup',
+        email: email.trim(),
+        options: {
+          emailRedirectTo: getEmailRedirectUrl()
+        }
+      })
+
+      if (error) throw error
+      toast.success('Στάλθηκε νέο email επιβεβαίωσης. Ελέγξτε τα εισερχόμενα.')
+    } catch (error: any) {
+      toast.error(error.message || 'Αποτυχία επαναποστολής email επιβεβαίωσης.')
+    } finally {
+      setResendLoading(false)
+    }
+  }
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -46,14 +87,31 @@ function LoginContent() {
       })
       
       if (error) {
-        toast.error('Σφάλμα: ' + error.message)
-        setLoading(false)
-      } else if (data.user) {
+        if (/email not confirmed/i.test(error.message)) {
+          setEmailConfirmationPending(true)
+          toast.error('Δεν έχει επιβεβαιωθεί το email σας. Ελέγξτε τα εισερχόμενα.', {
+            action: {
+              label: 'ΕΠΑΝΑΠΟΣΤΟΛΗ',
+              onClick: () => {
+                void handleResendConfirmationEmail()
+              }
+            }
+          })
+          return
+        }
+
+        throw error
+      }
+
+      setEmailConfirmationPending(false)
+
+      if (data.user) {
         // Χρησιμοποιούμε replace για πιο γρήγορη μετάβαση χωρίς ιστορικό
         router.replace('/select-store')
       }
-    } catch (err) {
-      toast.error('Παρουσιάστηκε πρόβλημα κατά τη σύνδεση.')
+    } catch (err: any) {
+      toast.error(err.message || 'Παρουσιάστηκε πρόβλημα κατά τη σύνδεση.')
+    } finally {
       setLoading(false)
     }
   }
@@ -131,6 +189,21 @@ function LoginContent() {
           <div style={dividerStyle} />
           <p style={instructionStyle}>Είσοδος στο Σύστημα</p>
         </div>
+        {emailConfirmationPending && (
+          <div style={confirmationWrapStyle}>
+            <p style={confirmationTextStyle}>
+              Δεν μπορείτε να συνδεθείτε ακόμα. Πρώτα επιβεβαιώστε το email σας από τα εισερχόμενα και μετά δοκιμάστε ξανά.
+            </p>
+            <button
+              type="button"
+              onClick={handleResendConfirmationEmail}
+              disabled={resendLoading}
+              style={{ ...resendBtnStyle, opacity: resendLoading ? 0.7 : 1 }}
+            >
+              {resendLoading ? 'ΓΙΝΕΤΑΙ ΑΠΟΣΤΟΛΗ...' : 'ΕΠΑΝΑΠΟΣΤΟΛΗ EMAIL'}
+            </button>
+          </div>
+        )}
         <form onSubmit={handleLogin} style={formStyle}>
           <div style={fieldGroup}>
             <label style={labelStyle}>EMAIL</label>
@@ -197,3 +270,6 @@ const dotsContainer = { display: 'flex', justifyContent: 'center', gap: '20px', 
 const dotStyle = { width: '12px', height: '12px', borderRadius: '50%', border: '2px solid #e2e8f0', transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)' };
 const numpadGrid = { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '15px', width: '100%', maxWidth: '280px', margin: '0 auto' };
 const numBtnStyle = { padding: '20px', fontSize: '22px', fontWeight: '800', backgroundColor: '#ffffff', border: '1px solid #f1f5f9', borderRadius: '16px', cursor: 'pointer', color: '#0f172a', transition: 'all 0.1s' };
+const confirmationWrapStyle = { marginBottom: '20px', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '14px', padding: '14px' };
+const confirmationTextStyle = { margin: '0 0 10px 0', color: '#334155', fontSize: '13px', lineHeight: '1.5' };
+const resendBtnStyle = { width: '100%', color: '#0f172a', backgroundColor: '#ffffff', padding: '12px 16px', borderRadius: '12px', border: '1px solid #cbd5e1', fontWeight: '800', fontSize: '12px', cursor: 'pointer' };
