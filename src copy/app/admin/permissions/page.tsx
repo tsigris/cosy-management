@@ -91,7 +91,6 @@ function PermissionsContent() {
 
   // 3. ΔΙΑΓΡΑΦΗ ΧΡΗΣΤΗ
   const removeAccess = async (userId: string) => {
-    if (!storeId) return toast.error('Σφάλμα καταστήματος')
     if (userId === myId) return toast.error("Δεν μπορείτε να αφαιρέσετε τον εαυτό σας");
     if (!confirm('Οριστική αφαίρεση πρόσβασης;')) return;
 

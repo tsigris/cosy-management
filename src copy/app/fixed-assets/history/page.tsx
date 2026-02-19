@@ -91,13 +91,12 @@ function FixedAssetsContent() {
   }, [fetchData, storeIdFromUrl, router])
 
   const handleSave = async () => {
-    const storeId = storeIdFromUrl
-    if (!name.trim() || !storeId || !isValidUUID(storeId)) return toast.error('Δώστε όνομα')
+    if (!name.trim() || !storeIdFromUrl) return toast.error('Δώστε όνομα')
     setIsSaving(true)
     try {
-      const payload = { name: name.trim().toUpperCase(), store_id: storeId }
+      const payload = { name: name.trim().toUpperCase(), store_id: storeIdFromUrl }
       const { error } = editingId 
-        ? await supabase.from('fixed_assets').update(payload).eq('id', editingId).eq('store_id', storeId)
+        ? await supabase.from('fixed_assets').update(payload).eq('id', editingId)
         : await supabase.from('fixed_assets').insert([payload])
       
       if (error) throw error
@@ -109,14 +108,8 @@ function FixedAssetsContent() {
 
   const handleDelete = async (id: string) => {
     if (!confirm('Οριστική διαγραφή;')) return
-    const storeId = storeIdFromUrl
-    if (!storeId || !isValidUUID(storeId)) {
-      toast.error('Λείπει έγκυρο κατάστημα')
-      return
-    }
     try {
-      const { error } = await supabase.from('fixed_assets').delete().eq('id', id).eq('store_id', storeId)
-      if (error) throw error
+      await supabase.from('fixed_assets').delete().eq('id', id)
       fetchData()
     } catch (err) { toast.error('Σφάλμα διαγραφής') }
   }

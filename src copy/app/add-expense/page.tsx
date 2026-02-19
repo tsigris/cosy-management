@@ -684,7 +684,7 @@ function AddExpenseForm() {
 
       let error: any = null
       if (editId) {
-        const res = await supabase.from('transactions').update(payload).eq('id', editId).eq('store_id', activeStoreId)
+        const res = await supabase.from('transactions').update(payload).eq('id', editId)
         error = res.error
       } else {
         const res = await supabase.from('transactions').insert([payload])

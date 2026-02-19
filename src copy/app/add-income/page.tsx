@@ -114,8 +114,6 @@ function AddIncomeForm() {
     try {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session?.user?.id) throw new Error('Δεν βρέθηκε session χρήστη')
-      const activeStoreId = storeId
-      if (!activeStoreId) throw new Error('Δεν βρέθηκε κατάστημα')
 
       const payload: any = {
         amount: Math.abs(Number(amount)),
@@ -125,20 +123,20 @@ function AddIncomeForm() {
         category: 'income',
         date: selectedDate,
         user_id: session.user.id,
-        store_id: activeStoreId,
+        store_id: storeId,
         revenue_source_id: selectedSourceId,
         created_by_name: currentUsername,
         notes: notes,
       }
 
       const { error } = editId
-        ? await supabase.from('transactions').update(payload).eq('id', editId).eq('store_id', activeStoreId)
+        ? await supabase.from('transactions').update(payload).eq('id', editId)
         : await supabase.from('transactions').insert([payload])
 
       if (error) throw error
 
       toast.success('Το έσοδο καταχωρήθηκε!')
-      router.push(`/?date=${selectedDate}&store=${activeStoreId}`)
+      router.push(`/?date=${selectedDate}&store=${storeId}`)
     } catch (error: any) {
       toast.error(error.message)
       setLoading(false)

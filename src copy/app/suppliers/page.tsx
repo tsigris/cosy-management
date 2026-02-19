@@ -154,7 +154,6 @@ function SuppliersContent() {
 
   const handleDelete = async (id: string) => {
     if (!confirm('Οριστική διαγραφή προμηθευτή;')) return;
-    if (!storeIdFromUrl) return toast.error('Σφάλμα καταστήματος');
     try {
       const { error } = await supabase
         .from('suppliers').delete().eq('id', id).eq('store_id', storeIdFromUrl);

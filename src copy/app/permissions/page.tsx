@@ -98,21 +98,12 @@ function PermissionsContent() {
       toast.error("Επιλέξτε τουλάχιστον ένα κατάστημα");
       return;
     }
-    if (!storeId) {
-      toast.error('Σφάλμα καταστήματος');
-      return;
-    }
-    if (!selectedUserForRole?.user_id) {
-      toast.error('Δεν επιλέχθηκε χρήστης');
-      return;
-    }
 
     setMassUpdateLoading(true);
     try {
       const { error } = await supabase
         .from('store_access')
         .update({ role: 'admin' })
-        .eq('store_id', storeId)
         .eq('user_id', selectedUserForRole.user_id)
         .in('store_id', selectedStores);
 
@@ -129,10 +120,6 @@ function PermissionsContent() {
   }
 
   async function updatePermission(userId: string, field: string, newValue: any) {
-    if (!storeId) {
-      toast.error('Σφάλμα καταστήματος');
-      return;
-    }
     if (userId === myId && field === 'role' && newValue !== 'admin') {
       toast.error("Δεν μπορείτε να υποβαθμίσετε τον εαυτό σας!");
       return;
@@ -154,10 +141,6 @@ function PermissionsContent() {
   }
 
   async function removeUser(userId: string) {
-    if (!storeId) {
-      toast.error('Σφάλμα καταστήματος');
-      return;
-    }
     if (userId === myId) return;
     if (!confirm('Οριστική αφαίρεση πρόσβασης;')) return;
 

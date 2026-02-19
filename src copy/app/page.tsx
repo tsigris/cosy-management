@@ -234,10 +234,6 @@ function DashboardContent() {
 
   const handleDelete = async (id: string) => {
     if (!confirm('Οριστική διαγραφή αυτής της κίνησης;')) return
-    if (!storeIdFromUrl) {
-      toast.error('Σφάλμα καταστήματος')
-      return
-    }
     try {
       const { error } = await supabase.from('transactions').delete().eq('id', id).eq('store_id', storeIdFromUrl)
 
@@ -256,10 +252,6 @@ function DashboardContent() {
 
   const handleDeleteZ = async (date: string) => {
     if (!confirm('Διαγραφή Κλεισίματος Ζ;')) return
-    if (!storeIdFromUrl) {
-      toast.error('Σφάλμα καταστήματος')
-      return
-    }
 
     const { error } = await supabase
       .from('transactions')

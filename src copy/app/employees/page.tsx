@@ -201,14 +201,6 @@ function EmployeesContent() {
     if (storeId && storeId !== 'null') getTipsStats()
   }, [storeId, getTipsStats])
 
-  const requireTenantStoreId = useCallback(() => {
-    if (!storeId || storeId === 'null') {
-      router.replace('/select-store')
-      throw new Error('Missing store_id. Tenant scope required.')
-    }
-    return storeId
-  }, [storeId, router])
-
   // Φιλτράρισμα λίστας βάσει showInactive
   // Hide employees with null store_id if not main store
   const mainStoreId = 'e50a8803-a262-4303-9e90-c116c965e683'
@@ -247,25 +239,12 @@ function EmployeesContent() {
 
   // ✅ Toggle Active/Inactive (Supabase)  (fixed_assets)
   async function toggleActive(empId: string, currentValue: boolean | null | undefined) {
-    let tenantStoreId: string
-    try {
-      tenantStoreId = requireTenantStoreId()
-    } catch (error) {
-      console.error(error)
-      toast.error('Αποτυχία ενημέρωσης κατάστασης υπαλλήλου.')
-      return
-    }
-
     const nextValue = currentValue === false ? true : false
 
     // optimistic UI
     setEmployees((prev) => prev.map((e) => (e.id === empId ? { ...e, is_active: nextValue } : e)))
 
-    const { error } = await supabase
-      .from('fixed_assets')
-      .update({ is_active: nextValue })
-      .eq('id', empId)
-      .eq('store_id', tenantStoreId)
+    const { error } = await supabase.from('fixed_assets').update({ is_active: nextValue }).eq('id', empId)
 
     if (error) {
       // rollback
@@ -302,12 +281,8 @@ function EmployeesContent() {
   // ✅ Καταγραφή νέας υπερωρίας (store_id from URL) - uses employee_id
   async function handleQuickOvertime() {
     if (!otHours || !otModal) return
-
-    let tenantStoreId: string
-    try {
-      tenantStoreId = requireTenantStoreId()
-    } catch (error) {
-      console.error(error)
+    if (!storeId || storeId === 'null') {
+      router.replace('/select-store')
       return
     }
 
@@ -326,7 +301,7 @@ function EmployeesContent() {
 
       const payload = {
         employee_id: otModal.empId,
-        store_id: tenantStoreId,
+        store_id: storeId,
         hours: hoursNum,
         date: new Date().toISOString().split('T')[0],
         is_paid: false,
@@ -353,12 +328,8 @@ function EmployeesContent() {
 
   async function handleQuickOvertimeAndPayNow() {
     if (!otHours || !otModal) return
-
-    let tenantStoreId: string
-    try {
-      tenantStoreId = requireTenantStoreId()
-    } catch (error) {
-      console.error(error)
+    if (!storeId || storeId === 'null') {
+      router.replace('/select-store')
       return
     }
 
@@ -396,7 +367,7 @@ function EmployeesContent() {
         .insert([
           {
             employee_id: otModal.empId,
-            store_id: tenantStoreId,
+            store_id: storeId,
             hours: hoursNum,
             date: today,
             is_paid: true,
@@ -413,7 +384,7 @@ function EmployeesContent() {
 
       const { error: transactionError } = await supabase.from('transactions').insert([
         {
-          store_id: tenantStoreId,
+          store_id: storeId,
           fixed_asset_id: otModal.empId,
           amount: amountNum,
           type: 'expense',
@@ -427,7 +398,7 @@ function EmployeesContent() {
       if (transactionError) {
         console.error(transactionError)
         if (insertedOt?.id) {
-          await supabase.from('employee_overtimes').delete().eq('id', insertedOt.id).eq('store_id', tenantStoreId)
+          await supabase.from('employee_overtimes').delete().eq('id', insertedOt.id)
         }
         toast.error('Η υπερωρία καταγράφηκε, αλλά απέτυχε η συναλλαγή πληρωμής.')
         return
@@ -446,15 +417,7 @@ function EmployeesContent() {
   async function deleteOvertime(id: string) {
     if (!confirm('Διαγραφή αυτής της υπερωρίας;')) return
 
-    let tenantStoreId: string
-    try {
-      tenantStoreId = requireTenantStoreId()
-    } catch (error) {
-      console.error(error)
-      return
-    }
-
-    const { error } = await supabase.from('employee_overtimes').delete().eq('id', id).eq('store_id', tenantStoreId)
+    const { error } = await supabase.from('employee_overtimes').delete().eq('id', id)
     if (error) {
       console.error(error)
       toast.error('Αποτυχία διαγραφής υπερωρίας.')
@@ -468,12 +431,8 @@ function EmployeesContent() {
   // ✅ Καταγραφή νέων Tips σαν transaction (CURRENT MONTH hero uses this via getTipsStats)
   async function handleQuickTip() {
     if (!tipAmount || !tipModal) return
-
-    let tenantStoreId: string
-    try {
-      tenantStoreId = requireTenantStoreId()
-    } catch (error) {
-      console.error(error)
+    if (!storeId || storeId === 'null') {
+      router.replace('/select-store')
       return
     }
 
@@ -487,7 +446,7 @@ function EmployeesContent() {
 
     const { error } = await supabase.from('transactions').insert([
       {
-        store_id: tenantStoreId,
+        store_id: storeId,
         fixed_asset_id: tipModal.empId,
         amount: amountNum,
         type: 'tip_entry', // ✅ tips as dedicated type
@@ -514,12 +473,8 @@ function EmployeesContent() {
   // ✅ Επεξεργασία υπάρχοντος Tip (notes + amount)
   async function handleEditTipSave() {
     if (!tipEditModal) return
-
-    let tenantStoreId: string
-    try {
-      tenantStoreId = requireTenantStoreId()
-    } catch (error) {
-      console.error(error)
+    if (!storeId || storeId === 'null') {
+      router.replace('/select-store')
       return
     }
 
@@ -535,10 +490,9 @@ function EmployeesContent() {
         amount: amountNum,
         type: 'tip_entry',
         notes: `Tips: ${amountNum}€ [${tipEditModal.name}]`,
-        store_id: tenantStoreId,
+        store_id: storeId,
       })
       .eq('id', tipEditModal.id)
-      .eq('store_id', tenantStoreId)
 
     if (error) {
       console.error(error)
@@ -557,15 +511,7 @@ function EmployeesContent() {
   async function deleteTipTransaction(id: string) {
     if (!confirm('Διαγραφή αυτής της καταγραφής Tips;')) return
 
-    let tenantStoreId: string
-    try {
-      tenantStoreId = requireTenantStoreId()
-    } catch (error) {
-      console.error(error)
-      return
-    }
-
-    const { error } = await supabase.from('transactions').delete().eq('id', id).eq('store_id', tenantStoreId)
+    const { error } = await supabase.from('transactions').delete().eq('id', id)
     if (error) {
       console.error(error)
       toast.error('Αποτυχία διαγραφής tips.')
@@ -652,12 +598,8 @@ function EmployeesContent() {
   async function handleSave() {
     const isSalaryMissing = payBasis === 'monthly' ? !formData.monthly_salary : !formData.daily_rate
     if (!formData.full_name.trim() || isSalaryMissing) return alert('Συμπληρώστε τα υποχρεωτικά πεδία!')
-
-    let tenantStoreId: string
-    try {
-      tenantStoreId = requireTenantStoreId()
-    } catch (error) {
-      console.error(error)
+    if (!storeId || storeId === 'null') {
+      router.replace('/select-store')
       return
     }
 
@@ -676,7 +618,7 @@ function EmployeesContent() {
     const payload: FixedAssetStaffPayload = {
       name: formData.full_name.trim(),
       sub_category: 'staff',
-      store_id: tenantStoreId,
+      store_id: storeId,
       pay_basis: payBasis,
       monthly_salary: payBasis === 'monthly' && Number.isFinite(monthlySalaryNum) ? monthlySalaryNum : null,
       daily_rate: payBasis === 'daily' && Number.isFinite(dailyRateNum) ? dailyRateNum : null,
@@ -685,7 +627,7 @@ function EmployeesContent() {
     }
 
     const { error } = editingId
-      ? await supabase.from('fixed_assets').update(payload).eq('id', editingId).eq('store_id', tenantStoreId)
+      ? await supabase.from('fixed_assets').update(payload).eq('id', editingId)
       : await supabase.from('fixed_assets').insert([payload])
 
     if (error) {
@@ -706,22 +648,14 @@ function EmployeesContent() {
   // ✅ Delete staff: delete transactions by fixed_asset_id, then delete fixed_assets
   async function deleteEmployee(id: string, name: string) {
     if (!confirm(`Οριστική διαγραφή του/της ${name}; Θα σβηστεί και το ιστορικό.`)) return
-
-    let tenantStoreId: string
-    try {
-      tenantStoreId = requireTenantStoreId()
-    } catch (error) {
-      console.error(error)
+    if (!storeId || storeId === 'null') {
+      router.replace('/select-store')
       return
     }
 
     setLoading(true)
 
-    const { error: transErr } = await supabase
-      .from('transactions')
-      .delete()
-      .eq('fixed_asset_id', id)
-      .eq('store_id', tenantStoreId)
+    const { error: transErr } = await supabase.from('transactions').delete().eq('fixed_asset_id', id)
     if (transErr) {
       console.error(transErr)
       toast.error('Αποτυχία διαγραφής συναλλαγών.')
@@ -729,7 +663,7 @@ function EmployeesContent() {
       return
     }
 
-    const { error: empErr } = await supabase.from('fixed_assets').delete().eq('id', id).eq('store_id', tenantStoreId)
+    const { error: empErr } = await supabase.from('fixed_assets').delete().eq('id', id)
     if (empErr) {
       console.error(empErr)
       toast.error('Αποτυχία διαγραφής υπαλλήλου.')
@@ -744,16 +678,7 @@ function EmployeesContent() {
 
   async function deleteTransaction(id: string) {
     if (!confirm('Διαγραφή αυτής της πληρωμής;')) return
-
-    let tenantStoreId: string
-    try {
-      tenantStoreId = requireTenantStoreId()
-    } catch (error) {
-      console.error(error)
-      return
-    }
-
-    const { error } = await supabase.from('transactions').delete().eq('id', id).eq('store_id', tenantStoreId)
+    const { error } = await supabase.from('transactions').delete().eq('id', id)
     if (!error) fetchInitialData()
     else {
       console.error(error)
