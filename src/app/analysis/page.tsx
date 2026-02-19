@@ -460,10 +460,10 @@ function AnalysisContent() {
   }, [filteredTx])
 
   // ✅ Z BREAKDOWN (μόνο όταν startDate === endDate)
-  // FIXED per rules:
+  // FIXED per Supabase rules:
   // 1) zCash: method === 'Μετρητά (Z)'
   // 2) zPos:  method === 'Κάρτα'
-  // 3) blackCash: method === 'Μετρητά' AND notes === 'ΧΩΡΙΣ ΣΗΜΑΝΣΗ'
+  // 3) blackCash: category === 'Εσοδα Ζ' AND (notes === 'ΧΩΡΙΣ ΣΗΜΑΝΣΗ' OR method === 'Μετρητά') BUT NOT method === 'Μετρητά (Z)'
   const zBreakdown = useMemo(() => {
     if (!isZReport) {
       return { zCash: 0, zPos: 0, blackCash: 0, totalTurnover: 0, blackPct: 0 }
@@ -478,13 +478,15 @@ function AnalysisContent() {
         const amount = Number(t.amount) || 0
         return { method, notes, category, amount }
       })
+      // ✅ IMPORTANT: only Z-category rows participate in breakdown
+      .filter((r) => r.category === 'Εσοδα Ζ')
 
     const zCash = rows.filter((r) => r.method === 'Μετρητά (Z)').reduce((a, r) => a + r.amount, 0)
     const zPos = rows.filter((r) => r.method === 'Κάρτα').reduce((a, r) => a + r.amount, 0)
 
     const blackCash = rows
-      .filter((r) => r.method === 'Μετρητά')
-      .filter((r) => r.notes === 'ΧΩΡΙΣ ΣΗΜΑΝΣΗ')
+      .filter((r) => r.method !== 'Μετρητά (Z)') // exclude official Z cash
+      .filter((r) => r.notes === 'ΧΩΡΙΣ ΣΗΜΑΝΣΗ' || r.method === 'Μετρητά')
       .reduce((a, r) => a + r.amount, 0)
 
     const totalTurnover = zCash + zPos + blackCash
@@ -569,7 +571,6 @@ function AnalysisContent() {
 
         if (method === 'Μετρητά (Z)') zCash += rowAmount
         if (method === 'Κάρτα') zPos += rowAmount
-        // “Χωρίς Σήμανση”: notes OR method=Μετρητά, αλλά ΟΧΙ επίσημο Z Cash
         if (method !== 'Μετρητά (Z)' && (notes === 'ΧΩΡΙΣ ΣΗΜΑΝΣΗ' || method === 'Μετρητά')) withoutMarking += rowAmount
       }
 
@@ -580,7 +581,9 @@ function AnalysisContent() {
         category: 'Εσοδα Ζ',
         amount,
         payment_method: 'Z (Σύνολο)',
-        notes: `Μετρητά (Z): ${zCash.toFixed(2)}€ • Κάρτα (POS): ${zPos.toFixed(2)}€ • Χωρίς Σήμανση: ${withoutMarking.toFixed(2)}€`,
+        notes: `Μετρητά (Z): ${zCash.toFixed(2)}€ • Κάρτα (POS): ${zPos.toFixed(2)}€ • Χωρίς Σήμανση: ${withoutMarking.toFixed(
+          2
+        )}€`,
         __collapsedZ: true,
       }
     })
@@ -600,11 +603,12 @@ function AnalysisContent() {
   const money = useCallback((n: any) => `${Number(n || 0).toFixed(2)}€`, [])
 
   // ✅ TOTAL CASH DISPLAY
-  // For Z day: zCash + blackCash
+  // FIXED:
+  // When isZReport === true => (zCash + blackCash - cashExpensesToday)
   const totalCashDisplay = useMemo(() => {
-    if (isZReport) return zBreakdown.zCash + zBreakdown.blackCash
+    if (isZReport) return zBreakdown.zCash + zBreakdown.blackCash - cashExpensesToday
     return Number(balances?.cash_balance || 0)
-  }, [isZReport, zBreakdown, balances])
+  }, [isZReport, zBreakdown, balances, cashExpensesToday])
 
   // ✅ For the big dark KPI on Z day we want the REAL drawer target too
   const bigKpiValue = useMemo(() => {
@@ -778,9 +782,12 @@ function AnalysisContent() {
               <div style={{ ...kpiLabel, color: '#fff' }}>{isZReport ? 'Πραγματικό Συρτάρι' : 'Καθαρό Κέρδος'}</div>
               <div style={{ ...kpiSign, color: '#fff' }}>{bigKpiValue >= 0 ? '▲' : '▼'}</div>
             </div>
+
             <div style={{ ...kpiValue, color: '#fff' }}>{bigKpiValue.toLocaleString('el-GR')}€</div>
+
+            {/* ✅ CHANGED PER YOUR REQUEST */}
             <div style={{ fontSize: 13, fontWeight: 800, opacity: 0.85, marginTop: 6 }}>
-              {isZReport ? 'Μετρητά (Z) + Χωρίς Σήμανση' : 'Έσοδα - Έξοδα'}
+              {isZReport ? 'Μετρητά (Z) + Χωρίς Σήμανση - Έξοδα' : 'Έσοδα - Έξοδα'}
             </div>
           </div>
         </div>
@@ -791,7 +798,7 @@ function AnalysisContent() {
             <div style={smallKpiLabel}>Υπόλοιπο Μετρητών</div>
             <div style={smallKpiValue}>{isZReport || balances ? money(totalCashDisplay) : '—'}</div>
             <div style={smallKpiHint}>
-              {isZReport ? 'Μετρητά (Z) + Χωρίς Σήμανση' : 'Μετρητά + Μετρητά (Z)'}
+              {isZReport ? 'Μετρητά (Z) + Χωρίς Σήμανση - Έξοδα Μετρητών' : 'Μετρητά + Μετρητά (Z)'}
             </div>
           </div>
 
@@ -874,14 +881,14 @@ function AnalysisContent() {
                   zBreakdown.blackPct > 10
                     ? '1px solid #f43f5e'
                     : zBreakdown.blackPct > 5
-                    ? '1px solid #f59e0b'
-                    : '1px solid #10b981',
+                      ? '1px solid #f59e0b'
+                      : '1px solid #10b981',
                 background:
                   zBreakdown.blackPct > 10
                     ? 'linear-gradient(180deg, #fff1f2, #ffffff)'
                     : zBreakdown.blackPct > 5
-                    ? 'linear-gradient(180deg, #fffbeb, #ffffff)'
-                    : 'linear-gradient(180deg, #ecfdf5, #ffffff)',
+                      ? 'linear-gradient(180deg, #fffbeb, #ffffff)'
+                      : 'linear-gradient(180deg, #ecfdf5, #ffffff)',
               }}
             >
               <div style={smallKpiLabel}>Χωρίς Σήμανση</div>
@@ -908,7 +915,9 @@ function AnalysisContent() {
                 {zBreakdown.blackPct.toFixed(1)}% του τζίρου ημέρας
               </div>
 
-              <div style={smallKpiHint}>Σύνολο Μετρητών (Z + Χωρίς Σήμανση): {money(zBreakdown.zCash + zBreakdown.blackCash)}</div>
+              <div style={smallKpiHint}>
+                Σύνολο Μετρητών (Z + Χωρίς Σήμανση): {money(zBreakdown.zCash + zBreakdown.blackCash)}
+              </div>
             </div>
           </div>
         )}
@@ -1071,7 +1080,16 @@ function AnalysisContent() {
                         {!!t.notes && <div style={{ fontSize: 14, fontWeight: 800, color: colors.secondary }}>{t.notes}</div>}
 
                         {!!pm && (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 800, color: colors.secondary }}>
+                          <div
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 8,
+                              fontSize: 13,
+                              fontWeight: 800,
+                              color: colors.secondary,
+                            }}
+                          >
                             <span style={{ fontWeight: 900 }}>Μέθοδος:</span> {pm}
                           </div>
                         )}
