@@ -31,26 +31,26 @@ function RegisterForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
 
-  // Παίρνουμε τον κωδικό πρόσκλησης (store ID) από το URL
-  const inviteCode = searchParams.get('invite') 
+  const nextParam = searchParams.get('next')
+  const tokenParam = searchParams.get('token')
 
-  const validateInvite = async (inviteId: string) => {
-    const response = await fetch('/api/invite/validate', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ inviteId })
-    })
-
-    const payload = await response.json().catch(() => ({ valid: false, storeId: null }))
-
-    if (!response.ok || !payload?.valid || !payload?.storeId) {
-      throw new Error('Η πρόσκληση δεν είναι έγκυρη ή έχει λήξει. Ζητήστε νέο link από τον διαχειριστή.')
-    }
-
-    return String(payload.storeId)
+  const getSafeNextPath = (next: string | null) => {
+    if (!next) return null
+    if (!next.startsWith('/')) return null
+    if (next.startsWith('//')) return null
+    return next
   }
+
+  const safeNextPath = getSafeNextPath(nextParam)
+  const inviteNextPath =
+    safeNextPath && safeNextPath.startsWith('/accept-invite?token=')
+      ? safeNextPath
+      : tokenParam
+        ? `/accept-invite?token=${encodeURIComponent(tokenParam)}`
+        : null
+
+  const isInviteRegistration = Boolean(inviteNextPath)
+  const loginHref = inviteNextPath ? `/login?next=${encodeURIComponent(inviteNextPath)}` : '/login'
 
   const handleResendConfirmationEmail = async () => {
     if (!email) {
@@ -88,12 +88,6 @@ function RegisterForm() {
     setLoading(true)
 
     try {
-      let validatedInviteStoreId = ''
-
-      if (inviteCode) {
-        validatedInviteStoreId = await validateInvite(inviteCode)
-      }
-
       // 1. ΕΓΓΡΑΦΗ ΧΡΗΣΤΗ ΣΤΟ AUTH
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: email.trim(),
@@ -127,23 +121,10 @@ function RegisterForm() {
       const user = authData.user
       if (!user) throw new Error('Η εγγραφή απέτυχε. Δοκιμάστε ξανά.')
 
-      let finalStoreId = '';
+      let finalStoreId = ''
 
-      // 2. ΕΛΕΓΧΟΣ: ΕΙΝΑΙ ΑΠΟ ΠΡΟΣΚΛΗΣΗ Ή ΝΕΟΣ ADMIN;
-      if (inviteCode) {
-        // --- ΣΕΝΑΡΙΟ Α: ΕΓΓΡΑΦΗ ΜΕ ΠΡΟΣΚΛΗΣΗ (ΥΠΑΛΛΗΛΟΣ) ---
-        finalStoreId = validatedInviteStoreId
-        
-        // Συνδέουμε τον χρήστη με το υπάρχον κατάστημα
-        const { error: accessError } = await supabase.from('store_access').insert([{
-          user_id: user.id,
-          store_id: finalStoreId,
-          role: 'user' // Ο ρόλος είναι απλός χρήστης
-        }])
-
-        if (accessError) throw accessError
-
-      } else {
+      // 2. ΝΕΟΣ ΙΔΙΟΚΤΗΤΗΣ (χωρίς πρόσκληση)
+      if (!isInviteRegistration) {
         // --- ΣΕΝΑΡΙΟ Β: ΝΕΟΣ ΙΔΙΟΚΤΗΤΗΣ (ADMIN) ---
         
         // Δημιουργία νέου καταστήματος
@@ -183,8 +164,8 @@ function RegisterForm() {
       if (requiresEmailConfirmation) {
         setEmailConfirmationPending(true)
         toast.success(
-          inviteCode
-            ? 'Η εγγραφή έγινε! Παρακαλώ ελέγξτε το email σας για να ενεργοποιήσετε το λογαριασμό σας. Πρέπει πρώτα να επιβεβαιώσετε το email πριν συνδεθείτε στο κατάστημα.'
+          isInviteRegistration
+            ? 'Η εγγραφή έγινε! Επιβεβαιώστε πρώτα το email σας και μετά συνδεθείτε για να ολοκληρωθεί η αποδοχή πρόσκλησης.'
             : 'Η εγγραφή έγινε! Παρακαλώ ελέγξτε το email σας για να ενεργοποιήσετε το λογαριασμό σας.'
         )
         return
@@ -192,6 +173,12 @@ function RegisterForm() {
 
       // 4. ΟΛΟΚΛΗΡΩΣΗ & REDIRECT
       toast.success('Η εγγραφή ολοκληρώθηκε!')
+
+      if (isInviteRegistration && inviteNextPath) {
+        router.replace(inviteNextPath)
+        router.refresh()
+        return
+      }
       
       // Αποθηκεύουμε το active store για να ξέρει το dashboard τι να δείξει
       if (typeof window !== 'undefined') {
@@ -217,7 +204,7 @@ function RegisterForm() {
         <h1 style={brandStyle}>COSY APP</h1>
         <div style={dividerStyle} />
         <p style={instructionStyle}>
-          {inviteCode ? 'ΑΠΟΔΟΧΗ ΠΡΟΣΚΛΗΣΗΣ' : 'ΔΗΜΙΟΥΡΓΙΑ ΛΟΓΑΡΙΑΣΜΟΥ'}
+          {isInviteRegistration ? 'ΕΓΓΡΑΦΗ ΓΙΑ ΠΡΟΣΚΛΗΣΗ' : 'ΔΗΜΙΟΥΡΓΙΑ ΛΟΓΑΡΙΑΣΜΟΥ'}
         </p>
       </div>
       
@@ -227,7 +214,7 @@ function RegisterForm() {
             <Mail size={26} color="#0f172a" strokeWidth={2.2} />
           </div>
           <p style={confirmationTextStyle}>
-            Η εγγραφή ολοκληρώθηκε. Επιβεβαιώστε το email σας και μετά συνδεθείτε από τη σελίδα login.
+            Η εγγραφή ολοκληρώθηκε. Επιβεβαιώστε το email σας και μετά συνδεθείτε για να συνεχιστεί η πρόσκληση.
           </p>
           <button
             type="button"
@@ -237,7 +224,7 @@ function RegisterForm() {
           >
             {resendLoading ? 'ΓΙΝΕΤΑΙ ΑΠΟΣΤΟΛΗ...' : 'ΕΠΑΝΑΠΟΣΤΟΛΗ EMAIL'}
           </button>
-          <Link href="/login" style={confirmLoginBtnStyle}>ΜΕΤΑΒΑΣΗ ΣΤΟ LOGIN</Link>
+          <Link href={loginHref} style={confirmLoginBtnStyle}>ΜΕΤΑΒΑΣΗ ΣΤΟ LOGIN</Link>
         </div>
       ) : (
         <form onSubmit={handleSignUp} style={formStyle}>
@@ -281,13 +268,13 @@ function RegisterForm() {
             disabled={loading} 
             style={{...submitBtnStyle, backgroundColor: loading ? '#94a3b8' : '#0f172a'}}
           >
-            {loading ? 'ΓΙΝΕΤΑΙ ΕΓΓΡΑΦΗ...' : (inviteCode ? 'ΑΠΟΔΟΧΗ & ΕΙΣΟΔΟΣ' : 'ΔΗΜΙΟΥΡΓΙΑ ΛΟΓΑΡΙΑΣΜΟΥ')}
+            {loading ? 'ΓΙΝΕΤΑΙ ΕΓΓΡΑΦΗ...' : (isInviteRegistration ? 'ΣΥΝΕΧΕΙΑ ΠΡΟΣΚΛΗΣΗΣ' : 'ΔΗΜΙΟΥΡΓΙΑ ΛΟΓΑΡΙΑΣΜΟΥ')}
           </button>
         </form>
       )}
 
       <div style={footerStyle}>
-        <Link href="/login" style={linkStyle}>← ΕΧΩ ΗΔΗ ΛΟΓΑΡΙΑΣΜΟ</Link>
+        <Link href={loginHref} style={linkStyle}>← ΕΧΩ ΗΔΗ ΛΟΓΑΡΙΑΣΜΟ</Link>
       </div>
     </div>
   )

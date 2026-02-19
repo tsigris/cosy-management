@@ -40,16 +40,19 @@ function LoginContent() {
     return next
   }
 
+  const safeNextPath = getSafeNextPath(nextParam)
+  const registerHref = safeNextPath ? `/register?next=${encodeURIComponent(safeNextPath)}` : '/register'
+
   // Καθαρισμός τυχόν παλιών σκουπιδιών κατά τη φόρτωση της σελίδας
   useEffect(() => {
     const checkSession = async () => {
       const { data } = await supabase.auth.getSession()
       if (data.session) {
-         router.replace('/select-store')
+         router.replace(safeNextPath || '/select-store')
       }
     }
     checkSession()
-  }, [router])
+  }, [router, safeNextPath])
 
   const handleResendConfirmationEmail = async () => {
     if (!email) {
@@ -111,7 +114,6 @@ function LoginContent() {
       setEmailConfirmationPending(false)
 
       if (data.user) {
-        const safeNextPath = getSafeNextPath(nextParam)
         router.replace(safeNextPath || '/select-store')
       }
     } catch (err: any) {
@@ -178,7 +180,7 @@ function LoginContent() {
         </form>
         <div style={footerStyle}>
           <p style={{fontSize:'13px', color:'#64748b', marginBottom:'10px'}}>Δεν έχετε λογαριασμό;</p>
-          <Link href="/register" style={footerLinkStyle}>ΔΗΜΙΟΥΡΓΙΑ ΛΟΓΑΡΙΑΣΜΟΥ →</Link>
+          <Link href={registerHref} style={footerLinkStyle}>ΔΗΜΙΟΥΡΓΙΑ ΛΟΓΑΡΙΑΣΜΟΥ →</Link>
         </div>
       </div>
     </main>
