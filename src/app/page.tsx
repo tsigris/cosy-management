@@ -236,16 +236,34 @@ function DashboardContent() {
       // ✅ FIX: fetch day rows by (date = selectedDate) OR (created_at inside business window)
       const { data: tx, error: txError } = await supabase
         .from('transactions')
-        .select('*, profiles(username), suppliers(name), fixed_assets(name), revenue_sources(name)')
+        .select('*, suppliers(name), fixed_assets(name), revenue_sources(name)')
         .eq('store_id', storeIdFromUrl)
         .or(`date.eq.${selectedDate},and(created_at.gte.${windowStartIso},created_at.lte.${windowEndIso})`)
         .order('created_at', { ascending: false })
 
       if (txError) throw txError
 
+      const uniqueUserIds = Array.from(new Set((tx || []).map((r: any) => r?.user_id).filter(Boolean)))
+      let usernameMap: Record<string, string> = {}
+
+      if (uniqueUserIds.length > 0) {
+        const { data: profilesData, error: profilesError } = await supabase.from('profiles').select('id, username').in('id', uniqueUserIds)
+        if (profilesError) console.error(profilesError)
+
+        usernameMap = (profilesData || []).reduce((acc: Record<string, string>, p: any) => {
+          acc[String(p.id)] = p.username
+          return acc
+        }, {})
+      }
+
+      const txWithNames = (tx || []).map((r: any) => ({
+        ...r,
+        __userName: r.created_by_name || usernameMap[String(r.user_id)] || null,
+      }))
+
       // ✅ DEDUPE (σε περίπτωση που κάποια εγγραφή πιαστεί και από τα 2)
       const map = new Map<string, any>()
-      for (const row of tx || []) {
+      for (const row of txWithNames) {
         map.set(String(row.id), row)
       }
       setTransactions(Array.from(map.values()))
@@ -610,7 +628,7 @@ function DashboardContent() {
 
             const txMethod = isZMaster ? 'Συγκεντρωτική εγγραφή' : t?.method
             const txCreatedAt = isZMaster ? row.created_at : t?.created_at
-            const txCreatedBy = isZMaster ? row.created_by_name || zTransactions[0]?.profiles?.username || '—' : t?.created_by_name || t?.profiles?.username || '—'
+            const txCreatedBy = isZMaster ? row.created_by_name || zTransactions[0]?.created_by_name || '—' : t?.__userName || '—'
             const txAmountValue = isZMaster ? row.amount : Number(t?.amount) || 0
 
             return (
