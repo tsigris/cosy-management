@@ -498,7 +498,7 @@ function DashboardContent() {
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, position: 'relative' }}>
           {/* ✅ Εδώ μπήκε το νέο Καμπανάκι! */}
-          <NotificationsBell storeId={storeIdFromUrl || ''} />
+          <NotificationsBell storeId={storeIdFromUrl || ''} onUpdate={loadDashboard} />
 
           <div style={{ position: 'relative' }}>
             <button style={menuToggle} onClick={() => setIsMenuOpen(!isMenuOpen)}>

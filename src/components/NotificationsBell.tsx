@@ -100,7 +100,13 @@ function money(n: any) {
   return (Number(n) || 0).toLocaleString('el-GR', { minimumFractionDigits: 2 })
 }
 
-export default function NotificationsBell({ storeId }: { storeId: string }) {
+export default function NotificationsBell({
+  storeId,
+  onUpdate,
+}: {
+  storeId: string
+  onUpdate?: () => void | Promise<void>
+}) {
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
 
@@ -346,6 +352,7 @@ export default function NotificationsBell({ storeId }: { storeId: string }) {
 
       // refresh list
       await loadNotifications()
+      await onUpdate?.()
     } catch (e: any) {
       console.error(e)
       toast.error(e?.message || 'Αποτυχία πληρωμής')
@@ -381,7 +388,7 @@ export default function NotificationsBell({ storeId }: { storeId: string }) {
     <div style={{ position: 'relative' }}>
       <button
         type="button"
-        onClick={() => setOpen(true)}
+        onClick={() => setOpen((v) => !v)}
         style={{
           position: 'relative',
           background: colors.white,
