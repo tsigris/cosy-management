@@ -1837,19 +1837,33 @@ const payrollHeroPill: any = {
 }
 const payrollHeroAmount: any = { marginTop: '12px', fontSize: '28px', fontWeight: 900 }
 const payrollHeroHint: any = { marginTop: '4px', fontSize: '11px', fontWeight: 800, color: '#cbd5e1', opacity: 0.9 }
-const payrollHeroDivider: any = { height: '1px', backgroundColor: 'rgba(255,255,255,0.14)', marginTop: '12px', marginBottom: '12px' }
-const payrollHeroTipsRow: any = { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }
-const payrollHeroTipsLabel: any = { fontSize: '11px', fontWeight: 900, letterSpacing: '0.04em', color: '#cbd5e1' }
-const payrollHeroTipsValue: any = { fontSize: '16px', fontWeight: 900, color: '#f8fafc' }
+const payrollHeroDivider: any = { height: '1px', backgroundColor: 'rgba(255,255,255,0.14)', marginTop: '14px', marginBottom: '12px' }
+const payrollHeroTipsRow: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px' }
+const payrollHeroTipsLabel: any = { fontSize: '10px', fontWeight: 900, letterSpacing: '0.08em', opacity: 0.95 }
+const payrollHeroTipsValue: any = { fontSize: '14px', fontWeight: 900, color: '#fde68a' }
 const payrollHeroTipsBtn: any = {
   marginTop: '12px',
   width: '100%',
-  borderRadius: '12px',
-  border: '1px solid rgba(255,255,255,0.18)',
+  padding: '12px',
+  borderRadius: '14px',
+  border: '1px solid rgba(255,255,255,0.16)',
   backgroundColor: 'rgba(255,255,255,0.08)',
-  color: '#f8fafc',
-  padding: '10px 12px',
+  color: 'white',
+  fontWeight: 900,
   fontSize: '12px',
-  fontWeight: 800,
   cursor: 'pointer',
+}
+
+export default function EmployeesPage() {
+  return (
+    <Suspense
+      fallback={
+        <div style={iphoneWrapper}>
+          <p style={{ fontWeight: 800, color: colors.secondaryText, textAlign: 'center', marginTop: '30px' }}>Φόρτωση...</p>
+        </div>
+      }
+    >
+      <EmployeesContent />
+    </Suspense>
+  )
 }
