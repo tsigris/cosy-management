@@ -400,6 +400,9 @@ function DashboardContent() {
                   <NextLink href={`/manage-lists?store=${storeIdFromUrl}`} style={menuItem} onClick={() => setIsMenuOpen(false)}>
                     ⚙️ Διαχείριση Καταλόγων
                   </NextLink>
+                  <NextLink href={`/settlements?store=${storeIdFromUrl}`} style={menuItem} onClick={() => setIsMenuOpen(false)}>
+                    💳 Δάνεια & Ρυθμίσεις
+                  </NextLink>
                 </>
               )}
               {(isStoreAdmin || canViewAnalysis) && <div style={menuDivider} />}
