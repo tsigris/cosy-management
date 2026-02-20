@@ -4,28 +4,12 @@ export const dynamic = 'force-dynamic'
 import { useEffect, useState, Suspense, useCallback, useMemo } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import NotificationsBell from '@/components/NotificationsBell'
 import NextLink from 'next/link'
-import {
-  format,
-  addDays,
-  subDays,
-  parseISO,
-  differenceInCalendarDays,
-} from 'date-fns'
+import { format, addDays, subDays, parseISO } from 'date-fns'
 import { el } from 'date-fns/locale'
 import { Toaster, toast } from 'sonner'
-import {
-  TrendingUp,
-  TrendingDown,
-  Menu,
-  X,
-  ChevronLeft,
-  ChevronRight,
-  CreditCard,
-  Bell,
-  Banknote,
-  Landmark,
-} from 'lucide-react'
+import { TrendingUp, TrendingDown, Menu, X, ChevronLeft, ChevronRight, CreditCard } from 'lucide-react'
 
 // --- MODERN PREMIUM PALETTE ---
 const colors = {
@@ -39,8 +23,6 @@ const colors = {
   white: '#ffffff',
   warning: '#fffbeb',
   warningText: '#92400e',
-  dangerBg: '#fff1f2',
-  dangerText: '#b91c1c',
 }
 
 type YtdInfo = {
@@ -56,20 +38,6 @@ type YtdInfo = {
   loanRemaining?: number
   loanInstallmentsPaid?: number
   loanInstallmentsTotal?: number
-}
-
-type PaymentMethod = 'Μετρητά' | 'Τράπεζα'
-
-type DueNotification = {
-  installmentId: string
-  settlementId: string
-  settlementName: string
-  settlementType: 'settlement' | 'loan' | null
-  rfCode: string | null
-  installmentNumber: number
-  dueDate: string
-  amount: number
-  daysDiff: number // >0: days left, 0: due today, <0: overdue
 }
 
 function DashboardContent() {
@@ -96,17 +64,6 @@ function DashboardContent() {
 
   // ✅ Z visibility flag
   const [zEnabled, setZEnabled] = useState<boolean>(true)
-
-  // ✅ Notifications (bell)
-  const [dueNotifications, setDueNotifications] = useState<DueNotification[]>([])
-  const [notifLoading, setNotifLoading] = useState<boolean>(false)
-  const [openNotificationsModal, setOpenNotificationsModal] = useState(false)
-
-  // ✅ Payment modal (2 taps)
-  const [openPaymentModal, setOpenPaymentModal] = useState(false)
-  const [savingPayment, setSavingPayment] = useState(false)
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('Μετρητά')
-  const [selectedNotif, setSelectedNotif] = useState<DueNotification | null>(null)
 
   // cache YTD metrics per entity key
   const [ytdCache, setYtdCache] = useState<Record<string, YtdInfo>>({})
@@ -258,73 +215,6 @@ function DashboardContent() {
     [storeIdFromUrl, ytdCache, yearStartStr, businessTodayStr]
   )
 
-  // ✅ Notifications filtering:
-  // - upcoming: due in 3 days or less (daysDiff 3..0)
-  // - overdue re-appear: ONLY after 3 days late (daysDiff <= -3)
-  // - hide: 1-2 days late (daysDiff -1 or -2)
-  const shouldShowNotification = (daysDiff: number) => {
-    if (daysDiff >= 0 && daysDiff <= 3) return true
-    if (daysDiff <= -3) return true
-    return false
-  }
-
-  const loadNotifications = useCallback(async () => {
-    if (!storeIdFromUrl) return
-    setNotifLoading(true)
-    try {
-      // Fetch pending installments (limit bigger so filtering doesn't empty)
-      const { data, error } = await supabase
-        .from('installments')
-        .select(
-          'id, settlement_id, installment_number, due_date, amount, status, transaction_id, settlements(name, type, rf_code)'
-        )
-        .eq('store_id', storeIdFromUrl)
-        .eq('status', 'pending')
-        .order('due_date', { ascending: true })
-        .limit(50)
-
-      if (error) throw error
-
-      const baseDate = parseISO(businessTodayStr)
-
-      const mapped: DueNotification[] = (data || [])
-        .filter((r: any) => !!r?.due_date && !!r?.settlement_id)
-        .map((r: any) => {
-          const daysDiff = differenceInCalendarDays(parseISO(r.due_date), baseDate)
-          return {
-            installmentId: String(r.id),
-            settlementId: String(r.settlement_id),
-            settlementName: String(r.settlements?.name || 'Συμφωνία'),
-            settlementType: (r.settlements?.type || null) as any,
-            rfCode: r.settlements?.rf_code || null,
-            installmentNumber: Number(r.installment_number || 0),
-            dueDate: String(r.due_date),
-            amount: Number(r.amount || 0),
-            daysDiff,
-          }
-        })
-        .filter((n) => shouldShowNotification(n.daysDiff))
-        .sort((a, b) => {
-          // show overdue first (more urgent), then upcoming soonest
-          const aOver = a.daysDiff < 0
-          const bOver = b.daysDiff < 0
-          if (aOver !== bOver) return aOver ? -1 : 1
-          // for overdue: more days late first
-          if (aOver && bOver) return a.daysDiff - b.daysDiff // -10 before -3
-          // for upcoming: due sooner first (0 before 3)
-          return a.daysDiff - b.daysDiff
-        })
-        .slice(0, 10)
-
-      setDueNotifications(mapped)
-    } catch (e) {
-      console.error(e)
-      setDueNotifications([])
-    } finally {
-      setNotifLoading(false)
-    }
-  }, [storeIdFromUrl, businessTodayStr])
-
   const loadDashboard = useCallback(async () => {
     if (!storeIdFromUrl) {
       router.replace('/select-store')
@@ -355,7 +245,6 @@ function DashboardContent() {
       const windowStartIso = new Date(`${selectedDate}T07:00:00`).toISOString()
       const windowEndIso = new Date(`${nextDateStr}T06:59:59.999`).toISOString()
 
-      // ✅ FIX: Removed profiles(username) (table may not exist)
       const { data: tx, error: txError } = await supabase
         .from('transactions')
         .select('*, suppliers(name), fixed_assets(name), revenue_sources(name)')
@@ -386,99 +275,17 @@ function DashboardContent() {
         setCanViewAnalysis(false)
       }
 
-      // Notifications
-      await loadNotifications()
     } catch (err) {
       console.error('Dashboard error:', err)
       toast.error('Σφάλμα φόρτωσης Dashboard')
     } finally {
       setLoading(false)
     }
-  }, [selectedDate, router, storeIdFromUrl, loadNotifications])
+  }, [selectedDate, router, storeIdFromUrl])
 
   useEffect(() => {
     loadDashboard()
   }, [loadDashboard])
-
-  const openPaymentFromNotification = (n: DueNotification) => {
-    setSelectedNotif(n)
-    setPaymentMethod('Μετρητά')
-    setOpenPaymentModal(true)
-  }
-
-  const onConfirmPayment = async () => {
-    if (!storeIdFromUrl) return toast.error('Σφάλμα καταστήματος')
-    if (!selectedNotif) return toast.error('Δεν βρέθηκε δόση')
-
-    setSavingPayment(true)
-    try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession()
-      if (!session) throw new Error('Η συνεδρία έληξε. Συνδέσου ξανά.')
-
-      // ✅ Safer username without profiles table
-      const raw =
-        (session.user.user_metadata?.username as string | undefined) ||
-        (session.user.user_metadata?.full_name as string | undefined) ||
-        session.user.email ||
-        'Χρήστης'
-      const userName = String(raw).includes('@') ? String(raw).split('@')[0] : String(raw)
-
-      const amount = Math.abs(Number(selectedNotif.amount || 0))
-      if (!amount) throw new Error('Μη έγκυρο ποσό δόσης')
-
-      const today = businessTodayStr
-      const notes = `Πληρωμή Δόσης #${selectedNotif.installmentNumber}: ${selectedNotif.settlementName}${
-        selectedNotif.rfCode ? ` (RF: ${selectedNotif.rfCode})` : ''
-      }`
-
-      const { data: transactionRow, error: transErr } = await supabase
-        .from('transactions')
-        .insert([
-          {
-            store_id: storeIdFromUrl,
-            user_id: session.user.id,
-            created_by_name: userName,
-            type: 'expense',
-            amount: -amount,
-            method: paymentMethod,
-            category: 'Λοιπά',
-            notes,
-            date: today,
-          },
-        ])
-        .select('id')
-        .single()
-
-      if (transErr) throw transErr
-
-      const { error: installmentErr } = await supabase
-        .from('installments')
-        .update({
-          status: 'paid',
-          transaction_id: transactionRow.id,
-        })
-        .eq('id', selectedNotif.installmentId)
-        .eq('store_id', storeIdFromUrl)
-
-      if (installmentErr) throw installmentErr
-
-      toast.success('Η δόση πληρώθηκε και καταχωρήθηκε στα έξοδα')
-      setOpenPaymentModal(false)
-      setSelectedNotif(null)
-
-      // close notifications modal after pay (optional)
-      setOpenNotificationsModal(false)
-
-      await loadDashboard()
-    } catch (e: any) {
-      console.error(e)
-      toast.error(e?.message || 'Αποτυχία πληρωμής δόσης')
-    } finally {
-      setSavingPayment(false)
-    }
-  }
 
   const handleDelete = async (id: string) => {
     if (!confirm('Οριστική διαγραφή αυτής της κίνησης;')) return
@@ -528,7 +335,6 @@ function DashboardContent() {
       setTransactions((prev) => prev.filter((t) => String(t.id) !== String(txId)))
       setExpandedTx(null)
       toast.success('Η πληρωμή διαγράφηκε')
-      await loadNotifications()
     } catch (err) {
       toast.error('Σφάλμα κατά τη διαγραφή')
     }
@@ -666,24 +472,6 @@ function DashboardContent() {
     }
   }
 
-  const notifTone = (daysDiff: number) => {
-    // overdue 3+ days
-    if (daysDiff <= -3) return { bg: colors.dangerBg, text: colors.dangerText, border: '#fecdd3' }
-    // due soon (0..3)
-    return { bg: colors.warning, text: colors.warningText, border: '#fde68a' }
-  }
-
-  const notifTitle = (n: DueNotification) => {
-    if (n.settlementType === 'loan') return 'Δόση Δανείου'
-    return 'Δόση Ρύθμισης'
-  }
-
-  const notifSubtitle = (n: DueNotification) => {
-    if (n.daysDiff <= -3) return `${Math.abs(n.daysDiff)} μέρες σε καθυστέρηση`
-    if (n.daysDiff === 0) return 'Λήγει σήμερα'
-    return `Λήγει σε ${n.daysDiff} μέρες`
-  }
-
   return (
     <div style={iphoneWrapper}>
       <Toaster position="top-center" richColors />
@@ -693,7 +481,7 @@ function DashboardContent() {
           <div style={logoBox}>{storeName?.charAt(0) || '?'}</div>
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <h1 style={storeTitleText}>{storeName?.toUpperCase() || 'ΦΟΡΡΤΩΣΗ...'}</h1>
+              <h1 style={storeTitleText}>{storeName?.toUpperCase() || 'ΦΟΡΤΩΣΗ...'}</h1>
               <NextLink href="/select-store" style={switchBtnStyle}>
                 ΑΛΛΑΓΗ
               </NextLink>
@@ -706,17 +494,8 @@ function DashboardContent() {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, position: 'relative' }}>
-          {/* ✅ Bell button (NOT a list on the page) */}
-          <button
-            style={bellBtn}
-            onClick={() => setOpenNotificationsModal(true)}
-            title="Ειδοποιήσεις"
-          >
-            <Bell size={18} />
-            {dueNotifications.length > 0 && (
-              <span style={bellBadge}>{dueNotifications.length > 9 ? '9+' : String(dueNotifications.length)}</span>
-            )}
-          </button>
+          {/* ✅ Εδώ μπήκε το νέο Καμπανάκι! */}
+          <NotificationsBell storeId={storeIdFromUrl || ''} />
 
           <div style={{ position: 'relative' }}>
             <button style={menuToggle} onClick={() => setIsMenuOpen(!isMenuOpen)}>
@@ -1043,139 +822,6 @@ function DashboardContent() {
           })
         )}
       </div>
-
-      {/* ✅ Notifications Modal (Bell) */}
-      {openNotificationsModal && (
-        <div style={modalBackdropStyle} onClick={() => setOpenNotificationsModal(false)}>
-          <div style={modalCardStyle} onClick={(e) => e.stopPropagation()}>
-            <div style={modalHeaderStyle}>
-              <h2 style={modalTitleStyle}>Ειδοποιήσεις</h2>
-              <button
-                type="button"
-                style={iconCloseBtnStyle}
-                onClick={() => setOpenNotificationsModal(false)}
-              >
-                <X size={16} />
-              </button>
-            </div>
-
-            <div style={{ display: 'flex', gap: 10, marginBottom: 10 }}>
-              <button
-                style={notifRefreshBtn}
-                onClick={() => loadNotifications()}
-                disabled={notifLoading}
-                title="Ανανέωση"
-              >
-                {notifLoading ? 'Φόρτωση…' : 'Ανανέωση'}
-              </button>
-
-              <NextLink
-                href={`/settlements?store=${storeIdFromUrl || ''}`}
-                style={notifGoBtn}
-                onClick={() => setOpenNotificationsModal(false)}
-              >
-                Δάνεια & Ρυθμίσεις
-              </NextLink>
-            </div>
-
-            {dueNotifications.length === 0 ? (
-              <div style={emptyNotifState}>
-                <p style={{ margin: 0, fontWeight: 900, color: colors.primaryDark }}>Καμία ειδοποίηση</p>
-                <p style={{ margin: '6px 0 0', fontWeight: 700, color: colors.secondaryText, fontSize: 12 }}>
-                  Θα εμφανιστεί 3 μέρες πριν τη λήξη, ή 3+ μέρες μετά αν μείνει απλήρωτο.
-                </p>
-              </div>
-            ) : (
-              <div style={{ display: 'grid', gap: 10 }}>
-                {dueNotifications.map((n) => {
-                  const tone = notifTone(n.daysDiff)
-                  return (
-                    <div key={n.installmentId} style={{ ...notifRow, background: tone.bg, borderColor: tone.border }}>
-                      <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', flex: 1 }}>
-                        <div style={{ ...notifBadge, color: tone.text, borderColor: tone.border }}>
-                          {n.settlementType === 'loan' ? <Landmark size={14} /> : <Banknote size={14} />}
-                        </div>
-
-                        <div style={{ flex: 1 }}>
-                          <p style={notifRowTitle}>
-                            {notifTitle(n)} • {n.settlementName}
-                          </p>
-                          <p style={{ ...notifRowMeta, color: tone.text }}>
-                            {notifSubtitle(n)} • Λήξη: {formatDateGr(n.dueDate)} • Δόση #{n.installmentNumber}
-                          </p>
-                        </div>
-                      </div>
-
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                        <div style={notifAmount}>{money(n.amount)}€</div>
-                        <button
-                          onClick={() => openPaymentFromNotification(n)}
-                          style={notifPayBtn}
-                        >
-                          Πληρωμή
-                        </button>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* ✅ Payment Modal (from notifications) */}
-      {openPaymentModal && selectedNotif && (
-        <div style={modalBackdropStyle} onClick={() => !savingPayment && setOpenPaymentModal(false)}>
-          <div style={modalCardStyle} onClick={(e) => e.stopPropagation()}>
-            <div style={modalHeaderStyle}>
-              <h2 style={modalTitleStyle}>Πληρωμή Δόσης</h2>
-              <button
-                type="button"
-                style={iconCloseBtnStyle}
-                onClick={() => setOpenPaymentModal(false)}
-                disabled={savingPayment}
-              >
-                <X size={16} />
-              </button>
-            </div>
-
-            <div style={paymentInfoBoxStyle}>
-              <p style={paymentInfoTitleStyle}>{selectedNotif.settlementName}</p>
-              <p style={paymentInfoMetaStyle}>
-                {selectedNotif.settlementType === 'loan' ? 'Δάνειο' : 'Ρύθμιση'} • Δόση #{selectedNotif.installmentNumber} • {money(selectedNotif.amount)} €
-              </p>
-              <p style={paymentInfoMetaStyle}>
-                Λήξη: {formatDateGr(selectedNotif.dueDate)} • {selectedNotif.rfCode ? `RF: ${selectedNotif.rfCode}` : '—'}
-              </p>
-            </div>
-
-            <label style={{ ...labelStyle, marginTop: 10 }}>Τρόπος Πληρωμής</label>
-            <div style={methodToggleWrapStyle}>
-              <button
-                type="button"
-                style={{ ...methodBtnStyle, ...(paymentMethod === 'Μετρητά' ? methodBtnActiveStyle : {}) }}
-                onClick={() => setPaymentMethod('Μετρητά')}
-              >
-                <Banknote size={15} />
-                Μετρητά
-              </button>
-              <button
-                type="button"
-                style={{ ...methodBtnStyle, ...(paymentMethod === 'Τράπεζα' ? methodBtnActiveStyle : {}) }}
-                onClick={() => setPaymentMethod('Τράπεζα')}
-              >
-                <Landmark size={15} />
-                Τράπεζα
-              </button>
-            </div>
-
-            <button type="button" style={saveBtnStyle} onClick={onConfirmPayment} disabled={savingPayment}>
-              {savingPayment ? 'Καταχώρηση...' : 'Ολοκλήρωση Πληρωμής'}
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   )
 }
@@ -1218,33 +864,6 @@ const switchBtnStyle: any = {
 }
 const dashboardSub = { fontSize: '9px', fontWeight: '800', color: colors.secondaryText, letterSpacing: '0.5px' }
 const statusDot = { width: '6px', height: '6px', background: colors.accentGreen, borderRadius: '50%' }
-
-const bellBtn: any = {
-  position: 'relative',
-  background: 'white',
-  border: `1px solid ${colors.border}`,
-  borderRadius: '12px',
-  width: '40px',
-  height: '40px',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  cursor: 'pointer',
-  color: colors.primaryDark,
-}
-const bellBadge: any = {
-  position: 'absolute',
-  top: -6,
-  right: -6,
-  background: colors.accentRed,
-  color: 'white',
-  fontSize: 10,
-  fontWeight: 900,
-  padding: '2px 6px',
-  borderRadius: 999,
-  border: '2px solid white',
-  lineHeight: 1.2,
-}
 
 const menuToggle: any = {
   background: 'white',
@@ -1293,7 +912,6 @@ const logoutBtnStyle: any = {
   cursor: 'pointer',
 }
 
-/* Date Card */
 const dateCard: any = {
   backgroundColor: 'white',
   padding: '10px',
@@ -1308,7 +926,6 @@ const dateText = { fontSize: '13px', fontWeight: '800', color: colors.primaryDar
 const businessHint: any = { margin: '6px 0 0 0', fontSize: '10px', fontWeight: '800', color: colors.secondaryText, opacity: 0.9 }
 const dateNavBtn = { background: 'none', border: 'none', color: colors.secondaryText, cursor: 'pointer', display: 'flex', alignItems: 'center' }
 
-/* Hero */
 const heroCardStyle: any = {
   background: colors.primaryDark,
   padding: '30px 20px',
@@ -1357,7 +974,6 @@ const creditIconCircle: any = {
 const heroCreditLabel: any = { fontSize: '10px', fontWeight: '900', opacity: 0.9, letterSpacing: '0.6px' }
 const heroCreditValue: any = { fontSize: '14px', fontWeight: '900' }
 
-/* Actions */
 const actionGrid: any = { display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '30px' }
 const actionRow: any = { display: 'flex', gap: '12px' }
 const zRowWrap: any = { display: 'flex', justifyContent: 'center' }
@@ -1375,7 +991,6 @@ const actionBtn: any = {
 }
 const zBtnStyle: any = { flex: 'unset', width: '100%', maxWidth: '260px' }
 
-/* List */
 const listContainer = { backgroundColor: 'transparent' }
 const listHeader = { fontSize: '11px', fontWeight: '900', color: colors.secondaryText, marginBottom: '15px', letterSpacing: '0.5px' }
 const txRow: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px', backgroundColor: 'white', border: `1px solid ${colors.border}`, cursor: 'pointer' }
@@ -1414,176 +1029,6 @@ const zBreakdownRow: any = { display: 'flex', justifyContent: 'space-between', a
 
 const emptyStateStyle: any = { textAlign: 'center', padding: '40px 20px', color: colors.secondaryText, fontWeight: '600', fontSize: '13px' }
 const spinnerStyle: any = { width: '24px', height: '24px', border: '3px solid #f3f3f3', borderTop: '3px solid #6366f1', borderRadius: '50%', animation: 'spin 1s linear infinite', margin: '0 auto' }
-
-/* Notifications rows */
-const notifRow: any = {
-  border: '1px solid',
-  borderRadius: 14,
-  padding: 12,
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'space-between',
-  gap: 12,
-}
-const notifBadge: any = {
-  width: 32,
-  height: 32,
-  borderRadius: 12,
-  border: '1px solid',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  background: 'rgba(255,255,255,0.6)',
-}
-const notifRowTitle: any = { margin: 0, fontSize: 13, fontWeight: 900, color: colors.primaryDark }
-const notifRowMeta: any = { margin: '4px 0 0', fontSize: 11, fontWeight: 800 }
-const notifAmount: any = { fontSize: 13, fontWeight: 900, color: colors.primaryDark, minWidth: 88, textAlign: 'right' }
-const notifPayBtn: any = {
-  border: 'none',
-  borderRadius: 12,
-  padding: '10px 12px',
-  background: colors.accentGreen,
-  color: 'white',
-  fontWeight: 900,
-  cursor: 'pointer',
-}
-
-/* Modal (generic) */
-const modalBackdropStyle: any = {
-  position: 'fixed',
-  inset: 0,
-  background: 'rgba(2,6,23,0.6)',
-  zIndex: 120,
-  display: 'grid',
-  placeItems: 'center',
-  padding: '16px',
-}
-const modalCardStyle: any = {
-  width: '100%',
-  maxWidth: '560px',
-  background: colors.white,
-  borderRadius: '18px',
-  border: `1px solid ${colors.border}`,
-  padding: '16px',
-}
-const modalHeaderStyle: any = {
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'space-between',
-  marginBottom: '10px',
-}
-const modalTitleStyle: any = {
-  margin: 0,
-  fontWeight: 900,
-  fontSize: '17px',
-  color: colors.primaryDark,
-}
-const iconCloseBtnStyle: any = {
-  width: '30px',
-  height: '30px',
-  borderRadius: '10px',
-  border: `1px solid ${colors.border}`,
-  background: colors.white,
-  color: colors.secondaryText,
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  cursor: 'pointer',
-}
-
-const notifRefreshBtn: any = {
-  flex: 1,
-  border: `1px solid ${colors.border}`,
-  background: '#f8fafc',
-  borderRadius: 12,
-  padding: '10px 12px',
-  fontWeight: 900,
-  cursor: 'pointer',
-  color: colors.secondaryText,
-}
-const notifGoBtn: any = {
-  flex: 1,
-  textAlign: 'center',
-  border: `1px solid #c7d2fe`,
-  background: '#eef2ff',
-  borderRadius: 12,
-  padding: '10px 12px',
-  fontWeight: 900,
-  cursor: 'pointer',
-  color: '#3730a3',
-  textDecoration: 'none',
-}
-
-const emptyNotifState: any = {
-  border: `1px dashed ${colors.border}`,
-  borderRadius: 14,
-  padding: 14,
-  background: '#f8fafc',
-}
-
-/* Payment modal styles */
-const paymentInfoBoxStyle: any = {
-  border: `1px solid ${colors.border}`,
-  borderRadius: '12px',
-  padding: '10px',
-  background: '#f8fafc',
-}
-const paymentInfoTitleStyle: any = {
-  margin: 0,
-  fontWeight: 900,
-  color: colors.primaryDark,
-}
-const paymentInfoMetaStyle: any = {
-  margin: '4px 0 0',
-  fontSize: '12px',
-  fontWeight: 700,
-  color: colors.secondaryText,
-}
-const labelStyle: any = {
-  fontSize: '12px',
-  fontWeight: 800,
-  color: colors.secondaryText,
-}
-const methodToggleWrapStyle: any = {
-  marginTop: '6px',
-  border: `1px solid ${colors.border}`,
-  borderRadius: '12px',
-  background: colors.bgLight,
-  padding: '4px',
-  display: 'grid',
-  gridTemplateColumns: '1fr 1fr',
-  gap: 4,
-}
-const methodBtnStyle: any = {
-  border: 'none',
-  borderRadius: '9px',
-  padding: '10px',
-  fontSize: '13px',
-  fontWeight: 800,
-  color: colors.secondaryText,
-  background: 'transparent',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  gap: 6,
-  cursor: 'pointer',
-}
-const methodBtnActiveStyle: any = {
-  background: colors.white,
-  color: colors.primaryDark,
-  boxShadow: '0 1px 2px rgba(0,0,0,0.1)',
-}
-const saveBtnStyle: any = {
-  width: '100%',
-  marginTop: '14px',
-  border: 'none',
-  borderRadius: '12px',
-  padding: '13px',
-  background: colors.accentBlue,
-  color: colors.white,
-  fontWeight: 900,
-  cursor: 'pointer',
-}
 
 export default function DashboardPage() {
   return (

@@ -276,6 +276,12 @@ export default function NotificationsBell({ storeId }: { storeId: string }) {
   const warningCount = useMemo(() => allNotifications.filter((n) => n.severity === 'warning').length, [allNotifications])
   const badgeCount = dangerCount + warningCount
 
+  const bellColor = useMemo(() => {
+    if (dangerCount > 0) return colors.accentRed
+    if (warningCount > 0) return '#f59e0b' // amber
+    return colors.primaryDark
+  }, [dangerCount, warningCount])
+
   const openPayModal = (inst: InstallmentRow, setl: SettlementRow) => {
     setSelectedInst(inst)
     setSelectedSet(setl)
@@ -387,7 +393,7 @@ export default function NotificationsBell({ storeId }: { storeId: string }) {
           alignItems: 'center',
           justifyContent: 'center',
           cursor: 'pointer',
-          color: colors.primaryDark,
+          color: bellColor,
         }}
         title="Ειδοποιήσεις"
       >
