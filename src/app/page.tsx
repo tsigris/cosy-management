@@ -78,8 +78,6 @@ function DashboardContent() {
     if (t?.revenue_sources?.name) return t.revenue_sources.name
     if (t?.suppliers?.name) return t.suppliers.name
     if (t?.fixed_assets?.name) return t.fixed_assets.name
-
-    // Αν είναι πληρωμή δόσης, βγάλε τον τίτλο της ρύθμισης αντί για "Λοιπά"
     if (t?.notes && t.notes.startsWith('Πληρωμή Δόσης')) {
       const parts = t.notes.split(':')
       if (parts.length > 1) {
@@ -560,8 +558,6 @@ function DashboardContent() {
                       {!isZMaster && t?.is_credit && <span style={creditBadgeStyle}>ΠΙΣΤΩΣΗ</span>}
                       {isZMaster && <span style={creditBadgeStyle}>{row.itemsCount} ΚΙΝΗΣΕΙΣ</span>}
                     </p>
-
-                    {/* ΝΕΟ: Εμφάνιση Σημειώσεων (π.χ. Δόση #1, RF Code) */}
                     {!isZMaster && t?.notes && (
                       <p style={{ fontSize: '11px', fontWeight: 800, color: '#64748b', margin: '4px 0 2px 0' }}>
                         {t.notes}

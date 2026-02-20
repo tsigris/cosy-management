@@ -81,6 +81,13 @@ function toMoney(value: number | null | undefined) {
   return `${Number(value || 0).toFixed(2)} €`
 }
 
+function formatDateGr(dateStr: string | null | undefined) {
+  if (!dateStr) return '—'
+  const parts = dateStr.split('-')
+  if (parts.length !== 3) return dateStr
+  return `${parts[2]}-${parts[1]}-${parts[0]}`
+}
+
 function getErrorMessage(error: unknown) {
   if (error instanceof Error) return error.message
   return 'Κάτι πήγε στραβά'
@@ -478,7 +485,7 @@ function SettlementsContent() {
                     </div>
                     <div style={rowInfoItemStyle}>
                       <CalendarDays size={14} color={colors.accentBlue} />
-                      <span>1η Δόση: {settlement.first_due_date || '—'}</span>
+                      <span>1η Δόση: {formatDateGr(settlement.first_due_date)}</span>
                     </div>
                   </div>
 
@@ -494,7 +501,7 @@ function SettlementsContent() {
                             <div key={inst.id} style={installmentRowStyle}>
                               <div>
                                 <p style={installmentTitleStyle}>Δόση #{inst.installment_number}</p>
-                                <p style={installmentMetaStyle}>Λήξη: {inst.due_date}</p>
+                                <p style={installmentMetaStyle}>Λήξη: {formatDateGr(inst.due_date)}</p>
                               </div>
 
                               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
