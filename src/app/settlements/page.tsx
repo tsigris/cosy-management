@@ -307,7 +307,11 @@ function SettlementsContent() {
         data: { session },
       } = await supabase.auth.getSession()
       if (!session) throw new Error('Η συνεδρία έληξε. Συνδέσου ξανά.')
-      const userName = session.user.user_metadata?.full_name || session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'Χρήστης'
+      let userName = 'Χρήστης'
+      const { data: profile } = await supabase.from('profiles').select('username').eq('id', session.user.id).maybeSingle()
+      if (profile?.username) {
+        userName = profile.username
+      }
 
       const amount = Math.abs(Number(selectedInstallment.amount || 0))
       if (!amount) throw new Error('Μη έγκυρο ποσό δόσης')
@@ -358,7 +362,7 @@ function SettlementsContent() {
   }
 
   const onDeleteSettlement = async (settlementId: string) => {
-    if (!confirm('Είστε σίγουροι; Θα διαγραφεί η ρύθμιση και όλες οι δόσεις της. (Τυχόν δόσεις που έχετε ήδη πληρώσει θα παραμείνουν στα έξοδα του ταμείου σας).')) return
+    if (!confirm('Είστε σίγουροι; Θα διαγραφεί η ρύθμιση και όλες οι δόσεις της. (Τυχόν δόσεις που έχετε ήδη πληρώσει θα παραμείνουν στα έξοδα).')) return
     if (!storeId) return
 
     setLoading(true)
@@ -366,11 +370,11 @@ function SettlementsContent() {
       const { error } = await supabase.from('settlements').delete().eq('id', settlementId).eq('store_id', storeId)
       if (error) throw error
 
-      toast.success('Η ρύθμιση διαγράφηκε επιτυχώς!')
+      toast.success('Η ρύθμιση διαγράφηκε επιτυχώς')
       setExpandedSettlementId(null)
       await loadData()
     } catch (error: unknown) {
-      toast.error(getErrorMessage(error) || 'Αποτυχία διαγραφής ρύθμισης')
+      toast.error(getErrorMessage(error) || 'Αποτυχία διαγραφής')
       setLoading(false)
     }
   }
@@ -546,18 +550,17 @@ function SettlementsContent() {
                             )
                           })
                         )}
-                      </div>
-
-                      <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: `1px dashed ${colors.border}`, display: 'flex', justifyContent: 'center' }}>
-                        <button
-                          type="button"
-                          onClick={() => onDeleteSettlement(settlement.id)}
-                          style={{
-                            background: 'transparent', border: 'none', color: colors.accentRed, fontSize: '12px', fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6
-                          }}
-                        >
-                          <X size={14} /> Διαγραφή Ρύθμισης
-                        </button>
+                        <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: `1px dashed ${colors.border}`, display: 'flex', justifyContent: 'center' }}>
+                          <button
+                            type="button"
+                            onClick={() => onDeleteSettlement(settlement.id)}
+                            style={{
+                              background: 'transparent', border: 'none', color: colors.accentRed, fontSize: '12px', fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6
+                            }}
+                          >
+                            <X size={14} /> Διαγραφή Συμφωνίας
+                          </button>
+                        </div>
                       </div>
                     </>
                   )}
