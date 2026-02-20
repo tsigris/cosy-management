@@ -38,6 +38,7 @@ const colors = {
 type Settlement = {
   id: string
   name: string
+  type?: 'settlement' | 'loan' | null
   rf_code: string | null
   total_amount: number | null
   installments_count: number | null
@@ -106,6 +107,7 @@ function SettlementsContent() {
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('Μετρητά')
 
   const [name, setName] = useState('')
+  const [type, setType] = useState<'settlement' | 'loan'>('settlement')
   const [rfCode, setRfCode] = useState('')
   const [totalAmount, setTotalAmount] = useState('')
   const [installmentsCount, setInstallmentsCount] = useState('12')
@@ -130,6 +132,7 @@ function SettlementsContent() {
 
   const resetCreateForm = () => {
     setName('')
+    setType('settlement')
     setRfCode('')
     setTotalAmount('')
     setInstallmentsCount('12')
@@ -236,6 +239,7 @@ function SettlementsContent() {
         store_id: storeId,
         user_id: session.user.id,
         name: cleanName,
+        type,
         rf_code: cleanRf,
         total_amount: parsedTotal,
         installments_count: parsedCount,
@@ -427,6 +431,19 @@ function SettlementsContent() {
                     onClick={() => setExpandedSettlementId(isOpen ? null : settlement.id)}
                   >
                     <div style={{ textAlign: 'left' }}>
+                      <div style={{ marginBottom: 5 }}>
+                        {settlement.type === 'loan' ? (
+                          <span style={{ ...typeBadgeStyle, ...loanTypeBadgeStyle }}>
+                            <Landmark size={12} />
+                            ΔΑΝΕΙΟ
+                          </span>
+                        ) : (
+                          <span style={{ ...typeBadgeStyle, ...settlementTypeBadgeStyle }}>
+                            <HandCoins size={12} />
+                            ΡΥΘΜΙΣΗ
+                          </span>
+                        )}
+                      </div>
                       <h3 style={settlementTitleStyle}>{settlement.name}</h3>
                       <div style={rfRowStyle}>
                         <Hash size={14} color={colors.secondaryText} />
@@ -521,6 +538,26 @@ function SettlementsContent() {
             </div>
 
             <div style={formGridStyle}>
+              <div style={inputGroupStyle}>
+                <label style={labelStyle}>Τύπος Συμφωνίας</label>
+                <div style={typeToggleWrapStyle}>
+                  <button
+                    type="button"
+                    style={{ ...typeBtnStyle, ...(type === 'settlement' ? typeBtnActiveStyle : {}) }}
+                    onClick={() => setType('settlement')}
+                  >
+                    Ρύθμιση (π.χ. Εφορία)
+                  </button>
+                  <button
+                    type="button"
+                    style={{ ...typeBtnStyle, ...(type === 'loan' ? typeBtnActiveStyle : {}) }}
+                    onClick={() => setType('loan')}
+                  >
+                    Δάνειο (Τράπεζα)
+                  </button>
+                </div>
+              </div>
+
               <div style={inputGroupStyle}>
                 <label style={labelStyle}>Όνομα</label>
                 <input style={inputStyle} value={name} onChange={(e) => setName(e.target.value)} placeholder="π.χ. Ρύθμιση Εφορίας" />
@@ -769,6 +806,30 @@ const miniBadgeStyle: CSSProperties = {
   padding: '4px 8px',
 }
 
+const typeBadgeStyle: CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 4,
+  borderRadius: '999px',
+  border: '1px solid',
+  padding: '3px 8px',
+  fontSize: '10px',
+  fontWeight: 900,
+  letterSpacing: 0.3,
+}
+
+const loanTypeBadgeStyle: CSSProperties = {
+  background: '#eff6ff',
+  color: colors.accentBlue,
+  borderColor: '#bfdbfe',
+}
+
+const settlementTypeBadgeStyle: CSSProperties = {
+  background: '#ecfdf5',
+  color: colors.accentGreen,
+  borderColor: '#a7f3d0',
+}
+
 const rowInfoStyle: CSSProperties = {
   marginTop: '10px',
   display: 'flex',
@@ -924,6 +985,34 @@ const labelStyle: CSSProperties = {
   fontSize: '12px',
   fontWeight: 800,
   color: colors.secondaryText,
+}
+
+const typeToggleWrapStyle: CSSProperties = {
+  border: `1px solid ${colors.border}`,
+  borderRadius: '12px',
+  background: colors.bgLight,
+  padding: '4px',
+  display: 'grid',
+  gridTemplateColumns: '1fr 1fr',
+  gap: 4,
+}
+
+const typeBtnStyle: CSSProperties = {
+  border: 'none',
+  borderRadius: '9px',
+  padding: '10px 8px',
+  fontSize: '12px',
+  fontWeight: 800,
+  color: colors.secondaryText,
+  background: 'transparent',
+  cursor: 'pointer',
+  textAlign: 'center',
+}
+
+const typeBtnActiveStyle: CSSProperties = {
+  background: colors.white,
+  color: colors.primaryDark,
+  boxShadow: '0 1px 2px rgba(0,0,0,0.1)',
 }
 
 const inputStyle: CSSProperties = {
