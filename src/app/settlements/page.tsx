@@ -21,6 +21,10 @@ import {
   CircleDashed,
   CheckCircle2,
   X,
+  AlertTriangle,
+  AlertOctagon,
+  Pencil,
+  Trash2,
 } from 'lucide-react'
 
 const colors = {
@@ -33,6 +37,14 @@ const colors = {
   border: '#e2e8f0',
   white: '#ffffff',
   modalBackdrop: 'rgba(2,6,23,0.6)',
+
+  warningBg: '#fffbeb',
+  warningBorder: '#fde68a',
+  warningText: '#92400e',
+
+  dangerBg: '#fff1f2',
+  dangerBorder: '#fecdd3',
+  dangerText: '#be123c',
 }
 
 type Settlement = {
@@ -56,9 +68,32 @@ type Installment = {
   amount: number
   status: string | null
   transaction_id: string | null
+  store_id?: string | null
 }
 
 type PaymentMethod = 'Μετρητά' | 'Τράπεζα'
+
+function yyyyMmDd(d: Date) {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+// ✅ Business Date (όπως στο Dashboard): πριν τις 07:00 → χθεσινή ημερομηνία
+function getBusinessDate() {
+  const now = new Date()
+  if (now.getHours() < 7) now.setDate(now.getDate() - 1)
+  return yyyyMmDd(now)
+}
+
+// days between due - today (positive = future, 0 = today, negative = overdue)
+function daysDiff(due: string, today: string) {
+  const a = new Date(`${due}T12:00:00`)
+  const b = new Date(`${today}T12:00:00`)
+  const ms = a.getTime() - b.getTime()
+  return Math.round(ms / (1000 * 60 * 60 * 24))
+}
 
 function addMonthsSafe(isoDate: string, months: number) {
   const source = new Date(`${isoDate}T12:00:00`)
@@ -78,7 +113,7 @@ function addMonthsSafe(isoDate: string, months: number) {
 }
 
 function toMoney(value: number | null | undefined) {
-  return `${Number(value || 0).toFixed(2)} €`
+  return `${Number(value || 0).toLocaleString('el-GR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`
 }
 
 function formatDateGr(dateStr: string | null | undefined) {
@@ -93,7 +128,24 @@ function getErrorMessage(error: unknown) {
   return 'Κάτι πήγε στραβά'
 }
 
-function SettlementsContent() {
+type DueState = 'ok' | 'warning' | 'danger'
+
+function getDueState(due: string, today: string): { state: DueState; text: string; days: number } {
+  const d = daysDiff(due, today)
+  // ✅ 3 μέρες πριν → κίτρινο
+  if (d >= 0 && d <= 3) {
+    const text = d === 0 ? 'λήγει σήμερα' : `σε ${d} μέρες`
+    return { state: 'warning', text, days: d }
+  }
+  // ✅ αν έχει λήξει → κόκκινο + καθυστέρηση
+  if (d < 0) {
+    const late = Math.abs(d)
+    return { state: 'danger', text: `${late} μέρες σε καθυστέρηση`, days: d }
+  }
+  return { state: 'ok', text: '', days: d }
+}
+
+function SettlementsContent({ onUpdate }: { onUpdate?: () => void }) {
   const searchParams = useSearchParams()
   const router = useRouter()
   const storeId = searchParams.get('store')
@@ -101,6 +153,7 @@ function SettlementsContent() {
   const [loading, setLoading] = useState(true)
   const [savingSettlement, setSavingSettlement] = useState(false)
   const [savingPayment, setSavingPayment] = useState(false)
+  const [savingDelete, setSavingDelete] = useState(false)
 
   const [openCreateModal, setOpenCreateModal] = useState(false)
   const [openPaymentModal, setOpenPaymentModal] = useState(false)
@@ -112,6 +165,10 @@ function SettlementsContent() {
   const [selectedInstallment, setSelectedInstallment] = useState<Installment | null>(null)
   const [selectedSettlement, setSelectedSettlement] = useState<Settlement | null>(null)
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('Μετρητά')
+  const [paymentAmount, setPaymentAmount] = useState<string>('') // ✅ μερική/override πληρωμή
+
+  // Create / Edit settlement
+  const [editingSettlementId, setEditingSettlementId] = useState<string | null>(null)
 
   const [name, setName] = useState('')
   const [type, setType] = useState<'settlement' | 'loan'>('settlement')
@@ -119,33 +176,59 @@ function SettlementsContent() {
   const [totalAmount, setTotalAmount] = useState('')
   const [installmentsCount, setInstallmentsCount] = useState('12')
   const [installmentAmount, setInstallmentAmount] = useState('')
-  const [firstDueDate, setFirstDueDate] = useState(new Date().toISOString().split('T')[0])
+  const [firstDueDate, setFirstDueDate] = useState(getBusinessDate())
+
+  // ✅ auto-calc installment amount (total / count) μέχρι ο χρήστης να “πειράξει” το ποσό δόσης
+  const [installmentManual, setInstallmentManual] = useState(false)
+
+  const todayStr = useMemo(() => getBusinessDate(), [])
 
   const pendingStats = useMemo(() => {
     let pendingCount = 0
     let pendingAmount = 0
+    let warningCount = 0
+    let dangerCount = 0
 
     Object.values(installmentsMap).forEach((rows) => {
       rows.forEach((row) => {
-        if ((row.status || 'pending').toLowerCase() === 'pending') {
-          pendingCount += 1
-          pendingAmount += Number(row.amount || 0)
-        }
+        const isPending = (row.status || 'pending').toLowerCase() === 'pending'
+        if (!isPending) return
+
+        pendingCount += 1
+        pendingAmount += Number(row.amount || 0)
+
+        const due = getDueState(String(row.due_date), todayStr)
+        if (due.state === 'warning') warningCount += 1
+        if (due.state === 'danger') dangerCount += 1
       })
     })
 
-    return { pendingCount, pendingAmount }
-  }, [installmentsMap])
+    return { pendingCount, pendingAmount, warningCount, dangerCount }
+  }, [installmentsMap, todayStr])
 
-  const resetCreateForm = () => {
+  const resetCreateForm = useCallback(() => {
+    setEditingSettlementId(null)
     setName('')
     setType('settlement')
     setRfCode('')
     setTotalAmount('')
     setInstallmentsCount('12')
     setInstallmentAmount('')
-    setFirstDueDate(new Date().toISOString().split('T')[0])
-  }
+    setFirstDueDate(getBusinessDate())
+    setInstallmentManual(false)
+  }, [])
+
+  // ✅ auto-calc
+  useEffect(() => {
+    if (installmentManual) return
+    const total = Number(totalAmount)
+    const count = Number(installmentsCount)
+    if (!Number.isFinite(total) || total <= 0) return
+    if (!Number.isInteger(count) || count <= 0) return
+    const per = total / count
+    if (!Number.isFinite(per) || per <= 0) return
+    setInstallmentAmount(per.toFixed(2))
+  }, [totalAmount, installmentsCount, installmentManual])
 
   const loadData = useCallback(async () => {
     if (!storeId) {
@@ -172,9 +255,12 @@ function SettlementsContent() {
       }
 
       const settlementIds = mappedSettlements.map((s) => s.id)
+
+      // ✅ ασφαλές: φέρνουμε installments ΜΟΝΟ για το store
       const { data: installmentsData, error: installmentsErr } = await supabase
         .from('installments')
         .select('*')
+        .eq('store_id', storeId)
         .in('settlement_id', settlementIds)
         .order('installment_number', { ascending: true })
 
@@ -182,8 +268,9 @@ function SettlementsContent() {
 
       const grouped: Record<string, Installment[]> = {}
       for (const row of (installmentsData || []) as Installment[]) {
-        if (!grouped[row.settlement_id]) grouped[row.settlement_id] = []
-        grouped[row.settlement_id].push(row)
+        const sid = String(row.settlement_id)
+        if (!grouped[sid]) grouped[sid] = []
+        grouped[sid].push(row)
       }
       setInstallmentsMap(grouped)
     } catch (error: unknown) {
@@ -216,7 +303,25 @@ function SettlementsContent() {
     void bootstrap()
   }, [router, storeId, loadData])
 
-  const onCreateSettlement = async () => {
+  const startCreate = () => {
+    resetCreateForm()
+    setOpenCreateModal(true)
+  }
+
+  const startEditSettlement = (s: Settlement) => {
+    setEditingSettlementId(String(s.id))
+    setName(String(s.name || ''))
+    setType((s.type === 'loan' ? 'loan' : 'settlement') as any)
+    setRfCode(String(s.rf_code || ''))
+    setTotalAmount(s.total_amount != null ? String(s.total_amount) : '')
+    setInstallmentsCount(s.installments_count != null ? String(s.installments_count) : '12')
+    setInstallmentAmount(s.installment_amount != null ? String(s.installment_amount) : '')
+    setFirstDueDate(s.first_due_date ? String(s.first_due_date).slice(0, 10) : getBusinessDate())
+    setInstallmentManual(true) // όταν κάνεις edit, θεωρούμε “χειροκίνητο”
+    setOpenCreateModal(true)
+  }
+
+  const onSaveSettlement = async () => {
     if (!storeId) return toast.error('Λείπει το store')
 
     const cleanName = name.trim()
@@ -254,6 +359,61 @@ function SettlementsContent() {
         first_due_date: firstDueDate,
       }
 
+      // ----------------- EDIT -----------------
+      if (editingSettlementId) {
+        // Αν έχουν ήδη πληρωθεί δόσεις, ΔΕΝ πειράζουμε πρόγραμμα/δόσεις (μόνο στοιχεία)
+        const rows = installmentsMap[String(editingSettlementId)] || []
+        const paidCount = rows.filter((r) => String(r.status || '').toLowerCase() === 'paid').length
+        if (paidCount > 0) {
+          const { error } = await supabase
+            .from('settlements')
+            .update(settlementPayload)
+            .eq('id', editingSettlementId)
+            .eq('store_id', storeId)
+          if (error) throw error
+          toast.success('Ενημερώθηκε (χωρίς αλλαγή δόσεων γιατί υπάρχουν πληρωμένες)')
+          setOpenCreateModal(false)
+          resetCreateForm()
+          await loadData()
+          return
+        }
+
+        // Αν δεν υπάρχουν πληρωμένες, επιτρέπουμε πλήρες update + επανα-δημιουργία δόσεων
+        const { error: upErr } = await supabase
+          .from('settlements')
+          .update(settlementPayload)
+          .eq('id', editingSettlementId)
+          .eq('store_id', storeId)
+        if (upErr) throw upErr
+
+        // delete existing installments then recreate
+        const { error: delInstErr } = await supabase
+          .from('installments')
+          .delete()
+          .eq('store_id', storeId)
+          .eq('settlement_id', editingSettlementId)
+        if (delInstErr) throw delInstErr
+
+        const installmentsPayload = Array.from({ length: parsedCount }, (_, index) => ({
+          store_id: storeId,
+          settlement_id: editingSettlementId,
+          installment_number: index + 1,
+          amount: parsedInstallment,
+          due_date: addMonthsSafe(firstDueDate, index),
+          status: 'pending',
+        }))
+
+        const { error: insErr } = await supabase.from('installments').insert(installmentsPayload)
+        if (insErr) throw insErr
+
+        toast.success('Η ρύθμιση ενημερώθηκε και οι δόσεις ανανεώθηκαν')
+        setOpenCreateModal(false)
+        resetCreateForm()
+        await loadData()
+        return
+      }
+
+      // ----------------- CREATE -----------------
       const { data: settlementRow, error: settlementErr } = await supabase
         .from('settlements')
         .insert([settlementPayload])
@@ -261,7 +421,6 @@ function SettlementsContent() {
         .single()
 
       if (settlementErr) throw settlementErr
-
       createdSettlementId = settlementRow.id
 
       const installmentsPayload = Array.from({ length: parsedCount }, (_, index) => ({
@@ -282,9 +441,9 @@ function SettlementsContent() {
       await loadData()
     } catch (error: unknown) {
       if (createdSettlementId) {
-        await supabase.from('settlements').delete().eq('id', createdSettlementId)
+        await supabase.from('settlements').delete().eq('id', createdSettlementId).eq('store_id', storeId)
       }
-      toast.error(getErrorMessage(error) || 'Αποτυχία δημιουργίας ρύθμισης')
+      toast.error(getErrorMessage(error) || 'Αποτυχία αποθήκευσης ρύθμισης')
     } finally {
       setSavingSettlement(false)
     }
@@ -294,6 +453,7 @@ function SettlementsContent() {
     setSelectedSettlement(settlement)
     setSelectedInstallment(installment)
     setPaymentMethod('Μετρητά')
+    setPaymentAmount(String(Number(installment.amount || 0).toFixed(2))) // ✅ default ποσό
     setOpenPaymentModal(true)
   }
 
@@ -301,23 +461,31 @@ function SettlementsContent() {
     if (!storeId) return toast.error('Λείπει το store')
     if (!selectedInstallment || !selectedSettlement) return toast.error('Δεν βρέθηκε επιλεγμένη δόση')
 
+    const parsedPay = Math.abs(Number(paymentAmount))
+    if (!Number.isFinite(parsedPay) || parsedPay <= 0) return toast.error('Μη έγκυρο ποσό πληρωμής')
+
     setSavingPayment(true)
     try {
       const {
         data: { session },
       } = await supabase.auth.getSession()
       if (!session) throw new Error('Η συνεδρία έληξε. Συνδέσου ξανά.')
-      let userName = 'Χρήστης'
-      const { data: profile } = await supabase.from('profiles').select('username').eq('id', session.user.id).maybeSingle()
-      if (profile?.username) {
-        userName = profile.username
-      }
 
-      const amount = Math.abs(Number(selectedInstallment.amount || 0))
-      if (!amount) throw new Error('Μη έγκυρο ποσό δόσης')
+      const raw =
+        session.user.user_metadata?.username ||
+        session.user.user_metadata?.full_name ||
+        session.user.email ||
+        'Χρήστης'
+      const userName = String(raw).includes('@') ? String(raw).split('@')[0] : String(raw)
 
-      const today = new Date().toISOString().split('T')[0]
-      const notes = `Πληρωμή Δόσης #${selectedInstallment.installment_number}: ${selectedSettlement.name} ${selectedSettlement.rf_code ? `(RF: ${selectedSettlement.rf_code})` : ''}`
+      const businessToday = getBusinessDate()
+
+      const isLoan = selectedSettlement.type === 'loan'
+      const category = isLoan ? 'Δάνεια' : 'Ρυθμίσεις'
+
+      const notes = `${isLoan ? 'Πληρωμή Δανείου' : 'Πληρωμή Ρύθμισης'} • Δόση #${selectedInstallment.installment_number}: ${
+        selectedSettlement.name
+      }${selectedSettlement.rf_code ? ` (RF: ${selectedSettlement.rf_code})` : ''}`
 
       const { data: transactionRow, error: transErr } = await supabase
         .from('transactions')
@@ -327,11 +495,11 @@ function SettlementsContent() {
             user_id: session.user.id,
             created_by_name: userName,
             type: 'expense',
-            amount: -amount,
+            amount: -parsedPay,
             method: paymentMethod,
-            category: 'Λοιπά', // Στην Ανάλυση θα πάει στο Other
+            category,
             notes,
-            date: today,
+            date: businessToday, // ✅ business date
           },
         ])
         .select('id')
@@ -339,13 +507,16 @@ function SettlementsContent() {
 
       if (transErr) throw transErr
 
+      // ✅ ασφαλές update με store_id + ενημέρωση ποσού (αν έγινε override)
       const { error: installmentErr } = await supabase
         .from('installments')
         .update({
           status: 'paid',
           transaction_id: transactionRow.id,
+          amount: parsedPay,
         })
         .eq('id', selectedInstallment.id)
+        .eq('store_id', storeId)
 
       if (installmentErr) throw installmentErr
 
@@ -354,6 +525,9 @@ function SettlementsContent() {
       setSelectedInstallment(null)
       setSelectedSettlement(null)
       await loadData()
+
+      // ✅ callback προς dashboard / άλλα components
+      if (onUpdate) onUpdate()
     } catch (error: unknown) {
       toast.error(getErrorMessage(error) || 'Αποτυχία πληρωμής δόσης')
     } finally {
@@ -362,20 +536,43 @@ function SettlementsContent() {
   }
 
   const onDeleteSettlement = async (settlementId: string) => {
-    if (!confirm('Είστε σίγουροι; Θα διαγραφεί η ρύθμιση και όλες οι δόσεις της. (Τυχόν δόσεις που έχετε ήδη πληρώσει θα παραμείνουν στα έξοδα).')) return
     if (!storeId) return
 
-    setLoading(true)
-    try {
-      const { error } = await supabase.from('settlements').delete().eq('id', settlementId).eq('store_id', storeId)
-      if (error) throw error
+    const rows = installmentsMap[String(settlementId)] || []
+    const paidCount = rows.filter((r) => String(r.status || '').toLowerCase() === 'paid').length
+    const totalCount = rows.length
 
-      toast.success('Η ρύθμιση διαγράφηκε επιτυχώς')
+    const ok = confirm(
+      `Είσαι σίγουρος;\n\nΘα διαγραφεί η συμφωνία και ΟΛΕΣ οι δόσεις (${totalCount}).\nΠληρωμένες δόσεις: ${paidCount}.\n\n⚠️ Οι πληρωμές που έχουν ήδη περαστεί στα Έξοδα (transactions) ΔΕΝ θα σβηστούν.`,
+    )
+    if (!ok) return
+
+    setSavingDelete(true)
+    try {
+      // πρώτα διαγραφή δόσεων για καθαρότητα
+      const { error: delInstErr } = await supabase
+        .from('installments')
+        .delete()
+        .eq('store_id', storeId)
+        .eq('settlement_id', settlementId)
+      if (delInstErr) throw delInstErr
+
+      // μετά διαγραφή settlement
+      const { error: delSetErr } = await supabase
+        .from('settlements')
+        .delete()
+        .eq('id', settlementId)
+        .eq('store_id', storeId)
+      if (delSetErr) throw delSetErr
+
+      toast.success('Η συμφωνία διαγράφηκε')
       setExpandedSettlementId(null)
       await loadData()
+      if (onUpdate) onUpdate()
     } catch (error: unknown) {
       toast.error(getErrorMessage(error) || 'Αποτυχία διαγραφής')
-      setLoading(false)
+    } finally {
+      setSavingDelete(false)
     }
   }
 
@@ -388,6 +585,37 @@ function SettlementsContent() {
       toast.error('Αποτυχία αντιγραφής')
     }
   }
+
+  // ---------- Per-settlement due summary (badge on header) ----------
+  const settlementStatus = useCallback(
+    (settlementId: string): { state: DueState; label: string } => {
+      const rows = installmentsMap[String(settlementId)] || []
+      const pending = rows.filter((r) => (r.status || 'pending').toLowerCase() === 'pending')
+      if (!pending.length) return { state: 'ok', label: 'ΟΛΑ ΠΛΗΡΩΜΕΝΑ' }
+
+      // pick worst state among pending
+      let hasDanger = false
+      let hasWarning = false
+      let minDays = Number.POSITIVE_INFINITY
+      let lateDays = 0
+
+      for (const inst of pending) {
+        const due = getDueState(String(inst.due_date), todayStr)
+        if (due.state === 'danger') {
+          hasDanger = true
+          lateDays = Math.max(lateDays, Math.abs(due.days))
+        } else if (due.state === 'warning') {
+          hasWarning = true
+          minDays = Math.min(minDays, due.days)
+        }
+      }
+
+      if (hasDanger) return { state: 'danger', label: `${lateDays}μ καθυστέρηση` }
+      if (hasWarning) return { state: 'warning', label: minDays === 0 ? 'ΛΗΓΕΙ ΣΗΜΕΡΑ' : `ΛΗΓΕΙ ΣΕ ${minDays}μ` }
+      return { state: 'ok', label: 'OK' }
+    },
+    [installmentsMap, todayStr],
+  )
 
   if (loading) {
     return (
@@ -427,18 +655,19 @@ function SettlementsContent() {
           <div>
             <p style={summaryLabelStyle}>ΕΚΚΡΕΜΕΙΣ ΔΟΣΕΙΣ</p>
             <p style={summaryValueStyle}>{pendingStats.pendingCount}</p>
+            <p style={{ margin: '6px 0 0', fontSize: 11, fontWeight: 800, opacity: 0.8 }}>
+              <span style={{ marginRight: 10 }}>🟡 {pendingStats.warningCount}</span>
+              <span>🔴 {pendingStats.dangerCount}</span>
+            </p>
           </div>
           <div style={{ textAlign: 'right' }}>
             <p style={summaryLabelStyle}>ΣΥΝΟΛΟ ΥΠΟΛΟΙΠΟΥ</p>
             <p style={summaryValueStyle}>{toMoney(pendingStats.pendingAmount)}</p>
+            <p style={{ margin: '6px 0 0', fontSize: 11, fontWeight: 800, opacity: 0.8 }}>Business Date: {formatDateGr(todayStr)}</p>
           </div>
         </div>
 
-        <button
-          type="button"
-          style={newBtnStyle}
-          onClick={() => setOpenCreateModal(true)}
-        >
+        <button type="button" style={newBtnStyle} onClick={startCreate}>
           <PlusCircle size={18} />
           Νέα Ρύθμιση
         </button>
@@ -453,6 +682,15 @@ function SettlementsContent() {
             {settlements.map((settlement) => {
               const isOpen = expandedSettlementId === settlement.id
               const settlementInstallments = installmentsMap[settlement.id] || []
+              const paidCount = settlementInstallments.filter((i) => (i.status || '').toLowerCase() === 'paid').length
+              const status = settlementStatus(settlement.id)
+
+              const statusPill =
+                status.state === 'danger'
+                  ? { bg: colors.dangerBg, bd: colors.dangerBorder, tx: colors.dangerText, icon: <AlertOctagon size={12} /> }
+                  : status.state === 'warning'
+                    ? { bg: colors.warningBg, bd: colors.warningBorder, tx: colors.warningText, icon: <AlertTriangle size={12} /> }
+                    : { bg: '#eff6ff', bd: '#bfdbfe', tx: '#1d4ed8', icon: <CheckCircle2 size={12} /> }
 
               return (
                 <article key={settlement.id} style={cardStyle}>
@@ -462,7 +700,7 @@ function SettlementsContent() {
                     onClick={() => setExpandedSettlementId(isOpen ? null : settlement.id)}
                   >
                     <div style={{ textAlign: 'left' }}>
-                      <div style={{ marginBottom: 5 }}>
+                      <div style={{ marginBottom: 5, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                         {settlement.type === 'loan' ? (
                           <span style={{ ...typeBadgeStyle, ...loanTypeBadgeStyle }}>
                             <Landmark size={12} />
@@ -474,8 +712,29 @@ function SettlementsContent() {
                             ΡΥΘΜΙΣΗ
                           </span>
                         )}
+
+                        <span
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 6,
+                            padding: '3px 8px',
+                            borderRadius: 999,
+                            border: `1px solid ${statusPill.bd}`,
+                            background: statusPill.bg,
+                            color: statusPill.tx,
+                            fontSize: 10,
+                            fontWeight: 900,
+                          }}
+                          title="Κατάσταση εκκρεμών δόσεων"
+                        >
+                          {statusPill.icon}
+                          {status.label}
+                        </span>
                       </div>
+
                       <h3 style={settlementTitleStyle}>{settlement.name}</h3>
+
                       <div style={rfRowStyle}>
                         <Hash size={14} color={colors.secondaryText} />
                         <span style={rfTextStyle}>RF: {settlement.rf_code || '—'}</span>
@@ -494,9 +753,9 @@ function SettlementsContent() {
                       </div>
                     </div>
 
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
                       <span style={miniBadgeStyle}>
-                        {settlementInstallments.filter(i => i.status === 'paid').length} / {settlementInstallments.length} Πληρωμένες
+                        {paidCount} / {settlementInstallments.length} Πληρωμένες
                       </span>
                       {isOpen ? <ChevronUp size={18} color={colors.secondaryText} /> : <ChevronDown size={18} color={colors.secondaryText} />}
                     </div>
@@ -514,55 +773,113 @@ function SettlementsContent() {
                   </div>
 
                   {isOpen && (
-                    <>
-                      <div style={installmentsWrapStyle}>
-                        {settlementInstallments.length === 0 ? (
-                          <p style={{ margin: 0, color: colors.secondaryText, fontWeight: 700 }}>Δεν υπάρχουν δόσεις.</p>
-                        ) : (
-                          settlementInstallments.map((inst) => {
-                            const isPending = (inst.status || 'pending').toLowerCase() === 'pending'
+                    <div style={installmentsWrapStyle}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+                        <button
+                          type="button"
+                          onClick={() => startEditSettlement(settlement)}
+                          style={{
+                            border: `1px solid ${colors.border}`,
+                            background: colors.white,
+                            color: colors.primaryDark,
+                            borderRadius: 12,
+                            padding: '10px 12px',
+                            fontWeight: 900,
+                            cursor: 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 8,
+                            fontSize: 12,
+                          }}
+                        >
+                          <Pencil size={14} /> Επεξεργασία
+                        </button>
 
-                            return (
-                              <div key={inst.id} style={installmentRowStyle}>
-                                <div>
-                                  <p style={installmentTitleStyle}>Δόση #{inst.installment_number}</p>
-                                  <p style={installmentMetaStyle}>Λήξη: {formatDateGr(inst.due_date)}</p>
-                                </div>
-
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                                  <span style={amountChipStyle}>{toMoney(inst.amount)}</span>
-                                  {isPending ? (
-                                    <button
-                                      type="button"
-                                      style={payBtnStyle}
-                                      onClick={() => openPaymentFor(settlement, inst)}
-                                    >
-                                      Πληρωμή
-                                    </button>
-                                  ) : (
-                                    <span style={paidChipStyle}>
-                                      <CheckCircle2 size={13} />
-                                      Πληρωμένη
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
-                            )
-                          })
-                        )}
-                        <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: `1px dashed ${colors.border}`, display: 'flex', justifyContent: 'center' }}>
-                          <button
-                            type="button"
-                            onClick={() => onDeleteSettlement(settlement.id)}
-                            style={{
-                              background: 'transparent', border: 'none', color: colors.accentRed, fontSize: '12px', fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6
-                            }}
-                          >
-                            <X size={14} /> Διαγραφή Συμφωνίας
-                          </button>
-                        </div>
+                        <button
+                          type="button"
+                          onClick={() => onDeleteSettlement(settlement.id)}
+                          disabled={savingDelete}
+                          style={{
+                            border: `1px solid ${colors.dangerBorder}`,
+                            background: colors.dangerBg,
+                            color: colors.dangerText,
+                            borderRadius: 12,
+                            padding: '10px 12px',
+                            fontWeight: 900,
+                            cursor: 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 8,
+                            fontSize: 12,
+                          }}
+                        >
+                          <Trash2 size={14} /> Διαγραφή
+                        </button>
                       </div>
-                    </>
+
+                      {settlementInstallments.length === 0 ? (
+                        <p style={{ margin: 0, color: colors.secondaryText, fontWeight: 700 }}>Δεν υπάρχουν δόσεις.</p>
+                      ) : (
+                        settlementInstallments.map((inst) => {
+                          const isPending = (inst.status || 'pending').toLowerCase() === 'pending'
+                          const due = getDueState(String(inst.due_date), todayStr)
+
+                          const rowTone =
+                            due.state === 'danger'
+                              ? { bg: colors.dangerBg, bd: colors.dangerBorder }
+                              : due.state === 'warning'
+                                ? { bg: colors.warningBg, bd: colors.warningBorder }
+                                : { bg: colors.white, bd: colors.border }
+
+                          return (
+                            <div
+                              key={inst.id}
+                              style={{
+                                ...installmentRowStyle,
+                                background: rowTone.bg,
+                                borderColor: rowTone.bd,
+                              }}
+                            >
+                              <div>
+                                <p style={installmentTitleStyle}>Δόση #{inst.installment_number}</p>
+                                <p style={installmentMetaStyle}>
+                                  Λήξη: {formatDateGr(inst.due_date)}
+                                  {isPending && due.state !== 'ok' ? (
+                                    <span
+                                      style={{
+                                        marginLeft: 8,
+                                        fontWeight: 900,
+                                        color: due.state === 'danger' ? colors.dangerText : colors.warningText,
+                                      }}
+                                    >
+                                      • {due.text}
+                                    </span>
+                                  ) : null}
+                                </p>
+                              </div>
+
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                <span style={amountChipStyle}>{toMoney(inst.amount)}</span>
+                                {isPending ? (
+                                  <button
+                                    type="button"
+                                    style={payBtnStyle}
+                                    onClick={() => openPaymentFor(settlement, inst)}
+                                  >
+                                    Πληρωμή
+                                  </button>
+                                ) : (
+                                  <span style={paidChipStyle}>
+                                    <CheckCircle2 size={13} />
+                                    Πληρωμένη
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          )
+                        })
+                      )}
+                    </div>
                   )}
                 </article>
               )
@@ -571,12 +888,21 @@ function SettlementsContent() {
         )}
       </div>
 
+      {/* CREATE / EDIT MODAL */}
       {openCreateModal && (
         <div style={modalBackdropStyle} onClick={() => !savingSettlement && setOpenCreateModal(false)}>
           <div style={modalCardStyle} onClick={(e) => e.stopPropagation()}>
             <div style={modalHeaderStyle}>
-              <h2 style={modalTitleStyle}>Νέα Ρύθμιση</h2>
-              <button type="button" style={iconCloseBtnStyle} onClick={() => setOpenCreateModal(false)} disabled={savingSettlement}>
+              <h2 style={modalTitleStyle}>{editingSettlementId ? 'Επεξεργασία Ρύθμισης' : 'Νέα Ρύθμιση'}</h2>
+              <button
+                type="button"
+                style={iconCloseBtnStyle}
+                onClick={() => {
+                  setOpenCreateModal(false)
+                  resetCreateForm()
+                }}
+                disabled={savingSettlement}
+              >
                 <X size={16} />
               </button>
             </div>
@@ -615,18 +941,45 @@ function SettlementsContent() {
               <div style={twoColGridStyle}>
                 <div style={inputGroupStyle}>
                   <label style={labelStyle}>Συνολικό Ποσό</label>
-                  <input style={inputStyle} type="number" min="0" step="0.01" value={totalAmount} onChange={(e) => setTotalAmount(e.target.value)} />
+                  <input
+                    style={inputStyle}
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={totalAmount}
+                    onChange={(e) => setTotalAmount(e.target.value)}
+                  />
                 </div>
                 <div style={inputGroupStyle}>
                   <label style={labelStyle}>Αριθμός Δόσεων</label>
-                  <input style={inputStyle} type="number" min="1" step="1" value={installmentsCount} onChange={(e) => setInstallmentsCount(e.target.value)} />
+                  <input
+                    style={inputStyle}
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={installmentsCount}
+                    onChange={(e) => setInstallmentsCount(e.target.value)}
+                  />
                 </div>
               </div>
 
               <div style={twoColGridStyle}>
                 <div style={inputGroupStyle}>
                   <label style={labelStyle}>Ποσό ανά Δόση</label>
-                  <input style={inputStyle} type="number" min="0" step="0.01" value={installmentAmount} onChange={(e) => setInstallmentAmount(e.target.value)} />
+                  <input
+                    style={inputStyle}
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={installmentAmount}
+                    onChange={(e) => {
+                      setInstallmentManual(true)
+                      setInstallmentAmount(e.target.value)
+                    }}
+                  />
+                  <div style={{ fontSize: 11, fontWeight: 800, color: colors.secondaryText }}>
+                    {installmentManual ? 'Χειροκίνητο ποσό δόσης' : 'Αυτόματο (Σύνολο / Δόσεις)'}
+                  </div>
                 </div>
                 <div style={inputGroupStyle}>
                   <label style={labelStyle}>Ημερομηνία 1ης Δόσης</label>
@@ -635,13 +988,38 @@ function SettlementsContent() {
               </div>
             </div>
 
-            <button type="button" style={saveBtnStyle} onClick={onCreateSettlement} disabled={savingSettlement}>
-              {savingSettlement ? 'Αποθήκευση...' : 'Αποθήκευση Ρύθμισης'}
+            <button type="button" style={saveBtnStyle} onClick={onSaveSettlement} disabled={savingSettlement}>
+              {savingSettlement ? 'Αποθήκευση...' : editingSettlementId ? 'Αποθήκευση Αλλαγών' : 'Αποθήκευση Ρύθμισης'}
             </button>
+
+            {editingSettlementId && (
+              <button
+                type="button"
+                onClick={() => {
+                  resetCreateForm()
+                  setOpenCreateModal(false)
+                }}
+                disabled={savingSettlement}
+                style={{
+                  width: '100%',
+                  marginTop: 10,
+                  border: `1px solid ${colors.border}`,
+                  borderRadius: 12,
+                  padding: 12,
+                  fontWeight: 900,
+                  background: colors.white,
+                  cursor: 'pointer',
+                  color: colors.primaryDark,
+                }}
+              >
+                Ακύρωση
+              </button>
+            )}
           </div>
         </div>
       )}
 
+      {/* PAYMENT MODAL */}
       {openPaymentModal && selectedInstallment && selectedSettlement && (
         <div style={modalBackdropStyle} onClick={() => !savingPayment && setOpenPaymentModal(false)}>
           <div style={modalCardStyle} onClick={(e) => e.stopPropagation()}>
@@ -654,10 +1032,25 @@ function SettlementsContent() {
 
             <div style={paymentInfoBoxStyle}>
               <p style={paymentInfoTitleStyle}>{selectedSettlement.name}</p>
-              <p style={paymentInfoMetaStyle}>Δόση #{selectedInstallment.installment_number} • {toMoney(selectedInstallment.amount)}</p>
+              <p style={paymentInfoMetaStyle}>
+                Δόση #{selectedInstallment.installment_number} • {toMoney(selectedInstallment.amount)} • Λήξη: {formatDateGr(selectedInstallment.due_date)}
+              </p>
             </div>
 
-            <label style={{ ...labelStyle, marginTop: 10 }}>Τρόπος Πληρωμής</label>
+            <label style={{ ...labelStyle, marginTop: 10 }}>Ποσό Πληρωμής</label>
+            <input
+              style={inputStyle}
+              type="number"
+              min="0"
+              step="0.01"
+              value={paymentAmount}
+              onChange={(e) => setPaymentAmount(e.target.value)}
+            />
+            <div style={{ fontSize: 11, fontWeight: 800, color: colors.secondaryText, marginTop: 6 }}>
+              * Μπορείς να αλλάξεις ποσό (μερική/διαφορετική πληρωμή). Θα γραφτεί αυτό στα Έξοδα και θα “κλειδώσει” η δόση ως πληρωμένη.
+            </div>
+
+            <label style={{ ...labelStyle, marginTop: 12 }}>Τρόπος Πληρωμής</label>
             <div style={methodToggleWrapStyle}>
               <button
                 type="button"
@@ -895,7 +1288,7 @@ const installmentsWrapStyle: CSSProperties = {
   borderTop: `1px solid ${colors.border}`,
   paddingTop: '10px',
   display: 'grid',
-  gap: 8,
+  gap: 10,
 }
 
 const installmentRowStyle: CSSProperties = {
@@ -1012,6 +1405,7 @@ const iconCloseBtnStyle: CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
+  cursor: 'pointer',
 }
 
 const formGridStyle: CSSProperties = {
@@ -1131,6 +1525,7 @@ const methodBtnStyle: CSSProperties = {
   alignItems: 'center',
   justifyContent: 'center',
   gap: 6,
+  cursor: 'pointer',
 }
 
 const methodBtnActiveStyle: CSSProperties = {
@@ -1139,10 +1534,10 @@ const methodBtnActiveStyle: CSSProperties = {
   boxShadow: '0 1px 2px rgba(0,0,0,0.1)',
 }
 
-export default function SettlementsPage() {
+export default function SettlementsPage({ onUpdate }: { onUpdate?: () => void }) {
   return (
     <Suspense fallback={null}>
-      <SettlementsContent />
+      <SettlementsContent onUpdate={onUpdate} />
     </Suspense>
   )
 }
