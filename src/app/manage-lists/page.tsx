@@ -40,15 +40,10 @@ const colors = {
   warningText: '#92400e',
 }
 
-const BANK_OPTIONS = [
-  'Εθνική Τράπεζα',
-  'Eurobank',
-  'Alpha Bank',
-  'Viva Wallet',
-  'Τράπεζα Πειραιώς',
-] as const
+const BANK_OPTIONS = ['Εθνική Τράπεζα', 'Eurobank', 'Alpha Bank', 'Viva Wallet', 'Τράπεζα Πειραιώς'] as const
 
 type TabKey = 'suppliers' | 'utility' | 'staff' | 'maintenance' | 'other' | 'revenue'
+type PayBasis = 'monthly' | 'daily'
 
 const MENU: Array<{
   key: TabKey
@@ -64,8 +59,6 @@ const MENU: Array<{
   { key: 'maintenance', label: 'Συντήρηση', icon: Wrench, subCategory: 'Maintenance', addLabel: 'ΝΕΟΣ ΤΕΧΝΙΚΟΣ' },
   { key: 'other', label: 'Λοιπά', icon: Package, subCategory: 'other', addLabel: 'ΝΕΟ ΠΑΓΙΟ' },
 ]
-
-type PayBasis = 'monthly' | 'daily'
 
 function ManageListsContent() {
   const router = useRouter()
@@ -83,7 +76,9 @@ function ManageListsContent() {
   const [suppliers, setSuppliers] = useState<any[]>([])
   const [fixedAssets, setFixedAssets] = useState<any[]>([])
   const [revenueSources, setRevenueSources] = useState<any[]>([])
-  const [transactions, setTransactions] = useState<any[]>([]) // ✅ για τζίρους
+
+  // ✅ transactions για τζίρους (με type + date)
+  const [transactions, setTransactions] = useState<any[]>([])
 
   const [search, setSearch] = useState('')
 
@@ -109,11 +104,12 @@ function ManageListsContent() {
   // Utility
   const [rfCode, setRfCode] = useState<string>('')
 
-  const currentTab = useMemo(() => MENU.find(t => t.key === activeTab)!, [activeTab])
-
+  const currentTab = useMemo(() => MENU.find((t) => t.key === activeTab)!, [activeTab])
   const isRevenueTab = activeTab === 'revenue'
-  const saveColor = isRevenueTab ? colors.accentGreen : colors.accentGreen // (οι άλλες καρτέλες κρατάνε πράσινο ήδη)
-  const TrendingColor = isRevenueTab ? colors.accentGreen : colors.secondaryText
+
+  // ✅ Year selector (default: current year)
+  const currentYear = new Date().getFullYear()
+  const [selectedYear, setSelectedYear] = useState<number>(currentYear)
 
   const copyToClipboard = async (text: string) => {
     const value = String(text || '').trim()
@@ -157,39 +153,75 @@ function ManageListsContent() {
     setIsFormOpen(false)
   }, [])
 
-  // ✅ totals για ranking/ποσά
+  // -------------------- YEAR HELPERS --------------------
+  const getTxDate = (t: any) => {
+    const raw = t?.date || t?.created_at
+    if (!raw) return null
+    const d = new Date(raw)
+    return isNaN(d.getTime()) ? null : d
+  }
+
+  const isTxInYear = (t: any, year: number) => {
+    const d = getTxDate(t)
+    if (!d) return false
+    return d.getFullYear() === year
+  }
+
+  const yearOptions = useMemo(() => {
+    const years = new Set<number>()
+    years.add(currentYear)
+    for (const t of transactions) {
+      const d = getTxDate(t)
+      if (d) years.add(d.getFullYear())
+    }
+    return Array.from(years).sort((a, b) => b - a)
+  }, [transactions, currentYear])
+
+  // -------------------- ✅ TURNOVER LOGIC (same as suppliers page) --------------------
+  // Suppliers + FixedAssets: count ONLY expense (NOT debt_payment)
+  // Revenue Sources: count ONLY income (NOT debt_received / debt_payment)
+
   const supplierTotals = useMemo(() => {
     const totals: Record<string, number> = {}
     transactions.forEach((t: any) => {
       if (!t?.supplier_id) return
-      const amount = Math.abs(Number(t.amount)) || 0
+      if (String(t.type || '') !== 'expense') return // ✅ exclude debt_payment
+      if (!isTxInYear(t, selectedYear)) return
+
       const id = String(t.supplier_id)
+      const amount = Math.abs(Number(t.amount)) || 0
       totals[id] = (totals[id] || 0) + amount
     })
     return totals
-  }, [transactions])
+  }, [transactions, selectedYear])
 
   const fixedAssetTotals = useMemo(() => {
     const totals: Record<string, number> = {}
     transactions.forEach((t: any) => {
       if (!t?.fixed_asset_id) return
-      const amount = Math.abs(Number(t.amount)) || 0
+      if (String(t.type || '') !== 'expense') return // ✅ exclude debt_payment
+      if (!isTxInYear(t, selectedYear)) return
+
       const id = String(t.fixed_asset_id)
+      const amount = Math.abs(Number(t.amount)) || 0
       totals[id] = (totals[id] || 0) + amount
     })
     return totals
-  }, [transactions])
+  }, [transactions, selectedYear])
 
   const revenueTotals = useMemo(() => {
     const totals: Record<string, number> = {}
     transactions.forEach((t: any) => {
       if (!t?.revenue_source_id) return
-      const amount = Math.abs(Number(t.amount)) || 0
+      if (String(t.type || '') !== 'income') return // ✅ μόνο πραγματικά έσοδα
+      if (!isTxInYear(t, selectedYear)) return
+
       const id = String(t.revenue_source_id)
+      const amount = Math.abs(Number(t.amount)) || 0
       totals[id] = (totals[id] || 0) + amount
     })
     return totals
-  }, [transactions])
+  }, [transactions, selectedYear])
 
   const getTurnover = useCallback(
     (id: string) => {
@@ -200,17 +232,40 @@ function ManageListsContent() {
     [activeTab, supplierTotals, fixedAssetTotals, revenueTotals],
   )
 
+  // ✅ HERO TOTAL (sum of totals for current tab)
+  const heroTotal = useMemo(() => {
+    const map =
+      activeTab === 'suppliers'
+        ? supplierTotals
+        : activeTab === 'revenue'
+          ? revenueTotals
+          : fixedAssetTotals
+
+    return Object.values(map).reduce((acc, n) => acc + (Number(n) || 0), 0)
+  }, [activeTab, supplierTotals, revenueTotals, fixedAssetTotals])
+
+  const heroTitle = useMemo(() => {
+    if (activeTab === 'suppliers') return 'ΣΥΝΟΛΟ ΤΖΙΡΟΥ ΠΡΟΜΗΘΕΥΤΩΝ'
+    if (activeTab === 'revenue') return 'ΣΥΝΟΛΟ ΤΖΙΡΟΥ ΠΗΓΩΝ ΕΣΟΔΩΝ'
+    if (activeTab === 'utility') return 'ΣΥΝΟΛΟ ΤΖΙΡΟΥ ΛΟΓΑΡΙΑΣΜΩΝ'
+    if (activeTab === 'staff') return 'ΣΥΝΟΛΟ ΤΖΙΡΟΥ ΠΡΟΣΩΠΙΚΟΥ'
+    if (activeTab === 'maintenance') return 'ΣΥΝΟΛΟ ΤΖΙΡΟΥ ΣΥΝΤΗΡΗΣΗΣ'
+    return 'ΣΥΝΟΛΟ ΤΖΙΡΟΥ ΛΟΙΠΩΝ'
+  }, [activeTab])
+
+  const heroHint = useMemo(() => {
+    if (activeTab === 'revenue') return 'Μετράει μόνο έσοδα (income). Δεν μετράει εισπράξεις χρεών.'
+    return 'Μετράει μόνο αγορές/έξοδα (expense). Δεν μετράει πληρωμές χρέους (debt_payment).'
+  }, [activeTab])
+
+  // -------------------- LIST --------------------
   const visibleItems = useMemo(() => {
     const q = search.trim().toLowerCase()
 
     let base: any[] = []
-    if (activeTab === 'suppliers') {
-      base = suppliers
-    } else if (activeTab === 'revenue') {
-      base = revenueSources
-    } else {
-      base = fixedAssets.filter((x: any) => (x.sub_category || '') === currentTab.subCategory)
-    }
+    if (activeTab === 'suppliers') base = suppliers
+    else if (activeTab === 'revenue') base = revenueSources
+    else base = fixedAssets.filter((x: any) => (x.sub_category || '') === currentTab.subCategory)
 
     const filtered = !q
       ? base
@@ -225,13 +280,10 @@ function ManageListsContent() {
         })
 
     // ✅ SORT by turnover desc
-    return [...filtered].sort((a: any, b: any) => {
-      const ta = getTurnover(String(a.id))
-      const tb = getTurnover(String(b.id))
-      return tb - ta
-    })
+    return [...filtered].sort((a: any, b: any) => getTurnover(String(b.id)) - getTurnover(String(a.id)))
   }, [activeTab, suppliers, revenueSources, fixedAssets, search, currentTab.subCategory, getTurnover])
 
+  // -------------------- LOAD DATA --------------------
   const loadData = useCallback(async () => {
     try {
       setLoading(true)
@@ -239,14 +291,13 @@ function ManageListsContent() {
       const {
         data: { session },
       } = await supabase.auth.getSession()
+
       if (!session) {
         setLoading(false)
         return router.push('/login')
       }
 
-      const activeStoreId =
-        urlStoreId || (typeof window !== 'undefined' ? localStorage.getItem('active_store_id') : null)
-
+      const activeStoreId = urlStoreId || (typeof window !== 'undefined' ? localStorage.getItem('active_store_id') : null)
       if (!activeStoreId) {
         setLoading(false)
         return toast.error('Δεν βρέθηκε κατάστημα (store)')
@@ -273,10 +324,11 @@ function ManageListsContent() {
           .select('id, name, phone, vat_number, bank_name, iban, is_active, created_at')
           .eq('store_id', activeStoreId)
           .order('name'),
-        // ✅ transactions για τζίρους (και revenue_source_id)
+
+        // ✅ IMPORTANT: include type + date/created_at for year filter + credit logic
         supabase
           .from('transactions')
-          .select('amount, supplier_id, fixed_asset_id, revenue_source_id')
+          .select('amount, supplier_id, fixed_asset_id, revenue_source_id, type, date, created_at')
           .eq('store_id', activeStoreId),
       ])
 
@@ -312,7 +364,6 @@ function ManageListsContent() {
     setExpandedId(String(item.id))
     setIsFormOpen(true)
 
-    // suppliers + revenue share same fields
     if (activeTab === 'suppliers' || activeTab === 'revenue') {
       setName(String(item.name || ''))
       setPhone(String(item.phone || ''))
@@ -344,7 +395,6 @@ function ManageListsContent() {
       setRfCode(String(item.rf_code || ''))
 
       if (sub === 'utility') {
-        setName(String(item.name || ''))
         setRfCode(String(item.rf_code || ''))
         setBankName(String(item.bank_name || ''))
       }
@@ -355,10 +405,7 @@ function ManageListsContent() {
 
   const handleSave = async () => {
     const activeStoreId =
-      urlStoreId ||
-      (typeof window !== 'undefined' ? localStorage.getItem('active_store_id') : null) ||
-      storeId
-
+      urlStoreId || (typeof window !== 'undefined' ? localStorage.getItem('active_store_id') : null) || storeId
     if (!activeStoreId) return toast.error('Δεν βρέθηκε κατάστημα (store)')
 
     try {
@@ -385,13 +432,10 @@ function ManageListsContent() {
             .eq('store_id', activeStoreId)
             .select('id, name, phone, vat_number, bank_name, iban, is_active, created_at')
             .single()
-
           if (error) throw error
 
-          setRevenueSources(prev =>
-            prev
-              .map(x => (String(x.id) === String(editingId) ? data : x))
-              .sort((a, b) => String(a.name).localeCompare(String(b.name))),
+          setRevenueSources((prev) =>
+            prev.map((x) => (String(x.id) === String(editingId) ? data : x)).sort((a, b) => String(a.name).localeCompare(String(b.name))),
           )
           toast.success('Ενημερώθηκε!')
         } else {
@@ -400,10 +444,9 @@ function ManageListsContent() {
             .insert([{ ...payload, store_id: activeStoreId }])
             .select('id, name, phone, vat_number, bank_name, iban, is_active, created_at')
             .single()
-
           if (error) throw error
 
-          setRevenueSources(prev => [...prev, data].sort((a, b) => String(a.name).localeCompare(String(b.name))))
+          setRevenueSources((prev) => [...prev, data].sort((a, b) => String(a.name).localeCompare(String(b.name))))
           toast.success('Προστέθηκε!')
         }
 
@@ -433,13 +476,10 @@ function ManageListsContent() {
             .eq('store_id', activeStoreId)
             .select('id, name, phone, vat_number, bank_name, iban, is_active, created_at')
             .single()
-
           if (error) throw error
 
-          setSuppliers(prev =>
-            prev
-              .map(x => (String(x.id) === String(editingId) ? data : x))
-              .sort((a, b) => String(a.name).localeCompare(String(b.name))),
+          setSuppliers((prev) =>
+            prev.map((x) => (String(x.id) === String(editingId) ? data : x)).sort((a, b) => String(a.name).localeCompare(String(b.name))),
           )
           toast.success('Ενημερώθηκε!')
         } else {
@@ -448,10 +488,9 @@ function ManageListsContent() {
             .insert([{ ...payload, store_id: activeStoreId }])
             .select('id, name, phone, vat_number, bank_name, iban, is_active, created_at')
             .single()
-
           if (error) throw error
 
-          setSuppliers(prev => [...prev, data].sort((a, b) => String(a.name).localeCompare(String(b.name))))
+          setSuppliers((prev) => [...prev, data].sort((a, b) => String(a.name).localeCompare(String(b.name))))
           toast.success('Προστέθηκε!')
         }
 
@@ -463,7 +502,7 @@ function ManageListsContent() {
       // -------------------- FIXED_ASSETS --------------------
       const subCategoryToSave = activeTab === 'maintenance' ? 'Maintenance' : currentTab.subCategory
 
-      // -------------------- UTILITY --------------------
+      // UTILITY
       if (activeTab === 'utility') {
         const trimmedName = name.trim()
         const trimmedRf = rfCode.trim()
@@ -495,13 +534,10 @@ function ManageListsContent() {
               'id, name, sub_category, phone, vat_number, bank_name, iban, monthly_days, monthly_salary, daily_rate, start_date, rf_code, pay_basis, created_at',
             )
             .single()
-
           if (error) throw error
 
-          setFixedAssets(prev =>
-            prev
-              .map(x => (String(x.id) === String(editingId) ? data : x))
-              .sort((a, b) => String(a.name).localeCompare(String(b.name))),
+          setFixedAssets((prev) =>
+            prev.map((x) => (String(x.id) === String(editingId) ? data : x)).sort((a, b) => String(a.name).localeCompare(String(b.name))),
           )
           toast.success('Ενημερώθηκε!')
         } else {
@@ -512,10 +548,9 @@ function ManageListsContent() {
               'id, name, sub_category, phone, vat_number, bank_name, iban, monthly_days, monthly_salary, daily_rate, start_date, rf_code, pay_basis, created_at',
             )
             .single()
-
           if (error) throw error
 
-          setFixedAssets(prev => [...prev, data].sort((a, b) => String(a.name).localeCompare(String(b.name))))
+          setFixedAssets((prev) => [...prev, data].sort((a, b) => String(a.name).localeCompare(String(b.name))))
           toast.success('Προστέθηκε!')
         }
 
@@ -524,24 +559,19 @@ function ManageListsContent() {
         return
       }
 
-      // -------------------- STAFF --------------------
+      // STAFF
       if (activeTab === 'staff') {
         const trimmed = name.trim()
         if (!trimmed) return toast.error('Γράψε Ονοματεπώνυμο')
-
-        const md = monthlyDays.trim()
-        const sd = startDate.trim()
-        const mSalary = monthlySalary.trim()
-        const dRate = dailyRate.trim()
 
         const payload: any = {
           name: trimmed,
           bank_name: bankName || null,
           iban: iban.trim() || null,
-          monthly_days: md ? Number(md) : null,
-          monthly_salary: payBasis === 'monthly' && mSalary ? Number(mSalary) : null,
-          daily_rate: payBasis === 'daily' && dRate ? Number(dRate) : null,
-          start_date: sd || null,
+          monthly_days: monthlyDays.trim() ? Number(monthlyDays.trim()) : null,
+          monthly_salary: payBasis === 'monthly' && monthlySalary.trim() ? Number(monthlySalary.trim()) : null,
+          daily_rate: payBasis === 'daily' && dailyRate.trim() ? Number(dailyRate.trim()) : null,
+          start_date: startDate.trim() || null,
           pay_basis: payBasis,
 
           rf_code: null,
@@ -559,13 +589,10 @@ function ManageListsContent() {
               'id, name, sub_category, phone, vat_number, bank_name, iban, monthly_days, monthly_salary, daily_rate, start_date, rf_code, pay_basis, created_at',
             )
             .single()
-
           if (error) throw error
 
-          setFixedAssets(prev =>
-            prev
-              .map(x => (String(x.id) === String(editingId) ? data : x))
-              .sort((a, b) => String(a.name).localeCompare(String(b.name))),
+          setFixedAssets((prev) =>
+            prev.map((x) => (String(x.id) === String(editingId) ? data : x)).sort((a, b) => String(a.name).localeCompare(String(b.name))),
           )
           toast.success('Ενημερώθηκε!')
         } else {
@@ -576,10 +603,9 @@ function ManageListsContent() {
               'id, name, sub_category, phone, vat_number, bank_name, iban, monthly_days, monthly_salary, daily_rate, start_date, rf_code, pay_basis, created_at',
             )
             .single()
-
           if (error) throw error
 
-          setFixedAssets(prev => [...prev, data].sort((a, b) => String(a.name).localeCompare(String(b.name))))
+          setFixedAssets((prev) => [...prev, data].sort((a, b) => String(a.name).localeCompare(String(b.name))))
           toast.success('Προστέθηκε!')
         }
 
@@ -588,7 +614,7 @@ function ManageListsContent() {
         return
       }
 
-      // -------------------- MAINTENANCE + OTHER --------------------
+      // MAINTENANCE + OTHER
       if (activeTab === 'maintenance' || activeTab === 'other') {
         const trimmed = name.trim()
         if (!trimmed) return toast.error('Γράψε όνομα')
@@ -618,13 +644,10 @@ function ManageListsContent() {
               'id, name, sub_category, phone, vat_number, bank_name, iban, monthly_days, monthly_salary, daily_rate, start_date, rf_code, pay_basis, created_at',
             )
             .single()
-
           if (error) throw error
 
-          setFixedAssets(prev =>
-            prev
-              .map(x => (String(x.id) === String(editingId) ? data : x))
-              .sort((a, b) => String(a.name).localeCompare(String(b.name))),
+          setFixedAssets((prev) =>
+            prev.map((x) => (String(x.id) === String(editingId) ? data : x)).sort((a, b) => String(a.name).localeCompare(String(b.name))),
           )
           toast.success('Ενημερώθηκε!')
         } else {
@@ -635,10 +658,9 @@ function ManageListsContent() {
               'id, name, sub_category, phone, vat_number, bank_name, iban, monthly_days, monthly_salary, daily_rate, start_date, rf_code, pay_basis, created_at',
             )
             .single()
-
           if (error) throw error
 
-          setFixedAssets(prev => [...prev, data].sort((a, b) => String(a.name).localeCompare(String(b.name))))
+          setFixedAssets((prev) => [...prev, data].sort((a, b) => String(a.name).localeCompare(String(b.name))))
           toast.success('Προστέθηκε!')
         }
 
@@ -660,10 +682,7 @@ function ManageListsContent() {
     if (!ok) return
 
     const activeStoreId =
-      urlStoreId ||
-      (typeof window !== 'undefined' ? localStorage.getItem('active_store_id') : null) ||
-      storeId
-
+      urlStoreId || (typeof window !== 'undefined' ? localStorage.getItem('active_store_id') : null) || storeId
     if (!activeStoreId) return toast.error('Δεν βρέθηκε κατάστημα (store)')
 
     try {
@@ -672,15 +691,15 @@ function ManageListsContent() {
       if (activeTab === 'suppliers') {
         const { error } = await supabase.from('suppliers').delete().eq('id', id).eq('store_id', activeStoreId)
         if (error) throw error
-        setSuppliers(prev => prev.filter(x => String(x.id) !== String(id)))
+        setSuppliers((prev) => prev.filter((x) => String(x.id) !== String(id)))
       } else if (activeTab === 'revenue') {
         const { error } = await supabase.from('revenue_sources').delete().eq('id', id).eq('store_id', activeStoreId)
         if (error) throw error
-        setRevenueSources(prev => prev.filter(x => String(x.id) !== String(id)))
+        setRevenueSources((prev) => prev.filter((x) => String(x.id) !== String(id)))
       } else {
         const { error } = await supabase.from('fixed_assets').delete().eq('id', id).eq('store_id', activeStoreId)
         if (error) throw error
-        setFixedAssets(prev => prev.filter(x => String(x.id) !== String(id)))
+        setFixedAssets((prev) => prev.filter((x) => String(x.id) !== String(id)))
       }
 
       if (editingId && String(id) === String(editingId)) resetForm()
@@ -700,14 +719,14 @@ function ManageListsContent() {
     resetForm()
   }
 
-  // ---------------------- UI ----------------------
+  // ---------------------- UI FORMS ----------------------
   const renderSupplierLikeForm = () => (
     <div style={formCard}>
       <div style={inputGroup}>
         <label style={labelStyle}>
           <Hash size={12} /> ΕΠΩΝΥΜΙΑ
         </label>
-        <input value={name} onChange={e => setName(e.target.value)} style={inputStyle} placeholder="π.χ. COCA COLA" />
+        <input value={name} onChange={(e) => setName(e.target.value)} style={inputStyle} placeholder="π.χ. COCA COLA" />
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
@@ -715,13 +734,13 @@ function ManageListsContent() {
           <label style={labelStyle}>
             <Phone size={12} /> ΤΗΛΕΦΩΝΟ
           </label>
-          <input value={phone} onChange={e => setPhone(e.target.value)} style={inputStyle} />
+          <input value={phone} onChange={(e) => setPhone(e.target.value)} style={inputStyle} />
         </div>
         <div style={inputGroup}>
           <label style={labelStyle}>
             <Tag size={12} /> ΑΦΜ
           </label>
-          <input value={vatNumber} onChange={e => setVatNumber(e.target.value)} style={inputStyle} />
+          <input value={vatNumber} onChange={(e) => setVatNumber(e.target.value)} style={inputStyle} />
         </div>
       </div>
 
@@ -729,9 +748,9 @@ function ManageListsContent() {
         <label style={labelStyle}>
           <Building2 size={12} /> ΤΡΑΠΕΖΑ
         </label>
-        <select value={bankName} onChange={e => setBankName(e.target.value)} style={inputStyle}>
+        <select value={bankName} onChange={(e) => setBankName(e.target.value)} style={inputStyle}>
           <option value="">Επιλέξτε Τράπεζα...</option>
-          {BANK_OPTIONS.map(b => (
+          {BANK_OPTIONS.map((b) => (
             <option key={b} value={b}>
               {b}
             </option>
@@ -743,14 +762,10 @@ function ManageListsContent() {
         <label style={labelStyle}>
           <CreditCard size={12} /> IBAN
         </label>
-        <input value={iban} onChange={e => setIban(e.target.value)} style={inputStyle} placeholder="GR..." />
+        <input value={iban} onChange={(e) => setIban(e.target.value)} style={inputStyle} placeholder="GR..." />
       </div>
 
-      <button
-        onClick={handleSave}
-        disabled={saving || loading}
-        style={{ ...saveBtn, backgroundColor: isRevenueTab ? '#10b981' : colors.accentGreen }}
-      >
+      <button onClick={handleSave} disabled={saving || loading} style={{ ...saveBtn, backgroundColor: colors.accentGreen }}>
         {saving ? 'ΑΠΟΘΗΚΕΥΣΗ...' : editingId ? 'ΕΝΗΜΕΡΩΣΗ' : 'ΚΑΤΑΧΩΡΗΣΗ'}
       </button>
     </div>
@@ -758,7 +773,6 @@ function ManageListsContent() {
 
   const renderForm = () => {
     if (activeTab === 'suppliers') return renderSupplierLikeForm()
-
     if (activeTab === 'revenue') return renderSupplierLikeForm()
 
     if (activeTab === 'utility') {
@@ -768,23 +782,23 @@ function ManageListsContent() {
             <label style={labelStyle}>
               <Hash size={12} /> ΟΝΟΜΑ
             </label>
-            <input value={name} onChange={e => setName(e.target.value)} style={inputStyle} placeholder="π.χ. Ενοίκιο" />
+            <input value={name} onChange={(e) => setName(e.target.value)} style={inputStyle} placeholder="π.χ. Ενοίκιο" />
           </div>
 
           <div style={inputGroup}>
             <label style={labelStyle}>
               <Tag size={12} /> ΚΩΔΙΚΟΣ RF
             </label>
-            <input value={rfCode} onChange={e => setRfCode(e.target.value)} style={inputStyle} placeholder="RF..." />
+            <input value={rfCode} onChange={(e) => setRfCode(e.target.value)} style={inputStyle} placeholder="RF..." />
           </div>
 
           <div style={inputGroup}>
             <label style={labelStyle}>
               <Building2 size={12} /> ΤΡΑΠΕΖΑ
             </label>
-            <select value={bankName} onChange={e => setBankName(e.target.value)} style={inputStyle}>
+            <select value={bankName} onChange={(e) => setBankName(e.target.value)} style={inputStyle}>
               <option value="">Επιλέξτε Τράπεζα...</option>
-              {BANK_OPTIONS.map(b => (
+              {BANK_OPTIONS.map((b) => (
                 <option key={b} value={b}>
                   {b}
                 </option>
@@ -810,7 +824,7 @@ function ManageListsContent() {
             <label style={labelStyle}>
               <Hash size={12} /> ΟΝΟΜΑΤΕΠΩΝΥΜΟ
             </label>
-            <input value={name} onChange={e => setName(e.target.value)} style={inputStyle} placeholder="π.χ. Γιάννης Παπαδόπουλος" />
+            <input value={name} onChange={(e) => setName(e.target.value)} style={inputStyle} placeholder="π.χ. Γιάννης Παπαδόπουλος" />
           </div>
 
           <div style={inputGroup}>
@@ -846,21 +860,15 @@ function ManageListsContent() {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
             <div style={inputGroup}>
               <label style={labelStyle}>{salaryLabel}</label>
-              <input
-                value={salaryValue}
-                onChange={e => setSalaryValue(e.target.value)}
-                style={inputStyle}
-                placeholder={payBasis === 'monthly' ? 'π.χ. 1200' : 'π.χ. 50'}
-                inputMode="decimal"
-              />
+              <input value={salaryValue} onChange={(e) => setSalaryValue(e.target.value)} style={inputStyle} inputMode="decimal" />
             </div>
             <div style={inputGroup}>
               <label style={labelStyle}>ΜΕΡΕΣ ΜΗΝΑ</label>
-              <input value={monthlyDays} onChange={e => setMonthlyDays(e.target.value)} style={inputStyle} placeholder="π.χ. 26" inputMode="numeric" />
+              <input value={monthlyDays} onChange={(e) => setMonthlyDays(e.target.value)} style={inputStyle} inputMode="numeric" />
             </div>
             <div style={inputGroup}>
               <label style={labelStyle}>ΗΜ. ΠΡΟΣΛΗΨΗΣ</label>
-              <input value={startDate} onChange={e => setStartDate(e.target.value)} style={inputStyle} type="date" />
+              <input value={startDate} onChange={(e) => setStartDate(e.target.value)} style={inputStyle} type="date" />
             </div>
           </div>
 
@@ -868,9 +876,9 @@ function ManageListsContent() {
             <label style={labelStyle}>
               <Building2 size={12} /> ΤΡΑΠΕΖΑ
             </label>
-            <select value={bankName} onChange={e => setBankName(e.target.value)} style={inputStyle}>
+            <select value={bankName} onChange={(e) => setBankName(e.target.value)} style={inputStyle}>
               <option value="">Επιλέξτε Τράπεζα...</option>
-              {BANK_OPTIONS.map(b => (
+              {BANK_OPTIONS.map((b) => (
                 <option key={b} value={b}>
                   {b}
                 </option>
@@ -882,7 +890,7 @@ function ManageListsContent() {
             <label style={labelStyle}>
               <CreditCard size={12} /> IBAN
             </label>
-            <input value={iban} onChange={e => setIban(e.target.value)} style={inputStyle} placeholder="GR..." />
+            <input value={iban} onChange={(e) => setIban(e.target.value)} style={inputStyle} placeholder="GR..." />
           </div>
 
           <button onClick={handleSave} disabled={saving || loading} style={saveBtn}>
@@ -892,14 +900,14 @@ function ManageListsContent() {
       )
     }
 
-    // maintenance & other share same form
+    // maintenance & other
     return (
       <div style={formCard}>
         <div style={inputGroup}>
           <label style={labelStyle}>
             <Hash size={12} /> ΟΝΟΜΑ
           </label>
-          <input value={name} onChange={e => setName(e.target.value)} style={inputStyle} placeholder="π.χ. ΤΖΗΛΙΟΣ" />
+          <input value={name} onChange={(e) => setName(e.target.value)} style={inputStyle} placeholder="π.χ. ΤΖΗΛΙΟΣ" />
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
@@ -907,13 +915,13 @@ function ManageListsContent() {
             <label style={labelStyle}>
               <Phone size={12} /> ΤΗΛΕΦΩΝΟ
             </label>
-            <input value={phone} onChange={e => setPhone(e.target.value)} style={inputStyle} />
+            <input value={phone} onChange={(e) => setPhone(e.target.value)} style={inputStyle} />
           </div>
           <div style={inputGroup}>
             <label style={labelStyle}>
               <Tag size={12} /> ΑΦΜ
             </label>
-            <input value={vatNumber} onChange={e => setVatNumber(e.target.value)} style={inputStyle} />
+            <input value={vatNumber} onChange={(e) => setVatNumber(e.target.value)} style={inputStyle} />
           </div>
         </div>
 
@@ -921,9 +929,9 @@ function ManageListsContent() {
           <label style={labelStyle}>
             <Building2 size={12} /> ΤΡΑΠΕΖΑ
           </label>
-          <select value={bankName} onChange={e => setBankName(e.target.value)} style={inputStyle}>
+          <select value={bankName} onChange={(e) => setBankName(e.target.value)} style={inputStyle}>
             <option value="">Επιλέξτε Τράπεζα...</option>
-            {BANK_OPTIONS.map(b => (
+            {BANK_OPTIONS.map((b) => (
               <option key={b} value={b}>
                 {b}
               </option>
@@ -935,7 +943,7 @@ function ManageListsContent() {
           <label style={labelStyle}>
             <CreditCard size={12} /> IBAN
           </label>
-          <input value={iban} onChange={e => setIban(e.target.value)} style={inputStyle} placeholder="GR..." />
+          <input value={iban} onChange={(e) => setIban(e.target.value)} style={inputStyle} placeholder="GR..." />
         </div>
 
         <button onClick={handleSave} disabled={saving || loading} style={saveBtn}>
@@ -1059,11 +1067,35 @@ function ManageListsContent() {
           </Link>
         </header>
 
+        {/* ✅ HERO CARD (same setup as suppliers) */}
+        <div style={heroCard}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <div style={heroKicker}>{heroTitle}</div>
+              <div style={heroValue}>
+                {heroTotal.toLocaleString('el-GR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}€
+              </div>
+              <div style={heroHintStyle}>{heroHint}</div>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'flex-end' }}>
+              <div style={heroYearLabel}>ΕΤΟΣ</div>
+              <select value={String(selectedYear)} onChange={(e) => setSelectedYear(Number(e.target.value))} style={heroSelect}>
+                {yearOptions.map((y) => (
+                  <option key={y} value={String(y)}>
+                    {y}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        </div>
+
         {/* ✅ DROPDOWN MENU */}
         <div style={{ marginBottom: 14 }}>
           <label style={labelStyle}>ΚΑΤΗΓΟΡΙΑ</label>
-          <select value={activeTab} onChange={e => onChangeCategory(e.target.value as TabKey)} style={inputStyle}>
-            {MENU.map(m => (
+          <select value={activeTab} onChange={(e) => onChangeCategory(e.target.value as TabKey)} style={inputStyle}>
+            {MENU.map((m) => (
               <option key={m.key} value={m.key}>
                 {m.label}
               </option>
@@ -1099,7 +1131,7 @@ function ManageListsContent() {
           </>
         )}
 
-        {/* ✅ SEARCH (fixed icon overlap) */}
+        {/* ✅ SEARCH */}
         <div style={{ marginBottom: 14 }}>
           <label style={labelStyle}>ΑΝΑΖΗΤΗΣΗ</label>
           <div style={{ position: 'relative' }}>
@@ -1117,22 +1149,18 @@ function ManageListsContent() {
             />
             <input
               value={search}
-              onChange={e => setSearch(e.target.value)}
-              placeholder={
-                activeTab === 'suppliers' || activeTab === 'revenue'
-                  ? 'Όνομα / ΑΦΜ / Τηλέφωνο...'
-                  : 'Γράψτε για αναζήτηση...'
-              }
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder={activeTab === 'suppliers' || activeTab === 'revenue' ? 'Όνομα / ΑΦΜ / Τηλέφωνο...' : 'Γράψτε για αναζήτηση...'}
               style={{ ...inputStyle, paddingLeft: 52 }}
             />
           </div>
         </div>
 
-        {/* ✅ LIST (ranking by turnover + amount shown) */}
+        {/* ✅ LIST */}
         <div style={listArea}>
           <div style={rankingHeader}>
-            <TrendingUp size={14} style={{ color: TrendingColor }} />
-            ΚΑΤΑΤΑΞΗ ΒΑΣΕΙ ΤΖΙΡΟΥ: {currentTab.label.toUpperCase()}
+            <TrendingUp size={14} style={{ color: colors.secondaryText }} />
+            ΚΑΤΑΤΑΞΗ ΒΑΣΕΙ ΤΖΙΡΟΥ ({selectedYear}): {currentTab.label.toUpperCase()}
           </div>
 
           {loading ? (
@@ -1146,10 +1174,7 @@ function ManageListsContent() {
 
               return (
                 <div key={item.id} style={{ borderBottom: `1px solid ${colors.border}` }}>
-                  <div
-                    style={rowWrapper}
-                    onClick={() => setExpandedId(expandedId === String(item.id) ? null : String(item.id))}
-                  >
+                  <div style={rowWrapper} onClick={() => setExpandedId(expandedId === String(item.id) ? null : String(item.id))}>
                     <div style={rankNumber}>{idx + 1}</div>
 
                     <div style={{ flex: 1 }}>
@@ -1166,9 +1191,7 @@ function ManageListsContent() {
                     </div>
 
                     <div style={{ textAlign: 'right' }}>
-                      <p style={{ ...turnoverText, color: isRevenueTab ? '#10b981' : colors.accentGreen }}>
-                        {turnover.toFixed(2)}€
-                      </p>
+                      <p style={{ ...turnoverText, color: colors.accentGreen }}>{turnover.toFixed(2)}€</p>
                     </div>
 
                     {isEditingThis && (
@@ -1199,14 +1222,14 @@ function ManageListsContent() {
         </div>
 
         <p style={{ marginTop: 14, fontSize: 12, fontWeight: 700, color: colors.secondaryText }}>
-          * Για ασφάλεια, η διαγραφή ζητά επιβεβαίωση.
+          * Ο τζίρος είναι “καθαρός”: δεν διπλομετράει πληρωμές χρεών.
         </p>
       </div>
     </div>
   )
 }
 
-/* ---------------- STYLES (Suppliers-like) ---------------- */
+/* ---------------- STYLES ---------------- */
 
 const containerStyle: any = {
   backgroundColor: colors.bgLight,
@@ -1230,6 +1253,31 @@ const closeBtn: any = {
   color: colors.primaryDark,
   textDecoration: 'none',
   display: 'flex',
+}
+
+/* ✅ HERO */
+const heroCard: any = {
+  background: colors.primaryDark,
+  color: 'white',
+  padding: '18px',
+  borderRadius: '22px',
+  border: `1px solid rgba(255,255,255,0.08)`,
+  boxShadow: '0 18px 50px rgba(15,23,42,0.18)',
+  marginBottom: '14px',
+}
+
+const heroKicker: any = { fontSize: 10, fontWeight: 900, letterSpacing: '1px', opacity: 0.9 }
+const heroValue: any = { fontSize: 28, fontWeight: 950, lineHeight: 1.1 }
+const heroHintStyle: any = { fontSize: 10, fontWeight: 800, opacity: 0.75, marginTop: 4 }
+const heroYearLabel: any = { fontSize: 10, fontWeight: 900, opacity: 0.9, letterSpacing: '1px' }
+const heroSelect: any = {
+  padding: '10px 12px',
+  borderRadius: 14,
+  border: '1px solid rgba(255,255,255,0.18)',
+  background: 'rgba(255,255,255,0.08)',
+  color: 'white',
+  fontWeight: 900,
+  outline: 'none',
 }
 
 const addBtn: any = {
@@ -1332,13 +1380,9 @@ const rankingHeader: any = {
 }
 
 const rowWrapper: any = { display: 'flex', padding: '18px 20px', alignItems: 'center', cursor: 'pointer', gap: 10 }
-
 const rankNumber: any = { width: '30px', fontWeight: '800', color: colors.secondaryText, fontSize: '14px' }
-
 const rowName: any = { fontSize: '15px', fontWeight: '800', margin: 0, color: colors.primaryDark }
-
 const categoryBadge: any = { fontSize: '10px', fontWeight: '700', color: colors.secondaryText, margin: 0 }
-
 const turnoverText: any = { fontSize: '16px', fontWeight: '800', color: colors.accentGreen, margin: 0 }
 
 const editingPill: any = {
@@ -1357,9 +1401,7 @@ const editingPill: any = {
 }
 
 const actionPanel: any = { padding: '20px', backgroundColor: '#fcfcfc', borderTop: `1px dashed ${colors.border}` }
-
 const infoGrid: any = { display: 'grid', gap: '8px' }
-
 const infoText: any = { fontSize: '12px', margin: 0, color: colors.primaryDark }
 
 const editBtn: any = {
