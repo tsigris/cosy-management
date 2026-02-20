@@ -1,5 +1,3 @@
-// PART 1/2 — app/analysis/page.tsx
-
 'use client'
 export const dynamic = 'force-dynamic'
 
@@ -881,8 +879,6 @@ function AnalysisContent() {
             <div style={smallKpiHint}>Έσοδα σε Πίστωση (αν τα χρησιμοποιείς)</div>
           </div>
         </div>
-        // PART 2/2 — continuation
-
         {/* ✅ Z REPORT BREAKDOWN – only when same day */}
         {isZReport && (
           <div style={balancesGrid} data-print-section="true">
