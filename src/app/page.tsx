@@ -564,9 +564,7 @@ function DashboardContent() {
                       </p>
                     )}
 
-                    <p style={txMeta}>
-                      {txMethod} • {txCreatedAt ? format(parseISO(txCreatedAt), 'HH:mm') : '--:--'} • {txCreatedBy || 'Admin'}
-                    </p>
+                    <p style={txMeta}>{txMethod} • {txCreatedAt ? format(parseISO(txCreatedAt), 'HH:mm') : '--:--'} • {txCreatedBy || 'Χρήστης'}</p>
                   </div>
 
                   <p style={{ ...txAmount, color: isIncomeTx ? colors.accentGreen : colors.accentRed }}>
@@ -641,7 +639,11 @@ function DashboardContent() {
                           </p>
 
                           {!entityKey ? (
-                            <p style={ytdHint}>Δεν υπάρχει συνδεδεμένη καρτέλα (supplier / asset / revenue source) σε αυτή την κίνηση.</p>
+                            t?.notes?.startsWith('Πληρωμή Δόσης') ? (
+                              <p style={ytdHint}>📌 Η ανάλυση και το υπόλοιπο αυτής της ρύθμισης βρίσκονται στη σελίδα "Δάνεια & Ρυθμίσεις".</p>
+                            ) : (
+                              <p style={ytdHint}>Δεν υπάρχει συνδεδεμένη καρτέλα (supplier / asset / revenue source) σε αυτή την κίνηση.</p>
+                            )
                           ) : ytd?.loading ? (
                             <p style={ytdLoading}>Υπολογισμός…</p>
                           ) : entityKey.startsWith('rev:') ? (

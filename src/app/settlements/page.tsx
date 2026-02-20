@@ -307,6 +307,7 @@ function SettlementsContent() {
         data: { session },
       } = await supabase.auth.getSession()
       if (!session) throw new Error('Η συνεδρία έληξε. Συνδέσου ξανά.')
+      const userName = session.user.user_metadata?.full_name || session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'Χρήστης'
 
       const amount = Math.abs(Number(selectedInstallment.amount || 0))
       if (!amount) throw new Error('Μη έγκυρο ποσό δόσης')
@@ -320,6 +321,7 @@ function SettlementsContent() {
           {
             store_id: storeId,
             user_id: session.user.id,
+            created_by_name: userName,
             type: 'expense',
             amount: -amount,
             method: paymentMethod,
