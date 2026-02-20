@@ -555,7 +555,8 @@ function DashboardContent() {
             const txTitleText = isZMaster ? 'ΚΛΕΙΣΙΜΟ Ζ' : getEntityLabelFromTx(t)
             const entityKey = !isZMaster && t ? getEntityKeyFromTx(t) : null
             const ytd = entityKey ? ytdCache[entityKey] : undefined
-            const isIncomeTx = isZMaster ? true : t?.type === 'income'
+            const INCOME_TYPES = ['income', 'income_collection', 'debt_received']
+            const isIncomeTx = isZMaster ? true : INCOME_TYPES.includes(t?.type)
             const txMethod = isZMaster ? 'Συγκεντρωτική εγγραφή' : t?.method
             const txCreatedAt = isZMaster ? row.created_at : t?.created_at
             const txCreatedBy = isZMaster ? row.created_by_name : t?.created_by_name
