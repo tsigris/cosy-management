@@ -5,10 +5,20 @@ import { useEffect, useState, Suspense, useCallback, useMemo } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import NextLink from 'next/link'
-import { format, addDays, subDays, parseISO } from 'date-fns'
+import { format, addDays, subDays, parseISO, differenceInCalendarDays } from 'date-fns'
 import { el } from 'date-fns/locale'
 import { Toaster, toast } from 'sonner'
-import { TrendingUp, TrendingDown, Menu, X, ChevronLeft, ChevronRight, CreditCard } from 'lucide-react'
+import {
+  TrendingUp,
+  TrendingDown,
+  Menu,
+  X,
+  ChevronLeft,
+  ChevronRight,
+  CreditCard,
+  Bell,
+  Megaphone,
+} from 'lucide-react'
 
 // --- MODERN PREMIUM PALETTE ---
 const colors = {
@@ -39,6 +49,21 @@ type YtdInfo = {
   loanInstallmentsTotal?: number
 }
 
+type AppNotif = {
+  id: string
+  title: string
+  body: string
+  severity?: 'info' | 'warning'
+}
+
+type AppNews = {
+  id: string
+  date: string
+  title: string
+  body: string
+  isNew?: boolean
+}
+
 function DashboardContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -63,6 +88,14 @@ function DashboardContent() {
 
   // ✅ Z visibility flag
   const [zEnabled, setZEnabled] = useState<boolean>(true)
+
+  // ✅ NEW: notifications + news panels
+  const [isNotifOpen, setIsNotifOpen] = useState(false)
+  const [isNewsOpen, setIsNewsOpen] = useState(false)
+  const [notifs, setNotifs] = useState<AppNotif[]>([])
+  const [news, setNews] = useState<AppNews[]>([])
+  const [notifsLoading, setNotifsLoading] = useState(false)
+  const [newsLoading, setNewsLoading] = useState(false)
 
   // cache YTD metrics per entity key
   const [ytdCache, setYtdCache] = useState<Record<string, YtdInfo>>({})
@@ -91,9 +124,98 @@ function DashboardContent() {
       }
       return 'Πληρωμή Δόσης'
     }
-
     return t?.category || 'Συναλλαγή'
   }
+
+  // ✅ NEW: Load NOTIFICATIONS (loan installments due soon)
+  const loadNotifications = useCallback(async () => {
+    if (!storeIdFromUrl) return
+
+    try {
+      setNotifsLoading(true)
+
+      const today = businessTodayStr
+      const until = format(addDays(parseISO(today), 3), 'yyyy-MM-dd')
+
+      // Προσπαθούμε να πάρουμε pending δόσεις που λήγουν στις επόμενες 3 μέρες
+      // Αν η δομή σου διαφέρει (π.χ. due_on αντί due_date), πες μου να το αλλάξω.
+      const { data, error } = await supabase
+        .from('installments')
+        .select('id, due_date, amount, status')
+        .eq('status', 'pending')
+        .gte('due_date', today)
+        .lte('due_date', until)
+        .order('due_date', { ascending: true })
+
+      if (error) {
+        // Αν δεν υπάρχει ο πίνακας/στήλες, απλά δεν δείχνουμε notifs
+        console.warn('Notifications load error:', error)
+        setNotifs([])
+        return
+      }
+
+      const rows = data || []
+      const mapped: AppNotif[] = rows.map((r: any) => {
+        const dueStr = String(r.due_date)
+        const days = differenceInCalendarDays(parseISO(dueStr), parseISO(today))
+        const amount = Number(r.amount || 0)
+
+        const title =
+          days <= 0
+            ? 'ΛΗΓΕΙ ΣΗΜΕΡΑ'
+            : days === 1
+            ? 'ΛΗΓΕΙ ΑΥΡΙΟ'
+            : `ΛΗΓΕΙ ΣΕ ${days} ΜΕΡΕΣ`
+
+        const body = `Η επόμενη δόση δανείου σας είναι σε ${days <= 0 ? '0' : days} μέρες • ${amount.toFixed(2)}€ • Ημ/νία: ${format(
+          parseISO(dueStr),
+          'dd/MM/yyyy'
+        )}`
+
+        return {
+          id: String(r.id),
+          title,
+          body,
+          severity: days <= 1 ? 'warning' : 'info',
+        }
+      })
+
+      setNotifs(mapped)
+    } catch (e) {
+      console.error(e)
+      setNotifs([])
+    } finally {
+      setNotifsLoading(false)
+    }
+  }, [storeIdFromUrl, businessTodayStr])
+
+  // ✅ NEW: Load NEWS (demo list τώρα, μπορείς να το δέσεις με πίνακα μετά)
+  const loadNews = useCallback(async () => {
+    try {
+      setNewsLoading(true)
+
+      // DEMO — μετά το συνδέουμε με πίνακα π.χ. app_updates
+      const demo: AppNews[] = [
+        {
+          id: 'n1',
+          date: format(new Date(), 'dd MMM yyyy', { locale: el }),
+          title: 'Νέα Αναβάθμιση Συστήματος',
+          body: 'Προσθέσαμε Ειδοποιήσεις για δόσεις και νέο panel ενημερώσεων μέσα στην Αρχική.',
+          isNew: true,
+        },
+        {
+          id: 'n2',
+          date: format(subDays(new Date(), 7), 'dd MMM yyyy', { locale: el }),
+          title: 'Βελτιώσεις Ταχύτητας',
+          body: 'Βελτιώσαμε την φόρτωση κινήσεων και την εμφάνιση στα κινητά.',
+        },
+      ]
+
+      setNews(demo)
+    } finally {
+      setNewsLoading(false)
+    }
+  }, [])
 
   const loadYtdForTx = useCallback(
     async (t: any) => {
@@ -233,7 +355,7 @@ function DashboardContent() {
       const windowStartIso = new Date(`${selectedDate}T07:00:00`).toISOString()
       const windowEndIso = new Date(`${nextDateStr}T06:59:59.999`).toISOString()
 
-      // ✅ FIX: fetch day rows by (date = selectedDate) OR (created_at inside business window)
+      // ✅ ΧΩΡΙΣ join profiles για να μην σπάει αν δεν υπάρχει FK
       const { data: tx, error: txError } = await supabase
         .from('transactions')
         .select('*, suppliers(name), fixed_assets(name), revenue_sources(name)')
@@ -243,29 +365,28 @@ function DashboardContent() {
 
       if (txError) throw txError
 
-      const uniqueUserIds = Array.from(new Set((tx || []).map((r: any) => r?.user_id).filter(Boolean)))
-      let usernameMap: Record<string, string> = {}
+      // ✅ Fetch usernames από profiles και merge (PLAN B)
+      const uniqueUserIds = Array.from(new Set((tx || []).map((r: any) => r?.user_id).filter(Boolean))) as string[]
 
+      let userNameMap: Record<string, string> = {}
       if (uniqueUserIds.length > 0) {
-        const { data: profilesData, error: profilesError } = await supabase.from('profiles').select('id, username').in('id', uniqueUserIds)
-        if (profilesError) console.error(profilesError)
-
-        usernameMap = (profilesData || []).reduce((acc: Record<string, string>, p: any) => {
-          acc[String(p.id)] = p.username
-          return acc
-        }, {})
+        const { data: profs, error: profErr } = await supabase.from('profiles').select('id, username').in('id', uniqueUserIds)
+        if (!profErr && profs) {
+          userNameMap = (profs as any[]).reduce((acc: Record<string, string>, p: any) => {
+            if (p?.id && p?.username) acc[String(p.id)] = String(p.username)
+            return acc
+          }, {})
+        }
       }
 
       const txWithNames = (tx || []).map((r: any) => ({
         ...r,
-        __userName: r.created_by_name || usernameMap[String(r.user_id)] || null,
+        __userName: r?.created_by_name || userNameMap[String(r.user_id)] || null,
       }))
 
-      // ✅ DEDUPE (σε περίπτωση που κάποια εγγραφή πιαστεί και από τα 2)
+      // ✅ DEDUPE
       const map = new Map<string, any>()
-      for (const row of txWithNames) {
-        map.set(String(row.id), row)
-      }
+      for (const row of txWithNames || []) map.set(String(row.id), row)
       setTransactions(Array.from(map.values()))
 
       // RBAC
@@ -295,6 +416,12 @@ function DashboardContent() {
     loadDashboard()
   }, [loadDashboard])
 
+  // ✅ Load notif + news στο mount/store change
+  useEffect(() => {
+    loadNotifications()
+    loadNews()
+  }, [loadNotifications, loadNews])
+
   const handleDelete = async (id: string) => {
     if (!confirm('Οριστική διαγραφή αυτής της κίνησης;')) return
     if (!storeIdFromUrl) {
@@ -320,20 +447,11 @@ function DashboardContent() {
     }
 
     try {
-      const { data: installment, error: installmentError } = await supabase
-        .from('installments')
-        .select('id')
-        .eq('transaction_id', txId)
-        .maybeSingle()
-
+      const { data: installment, error: installmentError } = await supabase.from('installments').select('id').eq('transaction_id', txId).maybeSingle()
       if (installmentError) throw installmentError
 
       if (installment?.id) {
-        const { error: updateError } = await supabase
-          .from('installments')
-          .update({ status: 'pending', transaction_id: null })
-          .eq('id', installment.id)
-
+        const { error: updateError } = await supabase.from('installments').update({ status: 'pending', transaction_id: null }).eq('id', installment.id)
         if (updateError) throw updateError
       }
 
@@ -359,13 +477,7 @@ function DashboardContent() {
       return
     }
 
-    const { error } = await supabase
-      .from('transactions')
-      .delete()
-      .eq('store_id', storeIdFromUrl)
-      .eq('category', 'Εσοδα Ζ')
-      .eq('date', date)
-
+    const { error } = await supabase.from('transactions').delete().eq('store_id', storeIdFromUrl).eq('category', 'Εσοδα Ζ').eq('date', date)
     if (error) {
       toast.error('Σφάλμα διαγραφής Ζ')
       return
@@ -437,7 +549,7 @@ function DashboardContent() {
           date: zTx[0]?.date || selectedDate,
           amount: zTotal,
           created_at: zTx[0]?.created_at || null,
-          created_by_name: zTx[0]?.created_by_name || null,
+          created_by_name: (zTx[0]?.created_by_name || zTx[0]?.__userName || null) as any,
           itemsCount: zTx.length,
           breakdown: zBreakdown,
         })
@@ -448,7 +560,7 @@ function DashboardContent() {
     return rows
   }, [transactions, zTransactions, isZTransaction, selectedDate])
 
-  // ✅ Totals (now that tx actually loads correctly, this will work)
+  // ✅ Totals
   const totals = useMemo(() => {
     const income = transactions.filter((t) => t.type === 'income').reduce((acc, t) => acc + (Number(t.amount) || 0), 0)
 
@@ -472,6 +584,9 @@ function DashboardContent() {
 
   const money = (n: any) => (Number(n) || 0).toLocaleString('el-GR', { minimumFractionDigits: 2 })
 
+  const notifCount = notifs.length
+  const newsCount = news.filter((n) => n.isNew).length
+
   return (
     <div style={iphoneWrapper}>
       <Toaster position="top-center" richColors />
@@ -493,48 +608,146 @@ function DashboardContent() {
           </div>
         </div>
 
-        <div style={{ position: 'relative' }}>
-          <button style={menuToggle} onClick={() => setIsMenuOpen(!isMenuOpen)}>
-            {isMenuOpen ? <X size={20} /> : <Menu size={20} />}
-          </button>
+        {/* ✅ TOP RIGHT TOOLBAR: notifications + news + menu */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, position: 'relative' }}>
+          <div style={{ position: 'relative' }}>
+            <button
+              style={toolIconBtn}
+              onClick={() => {
+                setIsNewsOpen(false)
+                setIsMenuOpen(false)
+                setIsNotifOpen((v) => !v)
+              }}
+              title="Ειδοποιήσεις"
+            >
+              <Bell size={18} />
+            </button>
+            {notifCount > 0 && <span style={badgeDot}>{notifCount > 9 ? '9+' : notifCount}</span>}
 
-          {isMenuOpen && (
-            <div style={dropdownStyle}>
-              {isStoreAdmin && (
-                <>
-                  <p style={menuSectionLabel}>ΔΙΑΧΕΙΡΙΣΗ</p>
-                  <NextLink href={`/manage-lists?store=${storeIdFromUrl}`} style={menuItem} onClick={() => setIsMenuOpen(false)}>
-                    ⚙️ Διαχείριση Καταλόγων
+            {isNotifOpen && (
+              <div style={panelBox}>
+                <div style={panelHeader}>
+                  <span style={panelTitle}>ΕΙΔΟΠΟΙΗΣΕΙΣ</span>
+                  <button style={panelCloseBtn} onClick={() => setIsNotifOpen(false)}>
+                    <X size={16} />
+                  </button>
+                </div>
+
+                {notifsLoading ? (
+                  <div style={panelEmpty}>Φόρτωση…</div>
+                ) : notifs.length === 0 ? (
+                  <div style={panelEmpty}>Δεν υπάρχουν ειδοποιήσεις.</div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    {notifs.map((n) => (
+                      <div key={n.id} style={panelItem(n.severity === 'warning')}>
+                        <div style={{ fontWeight: 900, fontSize: 11, color: n.severity === 'warning' ? '#b45309' : colors.primaryDark }}>
+                          {n.title}
+                        </div>
+                        <div style={{ fontWeight: 800, fontSize: 11, color: colors.secondaryText, marginTop: 4 }}>{n.body}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          <div style={{ position: 'relative' }}>
+            <button
+              style={toolIconBtn}
+              onClick={() => {
+                setIsNotifOpen(false)
+                setIsMenuOpen(false)
+                setIsNewsOpen((v) => !v)
+              }}
+              title="Νέα & Αναβαθμίσεις"
+            >
+              <Megaphone size={18} />
+            </button>
+            {newsCount > 0 && <span style={badgeDotBlue}>{newsCount > 9 ? '9+' : newsCount}</span>}
+
+            {isNewsOpen && (
+              <div style={panelBox}>
+                <div style={panelHeader}>
+                  <span style={panelTitle}>ΝΕΑ & ΑΝΑΒΑΘΜΙΣΕΙΣ</span>
+                  <button style={panelCloseBtn} onClick={() => setIsNewsOpen(false)}>
+                    <X size={16} />
+                  </button>
+                </div>
+
+                {newsLoading ? (
+                  <div style={panelEmpty}>Φόρτωση…</div>
+                ) : news.length === 0 ? (
+                  <div style={panelEmpty}>Δεν υπάρχουν νέα.</div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    {news.map((n) => (
+                      <div key={n.id} style={panelItem(false)}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                          <div style={{ fontWeight: 900, fontSize: 12, color: colors.primaryDark }}>{n.title}</div>
+                          {n.isNew && <span style={newPill}>ΝΕΟ</span>}
+                        </div>
+                        <div style={{ fontWeight: 900, fontSize: 10, color: colors.secondaryText, marginTop: 4 }}>{n.date}</div>
+                        <div style={{ fontWeight: 800, fontSize: 11, color: colors.secondaryText, marginTop: 6 }}>{n.body}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          <div style={{ position: 'relative' }}>
+            <button
+              style={menuToggle}
+              onClick={() => {
+                setIsNotifOpen(false)
+                setIsNewsOpen(false)
+                setIsMenuOpen(!isMenuOpen)
+              }}
+            >
+              {isMenuOpen ? <X size={20} /> : <Menu size={20} />}
+            </button>
+
+            {isMenuOpen && (
+              <div style={dropdownStyle}>
+                {isStoreAdmin && (
+                  <>
+                    <p style={menuSectionLabel}>ΔΙΑΧΕΙΡΙΣΗ</p>
+                    <NextLink href={`/manage-lists?store=${storeIdFromUrl}`} style={menuItem} onClick={() => setIsMenuOpen(false)}>
+                      ⚙️ Διαχείριση Καταλόγων
+                    </NextLink>
+                    <NextLink href={`/settlements?store=${storeIdFromUrl}`} style={menuItem} onClick={() => setIsMenuOpen(false)}>
+                      💳 Δάνεια & Ρυθμίσεις
+                    </NextLink>
+                  </>
+                )}
+                {(isStoreAdmin || canViewAnalysis) && <div style={menuDivider} />}
+                {canViewAnalysis && (
+                  <NextLink href={`/analysis?store=${storeIdFromUrl}`} style={menuItem} onClick={() => setIsMenuOpen(false)}>
+                    📊 Ανάλυση
                   </NextLink>
-                  <NextLink href={`/settlements?store=${storeIdFromUrl}`} style={menuItem} onClick={() => setIsMenuOpen(false)}>
-                    💳 Δάνεια & Ρυθμίσεις
-                  </NextLink>
-                </>
-              )}
-              {(isStoreAdmin || canViewAnalysis) && <div style={menuDivider} />}
-              {canViewAnalysis && (
-                <NextLink href={`/analysis?store=${storeIdFromUrl}`} style={menuItem} onClick={() => setIsMenuOpen(false)}>
-                  📊 Ανάλυση
+                )}
+                <div style={menuDivider} />
+                <p style={menuSectionLabel}>ΥΠΟΣΤΗΡΙΞΗ & ΡΥΘΜΙΣΕΙΣ</p>
+                <NextLink href={`/settings?store=${storeIdFromUrl}`} style={menuItem} onClick={() => setIsMenuOpen(false)}>
+                  ⚙️ Ρυθμίσεις
                 </NextLink>
-              )}
-              <div style={menuDivider} />
-              <p style={menuSectionLabel}>ΥΠΟΣΤΗΡΙΞΗ & ΡΥΘΜΙΣΕΙΣ</p>
-              <NextLink href={`/settings?store=${storeIdFromUrl}`} style={menuItem} onClick={() => setIsMenuOpen(false)}>
-                ⚙️ Ρυθμίσεις
-              </NextLink>
-              <NextLink href={`/instructions?store=${storeIdFromUrl}`} style={menuItem} onClick={() => setIsMenuOpen(false)}>
-                📖 Οδηγίες Χρήσης
-              </NextLink>
-              <NextLink href={`/permissions?store=${storeIdFromUrl}`} style={menuItem} onClick={() => setIsMenuOpen(false)}>
-                🔐 Δικαιώματα
-              </NextLink>
+                <NextLink href={`/instructions?store=${storeIdFromUrl}`} style={menuItem} onClick={() => setIsMenuOpen(false)}>
+                  📖 Οδηγίες Χρήσης
+                </NextLink>
+                <NextLink href={`/permissions?store=${storeIdFromUrl}`} style={menuItem} onClick={() => setIsMenuOpen(false)}>
+                  🔐 Δικαιώματα
+                </NextLink>
 
-              <div style={menuDivider} />
-              <button onClick={() => supabase.auth.signOut().then(() => router.push('/login'))} style={logoutBtnStyle}>
-                ΑΠΟΣΥΝΔΕΣΗ 🚪
-              </button>
-            </div>
-          )}
+                <div style={menuDivider} />
+                <button onClick={() => supabase.auth.signOut().then(() => router.push('/login'))} style={logoutBtnStyle}>
+                  ΑΠΟΣΥΝΔΕΣΗ 🚪
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </header>
 
@@ -628,7 +841,7 @@ function DashboardContent() {
 
             const txMethod = isZMaster ? 'Συγκεντρωτική εγγραφή' : t?.method
             const txCreatedAt = isZMaster ? row.created_at : t?.created_at
-            const txCreatedBy = isZMaster ? row.created_by_name || zTransactions[0]?.created_by_name || '—' : t?.__userName || '—'
+            const txCreatedBy = isZMaster ? row.created_by_name || '—' : t?.__userName || '—'
             const txAmountValue = isZMaster ? row.amount : Number(t?.amount) || 0
 
             return (
@@ -653,13 +866,16 @@ function DashboardContent() {
                       {!isZMaster && t?.is_credit && <span style={creditBadgeStyle}>ΠΙΣΤΩΣΗ</span>}
                       {isZMaster && <span style={creditBadgeStyle}>{row.itemsCount} ΚΙΝΗΣΕΙΣ</span>}
                     </p>
+
                     {!isZMaster && t?.notes && (
                       <p style={{ fontSize: '11px', fontWeight: 800, color: '#64748b', margin: '4px 0 2px 0' }}>
                         {t.notes}
                       </p>
                     )}
 
-                    <p style={txMeta}>{txMethod} • {txCreatedAt ? format(parseISO(txCreatedAt), 'HH:mm') : '--:--'} • {txCreatedBy}</p>
+                    <p style={txMeta}>
+                      {txMethod} • {txCreatedAt ? format(parseISO(txCreatedAt), 'HH:mm') : '--:--'} • {txCreatedBy}
+                    </p>
                   </div>
 
                   <p style={{ ...txAmount, color: isIncomeTx ? colors.accentGreen : colors.accentRed }}>
@@ -742,11 +958,7 @@ function DashboardContent() {
 
                         <div style={ytdCard}>
                           <p style={ytdTitle}>{entityKey?.startsWith('loan:') ? 'ΚΑΤΑΣΤΑΣΗ ΡΥΘΜΙΣΗΣ' : 'ΣΥΝΟΨΗ ΕΤΟΥΣ (YTD)'}</p>
-                          {!entityKey?.startsWith('loan:') && (
-                            <p style={ytdSubTitle}>
-                              Από {yearStartStr} έως {businessTodayStr}
-                            </p>
-                          )}
+                          {!entityKey?.startsWith('loan:') && <p style={ytdSubTitle}>Από {yearStartStr} έως {businessTodayStr}</p>}
 
                           {!entityKey ? (
                             <p style={ytdHint}>Δεν υπάρχει συνδεδεμένη καρτέλα σε αυτή την κίνηση.</p>
@@ -759,7 +971,9 @@ function DashboardContent() {
                                 <span style={ytdValue}>{money(ytd?.loanTotal)}€</span>
                               </div>
                               <div style={ytdRow}>
-                                <span style={ytdLabel}>Πληρωμένες ({ytd?.loanInstallmentsPaid}/{ytd?.loanInstallmentsTotal})</span>
+                                <span style={ytdLabel}>
+                                  Πληρωμένες ({ytd?.loanInstallmentsPaid}/{ytd?.loanInstallmentsTotal})
+                                </span>
                                 <span style={ytdValueGreen}>{money(ytd?.loanPaid)}€</span>
                               </div>
                               <div style={ytdRow}>
@@ -854,6 +1068,7 @@ const switchBtnStyle: any = {
 }
 const dashboardSub = { fontSize: '9px', fontWeight: '800', color: colors.secondaryText, letterSpacing: '0.5px' }
 const statusDot = { width: '6px', height: '6px', background: colors.accentGreen, borderRadius: '50%' }
+
 const menuToggle: any = {
   background: 'white',
   border: `1px solid ${colors.border}`,
@@ -866,6 +1081,7 @@ const menuToggle: any = {
   cursor: 'pointer',
   color: colors.primaryDark,
 }
+
 const dropdownStyle: any = {
   position: 'absolute',
   top: '50px',
@@ -875,7 +1091,7 @@ const dropdownStyle: any = {
   borderRadius: '18px',
   boxShadow: '0 15px 35px rgba(0,0,0,0.1)',
   padding: '10px',
-  zIndex: 100,
+  zIndex: 200,
   border: `1px solid ${colors.border}`,
 }
 const menuItem: any = {
@@ -994,7 +1210,6 @@ const txIconContainer = (isInc: boolean): any => ({
   justifyContent: 'center',
 })
 const txTitle = { fontWeight: '800', fontSize: '14px', margin: 0, color: colors.primaryDark }
-const txNotes = { fontSize: '11px', color: colors.secondaryText, margin: '4px 0 0', fontWeight: '600' }
 const txMeta = { fontSize: '11px', color: colors.secondaryText, margin: 0, fontWeight: '600' }
 const txAmount = { fontWeight: '900', fontSize: '16px' }
 const creditBadgeStyle = { fontSize: '8px', marginLeft: '6px', color: colors.accentBlue, background: '#eef2ff', padding: '2px 5px', borderRadius: '4px' }
@@ -1019,6 +1234,103 @@ const zBreakdownRow: any = { display: 'flex', justifyContent: 'space-between', a
 
 const emptyStateStyle: any = { textAlign: 'center', padding: '40px 20px', color: colors.secondaryText, fontWeight: '600', fontSize: '13px' }
 const spinnerStyle: any = { width: '24px', height: '24px', border: '3px solid #f3f3f3', borderTop: '3px solid #6366f1', borderRadius: '50%', animation: 'spin 1s linear infinite', margin: '0 auto' }
+
+// ✅ NEW: toolbar + panels styles
+const toolIconBtn: any = {
+  background: 'white',
+  border: `1px solid ${colors.border}`,
+  borderRadius: '12px',
+  width: '40px',
+  height: '40px',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  cursor: 'pointer',
+  color: colors.primaryDark,
+}
+
+const badgeDot: any = {
+  position: 'absolute',
+  top: '-6px',
+  right: '-6px',
+  background: colors.accentRed,
+  color: 'white',
+  fontSize: '10px',
+  fontWeight: 900,
+  padding: '2px 6px',
+  borderRadius: '999px',
+  border: '2px solid white',
+}
+
+const badgeDotBlue: any = {
+  position: 'absolute',
+  top: '-6px',
+  right: '-6px',
+  background: colors.accentBlue,
+  color: 'white',
+  fontSize: '10px',
+  fontWeight: 900,
+  padding: '2px 6px',
+  borderRadius: '999px',
+  border: '2px solid white',
+}
+
+const panelBox: any = {
+  position: 'absolute',
+  top: '50px',
+  right: 0,
+  width: '320px',
+  maxWidth: '80vw',
+  background: 'white',
+  borderRadius: '18px',
+  border: `1px solid ${colors.border}`,
+  boxShadow: '0 18px 40px rgba(0,0,0,0.12)',
+  padding: '12px',
+  zIndex: 250,
+}
+
+const panelHeader: any = { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }
+const panelTitle: any = { fontSize: '10px', fontWeight: 950, letterSpacing: '0.8px', color: colors.secondaryText }
+const panelCloseBtn: any = {
+  width: 32,
+  height: 32,
+  borderRadius: 10,
+  border: `1px solid ${colors.border}`,
+  background: '#fff',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  cursor: 'pointer',
+  color: colors.primaryDark,
+}
+
+const panelEmpty: any = {
+  padding: '12px',
+  borderRadius: '14px',
+  background: '#f8fafc',
+  border: `1px dashed ${colors.border}`,
+  fontWeight: 800,
+  fontSize: 12,
+  color: colors.secondaryText,
+  textAlign: 'center',
+}
+
+const panelItem = (isWarning: boolean): any => ({
+  padding: '12px',
+  borderRadius: '14px',
+  background: isWarning ? '#fffbeb' : '#f8fafc',
+  border: `1px solid ${isWarning ? '#fde68a' : colors.border}`,
+})
+
+const newPill: any = {
+  fontSize: 9,
+  fontWeight: 950,
+  background: '#eef2ff',
+  color: '#4338ca',
+  padding: '3px 8px',
+  borderRadius: 999,
+  border: '1px solid #c7d2fe',
+}
 
 export default function DashboardPage() {
   return (
