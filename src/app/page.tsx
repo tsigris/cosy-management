@@ -82,13 +82,7 @@ function DashboardContent() {
   }
 
   const getEntityLabelFromTx = (t: any) => {
-    return (
-      t?.revenue_sources?.name ||
-      t?.suppliers?.name ||
-      t?.fixed_assets?.name ||
-      t?.category ||
-      'Συναλλαγή'
-    )
+    return t?.revenue_sources?.name || t?.suppliers?.name || t?.fixed_assets?.name || t?.category || 'Συναλλαγή'
   }
 
   const loadYtdForTx = useCallback(
@@ -124,7 +118,8 @@ function DashboardContent() {
             .filter((r: any) => String(r.type || '') === 'income')
             .reduce((acc: number, r: any) => acc + Math.abs(Number(r.amount) || 0), 0)
 
-          const RECEIVED_TYPES = ['income_collection', 'debt_received', 'debt_payment']
+          // ✅ RECEIVED types for revenue sources (do NOT include debt_payment here)
+          const RECEIVED_TYPES = ['income_collection', 'debt_received']
           const receivedIncome = rows
             .filter((r: any) => RECEIVED_TYPES.includes(String(r.type || '')))
             .reduce((acc: number, r: any) => acc + Math.abs(Number(r.amount) || 0), 0)
@@ -152,7 +147,7 @@ function DashboardContent() {
           .reduce((acc: number, r: any) => acc + Math.abs(Number(r.amount) || 0), 0)
 
         const creditExpenses = rows
-          .filter((r: any) => r.is_credit === true)
+          .filter((r: any) => r.is_credit === true && String(r.type || '') === 'expense')
           .reduce((acc: number, r: any) => acc + Math.abs(Number(r.amount) || 0), 0)
 
         const openExpense = creditExpenses - payments
@@ -223,6 +218,7 @@ function DashboardContent() {
       }
     } catch (err) {
       console.error('Dashboard error:', err)
+      toast.error('Σφάλμα φόρτωσης Dashboard')
     } finally {
       setLoading(false)
     }
@@ -240,7 +236,6 @@ function DashboardContent() {
     }
     try {
       const { error } = await supabase.from('transactions').delete().eq('id', id).eq('store_id', storeIdFromUrl)
-
       if (error) throw error
       setTransactions((prev) => prev.filter((t) => t.id !== id))
       setExpandedTx(null)
@@ -352,18 +347,25 @@ function DashboardContent() {
     }
 
     return rows
-  }, [transactions, isZTransaction])
+  }, [transactions, isZTransaction, selectedDate])
 
+  // ✅ FIX: Expense of day must include ALL debt_payments (even if mistakenly marked is_credit=true)
+  // ✅ Credits of day should show ONLY "new credit purchases" (expense rows with is_credit=true), not payments
   const totals = useMemo(() => {
-    const income = transactions.filter((t) => t.type === 'income').reduce((acc, t) => acc + (Number(t.amount) || 0), 0)
+    const income = transactions
+      .filter((t) => t.type === 'income')
+      .reduce((acc, t) => acc + (Number(t.amount) || 0), 0)
 
     const expense = transactions
-      .filter((t) => (t.type === 'expense' || t.type === 'debt_payment') && t.is_credit !== true)
+      .filter(
+        (t) =>
+          (t.type === 'expense' && t.is_credit !== true) || // normal cash/bank expenses
+          t.type === 'debt_payment' // payments are always money-out
+      )
       .reduce((acc, t) => acc + (Math.abs(Number(t.amount)) || 0), 0)
 
-    // ✅ NEW: total credits of the day (any tx with is_credit === true)
     const credits = transactions
-      .filter((t) => t.is_credit === true)
+      .filter((t) => t.type === 'expense' && t.is_credit === true) // only purchases on credit
       .reduce((acc: number, t: any) => acc + Math.abs(Number(t.amount) || 0), 0)
 
     return { income, expense, credits, balance: income - expense }
@@ -387,7 +389,7 @@ function DashboardContent() {
           <div style={logoBox}>{storeName?.charAt(0) || '?'}</div>
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <h1 style={storeTitleText}>{storeName?.toUpperCase() || 'ΦΟΡΤΩΣΗ...'}</h1>
+              <h1 style={storeTitleText}>{storeName?.toUpperCase() || 'ΦΟΡΡΤΩΣΗ...'}</h1>
               <NextLink href="/select-store" style={switchBtnStyle}>
                 ΑΛΛΑΓΗ
               </NextLink>
@@ -409,22 +411,14 @@ function DashboardContent() {
               {isStoreAdmin && (
                 <>
                   <p style={menuSectionLabel}>ΔΙΑΧΕΙΡΙΣΗ</p>
-                  <NextLink
-                    href={`/manage-lists?store=${storeIdFromUrl}`}
-                    style={menuItem}
-                    onClick={() => setIsMenuOpen(false)}
-                  >
+                  <NextLink href={`/manage-lists?store=${storeIdFromUrl}`} style={menuItem} onClick={() => setIsMenuOpen(false)}>
                     ⚙️ Διαχείριση Καταλόγων
                   </NextLink>
                 </>
               )}
               {(isStoreAdmin || canViewAnalysis) && <div style={menuDivider} />}
               {canViewAnalysis && (
-                <NextLink
-                  href={`/analysis?store=${storeIdFromUrl}`}
-                  style={menuItem}
-                  onClick={() => setIsMenuOpen(false)}
-                >
+                <NextLink href={`/analysis?store=${storeIdFromUrl}`} style={menuItem} onClick={() => setIsMenuOpen(false)}>
                   📊 Ανάλυση
                 </NextLink>
               )}
@@ -433,19 +427,11 @@ function DashboardContent() {
               <NextLink href={`/settings?store=${storeIdFromUrl}`} style={menuItem} onClick={() => setIsMenuOpen(false)}>
                 ⚙️ Ρυθμίσεις
               </NextLink>
-              <NextLink
-                href={`/instructions?store=${storeIdFromUrl}`}
-                style={menuItem}
-                onClick={() => setIsMenuOpen(false)}
-              >
+              <NextLink href={`/instructions?store=${storeIdFromUrl}`} style={menuItem} onClick={() => setIsMenuOpen(false)}>
                 📖 Οδηγίες Χρήσης
               </NextLink>
 
-              <NextLink
-                href={`/permissions?store=${storeIdFromUrl}`}
-                style={menuItem}
-                onClick={() => setIsMenuOpen(false)}
-              >
+              <NextLink href={`/permissions?store=${storeIdFromUrl}`} style={menuItem} onClick={() => setIsMenuOpen(false)}>
                 🔐 Δικαιώματα
               </NextLink>
 
@@ -463,9 +449,7 @@ function DashboardContent() {
           <ChevronLeft size={24} />
         </button>
         <div style={{ textAlign: 'center' }}>
-          <p style={dateText}>
-            {format(parseISO(selectedDate), 'EEEE, d MMMM', { locale: el }).toUpperCase()}
-          </p>
+          <p style={dateText}>{format(parseISO(selectedDate), 'EEEE, d MMMM', { locale: el }).toUpperCase()}</p>
           <p style={businessHint}>
             Λογιστική μέρα έως 06:59 • YTD: {yearStartStr} → {businessTodayStr}
           </p>
@@ -495,7 +479,7 @@ function DashboardContent() {
           </div>
         </div>
 
-        {/* ✅ NEW: Credits of day */}
+        {/* ✅ Credits of day (only new credit purchases) */}
         <div style={heroCreditWrap}>
           <div style={heroCreditPill}>
             <div style={creditIconCircle}>
@@ -510,17 +494,11 @@ function DashboardContent() {
       {/* ✅ NEW LAYOUT: Income/Expense row + Z centered below */}
       <div style={actionGrid}>
         <div style={actionRow}>
-          <NextLink
-            href={`/add-income?date=${selectedDate}&store=${storeIdFromUrl}`}
-            style={{ ...actionBtn, backgroundColor: colors.accentGreen }}
-          >
+          <NextLink href={`/add-income?date=${selectedDate}&store=${storeIdFromUrl}`} style={{ ...actionBtn, backgroundColor: colors.accentGreen }}>
             + Έσοδο
           </NextLink>
 
-          <NextLink
-            href={`/add-expense?date=${selectedDate}&store=${storeIdFromUrl}`}
-            style={{ ...actionBtn, backgroundColor: colors.accentRed }}
-          >
+          <NextLink href={`/add-expense?date=${selectedDate}&store=${storeIdFromUrl}`} style={{ ...actionBtn, backgroundColor: colors.accentRed }}>
             - Έξοδο
           </NextLink>
         </div>
@@ -528,10 +506,7 @@ function DashboardContent() {
         {/* ✅ Hide Z if disabled from Settings */}
         {zEnabled && (
           <div style={zRowWrap}>
-            <NextLink
-              href={`/daily-z?store=${storeIdFromUrl}`}
-              style={{ ...actionBtn, ...zBtnStyle, backgroundColor: colors.primaryDark }}
-            >
+            <NextLink href={`/daily-z?store=${storeIdFromUrl}`} style={{ ...actionBtn, ...zBtnStyle, backgroundColor: colors.primaryDark }}>
               📟 Z
             </NextLink>
           </div>
@@ -555,6 +530,7 @@ function DashboardContent() {
             const txTitleText = isZMaster ? 'ΚΛΕΙΣΙΜΟ Ζ' : getEntityLabelFromTx(t)
             const entityKey = !isZMaster && t ? getEntityKeyFromTx(t) : null
             const ytd = entityKey ? ytdCache[entityKey] : undefined
+
             const INCOME_TYPES = ['income', 'income_collection', 'debt_received']
             const isIncomeTx = isZMaster ? true : INCOME_TYPES.includes(t?.type)
             const txMethod = isZMaster ? 'Συγκεντρωτική εγγραφή' : t?.method
@@ -576,9 +552,7 @@ function DashboardContent() {
                     if (next && !isZMaster && t) loadYtdForTx(t)
                   }}
                 >
-                  <div style={txIconContainer(isIncomeTx)}>
-                    {isIncomeTx ? <TrendingUp size={18} /> : <TrendingDown size={18} />}
-                  </div>
+                  <div style={txIconContainer(isIncomeTx)}>{isIncomeTx ? <TrendingUp size={18} /> : <TrendingDown size={18} />}</div>
 
                   <div style={{ flex: 1, marginLeft: '12px' }}>
                     <p style={txTitle}>
@@ -612,13 +586,7 @@ function DashboardContent() {
                         ))}
 
                         {t.__collapsedZ && (
-                          <div
-                            style={{
-                              display: 'flex',
-                              gap: 10,
-                              marginTop: 12,
-                            }}
-                          >
+                          <div style={{ display: 'flex', gap: 10, marginTop: 12 }}>
                             <button
                               onClick={() => handleEditZ(t.date)}
                               style={{
@@ -656,9 +624,7 @@ function DashboardContent() {
                     ) : (
                       <>
                         <button
-                          onClick={() =>
-                            router.push(`/add-${isIncomeTx ? 'income' : 'expense'}?editId=${t.id}&store=${storeIdFromUrl}`)
-                          }
+                          onClick={() => router.push(`/add-${isIncomeTx ? 'income' : 'expense'}?editId=${t.id}&store=${storeIdFromUrl}`)}
                           style={editRowBtn}
                         >
                           Επεξεργασία
@@ -674,9 +640,7 @@ function DashboardContent() {
                           </p>
 
                           {!entityKey ? (
-                            <p style={ytdHint}>
-                              Δεν υπάρχει συνδεδεμένη καρτέλα (supplier / asset / revenue source) σε αυτή την κίνηση.
-                            </p>
+                            <p style={ytdHint}>Δεν υπάρχει συνδεδεμένη καρτέλα (supplier / asset / revenue source) σε αυτή την κίνηση.</p>
                           ) : ytd?.loading ? (
                             <p style={ytdLoading}>Υπολογισμός…</p>
                           ) : entityKey.startsWith('rev:') ? (
@@ -691,12 +655,7 @@ function DashboardContent() {
                               </div>
                               <div style={ytdRow}>
                                 <span style={ytdLabel}>Ανοιχτό υπόλοιπο</span>
-                                <span
-                                  style={{
-                                    ...ytdValue,
-                                    color: (Number(ytd?.openIncome) || 0) > 0 ? colors.accentRed : colors.accentGreen,
-                                  }}
-                                >
+                                <span style={{ ...ytdValue, color: (Number(ytd?.openIncome) || 0) > 0 ? colors.accentRed : colors.accentGreen }}>
                                   {money(ytd?.openIncome)}€
                                 </span>
                               </div>
@@ -714,12 +673,7 @@ function DashboardContent() {
                               </div>
                               <div style={ytdRow}>
                                 <span style={ytdLabel}>Ανοιχτό υπόλοιπο</span>
-                                <span
-                                  style={{
-                                    ...ytdValue,
-                                    color: (Number(ytd?.openExpense) || 0) > 0 ? colors.accentRed : colors.accentGreen,
-                                  }}
-                                >
+                                <span style={{ ...ytdValue, color: (Number(ytd?.openExpense) || 0) > 0 ? colors.accentRed : colors.accentGreen }}>
                                   {money(ytd?.openExpense)}€
                                 </span>
                               </div>
@@ -864,7 +818,7 @@ const statCircle = (bg: string): any => ({
   color: 'white',
 })
 
-// ✅ NEW hero credit pill styles
+// ✅ hero credit pill styles
 const heroCreditWrap: any = { marginTop: '18px', display: 'flex', justifyContent: 'center' }
 const heroCreditPill: any = {
   display: 'flex',
@@ -888,7 +842,7 @@ const creditIconCircle: any = {
 const heroCreditLabel: any = { fontSize: '10px', fontWeight: '900', opacity: 0.9, letterSpacing: '0.6px' }
 const heroCreditValue: any = { fontSize: '14px', fontWeight: '900' }
 
-// ✅ NEW action layout
+// ✅ action layout
 const actionGrid: any = { display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '30px' }
 const actionRow: any = { display: 'flex', gap: '12px' }
 const zRowWrap: any = { display: 'flex', justifyContent: 'center' }
@@ -908,7 +862,15 @@ const zBtnStyle: any = { flex: 'unset', width: '100%', maxWidth: '260px' }
 
 const listContainer = { backgroundColor: 'transparent' }
 const listHeader = { fontSize: '11px', fontWeight: '900', color: colors.secondaryText, marginBottom: '15px', letterSpacing: '0.5px' }
-const txRow: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px', backgroundColor: 'white', border: `1px solid ${colors.border}`, cursor: 'pointer' }
+const txRow: any = {
+  display: 'flex',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+  padding: '16px',
+  backgroundColor: 'white',
+  border: `1px solid ${colors.border}`,
+  cursor: 'pointer',
+}
 const txIconContainer = (isInc: boolean): any => ({
   width: '42px',
   height: '42px',
@@ -924,9 +886,39 @@ const txMeta = { fontSize: '11px', color: colors.secondaryText, margin: 0, fontW
 const txAmount = { fontWeight: '900', fontSize: '16px' }
 const creditBadgeStyle = { fontSize: '8px', marginLeft: '6px', color: colors.accentBlue, background: '#eef2ff', padding: '2px 5px', borderRadius: '4px' }
 
-const actionPanel: any = { display: 'flex', gap: '10px', padding: '15px', backgroundColor: 'white', border: `1px solid ${colors.border}`, borderTop: 'none', borderRadius: '0 0 20px 20px', alignItems: 'stretch', flexWrap: 'wrap' }
-const editRowBtn: any = { flex: 1, padding: '10px', backgroundColor: colors.bgLight, color: colors.primaryDark, border: `1px solid ${colors.border}`, borderRadius: '10px', fontWeight: '700', fontSize: '12px', minWidth: '140px' }
-const deleteRowBtn: any = { flex: 1, padding: '10px', backgroundColor: '#fee2e2', color: colors.accentRed, border: 'none', borderRadius: '10px', fontWeight: '700', fontSize: '12px', minWidth: '120px' }
+const actionPanel: any = {
+  display: 'flex',
+  gap: '10px',
+  padding: '15px',
+  backgroundColor: 'white',
+  border: `1px solid ${colors.border}`,
+  borderTop: 'none',
+  borderRadius: '0 0 20px 20px',
+  alignItems: 'stretch',
+  flexWrap: 'wrap',
+}
+const editRowBtn: any = {
+  flex: 1,
+  padding: '10px',
+  backgroundColor: colors.bgLight,
+  color: colors.primaryDark,
+  border: `1px solid ${colors.border}`,
+  borderRadius: '10px',
+  fontWeight: '700',
+  fontSize: '12px',
+  minWidth: '140px',
+}
+const deleteRowBtn: any = {
+  flex: 1,
+  padding: '10px',
+  backgroundColor: '#fee2e2',
+  color: colors.accentRed,
+  border: 'none',
+  borderRadius: '10px',
+  fontWeight: '700',
+  fontSize: '12px',
+  minWidth: '120px',
+}
 
 const ytdCard: any = { width: '100%', padding: '14px', borderRadius: '16px', border: `1px solid ${colors.border}`, background: '#f8fafc', marginTop: '10px' }
 const ytdTitle: any = { margin: 0, fontSize: '10px', fontWeight: '900', color: colors.secondaryText, letterSpacing: '0.8px' }
@@ -939,23 +931,19 @@ const ytdValueRed: any = { fontSize: '12px', fontWeight: '900', color: colors.ac
 const ytdHint: any = { margin: '10px 0 0 0', fontSize: '10px', fontWeight: '800', color: colors.secondaryText }
 const ytdLoading: any = { margin: '10px 0 0 0', fontSize: '12px', fontWeight: '800', color: colors.secondaryText }
 
-const zBreakdownCard: any = {
-  width: '100%',
-  padding: '14px',
-  borderRadius: '16px',
-  border: `1px solid ${colors.border}`,
-  background: '#f8fafc',
-}
-const zBreakdownRow: any = {
-  display: 'flex',
-  justifyContent: 'space-between',
-  alignItems: 'center',
-  gap: '10px',
-  marginTop: '10px',
-}
+const zBreakdownCard: any = { width: '100%', padding: '14px', borderRadius: '16px', border: `1px solid ${colors.border}`, background: '#f8fafc' }
+const zBreakdownRow: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', marginTop: '10px' }
 
 const emptyStateStyle: any = { textAlign: 'center', padding: '40px 20px', color: colors.secondaryText, fontWeight: '600', fontSize: '13px' }
-const spinnerStyle: any = { width: '24px', height: '24px', border: '3px solid #f3f3f3', borderTop: '3px solid #6366f1', borderRadius: '50%', animation: 'spin 1s linear infinite', margin: '0 auto' }
+const spinnerStyle: any = {
+  width: '24px',
+  height: '24px',
+  border: '3px solid #f3f3f3',
+  borderTop: '3px solid #6366f1',
+  borderRadius: '50%',
+  animation: 'spin 1s linear infinite',
+  margin: '0 auto',
+}
 
 export default function DashboardPage() {
   return (
