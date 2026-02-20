@@ -1044,7 +1044,7 @@ function SettlementsContent({ onUpdate }: { onUpdate?: () => void }) {
               min="0"
               step="0.01"
               value={paymentAmount}
-              onChange={(e) => setPaymentAmount(e.target.value)}
+              onChange={(e) => setPaymentAmount(e.target.value.replace(',', '.'))}
             />
             <div style={{ fontSize: 11, fontWeight: 800, color: colors.secondaryText, marginTop: 6 }}>
               * Μπορείς να αλλάξεις ποσό (μερική/διαφορετική πληρωμή). Θα γραφτεί αυτό στα Έξοδα και θα “κλειδώσει” η δόση ως πληρωμένη.
