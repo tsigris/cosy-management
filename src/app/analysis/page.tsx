@@ -184,14 +184,11 @@ function AnalysisContent() {
     if (!storeId || storeId === 'null') router.replace('/select-store')
   }, [storeId, router])
 
-  const getMethod = useCallback(
-    (t: any) => {
-      // IMPORTANT: support both columns
-      const m = t?.method ?? t?.payment_method ?? ''
-      return String(m || '').trim()
-    },
-    []
-  )
+  const getMethod = useCallback((t: any) => {
+    // IMPORTANT: support both columns
+    const m = t?.method ?? t?.payment_method ?? ''
+    return String(m || '').trim()
+  }, [])
 
   // ✅ CREDIT DETECTION (CANONICAL): first is_credit, then method/payment_method "Πίστωση"
   const isCreditTx = useCallback(
@@ -200,7 +197,7 @@ function AnalysisContent() {
       const m = norm(getMethod(t))
       return m === 'πίστωση'
     },
-    [getMethod, norm]
+    [getMethod, norm],
   )
 
   // ✅ CASH / BANK classification
@@ -209,7 +206,7 @@ function AnalysisContent() {
       const m = norm(method)
       return m === 'μετρητά' || m === 'μετρητά (z)' || m === 'χωρίς απόδειξη'
     },
-    [norm]
+    [norm],
   )
 
   const isBankMethod = useCallback(
@@ -217,7 +214,7 @@ function AnalysisContent() {
       const m = norm(method)
       return m === 'κάρτα' || m === 'τράπεζα'
     },
-    [norm]
+    [norm],
   )
 
   // ✅ robust signed amount (supports both styles: negatives in DB OR positive+type)
@@ -412,7 +409,7 @@ function AnalysisContent() {
 
       return '-'
     },
-    [staff, suppliers, revenueSources, maintenanceWorkers]
+    [staff, suppliers, revenueSources, maintenanceWorkers],
   )
 
   const filterAToKey = useCallback((fa: FilterA) => {
@@ -461,7 +458,7 @@ function AnalysisContent() {
         credit_incoming: creditIncoming,
       }
     },
-    [getMethod, isCreditTx, signedAmount, isCashMethod, isBankMethod]
+    [getMethod, isCreditTx, signedAmount, isCashMethod, isBankMethod],
   )
 
   // ✅ keep calcBalances in sync with period
@@ -511,9 +508,7 @@ function AnalysisContent() {
       .filter((t) => t.type === 'income' || t.type === 'income_collection' || t.type === 'debt_received')
       .reduce((acc, t) => acc + (Number(t.amount) || 0), 0)
 
-    const tips = rowsNoCredit
-      .filter((t) => t.type === 'tip_entry')
-      .reduce((acc, t) => acc + Math.abs(Number(t.amount) || 0), 0)
+    const tips = rowsNoCredit.filter((t) => t.type === 'tip_entry').reduce((acc, t) => acc + Math.abs(Number(t.amount) || 0), 0)
 
     const expenses = rowsNoCredit
       .filter((t) => t.type === 'expense' || t.type === 'debt_payment')
@@ -522,6 +517,37 @@ function AnalysisContent() {
     const netProfit = income - expenses
     return { income, expenses, tips, netProfit }
   }, [filteredTx, isCreditTx])
+
+  // ✅ PROFESSIONAL: Loans & Settlements outflow (separate metrics + cash/bank split, without credit)
+  const debtOutflows = useMemo(() => {
+    const rowsNoCredit = filteredTx.filter((t) => !isCreditTx(t))
+    const isExpenseLike = (t: any) => t.type === 'expense' || t.type === 'debt_payment'
+
+    const catKey = (t: any) => norm(t.category)
+
+    const isLoan = (t: any) => catKey(t) === norm('Δάνεια')
+    const isSettlement = (t: any) => catKey(t) === norm('Ρυθμίσεις')
+
+    const sumAbs = (rows: any[]) => rows.reduce((a, t) => a + Math.abs(Number(t.amount) || 0), 0)
+    const sumAbsCash = (rows: any[]) => rows.filter((t) => isCashMethod(getMethod(t))).reduce((a, t) => a + Math.abs(Number(t.amount) || 0), 0)
+    const sumAbsBank = (rows: any[]) => rows.filter((t) => isBankMethod(getMethod(t))).reduce((a, t) => a + Math.abs(Number(t.amount) || 0), 0)
+
+    const loanRows = rowsNoCredit.filter((t) => isExpenseLike(t) && isLoan(t))
+    const settlementRows = rowsNoCredit.filter((t) => isExpenseLike(t) && isSettlement(t))
+
+    return {
+      loans: {
+        total: sumAbs(loanRows),
+        cash: sumAbsCash(loanRows),
+        bank: sumAbsBank(loanRows),
+      },
+      settlements: {
+        total: sumAbs(settlementRows),
+        cash: sumAbsCash(settlementRows),
+        bank: sumAbsBank(settlementRows),
+      },
+    }
+  }, [filteredTx, isCreditTx, getMethod, isCashMethod, isBankMethod, norm])
 
   // ✅ CREDIT totals for the selected period (so cards show correctly)
   const creditPeriod = useMemo(() => {
@@ -560,7 +586,7 @@ function AnalysisContent() {
         (r) =>
           r.category === 'Εσοδα Ζ' &&
           (r.notes === 'ΧΩΡΙΣ ΣΗΜΑΝΣΗ' || r.method === 'Μετρητά' || r.method === 'Χωρίς Απόδειξη') &&
-          r.method !== 'Μετρητά (Z)'
+          r.method !== 'Μετρητά (Z)',
       )
       .reduce((a, r) => a + r.amount, 0)
 
@@ -849,7 +875,7 @@ function AnalysisContent() {
           </div>
         </div>
 
-        {/* ✅ BALANCES + CREDIT */}
+        {/* ✅ BALANCES + CREDIT + LOANS/SETTLEMENTS */}
         <div style={balancesGrid} data-print-section="true">
           <div style={smallKpiCard}>
             <div style={smallKpiLabel}>Υπόλοιπο Μετρητών</div>
@@ -869,6 +895,22 @@ function AnalysisContent() {
             <div style={smallKpiLabel}>Σύνολο Καθαρό</div>
             <div style={smallKpiValue}>{money(calcBalances?.total_balance || 0)}</div>
             <div style={smallKpiHint}>Cash + Bank (χωρίς Πίστωση)</div>
+          </div>
+
+          <div style={{ ...smallKpiCard, border: '1px solid rgba(99,102,241,0.20)', background: 'linear-gradient(180deg, #eef2ff, #ffffff)' }}>
+            <div style={smallKpiLabel}>Πληρωμές Δανείων</div>
+            <div style={{ ...smallKpiValue, color: colors.indigo }}>{money(debtOutflows.loans.total)}</div>
+            <div style={smallKpiHint}>
+              Μετρητά: {money(debtOutflows.loans.cash)} • Τράπεζα: {money(debtOutflows.loans.bank)} (χωρίς Πίστωση)
+            </div>
+          </div>
+
+          <div style={{ ...smallKpiCard, border: '1px solid rgba(16,185,129,0.20)', background: 'linear-gradient(180deg, #ecfdf5, #ffffff)' }}>
+            <div style={smallKpiLabel}>Πληρωμές Ρυθμίσεων</div>
+            <div style={{ ...smallKpiValue, color: colors.success }}>{money(debtOutflows.settlements.total)}</div>
+            <div style={smallKpiHint}>
+              Μετρητά: {money(debtOutflows.settlements.cash)} • Τράπεζα: {money(debtOutflows.settlements.bank)} (χωρίς Πίστωση)
+            </div>
           </div>
 
           <div style={{ ...smallKpiCard, border: '1px solid rgba(244,63,94,0.25)', background: 'linear-gradient(180deg, #fff1f2, #ffffff)' }}>
@@ -1036,7 +1078,16 @@ function AnalysisContent() {
                           </div>
                         </div>
 
-                        <div style={{ fontSize: 18, fontWeight: 900, color: colors.primary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        <div
+                          style={{
+                            fontSize: 18,
+                            fontWeight: 900,
+                            color: colors.primary,
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
                           {String(name || '').toUpperCase()}
                         </div>
 
@@ -1049,9 +1100,7 @@ function AnalysisContent() {
                         )}
 
                         {credit && (
-                          <div style={{ fontSize: 12, fontWeight: 900, color: colors.danger }}>
-                            ⚠️ ΠΙΣΤΩΣΗ (δεν επηρεάζει Cash/Bank)
-                          </div>
+                          <div style={{ fontSize: 12, fontWeight: 900, color: colors.danger }}>⚠️ ΠΙΣΤΩΣΗ (δεν επηρεάζει Cash/Bank)</div>
                         )}
                       </div>
                     </div>
@@ -1063,13 +1112,18 @@ function AnalysisContent() {
         )}
 
         <div style={{ marginTop: 16, fontSize: 13, fontWeight: 800, color: colors.secondary }} data-print-section="true">
-          * Τα KPI (Κέρδος/Έξοδα/Έσοδα) υπολογίζονται χωρίς Πίστωση. Η Πίστωση εμφανίζεται ξεχωριστά.
+          * Τα KPI (Κέρδος/Έξοδα/Έσοδα) υπολογίζονται χωρίς Πίστωση. Η Πίστωση εμφανίζεται ξεχωριστά. Τα “Δάνεια” και “Ρυθμίσεις”
+          εμφανίζονται και σαν ξεχωριστές μετρήσεις εκροών.
         </div>
 
         {/* ✅ PRINT BUTTON + MODE TOGGLE */}
         <div className="no-print" style={printWrap}>
           <div style={printModeSwitchWrap}>
-            <button type="button" onClick={() => setPrintMode('summary')} style={{ ...printModeBtn, ...(printMode === 'summary' ? printModeBtnActive : {}) }}>
+            <button
+              type="button"
+              onClick={() => setPrintMode('summary')}
+              style={{ ...printModeBtn, ...(printMode === 'summary' ? printModeBtnActive : {}) }}
+            >
               Σύνοψη
             </button>
             <button type="button" onClick={() => setPrintMode('full')} style={{ ...printModeBtn, ...(printMode === 'full' ? printModeBtnActive : {}) }}>
