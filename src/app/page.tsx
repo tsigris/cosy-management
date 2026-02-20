@@ -8,17 +8,7 @@ import NextLink from 'next/link'
 import { format, addDays, subDays, parseISO, differenceInCalendarDays } from 'date-fns'
 import { el } from 'date-fns/locale'
 import { Toaster, toast } from 'sonner'
-import {
-  TrendingUp,
-  TrendingDown,
-  Menu,
-  X,
-  ChevronLeft,
-  ChevronRight,
-  CreditCard,
-  Bell,
-  Megaphone,
-} from 'lucide-react'
+import { TrendingUp, TrendingDown, Menu, X, ChevronLeft, ChevronRight, CreditCard, Bell, Banknote, Landmark } from 'lucide-react'
 
 // --- MODERN PREMIUM PALETTE ---
 const colors = {
@@ -49,20 +39,25 @@ type YtdInfo = {
   loanInstallmentsTotal?: number
 }
 
-type AppNotif = {
+type SettlementMini = {
   id: string
-  title: string
-  body: string
-  severity?: 'info' | 'warning'
+  name: string
+  type?: 'settlement' | 'loan' | null
+  rf_code?: string | null
 }
 
-type AppNews = {
+type InstallmentMini = {
   id: string
-  date: string
-  title: string
-  body: string
-  isNew?: boolean
+  settlement_id: string
+  installment_number: number
+  due_date: string
+  amount: number
+  status: string | null
+  transaction_id: string | null
+  settlements?: SettlementMini | null
 }
+
+type PaymentMethod = 'Μετρητά' | 'Τράπεζα'
 
 function DashboardContent() {
   const router = useRouter()
@@ -89,14 +84,6 @@ function DashboardContent() {
   // ✅ Z visibility flag
   const [zEnabled, setZEnabled] = useState<boolean>(true)
 
-  // ✅ NEW: notifications + news panels
-  const [isNotifOpen, setIsNotifOpen] = useState(false)
-  const [isNewsOpen, setIsNewsOpen] = useState(false)
-  const [notifs, setNotifs] = useState<AppNotif[]>([])
-  const [news, setNews] = useState<AppNews[]>([])
-  const [notifsLoading, setNotifsLoading] = useState(false)
-  const [newsLoading, setNewsLoading] = useState(false)
-
   // cache YTD metrics per entity key
   const [ytdCache, setYtdCache] = useState<Record<string, YtdInfo>>({})
 
@@ -105,6 +92,158 @@ function DashboardContent() {
   const businessYear = String(businessTodayStr).slice(0, 4)
   const yearStartStr = `${businessYear}-01-01`
 
+  // ----------------------------
+  // 🔔 NOTIFICATIONS (Installments)
+  // ----------------------------
+  const [isNotifOpen, setIsNotifOpen] = useState(false)
+  const [notifLoading, setNotifLoading] = useState(false)
+  const [notifItems, setNotifItems] = useState<InstallmentMini[]>([])
+
+  // Payment modal (same flow as settlements page)
+  const [openPaymentModal, setOpenPaymentModal] = useState(false)
+  const [savingPayment, setSavingPayment] = useState(false)
+  const [selectedInstallment, setSelectedInstallment] = useState<InstallmentMini | null>(null)
+  const [selectedSettlement, setSelectedSettlement] = useState<SettlementMini | null>(null)
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('Μετρητά')
+
+  const money = (n: any) => (Number(n) || 0).toLocaleString('el-GR', { minimumFractionDigits: 2 })
+
+  const loadNotifications = useCallback(async () => {
+    if (!storeIdFromUrl) return
+    setNotifLoading(true)
+    try {
+      const { data: inst, error } = await supabase
+        .from('installments')
+        .select('id, settlement_id, installment_number, due_date, amount, status, transaction_id, settlements(id, name, type, rf_code)')
+        .eq('store_id', storeIdFromUrl)
+        .or('status.is.null,status.eq.pending')
+        .order('due_date', { ascending: true })
+        .limit(12)
+
+      if (error) throw error
+      setNotifItems((inst || []) as any)
+    } catch (e) {
+      console.error(e)
+      // Δεν κάνουμε toast κάθε φορά (για να μην σπάει), μόνο αν ο χρήστης ανοίξει
+    } finally {
+      setNotifLoading(false)
+    }
+  }, [storeIdFromUrl])
+
+  const notificationCount = useMemo(() => {
+    // μόνο pending
+    return (notifItems || []).filter((i) => String(i.status || 'pending').toLowerCase() === 'pending').length
+  }, [notifItems])
+
+  const openPayModalFromNotif = (inst: InstallmentMini) => {
+    const sett = inst.settlements || null
+    if (!sett) {
+      toast.error('Δεν βρέθηκε η συμφωνία της δόσης')
+      return
+    }
+    setSelectedInstallment(inst)
+    setSelectedSettlement(sett)
+    setPaymentMethod('Μετρητά')
+    setOpenPaymentModal(true)
+  }
+
+  const onConfirmPayment = async () => {
+    if (!storeIdFromUrl) return toast.error('Λείπει το store')
+    if (!selectedInstallment || !selectedSettlement) return toast.error('Δεν βρέθηκε επιλεγμένη δόση')
+
+    setSavingPayment(true)
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession()
+      if (!session) throw new Error('Η συνεδρία έληξε. Συνδέσου ξανά.')
+
+      let userName = 'Χρήστης'
+      const { data: profile } = await supabase.from('profiles').select('username').eq('id', session.user.id).maybeSingle()
+      if (profile?.username) userName = profile.username
+
+      const amount = Math.abs(Number(selectedInstallment.amount || 0))
+      if (!amount) throw new Error('Μη έγκυρο ποσό δόσης')
+
+      const today = new Date().toISOString().split('T')[0]
+      const rf = selectedSettlement.rf_code ? ` (RF: ${selectedSettlement.rf_code})` : ''
+      const notes = `Πληρωμή Δόσης #${selectedInstallment.installment_number}: ${selectedSettlement.name}${rf}`
+
+      const { data: transactionRow, error: transErr } = await supabase
+        .from('transactions')
+        .insert([
+          {
+            store_id: storeIdFromUrl,
+            user_id: session.user.id,
+            created_by_name: userName,
+            type: 'expense',
+            amount: -amount,
+            method: paymentMethod,
+            category: 'Λοιπά',
+            notes,
+            date: today,
+          },
+        ])
+        .select('id')
+        .single()
+
+      if (transErr) throw transErr
+
+      const { error: installmentErr } = await supabase
+        .from('installments')
+        .update({
+          status: 'paid',
+          transaction_id: transactionRow.id,
+        })
+        .eq('id', selectedInstallment.id)
+        .eq('store_id', storeIdFromUrl)
+
+      if (installmentErr) throw installmentErr
+
+      toast.success('Η δόση πληρώθηκε και καταχωρήθηκε στα έξοδα')
+      setOpenPaymentModal(false)
+      setSelectedInstallment(null)
+      setSelectedSettlement(null)
+
+      // refresh: notifications + dashboard rows
+      await loadNotifications()
+      await loadDashboard()
+    } catch (e: any) {
+      console.error(e)
+      toast.error(e?.message || 'Αποτυχία πληρωμής δόσης')
+    } finally {
+      setSavingPayment(false)
+    }
+  }
+
+  const notifUiItems = useMemo(() => {
+    const today = parseISO(getBusinessDate())
+    return (notifItems || [])
+      .filter((i) => String(i.status || 'pending').toLowerCase() === 'pending')
+      .map((i) => {
+        const due = parseISO(i.due_date)
+        const diff = differenceInCalendarDays(due, today) // >0 = σε X μέρες, 0 = σήμερα, <0 = καθυστέρηση
+        const settlementType = i.settlements?.type === 'loan' ? 'ΔΑΝΕΙΟ' : 'ΡΥΘΜΙΣΗ'
+        const title = i.settlements?.name || 'Συμφωνία'
+        const rf = i.settlements?.rf_code ? `RF: ${i.settlements.rf_code}` : ''
+
+        let tone: 'ok' | 'warn' | 'over' = 'ok'
+        if (diff <= 3 && diff >= 0) tone = 'warn'
+        if (diff < 0) tone = 'over'
+
+        let rightText = ''
+        if (diff > 1) rightText = `σε ${diff} μέρες`
+        else if (diff === 1) rightText = `σε 1 μέρα`
+        else if (diff === 0) rightText = `ΣΗΜΕΡΑ`
+        else rightText = `${Math.abs(diff)} μέρες σε καθυστέρηση`
+
+        return { inst: i, tone, settlementType, title, rf, rightText }
+      })
+  }, [notifItems])
+
+  // ----------------------------
+  // Existing dashboard helpers
+  // ----------------------------
   const getEntityKeyFromTx = (t: any) => {
     if (t?.notes && t.notes.startsWith('Πληρωμή Δόσης')) return `loan:${t.id}`
     if (t?.revenue_source_id) return `rev:${t.revenue_source_id}`
@@ -124,98 +263,9 @@ function DashboardContent() {
       }
       return 'Πληρωμή Δόσης'
     }
+
     return t?.category || 'Συναλλαγή'
   }
-
-  // ✅ NEW: Load NOTIFICATIONS (loan installments due soon)
-  const loadNotifications = useCallback(async () => {
-    if (!storeIdFromUrl) return
-
-    try {
-      setNotifsLoading(true)
-
-      const today = businessTodayStr
-      const until = format(addDays(parseISO(today), 3), 'yyyy-MM-dd')
-
-      // Προσπαθούμε να πάρουμε pending δόσεις που λήγουν στις επόμενες 3 μέρες
-      // Αν η δομή σου διαφέρει (π.χ. due_on αντί due_date), πες μου να το αλλάξω.
-      const { data, error } = await supabase
-        .from('installments')
-        .select('id, due_date, amount, status')
-        .eq('status', 'pending')
-        .gte('due_date', today)
-        .lte('due_date', until)
-        .order('due_date', { ascending: true })
-
-      if (error) {
-        // Αν δεν υπάρχει ο πίνακας/στήλες, απλά δεν δείχνουμε notifs
-        console.warn('Notifications load error:', error)
-        setNotifs([])
-        return
-      }
-
-      const rows = data || []
-      const mapped: AppNotif[] = rows.map((r: any) => {
-        const dueStr = String(r.due_date)
-        const days = differenceInCalendarDays(parseISO(dueStr), parseISO(today))
-        const amount = Number(r.amount || 0)
-
-        const title =
-          days <= 0
-            ? 'ΛΗΓΕΙ ΣΗΜΕΡΑ'
-            : days === 1
-            ? 'ΛΗΓΕΙ ΑΥΡΙΟ'
-            : `ΛΗΓΕΙ ΣΕ ${days} ΜΕΡΕΣ`
-
-        const body = `Η επόμενη δόση δανείου σας είναι σε ${days <= 0 ? '0' : days} μέρες • ${amount.toFixed(2)}€ • Ημ/νία: ${format(
-          parseISO(dueStr),
-          'dd/MM/yyyy'
-        )}`
-
-        return {
-          id: String(r.id),
-          title,
-          body,
-          severity: days <= 1 ? 'warning' : 'info',
-        }
-      })
-
-      setNotifs(mapped)
-    } catch (e) {
-      console.error(e)
-      setNotifs([])
-    } finally {
-      setNotifsLoading(false)
-    }
-  }, [storeIdFromUrl, businessTodayStr])
-
-  // ✅ NEW: Load NEWS (demo list τώρα, μπορείς να το δέσεις με πίνακα μετά)
-  const loadNews = useCallback(async () => {
-    try {
-      setNewsLoading(true)
-
-      // DEMO — μετά το συνδέουμε με πίνακα π.χ. app_updates
-      const demo: AppNews[] = [
-        {
-          id: 'n1',
-          date: format(new Date(), 'dd MMM yyyy', { locale: el }),
-          title: 'Νέα Αναβάθμιση Συστήματος',
-          body: 'Προσθέσαμε Ειδοποιήσεις για δόσεις και νέο panel ενημερώσεων μέσα στην Αρχική.',
-          isNew: true,
-        },
-        {
-          id: 'n2',
-          date: format(subDays(new Date(), 7), 'dd MMM yyyy', { locale: el }),
-          title: 'Βελτιώσεις Ταχύτητας',
-          body: 'Βελτιώσαμε την φόρτωση κινήσεων και την εμφάνιση στα κινητά.',
-        },
-      ]
-
-      setNews(demo)
-    } finally {
-      setNewsLoading(false)
-    }
-  }, [])
 
   const loadYtdForTx = useCallback(
     async (t: any) => {
@@ -340,11 +390,7 @@ function DashboardContent() {
       if (!session) return router.push('/login')
 
       // store name + settings
-      const { data: storeData, error: storeErr } = await supabase
-        .from('stores')
-        .select('name, z_enabled')
-        .eq('id', storeIdFromUrl)
-        .maybeSingle()
+      const { data: storeData, error: storeErr } = await supabase.from('stores').select('name, z_enabled').eq('id', storeIdFromUrl).maybeSingle()
 
       if (storeErr) console.error(storeErr)
       if (storeData?.name) setStoreName(storeData.name)
@@ -355,38 +401,19 @@ function DashboardContent() {
       const windowStartIso = new Date(`${selectedDate}T07:00:00`).toISOString()
       const windowEndIso = new Date(`${nextDateStr}T06:59:59.999`).toISOString()
 
-      // ✅ ΧΩΡΙΣ join profiles για να μην σπάει αν δεν υπάρχει FK
+      // ✅ FIX: fetch day rows by (date = selectedDate) OR (created_at inside business window)
       const { data: tx, error: txError } = await supabase
         .from('transactions')
-        .select('*, suppliers(name), fixed_assets(name), revenue_sources(name)')
+        .select('*, profiles(username), suppliers(name), fixed_assets(name), revenue_sources(name)')
         .eq('store_id', storeIdFromUrl)
         .or(`date.eq.${selectedDate},and(created_at.gte.${windowStartIso},created_at.lte.${windowEndIso})`)
         .order('created_at', { ascending: false })
 
       if (txError) throw txError
 
-      // ✅ Fetch usernames από profiles και merge (PLAN B)
-      const uniqueUserIds = Array.from(new Set((tx || []).map((r: any) => r?.user_id).filter(Boolean))) as string[]
-
-      let userNameMap: Record<string, string> = {}
-      if (uniqueUserIds.length > 0) {
-        const { data: profs, error: profErr } = await supabase.from('profiles').select('id, username').in('id', uniqueUserIds)
-        if (!profErr && profs) {
-          userNameMap = (profs as any[]).reduce((acc: Record<string, string>, p: any) => {
-            if (p?.id && p?.username) acc[String(p.id)] = String(p.username)
-            return acc
-          }, {})
-        }
-      }
-
-      const txWithNames = (tx || []).map((r: any) => ({
-        ...r,
-        __userName: r?.created_by_name || userNameMap[String(r.user_id)] || null,
-      }))
-
       // ✅ DEDUPE
       const map = new Map<string, any>()
-      for (const row of txWithNames || []) map.set(String(row.id), row)
+      for (const row of tx || []) map.set(String(row.id), row)
       setTransactions(Array.from(map.values()))
 
       // RBAC
@@ -414,13 +441,8 @@ function DashboardContent() {
 
   useEffect(() => {
     loadDashboard()
-  }, [loadDashboard])
-
-  // ✅ Load notif + news στο mount/store change
-  useEffect(() => {
     loadNotifications()
-    loadNews()
-  }, [loadNotifications, loadNews])
+  }, [loadDashboard, loadNotifications])
 
   const handleDelete = async (id: string) => {
     if (!confirm('Οριστική διαγραφή αυτής της κίνησης;')) return
@@ -478,6 +500,7 @@ function DashboardContent() {
     }
 
     const { error } = await supabase.from('transactions').delete().eq('store_id', storeIdFromUrl).eq('category', 'Εσοδα Ζ').eq('date', date)
+
     if (error) {
       toast.error('Σφάλμα διαγραφής Ζ')
       return
@@ -549,7 +572,7 @@ function DashboardContent() {
           date: zTx[0]?.date || selectedDate,
           amount: zTotal,
           created_at: zTx[0]?.created_at || null,
-          created_by_name: (zTx[0]?.created_by_name || zTx[0]?.__userName || null) as any,
+          created_by_name: zTx[0]?.created_by_name || null,
           itemsCount: zTx.length,
           breakdown: zBreakdown,
         })
@@ -568,9 +591,7 @@ function DashboardContent() {
       .filter((t) => (t.type === 'expense' && t.is_credit !== true) || t.type === 'debt_payment')
       .reduce((acc, t) => acc + (Math.abs(Number(t.amount)) || 0), 0)
 
-    const credits = transactions
-      .filter((t) => t.type === 'expense' && t.is_credit === true)
-      .reduce((acc: number, t: any) => acc + Math.abs(Number(t.amount) || 0), 0)
+    const credits = transactions.filter((t) => t.type === 'expense' && t.is_credit === true).reduce((acc: number, t: any) => acc + Math.abs(Number(t.amount) || 0), 0)
 
     return { income, expense, credits, balance: income - expense }
   }, [transactions])
@@ -582,14 +603,46 @@ function DashboardContent() {
     setExpandedTx(null)
   }
 
-  const money = (n: any) => (Number(n) || 0).toLocaleString('el-GR', { minimumFractionDigits: 2 })
-
-  const notifCount = notifs.length
-  const newsCount = news.filter((n) => n.isNew).length
+  const notifToneStyles = (tone: 'ok' | 'warn' | 'over') => {
+    if (tone === 'warn') {
+      return {
+        border: '1px solid #fde68a',
+        background: '#fffbeb',
+        pillBg: '#fef3c7',
+        pillText: '#92400e',
+      }
+    }
+    if (tone === 'over') {
+      return {
+        border: '1px solid #fecaca',
+        background: '#fff1f2',
+        pillBg: '#fee2e2',
+        pillText: '#991b1b',
+      }
+    }
+    return {
+      border: `1px solid ${colors.border}`,
+      background: colors.white,
+      pillBg: '#eef2ff',
+      pillText: '#3730a3',
+    }
+  }
 
   return (
     <div style={iphoneWrapper}>
       <Toaster position="top-center" richColors />
+
+      {/* global keyframes for spinner */}
+      <style jsx global>{`
+        @keyframes spin {
+          0% {
+            transform: rotate(0deg);
+          }
+          100% {
+            transform: rotate(360deg);
+          }
+        }
+      `}</style>
 
       <header style={headerStyle}>
         <div style={brandArea}>
@@ -608,105 +661,108 @@ function DashboardContent() {
           </div>
         </div>
 
-        {/* ✅ TOP RIGHT TOOLBAR: notifications + news + menu */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, position: 'relative' }}>
+          {/* 🔔 Notifications */}
           <div style={{ position: 'relative' }}>
             <button
-              style={toolIconBtn}
+              style={iconBtn}
               onClick={() => {
-                setIsNewsOpen(false)
+                const next = !isNotifOpen
+                setIsNotifOpen(next)
                 setIsMenuOpen(false)
-                setIsNotifOpen((v) => !v)
+                if (next) loadNotifications()
               }}
               title="Ειδοποιήσεις"
             >
               <Bell size={18} />
+              {notificationCount > 0 && <span style={notifBadge}>{notificationCount > 99 ? '99+' : notificationCount}</span>}
             </button>
-            {notifCount > 0 && <span style={badgeDot}>{notifCount > 9 ? '9+' : notifCount}</span>}
 
             {isNotifOpen && (
-              <div style={panelBox}>
-                <div style={panelHeader}>
-                  <span style={panelTitle}>ΕΙΔΟΠΟΙΗΣΕΙΣ</span>
-                  <button style={panelCloseBtn} onClick={() => setIsNotifOpen(false)}>
+              <div style={notifDropdown}>
+                <div style={notifHeaderRow}>
+                  <div>
+                    <p style={notifTitle}>ΕΙΔΟΠΟΙΗΣΕΙΣ</p>
+                    <p style={notifSub}>Επόμενες δόσεις (pending)</p>
+                  </div>
+
+                  <button
+                    onClick={() => {
+                      setIsNotifOpen(false)
+                    }}
+                    style={miniXBtn}
+                    aria-label="close"
+                  >
                     <X size={16} />
                   </button>
                 </div>
 
-                {notifsLoading ? (
-                  <div style={panelEmpty}>Φόρτωση…</div>
-                ) : notifs.length === 0 ? (
-                  <div style={panelEmpty}>Δεν υπάρχουν ειδοποιήσεις.</div>
+                {notifLoading ? (
+                  <div style={{ padding: 14, color: colors.secondaryText, fontWeight: 800 }}>Φόρτωση…</div>
+                ) : notifUiItems.length === 0 ? (
+                  <div style={{ padding: 14, color: colors.secondaryText, fontWeight: 800 }}>Δεν υπάρχουν ειδοποιήσεις.</div>
                 ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                    {notifs.map((n) => (
-                      <div key={n.id} style={panelItem(n.severity === 'warning')}>
-                        <div style={{ fontWeight: 900, fontSize: 11, color: n.severity === 'warning' ? '#b45309' : colors.primaryDark }}>
-                          {n.title}
+                  <div style={{ display: 'grid', gap: 10, padding: 12 }}>
+                    {notifUiItems.map((n) => {
+                      const s = notifToneStyles(n.tone)
+                      const typeColor = n.settlementType === 'ΔΑΝΕΙΟ' ? colors.accentBlue : colors.accentGreen
+                      const typeBg = n.settlementType === 'ΔΑΝΕΙΟ' ? '#eff6ff' : '#ecfdf5'
+                      const typeBorder = n.settlementType === 'ΔΑΝΕΙΟ' ? '#bfdbfe' : '#a7f3d0'
+
+                      return (
+                        <div key={n.inst.id} style={{ ...notifCardItem, border: s.border, background: s.background }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
+                            <div style={{ minWidth: 0 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                                <span style={{ ...notifTypePill, background: typeBg, borderColor: typeBorder, color: typeColor }}>
+                                  {n.settlementType}
+                                </span>
+                                <span style={{ ...notifDuePill, background: s.pillBg, color: s.pillText }}>{n.rightText}</span>
+                              </div>
+
+                              <p style={notifItemTitle} title={n.title}>
+                                {n.title}
+                              </p>
+
+                              <p style={notifItemMeta}>
+                                Δόση #{n.inst.installment_number} • Λήξη: {format(parseISO(n.inst.due_date), 'dd-MM-yyyy')} • {n.rf ? `${n.rf} • ` : ''}
+                                {money(n.inst.amount)}€
+                              </p>
+                            </div>
+
+                            <button
+                              style={paySmallBtn}
+                              onClick={() => {
+                                setIsNotifOpen(false)
+                                openPayModalFromNotif(n.inst)
+                              }}
+                            >
+                              Πληρωμή
+                            </button>
+                          </div>
                         </div>
-                        <div style={{ fontWeight: 800, fontSize: 11, color: colors.secondaryText, marginTop: 4 }}>{n.body}</div>
-                      </div>
-                    ))}
+                      )
+                    })}
+
+                    <NextLink
+                      href={`/settlements?store=${storeIdFromUrl}`}
+                      style={notifFooterLink}
+                      onClick={() => setIsNotifOpen(false)}
+                    >
+                      Άνοιγμα «Ρυθμίσεις & Δάνεια»
+                    </NextLink>
                   </div>
                 )}
               </div>
             )}
           </div>
 
+          {/* ☰ Menu */}
           <div style={{ position: 'relative' }}>
-            <button
-              style={toolIconBtn}
-              onClick={() => {
-                setIsNotifOpen(false)
-                setIsMenuOpen(false)
-                setIsNewsOpen((v) => !v)
-              }}
-              title="Νέα & Αναβαθμίσεις"
-            >
-              <Megaphone size={18} />
-            </button>
-            {newsCount > 0 && <span style={badgeDotBlue}>{newsCount > 9 ? '9+' : newsCount}</span>}
-
-            {isNewsOpen && (
-              <div style={panelBox}>
-                <div style={panelHeader}>
-                  <span style={panelTitle}>ΝΕΑ & ΑΝΑΒΑΘΜΙΣΕΙΣ</span>
-                  <button style={panelCloseBtn} onClick={() => setIsNewsOpen(false)}>
-                    <X size={16} />
-                  </button>
-                </div>
-
-                {newsLoading ? (
-                  <div style={panelEmpty}>Φόρτωση…</div>
-                ) : news.length === 0 ? (
-                  <div style={panelEmpty}>Δεν υπάρχουν νέα.</div>
-                ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                    {news.map((n) => (
-                      <div key={n.id} style={panelItem(false)}>
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                          <div style={{ fontWeight: 900, fontSize: 12, color: colors.primaryDark }}>{n.title}</div>
-                          {n.isNew && <span style={newPill}>ΝΕΟ</span>}
-                        </div>
-                        <div style={{ fontWeight: 900, fontSize: 10, color: colors.secondaryText, marginTop: 4 }}>{n.date}</div>
-                        <div style={{ fontWeight: 800, fontSize: 11, color: colors.secondaryText, marginTop: 6 }}>{n.body}</div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-
-          <div style={{ position: 'relative' }}>
-            <button
-              style={menuToggle}
-              onClick={() => {
-                setIsNotifOpen(false)
-                setIsNewsOpen(false)
-                setIsMenuOpen(!isMenuOpen)
-              }}
-            >
+            <button style={menuToggle} onClick={() => {
+              setIsMenuOpen(!isMenuOpen)
+              setIsNotifOpen(false)
+            }}>
               {isMenuOpen ? <X size={20} /> : <Menu size={20} />}
             </button>
 
@@ -841,7 +897,7 @@ function DashboardContent() {
 
             const txMethod = isZMaster ? 'Συγκεντρωτική εγγραφή' : t?.method
             const txCreatedAt = isZMaster ? row.created_at : t?.created_at
-            const txCreatedBy = isZMaster ? row.created_by_name || '—' : t?.__userName || '—'
+            const txCreatedBy = isZMaster ? row.created_by_name || zTransactions[0]?.profiles?.username || '—' : t?.created_by_name || t?.profiles?.username || '—'
             const txAmountValue = isZMaster ? row.amount : Number(t?.amount) || 0
 
             return (
@@ -866,11 +922,8 @@ function DashboardContent() {
                       {!isZMaster && t?.is_credit && <span style={creditBadgeStyle}>ΠΙΣΤΩΣΗ</span>}
                       {isZMaster && <span style={creditBadgeStyle}>{row.itemsCount} ΚΙΝΗΣΕΙΣ</span>}
                     </p>
-
                     {!isZMaster && t?.notes && (
-                      <p style={{ fontSize: '11px', fontWeight: 800, color: '#64748b', margin: '4px 0 2px 0' }}>
-                        {t.notes}
-                      </p>
+                      <p style={{ fontSize: '11px', fontWeight: 800, color: '#64748b', margin: '4px 0 2px 0' }}>{t.notes}</p>
                     )}
 
                     <p style={txMeta}>
@@ -971,9 +1024,7 @@ function DashboardContent() {
                                 <span style={ytdValue}>{money(ytd?.loanTotal)}€</span>
                               </div>
                               <div style={ytdRow}>
-                                <span style={ytdLabel}>
-                                  Πληρωμένες ({ytd?.loanInstallmentsPaid}/{ytd?.loanInstallmentsTotal})
-                                </span>
+                                <span style={ytdLabel}>Πληρωμένες ({ytd?.loanInstallmentsPaid}/{ytd?.loanInstallmentsTotal})</span>
                                 <span style={ytdValueGreen}>{money(ytd?.loanPaid)}€</span>
                               </div>
                               <div style={ytdRow}>
@@ -1026,6 +1077,54 @@ function DashboardContent() {
           })
         )}
       </div>
+
+      {/* Payment Modal */}
+      {openPaymentModal && selectedInstallment && selectedSettlement && (
+        <div style={modalBackdropStyle} onClick={() => !savingPayment && setOpenPaymentModal(false)}>
+          <div style={modalCardStyle} onClick={(e) => e.stopPropagation()}>
+            <div style={modalHeaderStyle}>
+              <h2 style={modalTitleStyle}>Πληρωμή Δόσης</h2>
+              <button type="button" style={iconCloseBtnStyle} onClick={() => setOpenPaymentModal(false)} disabled={savingPayment}>
+                <X size={16} />
+              </button>
+            </div>
+
+            <div style={paymentInfoBoxStyle}>
+              <p style={paymentInfoTitleStyle}>{selectedSettlement.name}</p>
+              <p style={paymentInfoMetaStyle}>
+                {selectedSettlement.type === 'loan' ? 'Δάνειο' : 'Ρύθμιση'} • Δόση #{selectedInstallment.installment_number} • {money(selectedInstallment.amount)}€
+              </p>
+              <p style={{ margin: '6px 0 0', fontSize: '12px', fontWeight: 800, color: colors.secondaryText }}>
+                Λήξη: {format(parseISO(selectedInstallment.due_date), 'dd-MM-yyyy')}
+              </p>
+            </div>
+
+            <label style={{ ...labelStyle, marginTop: 10 }}>Τρόπος Πληρωμής</label>
+            <div style={methodToggleWrapStyle}>
+              <button
+                type="button"
+                style={{ ...methodBtnStyle, ...(paymentMethod === 'Μετρητά' ? methodBtnActiveStyle : {}) }}
+                onClick={() => setPaymentMethod('Μετρητά')}
+              >
+                <Banknote size={15} />
+                Μετρητά
+              </button>
+              <button
+                type="button"
+                style={{ ...methodBtnStyle, ...(paymentMethod === 'Τράπεζα' ? methodBtnActiveStyle : {}) }}
+                onClick={() => setPaymentMethod('Τράπεζα')}
+              >
+                <Landmark size={15} />
+                Τράπεζα
+              </button>
+            </div>
+
+            <button type="button" style={saveBtnStyle} onClick={onConfirmPayment} disabled={savingPayment}>
+              {savingPayment ? 'Καταχώρηση...' : 'Ολοκλήρωση Πληρωμής'}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -1069,6 +1168,136 @@ const switchBtnStyle: any = {
 const dashboardSub = { fontSize: '9px', fontWeight: '800', color: colors.secondaryText, letterSpacing: '0.5px' }
 const statusDot = { width: '6px', height: '6px', background: colors.accentGreen, borderRadius: '50%' }
 
+const iconBtn: any = {
+  position: 'relative',
+  background: 'white',
+  border: `1px solid ${colors.border}`,
+  borderRadius: '12px',
+  width: '40px',
+  height: '40px',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  cursor: 'pointer',
+  color: colors.primaryDark,
+}
+
+const notifBadge: any = {
+  position: 'absolute',
+  top: '-6px',
+  right: '-6px',
+  background: colors.accentRed,
+  color: 'white',
+  fontSize: '10px',
+  fontWeight: 900,
+  borderRadius: '999px',
+  padding: '2px 6px',
+  border: '2px solid white',
+}
+
+const notifDropdown: any = {
+  position: 'absolute',
+  top: '48px',
+  right: 0,
+  width: '360px',
+  maxWidth: '86vw',
+  background: 'white',
+  borderRadius: '18px',
+  boxShadow: '0 15px 35px rgba(0,0,0,0.12)',
+  border: `1px solid ${colors.border}`,
+  zIndex: 120,
+  overflow: 'hidden',
+}
+
+const notifHeaderRow: any = {
+  display: 'flex',
+  justifyContent: 'space-between',
+  alignItems: 'flex-start',
+  gap: 10,
+  padding: '12px 12px 8px',
+  borderBottom: `1px solid ${colors.border}`,
+  background: '#f8fafc',
+}
+
+const notifTitle: any = { margin: 0, fontSize: '10px', fontWeight: 900, color: colors.secondaryText, letterSpacing: '0.9px' }
+const notifSub: any = { margin: '6px 0 0', fontSize: '12px', fontWeight: 900, color: colors.primaryDark }
+
+const miniXBtn: any = {
+  width: '34px',
+  height: '34px',
+  borderRadius: '12px',
+  border: `1px solid ${colors.border}`,
+  background: 'white',
+  color: colors.secondaryText,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  cursor: 'pointer',
+}
+
+const notifCardItem: any = {
+  padding: '12px',
+  borderRadius: '14px',
+}
+
+const notifTypePill: any = {
+  fontSize: '10px',
+  fontWeight: 900,
+  padding: '4px 8px',
+  borderRadius: '999px',
+  border: '1px solid',
+}
+
+const notifDuePill: any = {
+  fontSize: '10px',
+  fontWeight: 900,
+  padding: '4px 8px',
+  borderRadius: '999px',
+  border: '1px solid rgba(0,0,0,0.06)',
+}
+
+const notifItemTitle: any = {
+  margin: '8px 0 0',
+  fontSize: '14px',
+  fontWeight: 900,
+  color: colors.primaryDark,
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+}
+
+const notifItemMeta: any = {
+  margin: '6px 0 0',
+  fontSize: '12px',
+  fontWeight: 800,
+  color: colors.secondaryText,
+  lineHeight: 1.2,
+}
+
+const paySmallBtn: any = {
+  border: 'none',
+  background: colors.accentGreen,
+  color: 'white',
+  fontWeight: 900,
+  borderRadius: '12px',
+  padding: '10px 12px',
+  cursor: 'pointer',
+  height: '40px',
+  whiteSpace: 'nowrap',
+}
+
+const notifFooterLink: any = {
+  textDecoration: 'none',
+  textAlign: 'center',
+  padding: '10px 12px',
+  borderRadius: '12px',
+  border: `1px dashed ${colors.border}`,
+  background: '#ffffff',
+  color: colors.primaryDark,
+  fontWeight: 900,
+  fontSize: '12px',
+}
+
 const menuToggle: any = {
   background: 'white',
   border: `1px solid ${colors.border}`,
@@ -1091,9 +1320,10 @@ const dropdownStyle: any = {
   borderRadius: '18px',
   boxShadow: '0 15px 35px rgba(0,0,0,0.1)',
   padding: '10px',
-  zIndex: 200,
+  zIndex: 100,
   border: `1px solid ${colors.border}`,
 }
+
 const menuItem: any = {
   display: 'block',
   padding: '12px 15px',
@@ -1235,101 +1465,95 @@ const zBreakdownRow: any = { display: 'flex', justifyContent: 'space-between', a
 const emptyStateStyle: any = { textAlign: 'center', padding: '40px 20px', color: colors.secondaryText, fontWeight: '600', fontSize: '13px' }
 const spinnerStyle: any = { width: '24px', height: '24px', border: '3px solid #f3f3f3', borderTop: '3px solid #6366f1', borderRadius: '50%', animation: 'spin 1s linear infinite', margin: '0 auto' }
 
-// ✅ NEW: toolbar + panels styles
-const toolIconBtn: any = {
-  background: 'white',
-  border: `1px solid ${colors.border}`,
-  borderRadius: '12px',
-  width: '40px',
-  height: '40px',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  cursor: 'pointer',
-  color: colors.primaryDark,
+// Modal styles (from settlements vibe)
+const modalBackdropStyle: any = {
+  position: 'fixed',
+  inset: 0,
+  background: 'rgba(2,6,23,0.6)',
+  zIndex: 140,
+  display: 'grid',
+  placeItems: 'center',
+  padding: '16px',
 }
-
-const badgeDot: any = {
-  position: 'absolute',
-  top: '-6px',
-  right: '-6px',
-  background: colors.accentRed,
-  color: 'white',
-  fontSize: '10px',
-  fontWeight: 900,
-  padding: '2px 6px',
-  borderRadius: '999px',
-  border: '2px solid white',
-}
-
-const badgeDotBlue: any = {
-  position: 'absolute',
-  top: '-6px',
-  right: '-6px',
-  background: colors.accentBlue,
-  color: 'white',
-  fontSize: '10px',
-  fontWeight: 900,
-  padding: '2px 6px',
-  borderRadius: '999px',
-  border: '2px solid white',
-}
-
-const panelBox: any = {
-  position: 'absolute',
-  top: '50px',
-  right: 0,
-  width: '320px',
-  maxWidth: '80vw',
-  background: 'white',
+const modalCardStyle: any = {
+  width: '100%',
+  maxWidth: '520px',
+  background: colors.white,
   borderRadius: '18px',
   border: `1px solid ${colors.border}`,
-  boxShadow: '0 18px 40px rgba(0,0,0,0.12)',
-  padding: '12px',
-  zIndex: 250,
+  padding: '16px',
 }
-
-const panelHeader: any = { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }
-const panelTitle: any = { fontSize: '10px', fontWeight: 950, letterSpacing: '0.8px', color: colors.secondaryText }
-const panelCloseBtn: any = {
-  width: 32,
-  height: 32,
-  borderRadius: 10,
+const modalHeaderStyle: any = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  marginBottom: '10px',
+}
+const modalTitleStyle: any = {
+  margin: 0,
+  fontWeight: 900,
+  fontSize: '17px',
+  color: colors.primaryDark,
+}
+const iconCloseBtnStyle: any = {
+  width: '30px',
+  height: '30px',
+  borderRadius: '10px',
   border: `1px solid ${colors.border}`,
-  background: '#fff',
+  background: colors.white,
+  color: colors.secondaryText,
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
-  cursor: 'pointer',
-  color: colors.primaryDark,
 }
-
-const panelEmpty: any = {
-  padding: '12px',
-  borderRadius: '14px',
+const paymentInfoBoxStyle: any = {
+  border: `1px solid ${colors.border}`,
+  borderRadius: '12px',
+  padding: '10px',
   background: '#f8fafc',
-  border: `1px dashed ${colors.border}`,
-  fontWeight: 800,
-  fontSize: 12,
-  color: colors.secondaryText,
-  textAlign: 'center',
 }
-
-const panelItem = (isWarning: boolean): any => ({
-  padding: '12px',
-  borderRadius: '14px',
-  background: isWarning ? '#fffbeb' : '#f8fafc',
-  border: `1px solid ${isWarning ? '#fde68a' : colors.border}`,
-})
-
-const newPill: any = {
-  fontSize: 9,
-  fontWeight: 950,
-  background: '#eef2ff',
-  color: '#4338ca',
-  padding: '3px 8px',
-  borderRadius: 999,
-  border: '1px solid #c7d2fe',
+const paymentInfoTitleStyle: any = { margin: 0, fontWeight: 900, color: colors.primaryDark }
+const paymentInfoMetaStyle: any = { margin: '4px 0 0', fontSize: '12px', fontWeight: 800, color: colors.secondaryText }
+const labelStyle: any = { fontSize: '12px', fontWeight: 800, color: colors.secondaryText }
+const methodToggleWrapStyle: any = {
+  marginTop: '6px',
+  border: `1px solid ${colors.border}`,
+  borderRadius: '12px',
+  background: colors.bgLight,
+  padding: '4px',
+  display: 'grid',
+  gridTemplateColumns: '1fr 1fr',
+  gap: 4,
+}
+const methodBtnStyle: any = {
+  border: 'none',
+  borderRadius: '9px',
+  padding: '10px',
+  fontSize: '13px',
+  fontWeight: 800,
+  color: colors.secondaryText,
+  background: 'transparent',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: 6,
+  cursor: 'pointer',
+}
+const methodBtnActiveStyle: any = {
+  background: colors.white,
+  color: colors.primaryDark,
+  boxShadow: '0 1px 2px rgba(0,0,0,0.1)',
+}
+const saveBtnStyle: any = {
+  width: '100%',
+  marginTop: '14px',
+  border: 'none',
+  borderRadius: '12px',
+  padding: '13px',
+  background: colors.accentBlue,
+  color: colors.white,
+  fontWeight: 900,
+  cursor: 'pointer',
 }
 
 export default function DashboardPage() {
