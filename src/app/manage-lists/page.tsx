@@ -161,67 +161,115 @@ function ManageListsContent() {
     return isNaN(d.getTime()) ? null : d
   }
 
-  const isTxInYear = (t: any, year: number) => {
+  const getTxYear = (t: any) => {
     const d = getTxDate(t)
-    if (!d) return false
-    return d.getFullYear() === year
+    return d ? d.getFullYear() : null
   }
 
+  const isTxInYear = (t: any, year: number) => {
+    const y = getTxYear(t)
+    return y === year
+  }
+
+  // ✅ Map fixed_asset_id -> sub_category (για να μη "λερώνει" τα totals άλλων tabs)
+  const fixedAssetSubMap = useMemo(() => {
+    const m = new Map<string, string>()
+    for (const a of fixedAssets) {
+      if (!a?.id) continue
+      m.set(String(a.id), String(a.sub_category || ''))
+    }
+    return m
+  }, [fixedAssets])
+
+  // -------------------- ✅ TURNOVER TX (filtered by TAB) --------------------
+  // ΠΡΟΜΗΘΕΥΤΕΣ: μετράμε ΜΟΝΟ type='expense' (πιάνει και επί πιστώσει τιμολόγια)
+  //             ΔΕΝ μετράει debt_payment γιατί ΔΕΝ είναι 'expense'
+  // FIXED ASSETS: μετράμε expense ΜΟΝΟ για το sub_category του ενεργού tab
+  // REVENUE: μετράμε ΜΟΝΟ income
+  const turnoverTx = useMemo(() => {
+    const tabSub = String(currentTab.subCategory || '')
+
+    return (transactions || []).filter((t: any) => {
+      const type = String(t?.type || '')
+
+      // suppliers
+      if (activeTab === 'suppliers') {
+        return !!t?.supplier_id && type === 'expense'
+      }
+
+      // revenue sources
+      if (activeTab === 'revenue') {
+        return !!t?.revenue_source_id && type === 'income'
+      }
+
+      // fixed assets tabs
+      if (!t?.fixed_asset_id) return false
+      if (type !== 'expense') return false
+
+      const sub = fixedAssetSubMap.get(String(t.fixed_asset_id)) || ''
+      // ✅ ΕΔΩ Η ΔΙΟΡΘΩΣΗ: μόνο το subCategory του tab
+      return sub === tabSub
+    })
+  }, [transactions, activeTab, currentTab.subCategory, fixedAssetSubMap])
+
+  // ✅ Year dropdown: μόνο έτη που υπάρχουν κινήσεις ΓΙΑ ΤΟ ΕΝΕΡΓΟ TAB
   const yearOptions = useMemo(() => {
     const years = new Set<number>()
-    years.add(currentYear)
-    for (const t of transactions) {
-      const d = getTxDate(t)
-      if (d) years.add(d.getFullYear())
+    for (const t of turnoverTx) {
+      const y = getTxYear(t)
+      if (y) years.add(y)
     }
-    return Array.from(years).sort((a, b) => b - a)
-  }, [transactions, currentYear])
+    const arr = Array.from(years).sort((a, b) => b - a)
 
-  // -------------------- ✅ TURNOVER LOGIC (same as suppliers page) --------------------
-  // Suppliers + FixedAssets: count ONLY expense (NOT debt_payment)
-  // Revenue Sources: count ONLY income (NOT debt_received / debt_payment)
+    // αν δεν υπάρχει τίποτα, κρατάμε το τρέχον έτος για να μην σπάει το select
+    return arr.length ? arr : [currentYear]
+  }, [turnoverTx, currentYear])
 
+  // ✅ Default year: αν υπάρχει currentYear -> αυτό, αλλιώς το πιο πρόσφατο διαθέσιμο
+  useEffect(() => {
+    if (!yearOptions?.length) {
+      setSelectedYear(currentYear)
+      return
+    }
+    if (yearOptions.includes(currentYear)) setSelectedYear(currentYear)
+    else setSelectedYear(yearOptions[0])
+  }, [yearOptions, currentYear])
+
+  const turnoverTxYear = useMemo(() => turnoverTx.filter((t: any) => isTxInYear(t, selectedYear)), [turnoverTx, selectedYear])
+
+  // -------------------- TOTALS (based on turnoverTxYear ONLY) --------------------
   const supplierTotals = useMemo(() => {
     const totals: Record<string, number> = {}
-    transactions.forEach((t: any) => {
-      if (!t?.supplier_id) return
-      if (String(t.type || '') !== 'expense') return // ✅ exclude debt_payment
-      if (!isTxInYear(t, selectedYear)) return
-
+    for (const t of turnoverTxYear) {
+      if (!t?.supplier_id) continue
       const id = String(t.supplier_id)
       const amount = Math.abs(Number(t.amount)) || 0
       totals[id] = (totals[id] || 0) + amount
-    })
+    }
     return totals
-  }, [transactions, selectedYear])
+  }, [turnoverTxYear])
 
   const fixedAssetTotals = useMemo(() => {
     const totals: Record<string, number> = {}
-    transactions.forEach((t: any) => {
-      if (!t?.fixed_asset_id) return
-      if (String(t.type || '') !== 'expense') return // ✅ exclude debt_payment
-      if (!isTxInYear(t, selectedYear)) return
-
+    for (const t of turnoverTxYear) {
+      if (!t?.fixed_asset_id) continue
       const id = String(t.fixed_asset_id)
       const amount = Math.abs(Number(t.amount)) || 0
       totals[id] = (totals[id] || 0) + amount
-    })
+    }
     return totals
-  }, [transactions, selectedYear])
+  }, [turnoverTxYear])
 
   const revenueTotals = useMemo(() => {
     const totals: Record<string, number> = {}
-    transactions.forEach((t: any) => {
-      if (!t?.revenue_source_id) return
-      if (String(t.type || '') !== 'income') return // ✅ μόνο πραγματικά έσοδα
-      if (!isTxInYear(t, selectedYear)) return
-
+    for (const t of turnoverTxYear) {
+      if (!t?.revenue_source_id) continue
       const id = String(t.revenue_source_id)
       const amount = Math.abs(Number(t.amount)) || 0
       totals[id] = (totals[id] || 0) + amount
-    })
+    }
     return totals
-  }, [transactions, selectedYear])
+  }, [turnoverTxYear])
 
   const getTurnover = useCallback(
     (id: string) => {
@@ -254,7 +302,7 @@ function ManageListsContent() {
   }, [activeTab])
 
   const heroHint = useMemo(() => {
-    if (activeTab === 'revenue') return 'Μετράει μόνο έσοδα (income). Δεν μετράει εισπράξεις χρεών.'
+    if (activeTab === 'revenue') return 'Μετράει μόνο έσοδα (income).'
     return 'Μετράει μόνο αγορές/έξοδα (expense). Δεν μετράει πληρωμές χρέους (debt_payment).'
   }, [activeTab])
 
@@ -435,7 +483,9 @@ function ManageListsContent() {
           if (error) throw error
 
           setRevenueSources((prev) =>
-            prev.map((x) => (String(x.id) === String(editingId) ? data : x)).sort((a, b) => String(a.name).localeCompare(String(b.name))),
+            prev
+              .map((x) => (String(x.id) === String(editingId) ? data : x))
+              .sort((a, b) => String(a.name).localeCompare(String(b.name))),
           )
           toast.success('Ενημερώθηκε!')
         } else {
@@ -479,7 +529,9 @@ function ManageListsContent() {
           if (error) throw error
 
           setSuppliers((prev) =>
-            prev.map((x) => (String(x.id) === String(editingId) ? data : x)).sort((a, b) => String(a.name).localeCompare(String(b.name))),
+            prev
+              .map((x) => (String(x.id) === String(editingId) ? data : x))
+              .sort((a, b) => String(a.name).localeCompare(String(b.name))),
           )
           toast.success('Ενημερώθηκε!')
         } else {
@@ -537,7 +589,9 @@ function ManageListsContent() {
           if (error) throw error
 
           setFixedAssets((prev) =>
-            prev.map((x) => (String(x.id) === String(editingId) ? data : x)).sort((a, b) => String(a.name).localeCompare(String(b.name))),
+            prev
+              .map((x) => (String(x.id) === String(editingId) ? data : x))
+              .sort((a, b) => String(a.name).localeCompare(String(b.name))),
           )
           toast.success('Ενημερώθηκε!')
         } else {
@@ -592,7 +646,9 @@ function ManageListsContent() {
           if (error) throw error
 
           setFixedAssets((prev) =>
-            prev.map((x) => (String(x.id) === String(editingId) ? data : x)).sort((a, b) => String(a.name).localeCompare(String(b.name))),
+            prev
+              .map((x) => (String(x.id) === String(editingId) ? data : x))
+              .sort((a, b) => String(a.name).localeCompare(String(b.name))),
           )
           toast.success('Ενημερώθηκε!')
         } else {
@@ -647,7 +703,9 @@ function ManageListsContent() {
           if (error) throw error
 
           setFixedAssets((prev) =>
-            prev.map((x) => (String(x.id) === String(editingId) ? data : x)).sort((a, b) => String(a.name).localeCompare(String(b.name))),
+            prev
+              .map((x) => (String(x.id) === String(editingId) ? data : x))
+              .sort((a, b) => String(a.name).localeCompare(String(b.name))),
           )
           toast.success('Ενημερώθηκε!')
         } else {
@@ -824,7 +882,12 @@ function ManageListsContent() {
             <label style={labelStyle}>
               <Hash size={12} /> ΟΝΟΜΑΤΕΠΩΝΥΜΟ
             </label>
-            <input value={name} onChange={(e) => setName(e.target.value)} style={inputStyle} placeholder="π.χ. Γιάννης Παπαδόπουλος" />
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              style={inputStyle}
+              placeholder="π.χ. Γιάννης Παπαδόπουλος"
+            />
           </div>
 
           <div style={inputGroup}>
@@ -1067,7 +1130,7 @@ function ManageListsContent() {
           </Link>
         </header>
 
-        {/* ✅ HERO CARD (same setup as suppliers) */}
+        {/* ✅ HERO CARD */}
         <div style={heroCard}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
