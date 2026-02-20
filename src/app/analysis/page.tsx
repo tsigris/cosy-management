@@ -1,3 +1,5 @@
+// PART 1/2 — app/analysis/page.tsx
+
 'use client'
 export const dynamic = 'force-dynamic'
 
@@ -193,12 +195,9 @@ function AnalysisContent() {
       .replace(/[\u0300-\u036f]/g, '')
   }, [])
 
-  const getMethod = useCallback(
-    (t: any) => {
-      return String((t.method ?? t.payment_method ?? '') || '').trim()
-    },
-    []
-  )
+  const getMethod = useCallback((t: any) => {
+    return String((t.method ?? t.payment_method ?? '') || '').trim()
+  }, [])
 
   // ✅ CREDIT DETECTION: catches variations like "Πιστωση", "ΠΙΣΤΩΣΗ", with/without accents, spaces etc.
   const isCreditTx = useCallback(
@@ -206,34 +205,26 @@ function AnalysisContent() {
       if (t?.is_credit === true) return true
       const method = getMethod(t)
       const nm = normalizeText(method)
-      // accept "πιστωση" anywhere (also if you later put extra text)
       return nm.includes('πιστωση')
     },
     [getMethod, normalizeText]
   )
 
   // ✅ CASH / BANK classification
-  const isCashMethod = useCallback(
-    (method: string) => {
-      const m = String(method || '').trim()
-      return m === 'Μετρητά' || m === 'Μετρητά (Z)' || m === 'Χωρίς Απόδειξη'
-    },
-    []
-  )
+  const isCashMethod = useCallback((method: string) => {
+    const m = String(method || '').trim()
+    return m === 'Μετρητά' || m === 'Μετρητά (Z)' || m === 'Χωρίς Απόδειξη'
+  }, [])
 
-  const isBankMethod = useCallback(
-    (method: string) => {
-      const m = String(method || '').trim()
-      return m === 'Κάρτα' || m === 'Τράπεζα'
-    },
-    []
-  )
+  const isBankMethod = useCallback((method: string) => {
+    const m = String(method || '').trim()
+    return m === 'Κάρτα' || m === 'Τράπεζα'
+  }, [])
 
   // ✅ robust signed amount (supports both styles: negatives in DB OR positive+type)
   const signedAmount = useCallback((t: any) => {
     const raw = Number(t.amount) || 0
-    if (raw < 0) return raw // already signed in DB
-    // if stored positive, decide by type
+    if (raw < 0) return raw
     if (t.type === 'expense' || t.type === 'debt_payment') return -Math.abs(raw)
     return Math.abs(raw)
   }, [])
@@ -335,11 +326,7 @@ function AnalysisContent() {
         .eq('sub_category', 'staff')
         .order('name', { ascending: true })
 
-      const suppliersQuery = supabase
-        .from('suppliers')
-        .select('id, name')
-        .eq('store_id', storeId)
-        .order('name', { ascending: true })
+      const suppliersQuery = supabase.from('suppliers').select('id, name').eq('store_id', storeId).order('name', { ascending: true })
 
       const revenueSourcesQuery = supabase
         .from('revenue_sources')
@@ -533,11 +520,9 @@ function AnalysisContent() {
   const kpis = useMemo(() => {
     const income = filteredTx
       .filter((t) => (t.type === 'income' || t.type === 'income_collection' || t.type === 'debt_received') && !isCreditTx(t))
-      .reduce((acc, t) => acc + (Math.abs(Number(t.amount) || 0)), 0)
-
-    const tips = filteredTx
-      .filter((t) => t.type === 'tip_entry')
       .reduce((acc, t) => acc + Math.abs(Number(t.amount) || 0), 0)
+
+    const tips = filteredTx.filter((t) => t.type === 'tip_entry').reduce((acc, t) => acc + Math.abs(Number(t.amount) || 0), 0)
 
     const expenses = filteredTx
       .filter((t) => (t.type === 'expense' || t.type === 'debt_payment') && !isCreditTx(t))
@@ -548,9 +533,6 @@ function AnalysisContent() {
   }, [filteredTx, isCreditTx])
 
   // ✅ Z BREAKDOWN (only when startDate === endDate)
-  // 1) zCash: method === 'Μετρητά (Z)'
-  // 2) zPos:  method === 'Κάρτα'
-  // 3) blackCash: category === 'Εσοδα Ζ' AND (notes === 'ΧΩΡΙΣ ΣΗΜΑΝΣΗ' OR method === 'Μετρητά' OR method === 'Χωρίς Απόδειξη') BUT NOT method === 'Μετρητά (Z)'
   const zBreakdown = useMemo(() => {
     if (!isZReport) return { zCash: 0, zPos: 0, blackCash: 0, totalTurnover: 0, blackPct: 0 }
 
@@ -630,7 +612,6 @@ function AnalysisContent() {
   // ✅ Collapse Z rows into one "Z REPORT (ΣΥΝΟΛΟ)" per date
   const collapsedPeriodList = useMemo(() => {
     const sortedTx = [...filteredTx].sort((a, b) => String(b.date).localeCompare(String(a.date)))
-
     const isZTransaction = (t: any) => t.category === 'Εσοδα Ζ' && t.type === 'income'
 
     const zByDate: Record<string, any[]> = {}
@@ -693,8 +674,6 @@ function AnalysisContent() {
   const money = useCallback((n: any) => `${Number(n || 0).toFixed(2)}€`, [])
 
   // ✅ TOTAL CASH DISPLAY
-  // Z day: (zCash + blackCash - cashExpensesToday)
-  // Non-Z: use computed cash balance (correct: no credit affects cash)
   const totalCashDisplay = useMemo(() => {
     if (isZReport) return zBreakdown.zCash + zBreakdown.blackCash - cashExpensesToday
     return Number(calcBalances?.cash_balance || 0)
@@ -902,6 +881,7 @@ function AnalysisContent() {
             <div style={smallKpiHint}>Έσοδα σε Πίστωση (αν τα χρησιμοποιείς)</div>
           </div>
         </div>
+        // PART 2/2 — continuation
 
         {/* ✅ Z REPORT BREAKDOWN – only when same day */}
         {isZReport && (
