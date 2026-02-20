@@ -41,6 +41,22 @@ const isValidUUID = (id: any) => {
 
 const normalize = (v: any) => String(v ?? '').trim().toLowerCase()
 
+// ✅ BUSINESS DAY HELPERS (07:00 cutoff)
+const toBusinessDayDate = (d: Date) => {
+  const bd = new Date(d)
+  if (bd.getHours() < 7) bd.setDate(bd.getDate() - 1)
+  // normalize to date-only (so comparisons don't get messy)
+  bd.setHours(12, 0, 0, 0)
+  return bd
+}
+
+const getBusinessDayKey = (d: Date) => {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
 function BalancesContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -108,17 +124,29 @@ function BalancesContent() {
     })
   }
 
+  // ✅ Uses BUSINESS DAY (07:00 cutoff)
   const daysAgoLabel = (d: Date | null) => {
     if (!d) return ''
     const now = new Date()
-    const diffMs = now.getTime() - d.getTime()
+
+    const bdNow = toBusinessDayDate(now)
+    const bdTx = toBusinessDayDate(d)
+
+    const nowKey = getBusinessDayKey(bdNow)
+    const txKey = getBusinessDayKey(bdTx)
+
+    if (txKey === nowKey) return 'Σήμερα'
+
+    // compute diff in business days
+    const diffMs = bdNow.getTime() - bdTx.getTime()
     const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
-    if (diffDays <= 0) return 'Σήμερα'
+
     if (diffDays === 1) return 'Χθες'
+    if (diffDays < 0) return 'Μελλοντικό'
     return `${diffDays} μέρες πριν`
   }
 
-  const money = (n: any) => (Math.abs(Number(n) || 0)).toFixed(2)
+  const money = (n: any) => Math.abs(Number(n) || 0).toFixed(2)
 
   // ✅ NEW: chip style by mode (income -> green, expenses -> blue)
   const amountChipStyle = (mode: ViewMode): any => {
@@ -343,7 +371,7 @@ function BalancesContent() {
           </button>
         </div>
 
-        {/* SELECT FILTER (no Filter icon) */}
+        {/* SELECT FILTER */}
         <div style={{ marginBottom: '18px' }}>
           <div style={{ position: 'relative' }}>
             <select value={selectedEntityId} onChange={(e) => setSelectedEntityId(e.target.value)} style={selectStyle}>
@@ -471,7 +499,6 @@ function BalancesContent() {
                             </span>
                           </div>
 
-                          {/* ✅ COLORED CHIP */}
                           <div style={miniPill}>
                             <span style={miniPillLabel}>
                               {viewMode === 'income' ? 'Τελευταία είσπραξη' : 'Τελευταία εξόφληση'}
@@ -502,7 +529,6 @@ function BalancesContent() {
                           </div>
                         </div>
 
-                        {/* υπόλοιπο αρχείο 그대로 */}
                         <div style={sectionTitle}>
                           {viewMode === 'income'
                             ? `Απαιτήσεις (${history.creditTxs.length})`
@@ -536,9 +562,7 @@ function BalancesContent() {
                               )
                             })}
 
-                            {history.creditTxs.length > 12 && (
-                              <div style={rowMuted}>Δείχνω τις 12 πιο πρόσφατες καταχωρήσεις.</div>
-                            )}
+                            {history.creditTxs.length > 12 && <div style={rowMuted}>Δείχνω τις 12 πιο πρόσφατες καταχωρήσεις.</div>}
                           </div>
                         )}
 
@@ -577,9 +601,7 @@ function BalancesContent() {
                               )
                             })}
 
-                            {history.settlementTxs.length > 10 && (
-                              <div style={rowMuted}>Δείχνω τις 10 πιο πρόσφατες κινήσεις.</div>
-                            )}
+                            {history.settlementTxs.length > 10 && <div style={rowMuted}>Δείχνω τις 10 πιο πρόσφατες κινήσεις.</div>}
                           </div>
                         )}
                       </div>
@@ -812,7 +834,6 @@ const miniPillValue: any = {
   color: colors.primaryDark,
 }
 
-// base chip (overridden by amountChipStyle)
 const miniAmountChip: any = {
   fontSize: 10,
   fontWeight: 950,
