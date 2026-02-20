@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { toast } from 'sonner'
-import { Bell, X, AlertTriangle, AlertOctagon, Info, Banknote, Landmark } from 'lucide-react'
+import { Bell, X, AlertTriangle, AlertOctagon, Info, Banknote, Landmark, PlusCircle } from 'lucide-react'
 
 type PaymentMethod = 'Μετρητά' | 'Τράπεζα'
 
@@ -83,7 +83,6 @@ function yyyyMmDd(d: Date) {
 }
 
 function daysDiff(fromDate: string, toDate: string) {
-  // fromDate - toDate (both yyyy-mm-dd), business-safe midday
   const a = new Date(`${fromDate}T12:00:00`)
   const b = new Date(`${toDate}T12:00:00`)
   const ms = a.getTime() - b.getTime()
@@ -100,13 +99,13 @@ function money(n: any) {
   return (Number(n) || 0).toLocaleString('el-GR', { minimumFractionDigits: 2 })
 }
 
-export default function NotificationsBell({
-  storeId,
-  onUpdate,
-}: {
-  storeId: string
-  onUpdate?: () => void | Promise<void>
-}) {
+const getBusinessDate = () => {
+  const now = new Date()
+  if (now.getHours() < 7) now.setDate(now.getDate() - 1)
+  return yyyyMmDd(now)
+}
+
+export default function NotificationsBell({ storeId, onUpdate }: { storeId: string; onUpdate?: () => void }) {
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
 
@@ -114,23 +113,24 @@ export default function NotificationsBell({
   const [settlementsMap, setSettlementsMap] = useState<Record<string, SettlementRow>>({})
   const [customRows, setCustomRows] = useState<DbNotification[]>([])
 
-  // Pay modal state
   const [payOpen, setPayOpen] = useState(false)
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('Μετρητά')
   const [selectedInst, setSelectedInst] = useState<InstallmentRow | null>(null)
   const [selectedSet, setSelectedSet] = useState<SettlementRow | null>(null)
   const [savingPayment, setSavingPayment] = useState(false)
 
-  const todayStr = useMemo(() => yyyyMmDd(new Date()), [])
+  const [addOpen, setAddOpen] = useState(false)
+  const [savingCustom, setSavingCustom] = useState(false)
+  const [customTitle, setCustomTitle] = useState('')
+  const [customMessage, setCustomMessage] = useState('')
+  const [customDueDate, setCustomDueDate] = useState(getBusinessDate())
+
+  const todayStr = useMemo(() => getBusinessDate(), [])
 
   const loadNotifications = useCallback(async () => {
     if (!storeId) return
     setLoading(true)
     try {
-      // 1) Installments: only pending, and only within windows we care
-      // We need: due in 0..3 days OR overdue by >=3 days
-      // We'll fetch a reasonable range and filter in JS:
-      // from (today-60) to (today+14) to cover overdue + upcoming
       const min = yyyyMmDd(new Date(Date.now() - 60 * 24 * 3600 * 1000))
       const max = yyyyMmDd(new Date(Date.now() + 14 * 24 * 3600 * 1000))
 
@@ -145,7 +145,6 @@ export default function NotificationsBell({
 
       const pending = (inst || []).filter((r: any) => String(r.status || 'pending').toLowerCase() === 'pending')
 
-      // 2) settlements for names/type/rf
       const settlementIds = Array.from(new Set(pending.map((r: any) => String(r.settlement_id))))
       let setMap: Record<string, SettlementRow> = {}
 
@@ -166,8 +165,6 @@ export default function NotificationsBell({
       setInstallments(pending as any)
       setSettlementsMap(setMap)
 
-      // 3) Custom notifications (optional – for future payroll etc.)
-      // only active, and within show window
       const { data: custom, error: customErr } = await supabase
         .from('notifications')
         .select('id, title, message, severity, due_date, show_from, show_until, dismissed_at, resolved_at, kind')
@@ -176,7 +173,6 @@ export default function NotificationsBell({
         .is('resolved_at', null)
 
       if (customErr) {
-        // if table not created yet, don’t crash the bell
         console.warn(customErr)
         setCustomRows([])
       } else {
@@ -202,13 +198,8 @@ export default function NotificationsBell({
       const setl = settlementsMap[String(inst.settlement_id)]
       if (!setl) continue
 
-      const daysToDue = daysDiff(due, todayStr) * -1 // easier: positive means future? Let's compute properly:
-      // We'll compute: dueDate - today
-      const dueMinusToday = daysDiff(due, todayStr) // due - today (in days)
+      const dueMinusToday = daysDiff(due, todayStr)
 
-      // windows:
-      // due in 0..3 => warning
-      // overdue by >=3 => danger
       let severity: 'warning' | 'danger' | null = null
       let daysText = ''
 
@@ -241,7 +232,6 @@ export default function NotificationsBell({
       })
     }
 
-    // sort: danger first, then warning, then nearest due
     return out.sort((a, b) => {
       const sevA = a.severity === 'danger' ? 0 : 1
       const sevB = b.severity === 'danger' ? 0 : 1
@@ -254,7 +244,6 @@ export default function NotificationsBell({
     const out: UiNotification[] = []
 
     for (const n of customRows) {
-      // show window filter
       const showFrom = n.show_from
       const showUntil = n.show_until
       if (showFrom && todayStr < showFrom) continue
@@ -284,7 +273,7 @@ export default function NotificationsBell({
 
   const bellColor = useMemo(() => {
     if (dangerCount > 0) return colors.accentRed
-    if (warningCount > 0) return '#f59e0b' // amber
+    if (warningCount > 0) return '#f59e0b'
     return colors.primaryDark
   }, [dangerCount, warningCount])
 
@@ -301,20 +290,16 @@ export default function NotificationsBell({
 
     setSavingPayment(true)
     try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession()
+      const { data: { session } } = await supabase.auth.getSession()
       if (!session) throw new Error('Η συνεδρία έληξε. Συνδέσου ξανά.')
 
-      // ✅ πιο ασφαλές: ΜΗΝ βασίζεσαι σε profiles relation (που δεν έχεις)
-      // Πάμε μόνο με created_by_name = 'Χρήστης' αν δεν έχεις username elsewhere
-      // (Αν έχεις πίνακα "users" ή "profiles" ως table, το ξαναδένουμε μετά)
-      const userName = 'Χρήστης'
+      const raw = session.user.user_metadata?.username || session.user.user_metadata?.full_name || session.user.email || 'Χρήστης'
+      const userName = String(raw).includes('@') ? String(raw).split('@')[0] : String(raw)
 
       const amount = Math.abs(Number(selectedInst.amount || 0))
       if (!amount) throw new Error('Μη έγκυρο ποσό')
 
-      const today = todayStr
+      const today = getBusinessDate()
       const notes = `Πληρωμή Δόσης #${selectedInst.installment_number}: ${selectedSet.name}${selectedSet.rf_code ? ` (RF: ${selectedSet.rf_code})` : ''}`
 
       const { data: tx, error: txErr } = await supabase
@@ -349,10 +334,9 @@ export default function NotificationsBell({
       setPayOpen(false)
       setSelectedInst(null)
       setSelectedSet(null)
-
-      // refresh list
+      
       await loadNotifications()
-      await onUpdate?.()
+      if (onUpdate) onUpdate()
     } catch (e: any) {
       console.error(e)
       toast.error(e?.message || 'Αποτυχία πληρωμής')
@@ -369,6 +353,39 @@ export default function NotificationsBell({
       toast.success('Έγινε απόκρυψη')
     } catch (e) {
       toast.error('Σφάλμα απόκρυψης')
+    }
+  }
+
+  const onSaveCustomNotification = async () => {
+    if (!storeId) return toast.error('Λείπει το κατάστημα')
+    if (!customTitle.trim()) return toast.error('Βάλε τίτλο υπενθύμισης')
+    
+    setSavingCustom(true)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) throw new Error('Δεν βρέθηκε session')
+
+      const { error } = await supabase.from('notifications').insert([{
+        store_id: storeId,
+        user_id: session.user.id,
+        title: customTitle.trim(),
+        message: customMessage.trim() || null,
+        due_date: customDueDate,
+        severity: 'info',
+        kind: 'general'
+      }])
+
+      if (error) throw error
+
+      toast.success('Η υπενθύμιση προστέθηκε!')
+      setAddOpen(false)
+      setCustomTitle('')
+      setCustomMessage('')
+      await loadNotifications()
+    } catch (e: any) {
+      toast.error(e.message || 'Αποτυχία προσθήκης')
+    } finally {
+      setSavingCustom(false)
     }
   }
 
@@ -462,11 +479,27 @@ export default function NotificationsBell({
                 borderBottom: `1px solid ${colors.border}`,
               }}
             >
-              <div>
-                <div style={{ fontWeight: 900, color: colors.primaryDark }}>Ειδοποιήσεις</div>
-                <div style={{ fontSize: 12, fontWeight: 800, color: colors.secondaryText }}>
-                  {dangerCount} κόκκινες • {warningCount} κίτρινες
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div>
+                  <div style={{ fontWeight: 900, color: colors.primaryDark }}>Ειδοποιήσεις</div>
+                  <div style={{ fontSize: 12, fontWeight: 800, color: colors.secondaryText }}>
+                    {dangerCount} κόκκινες • {warningCount} κίτρινες
+                  </div>
                 </div>
+                <button
+                  onClick={() => {
+                    setPayOpen(false)
+                    setAddOpen(true)
+                  }}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 6,
+                    padding: '6px 10px', borderRadius: 10,
+                    background: '#eef2ff', color: colors.accentBlue, border: '1px solid #c7d2fe',
+                    fontWeight: 900, fontSize: 12, cursor: 'pointer'
+                  }}
+                >
+                  <PlusCircle size={14} /> Νέα
+                </button>
               </div>
 
               <button
@@ -531,7 +564,7 @@ export default function NotificationsBell({
                             {n.source === 'installment' ? n.message : (n.message || '')}
                           </div>
 
-                          {n.source === 'installment' && (
+                          {n.source === 'installment' ? (
                             <div style={{ marginTop: 8, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                               <span
                                 style={{
@@ -547,7 +580,19 @@ export default function NotificationsBell({
                                 Λήξη: {formatDateGr(n.dueDate)}
                               </span>
                             </div>
-                          )}
+                          ) : n.dueDate ? (
+                             <div style={{ marginTop: 8, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                              <span
+                                style={{
+                                  fontSize: 11,
+                                  fontWeight: 800,
+                                  color: colors.secondaryText,
+                                }}
+                              >
+                                Ημ/νία: {formatDateGr(n.dueDate)}
+                              </span>
+                            </div>
+                          ) : null}
                         </div>
 
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, minWidth: 120 }}>
@@ -715,6 +760,49 @@ export default function NotificationsBell({
                     }}
                   >
                     {savingPayment ? 'Καταχώρηση…' : 'Ολοκλήρωση Πληρωμής'}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Add Custom Notification Modal */}
+            {addOpen && (
+              <div
+                onClick={() => !savingCustom && setAddOpen(false)}
+                style={{ position: 'fixed', inset: 0, background: 'rgba(2,6,23,0.6)', zIndex: 260, display: 'grid', placeItems: 'center', padding: 16 }}
+              >
+                <div
+                  onClick={(e) => e.stopPropagation()}
+                  style={{ width: '100%', maxWidth: 400, background: colors.white, borderRadius: 18, border: `1px solid ${colors.border}`, padding: 16 }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+                    <div style={{ fontWeight: 900, color: colors.primaryDark }}>Νέα Υπενθύμιση</div>
+                    <button onClick={() => setAddOpen(false)} style={{ width: 32, height: 32, borderRadius: 12, border: `1px solid ${colors.border}`, background: colors.white, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <X size={16} />
+                    </button>
+                  </div>
+
+                  <div style={{ display: 'grid', gap: 12 }}>
+                    <div>
+                      <label style={{ fontSize: 12, fontWeight: 800, color: colors.secondaryText }}>Τίτλος (π.χ. Πληρωμή Ενοικίου)</label>
+                      <input value={customTitle} onChange={(e) => setCustomTitle(e.target.value)} style={{ width: '100%', marginTop: 4, padding: 12, borderRadius: 12, border: `1px solid ${colors.border}`, background: colors.bgLight, fontWeight: 800 }} placeholder="Τίτλος..." />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: 12, fontWeight: 800, color: colors.secondaryText }}>Σημειώσεις (Προαιρετικό)</label>
+                      <input value={customMessage} onChange={(e) => setCustomMessage(e.target.value)} style={{ width: '100%', marginTop: 4, padding: 12, borderRadius: 12, border: `1px solid ${colors.border}`, background: colors.bgLight, fontWeight: 800 }} placeholder="Λεπτομέρειες..." />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: 12, fontWeight: 800, color: colors.secondaryText }}>Ημερομηνία</label>
+                      <input type="date" value={customDueDate} onChange={(e) => setCustomDueDate(e.target.value)} style={{ width: '100%', marginTop: 4, padding: 12, borderRadius: 12, border: `1px solid ${colors.border}`, background: colors.bgLight, fontWeight: 800 }} />
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={onSaveCustomNotification}
+                    disabled={savingCustom}
+                    style={{ width: '100%', marginTop: 18, border: 'none', borderRadius: 14, padding: 12, fontWeight: 900, cursor: 'pointer', background: colors.primaryDark, color: 'white' }}
+                  >
+                    {savingCustom ? 'Αποθήκευση…' : 'Προσθήκη Υπενθύμισης'}
                   </button>
                 </div>
               </div>
