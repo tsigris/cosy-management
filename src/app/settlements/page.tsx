@@ -25,6 +25,9 @@ import {
   AlertOctagon,
   Pencil,
   Trash2,
+  Sun,
+  Snowflake,
+  Repeat,
 } from 'lucide-react'
 
 const colors = {
@@ -73,6 +76,9 @@ type Installment = {
 
 type PaymentMethod = 'Μετρητά' | 'Τράπεζα'
 
+type LoanPlan = 'fixed' | 'seasonal' | 'summer_only'
+type AmountFocus = 'total' | 'installment'
+
 function yyyyMmDd(d: Date) {
   const y = d.getFullYear()
   const m = String(d.getMonth() + 1).padStart(2, '0')
@@ -112,6 +118,21 @@ function addMonthsSafe(isoDate: string, months: number) {
   return `${y}-${m}-${d}`
 }
 
+function monthOf(iso: string) {
+  return new Date(`${iso}T12:00:00`).getMonth() + 1 // 1..12
+}
+function isSummerMonth(iso: string) {
+  const m = monthOf(iso)
+  return m >= 5 && m <= 10 // May..Oct
+}
+
+function nextPayingDueDate(currentIso: string, plan: 'monthly' | 'summer_only') {
+  let d = addMonthsSafe(currentIso, 1)
+  if (plan === 'monthly') return d
+  while (!isSummerMonth(d)) d = addMonthsSafe(d, 1)
+  return d
+}
+
 function toMoney(value: number | null | undefined) {
   return `${Number(value || 0).toLocaleString('el-GR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`
 }
@@ -145,6 +166,51 @@ function getDueState(due: string, today: string): { state: DueState; text: strin
   return { state: 'ok', text: '', days: d }
 }
 
+// ---------------------- ✅ MONEY INPUT (Greek friendly) ----------------------
+// Accepts: 3.056,32  | 3056,32 | 3056.32 | 3 056,32 | etc.
+function normalizeMoneyInput(raw: string) {
+  return String(raw || '')
+    .replace(/\s/g, '')
+    .replace(/[^\d.,-]/g, '')
+}
+
+// Parse to number (best-effort). Returns null if invalid.
+function parseMoney(raw: string): number | null {
+  const s0 = normalizeMoneyInput(raw)
+  if (!s0) return null
+
+  // keep only first '-' at start
+  let s = s0
+  s = s.replace(/(?!^)-/g, '')
+
+  const hasComma = s.includes(',')
+  const hasDot = s.includes('.')
+
+  if (hasComma && hasDot) {
+    // assume dots are thousands, comma is decimal
+    s = s.replace(/\./g, '').replace(',', '.')
+  } else if (hasComma && !hasDot) {
+    // comma as decimal
+    s = s.replace(',', '.')
+  } else {
+    // dot as decimal (or plain integer) -> keep
+  }
+
+  // allow only one decimal dot
+  const parts = s.split('.')
+  if (parts.length > 2) {
+    s = parts[0] + '.' + parts.slice(1).join('')
+  }
+
+  const n = Number(s)
+  if (!Number.isFinite(n)) return null
+  return n
+}
+
+function formatMoneyInputEl(n: number) {
+  return n.toLocaleString('el-GR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
+
 function SettlementsContent({ onUpdate }: { onUpdate?: () => void }) {
   const searchParams = useSearchParams()
   const router = useRouter()
@@ -165,7 +231,7 @@ function SettlementsContent({ onUpdate }: { onUpdate?: () => void }) {
   const [selectedInstallment, setSelectedInstallment] = useState<Installment | null>(null)
   const [selectedSettlement, setSelectedSettlement] = useState<Settlement | null>(null)
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('Μετρητά')
-  const [paymentAmount, setPaymentAmount] = useState<string>('') // ✅ μερική/override πληρωμή
+  const [paymentAmount, setPaymentAmount] = useState<string>('') // ✅ μερική/override πληρωμή (el input)
 
   // Create / Edit settlement
   const [editingSettlementId, setEditingSettlementId] = useState<string | null>(null)
@@ -173,13 +239,20 @@ function SettlementsContent({ onUpdate }: { onUpdate?: () => void }) {
   const [name, setName] = useState('')
   const [type, setType] = useState<'settlement' | 'loan'>('settlement')
   const [rfCode, setRfCode] = useState('')
+
+  // Amounts as strings (Greek friendly)
   const [totalAmount, setTotalAmount] = useState('')
   const [installmentsCount, setInstallmentsCount] = useState('12')
   const [installmentAmount, setInstallmentAmount] = useState('')
   const [firstDueDate, setFirstDueDate] = useState(getBusinessDate())
 
-  // ✅ auto-calc installment amount (total / count) μέχρι ο χρήστης να “πειράξει” το ποσό δόσης
-  const [installmentManual, setInstallmentManual] = useState(false)
+  // ✅ Loan plans
+  const [loanPlan, setLoanPlan] = useState<LoanPlan>('fixed')
+  const [summerAmount, setSummerAmount] = useState('') // el input
+  const [winterAmount, setWinterAmount] = useState('') // el input
+
+  // ✅ Two-way calc: which field user edited last
+  const [amountFocus, setAmountFocus] = useState<AmountFocus>('total')
 
   const todayStr = useMemo(() => getBusinessDate(), [])
 
@@ -211,24 +284,82 @@ function SettlementsContent({ onUpdate }: { onUpdate?: () => void }) {
     setName('')
     setType('settlement')
     setRfCode('')
+
     setTotalAmount('')
     setInstallmentsCount('12')
     setInstallmentAmount('')
     setFirstDueDate(getBusinessDate())
-    setInstallmentManual(false)
+
+    setLoanPlan('fixed')
+    setSummerAmount('')
+    setWinterAmount('')
+
+    setAmountFocus('total')
   }, [])
 
-  // ✅ auto-calc
+  // ---------------------- ✅ AUTO CALC (two-way) ----------------------
+  // Rules:
+  // - If type === settlement => uses total & installment
+  // - If type === loan:
+  //    - fixed => behaves like settlement
+  //    - seasonal => uses summer/winter + count -> total auto
+  //    - summer_only => uses summer + count -> total auto
   useEffect(() => {
-    if (installmentManual) return
-    const total = Number(totalAmount)
     const count = Number(installmentsCount)
-    if (!Number.isFinite(total) || total <= 0) return
     if (!Number.isInteger(count) || count <= 0) return
-    const per = total / count
-    if (!Number.isFinite(per) || per <= 0) return
-    setInstallmentAmount(per.toFixed(2))
-  }, [totalAmount, installmentsCount, installmentManual])
+
+    if (type === 'loan' && loanPlan === 'seasonal') {
+      // total = sum of schedule (monthly count, amounts depend on month)
+      const s = parseMoney(summerAmount)
+      const w = parseMoney(winterAmount)
+      if (!firstDueDate) return
+      if (!Number.isFinite(s || NaN) || (s as number) <= 0) return
+      if (!Number.isFinite(w || NaN) || (w as number) <= 0) return
+
+      let due = firstDueDate
+      let sum = 0
+      for (let i = 0; i < count; i++) {
+        sum += isSummerMonth(due) ? (s as number) : (w as number)
+        due = addMonthsSafe(due, 1)
+      }
+      setTotalAmount(formatMoneyInputEl(sum))
+      return
+    }
+
+    if (type === 'loan' && loanPlan === 'summer_only') {
+      const s = parseMoney(summerAmount)
+      if (!firstDueDate) return
+      if (!Number.isFinite(s || NaN) || (s as number) <= 0) return
+      const sum = (s as number) * count
+      setTotalAmount(formatMoneyInputEl(sum))
+      return
+    }
+
+    // fixed / settlement -> two-way
+    if (amountFocus === 'total') {
+      const total = parseMoney(totalAmount)
+      if (!Number.isFinite(total || NaN) || (total as number) <= 0) return
+      const per = (total as number) / count
+      if (!Number.isFinite(per) || per <= 0) return
+      setInstallmentAmount(formatMoneyInputEl(per))
+    } else {
+      const per = parseMoney(installmentAmount)
+      if (!Number.isFinite(per || NaN) || (per as number) <= 0) return
+      const total = (per as number) * count
+      if (!Number.isFinite(total) || total <= 0) return
+      setTotalAmount(formatMoneyInputEl(total))
+    }
+  }, [
+    type,
+    loanPlan,
+    summerAmount,
+    winterAmount,
+    firstDueDate,
+    installmentsCount,
+    totalAmount,
+    installmentAmount,
+    amountFocus,
+  ])
 
   const loadData = useCallback(async () => {
     if (!storeId) {
@@ -308,37 +439,202 @@ function SettlementsContent({ onUpdate }: { onUpdate?: () => void }) {
     setOpenCreateModal(true)
   }
 
+  function inferLoanPlanFromInstallments(rows: Installment[]): LoanPlan {
+    const pendingOrAll = rows.slice().sort((a, b) => a.installment_number - b.installment_number)
+    if (!pendingOrAll.length) return 'fixed'
+
+    const months = new Set<number>()
+    const amounts = new Set<number>()
+    for (const r of pendingOrAll) {
+      months.add(monthOf(String(r.due_date)))
+      amounts.add(Number(r.amount || 0))
+    }
+
+    const hasWinterMonths = Array.from(months).some((m) => m <= 4 || m >= 11)
+    const hasSummerMonths = Array.from(months).some((m) => m >= 5 && m <= 10)
+
+    // summer-only: only summer months present
+    if (hasSummerMonths && !hasWinterMonths) return 'summer_only'
+
+    // seasonal: has winter & summer and (usually) more than 1 distinct amount
+    if (hasWinterMonths && hasSummerMonths && amounts.size >= 2) return 'seasonal'
+
+    return 'fixed'
+  }
+
   const startEditSettlement = (s: Settlement) => {
     setEditingSettlementId(String(s.id))
     setName(String(s.name || ''))
     setType((s.type === 'loan' ? 'loan' : 'settlement') as any)
     setRfCode(String(s.rf_code || ''))
-    setTotalAmount(s.total_amount != null ? String(s.total_amount) : '')
+
+    // set basics from settlement row
+    setTotalAmount(s.total_amount != null ? formatMoneyInputEl(Number(s.total_amount)) : '')
     setInstallmentsCount(s.installments_count != null ? String(s.installments_count) : '12')
-    setInstallmentAmount(s.installment_amount != null ? String(s.installment_amount) : '')
+    setInstallmentAmount(s.installment_amount != null ? formatMoneyInputEl(Number(s.installment_amount)) : '')
     setFirstDueDate(s.first_due_date ? String(s.first_due_date).slice(0, 10) : getBusinessDate())
-    setInstallmentManual(true) // όταν κάνεις edit, θεωρούμε “χειροκίνητο”
+
+    // infer loan plan (best effort) from installments
+    const rows = installmentsMap[String(s.id)] || []
+    if ((s.type || '') === 'loan') {
+      const plan = inferLoanPlanFromInstallments(rows)
+      setLoanPlan(plan)
+
+      if (plan === 'seasonal') {
+        // guess amounts by looking at first seen summer/winter amounts
+        let sAmt: number | null = null
+        let wAmt: number | null = null
+        for (const r of rows) {
+          const due = String(r.due_date)
+          const amt = Number(r.amount || 0)
+          if (isSummerMonth(due) && sAmt == null) sAmt = amt
+          if (!isSummerMonth(due) && wAmt == null) wAmt = amt
+        }
+        if (sAmt != null) setSummerAmount(formatMoneyInputEl(sAmt))
+        if (wAmt != null) setWinterAmount(formatMoneyInputEl(wAmt))
+      } else if (plan === 'summer_only') {
+        const first = rows.find((r) => isSummerMonth(String(r.due_date)))
+        if (first) setSummerAmount(formatMoneyInputEl(Number(first.amount || 0)))
+      } else {
+        setSummerAmount('')
+        setWinterAmount('')
+      }
+    } else {
+      setLoanPlan('fixed')
+      setSummerAmount('')
+      setWinterAmount('')
+    }
+
+    setAmountFocus('total')
     setOpenCreateModal(true)
   }
+
+  const buildInstallmentsForPlan = useCallback(
+    (settlementId: string, count: number) => {
+      if (!storeId) return []
+
+      const due0 = firstDueDate
+      if (!due0) return []
+
+      const rows: Array<{
+        store_id: string
+        settlement_id: string
+        installment_number: number
+        amount: number
+        due_date: string
+        status: string
+      }> = []
+
+      // LOAN seasonal
+      if (type === 'loan' && loanPlan === 'seasonal') {
+        const sAmt = parseMoney(summerAmount)
+        const wAmt = parseMoney(winterAmount)
+        if (!Number.isFinite(sAmt || NaN) || (sAmt as number) <= 0) return []
+        if (!Number.isFinite(wAmt || NaN) || (wAmt as number) <= 0) return []
+
+        let due = due0
+        for (let i = 0; i < count; i++) {
+          const amount = isSummerMonth(due) ? (sAmt as number) : (wAmt as number)
+          rows.push({
+            store_id: storeId,
+            settlement_id: settlementId,
+            installment_number: i + 1,
+            amount,
+            due_date: due,
+            status: 'pending',
+          })
+          due = addMonthsSafe(due, 1)
+        }
+        return rows
+      }
+
+      // LOAN summer-only (pay only May-Oct, skip winter months)
+      if (type === 'loan' && loanPlan === 'summer_only') {
+        const sAmt = parseMoney(summerAmount)
+        if (!Number.isFinite(sAmt || NaN) || (sAmt as number) <= 0) return []
+
+        let due = due0
+        // if first due date is not summer, jump forward
+        while (!isSummerMonth(due)) due = addMonthsSafe(due, 1)
+
+        for (let i = 0; i < count; i++) {
+          rows.push({
+            store_id: storeId,
+            settlement_id: settlementId,
+            installment_number: i + 1,
+            amount: sAmt as number,
+            due_date: due,
+            status: 'pending',
+          })
+          due = nextPayingDueDate(due, 'summer_only')
+        }
+        return rows
+      }
+
+      // FIXED (settlement or loan fixed)
+      const per = parseMoney(installmentAmount)
+      if (!Number.isFinite(per || NaN) || (per as number) <= 0) return []
+
+      for (let i = 0; i < count; i++) {
+        rows.push({
+          store_id: storeId,
+          settlement_id: settlementId,
+          installment_number: i + 1,
+          amount: per as number,
+          due_date: addMonthsSafe(due0, i),
+          status: 'pending',
+        })
+      }
+      return rows
+    },
+    [storeId, firstDueDate, type, loanPlan, installmentAmount, summerAmount, winterAmount],
+  )
 
   const onSaveSettlement = async () => {
     if (!storeId) return toast.error('Λείπει το store')
 
     const cleanName = name.trim()
     const cleanRf = rfCode.trim()
-    const parsedTotal = Number(totalAmount)
     const parsedCount = Number(installmentsCount)
-    const parsedInstallment = Number(installmentAmount)
 
     if (!cleanName) return toast.error('Συμπλήρωσε όνομα ρύθμισης')
     if (!cleanRf) return toast.error('Συμπλήρωσε κωδικό RF / Ταυτότητα Οφειλής')
-    if (!Number.isFinite(parsedTotal) || parsedTotal <= 0) return toast.error('Μη έγκυρο συνολικό ποσό')
     if (!Number.isInteger(parsedCount) || parsedCount <= 0) return toast.error('Μη έγκυρος αριθμός δόσεων')
-    if (!Number.isFinite(parsedInstallment) || parsedInstallment <= 0) return toast.error('Μη έγκυρο ποσό ανά δόση')
     if (!firstDueDate) return toast.error('Συμπλήρωσε ημερομηνία 1ης δόσης')
 
-    setSavingSettlement(true)
+    // validate amounts based on plan
+    let totalNum: number | null = null
+    let installmentNum: number | null = null
 
+    if (type === 'loan' && loanPlan === 'seasonal') {
+      const sAmt = parseMoney(summerAmount)
+      const wAmt = parseMoney(winterAmount)
+      if (!Number.isFinite(sAmt || NaN) || (sAmt as number) <= 0) return toast.error('Μη έγκυρο ποσό Καλοκαιριού')
+      if (!Number.isFinite(wAmt || NaN) || (wAmt as number) <= 0) return toast.error('Μη έγκυρο ποσό Χειμώνα')
+      // total auto (already computed), but compute again safely:
+      if (!firstDueDate) return toast.error('Λείπει ημερομηνία 1ης δόσης')
+      let due = firstDueDate
+      let sum = 0
+      for (let i = 0; i < parsedCount; i++) {
+        sum += isSummerMonth(due) ? (sAmt as number) : (wAmt as number)
+        due = addMonthsSafe(due, 1)
+      }
+      totalNum = sum
+      installmentNum = null // not meaningful (varies)
+    } else if (type === 'loan' && loanPlan === 'summer_only') {
+      const sAmt = parseMoney(summerAmount)
+      if (!Number.isFinite(sAmt || NaN) || (sAmt as number) <= 0) return toast.error('Μη έγκυρο ποσό Καλοκαιριού')
+      totalNum = (sAmt as number) * parsedCount
+      installmentNum = sAmt as number
+    } else {
+      // fixed
+      totalNum = parseMoney(totalAmount)
+      installmentNum = parseMoney(installmentAmount)
+      if (!Number.isFinite(totalNum || NaN) || (totalNum as number) <= 0) return toast.error('Μη έγκυρο συνολικό ποσό')
+      if (!Number.isFinite(installmentNum || NaN) || (installmentNum as number) <= 0) return toast.error('Μη έγκυρο ποσό ανά δόση')
+    }
+
+    setSavingSettlement(true)
     let createdSettlementId: string | null = null
 
     try {
@@ -347,15 +643,15 @@ function SettlementsContent({ onUpdate }: { onUpdate?: () => void }) {
       } = await supabase.auth.getSession()
       if (!session) throw new Error('Η συνεδρία έληξε. Συνδέσου ξανά.')
 
-      const settlementPayload = {
+      const settlementPayload: any = {
         store_id: storeId,
         user_id: session.user.id,
         name: cleanName,
         type,
         rf_code: cleanRf,
-        total_amount: parsedTotal,
+        total_amount: totalNum,
         installments_count: parsedCount,
-        installment_amount: parsedInstallment,
+        installment_amount: installmentNum, // for seasonal μπορεί να είναι null
         first_due_date: firstDueDate,
       }
 
@@ -394,19 +690,13 @@ function SettlementsContent({ onUpdate }: { onUpdate?: () => void }) {
           .eq('settlement_id', editingSettlementId)
         if (delInstErr) throw delInstErr
 
-        const installmentsPayload = Array.from({ length: parsedCount }, (_, index) => ({
-          store_id: storeId,
-          settlement_id: editingSettlementId,
-          installment_number: index + 1,
-          amount: parsedInstallment,
-          due_date: addMonthsSafe(firstDueDate, index),
-          status: 'pending',
-        }))
+        const installmentsPayload = buildInstallmentsForPlan(editingSettlementId, parsedCount)
+        if (!installmentsPayload.length) throw new Error('Δεν μπορώ να δημιουργήσω δόσεις: έλεγξε ποσά/ημερομηνία.')
 
         const { error: insErr } = await supabase.from('installments').insert(installmentsPayload)
         if (insErr) throw insErr
 
-        toast.success('Η ρύθμιση ενημερώθηκε και οι δόσεις ανανεώθηκαν')
+        toast.success('Η συμφωνία ενημερώθηκε και οι δόσεις ανανεώθηκαν')
         setOpenCreateModal(false)
         resetCreateForm()
         await loadData()
@@ -421,21 +711,17 @@ function SettlementsContent({ onUpdate }: { onUpdate?: () => void }) {
         .single()
 
       if (settlementErr) throw settlementErr
-      createdSettlementId = settlementRow.id
+      if (!settlementRow?.id) throw new Error('Αποτυχία δημιουργίας συμφωνίας: λείπει το id')
+      const newSettlementId = String(settlementRow.id)
+      createdSettlementId = newSettlementId
 
-      const installmentsPayload = Array.from({ length: parsedCount }, (_, index) => ({
-        store_id: storeId,
-        settlement_id: createdSettlementId,
-        installment_number: index + 1,
-        amount: parsedInstallment,
-        due_date: addMonthsSafe(firstDueDate, index),
-        status: 'pending',
-      }))
+      const installmentsPayload = buildInstallmentsForPlan(newSettlementId, parsedCount)
+      if (!installmentsPayload.length) throw new Error('Δεν μπορώ να δημιουργήσω δόσεις: έλεγξε ποσά/ημερομηνία.')
 
       const { error: installmentsErr } = await supabase.from('installments').insert(installmentsPayload)
       if (installmentsErr) throw installmentsErr
 
-      toast.success('Η ρύθμιση δημιουργήθηκε με επιτυχία')
+      toast.success('Η συμφωνία δημιουργήθηκε με επιτυχία')
       setOpenCreateModal(false)
       resetCreateForm()
       await loadData()
@@ -443,7 +729,7 @@ function SettlementsContent({ onUpdate }: { onUpdate?: () => void }) {
       if (createdSettlementId) {
         await supabase.from('settlements').delete().eq('id', createdSettlementId).eq('store_id', storeId)
       }
-      toast.error(getErrorMessage(error) || 'Αποτυχία αποθήκευσης ρύθμισης')
+      toast.error(getErrorMessage(error) || 'Αποτυχία αποθήκευσης συμφωνίας')
     } finally {
       setSavingSettlement(false)
     }
@@ -453,7 +739,7 @@ function SettlementsContent({ onUpdate }: { onUpdate?: () => void }) {
     setSelectedSettlement(settlement)
     setSelectedInstallment(installment)
     setPaymentMethod('Μετρητά')
-    setPaymentAmount(String(Number(installment.amount || 0).toFixed(2))) // ✅ default ποσό
+    setPaymentAmount(formatMoneyInputEl(Math.abs(Number(installment.amount || 0)))) // ✅ default ποσό (el)
     setOpenPaymentModal(true)
   }
 
@@ -461,8 +747,8 @@ function SettlementsContent({ onUpdate }: { onUpdate?: () => void }) {
     if (!storeId) return toast.error('Λείπει το store')
     if (!selectedInstallment || !selectedSettlement) return toast.error('Δεν βρέθηκε επιλεγμένη δόση')
 
-    const parsedPay = Math.abs(Number(paymentAmount))
-    if (!Number.isFinite(parsedPay) || parsedPay <= 0) return toast.error('Μη έγκυρο ποσό πληρωμής')
+    const parsedPay = parseMoney(paymentAmount)
+    if (!Number.isFinite(parsedPay || NaN) || (parsedPay as number) <= 0) return toast.error('Μη έγκυρο ποσό πληρωμής')
 
     setSavingPayment(true)
     try {
@@ -495,7 +781,7 @@ function SettlementsContent({ onUpdate }: { onUpdate?: () => void }) {
             user_id: session.user.id,
             created_by_name: userName,
             type: 'expense',
-            amount: -parsedPay,
+            amount: -Math.abs(parsedPay as number),
             method: paymentMethod,
             category,
             notes,
@@ -513,7 +799,7 @@ function SettlementsContent({ onUpdate }: { onUpdate?: () => void }) {
         .update({
           status: 'paid',
           transaction_id: transactionRow.id,
-          amount: parsedPay,
+          amount: Math.abs(parsedPay as number),
         })
         .eq('id', selectedInstallment.id)
         .eq('store_id', storeId)
@@ -525,8 +811,6 @@ function SettlementsContent({ onUpdate }: { onUpdate?: () => void }) {
       setSelectedInstallment(null)
       setSelectedSettlement(null)
       await loadData()
-
-      // ✅ callback προς dashboard / άλλα components
       if (onUpdate) onUpdate()
     } catch (error: unknown) {
       toast.error(getErrorMessage(error) || 'Αποτυχία πληρωμής δόσης')
@@ -549,7 +833,6 @@ function SettlementsContent({ onUpdate }: { onUpdate?: () => void }) {
 
     setSavingDelete(true)
     try {
-      // πρώτα διαγραφή δόσεων για καθαρότητα
       const { error: delInstErr } = await supabase
         .from('installments')
         .delete()
@@ -557,7 +840,6 @@ function SettlementsContent({ onUpdate }: { onUpdate?: () => void }) {
         .eq('settlement_id', settlementId)
       if (delInstErr) throw delInstErr
 
-      // μετά διαγραφή settlement
       const { error: delSetErr } = await supabase
         .from('settlements')
         .delete()
@@ -593,7 +875,6 @@ function SettlementsContent({ onUpdate }: { onUpdate?: () => void }) {
       const pending = rows.filter((r) => (r.status || 'pending').toLowerCase() === 'pending')
       if (!pending.length) return { state: 'ok', label: 'ΟΛΑ ΠΛΗΡΩΜΕΝΑ' }
 
-      // pick worst state among pending
       let hasDanger = false
       let hasWarning = false
       let minDays = Number.POSITIVE_INFINITY
@@ -630,6 +911,8 @@ function SettlementsContent({ onUpdate }: { onUpdate?: () => void }) {
     )
   }
 
+  const showLoanPlan = type === 'loan'
+
   return (
     <div style={wrapperStyle}>
       <Toaster richColors position="top-center" />
@@ -663,7 +946,9 @@ function SettlementsContent({ onUpdate }: { onUpdate?: () => void }) {
           <div style={{ textAlign: 'right' }}>
             <p style={summaryLabelStyle}>ΣΥΝΟΛΟ ΥΠΟΛΟΙΠΟΥ</p>
             <p style={summaryValueStyle}>{toMoney(pendingStats.pendingAmount)}</p>
-            <p style={{ margin: '6px 0 0', fontSize: 11, fontWeight: 800, opacity: 0.8 }}>Business Date: {formatDateGr(todayStr)}</p>
+            <p style={{ margin: '6px 0 0', fontSize: 11, fontWeight: 800, opacity: 0.8 }}>
+              Business Date: {formatDateGr(todayStr)}
+            </p>
           </div>
         </div>
 
@@ -757,7 +1042,11 @@ function SettlementsContent({ onUpdate }: { onUpdate?: () => void }) {
                       <span style={miniBadgeStyle}>
                         {paidCount} / {settlementInstallments.length} Πληρωμένες
                       </span>
-                      {isOpen ? <ChevronUp size={18} color={colors.secondaryText} /> : <ChevronDown size={18} color={colors.secondaryText} />}
+                      {isOpen ? (
+                        <ChevronUp size={18} color={colors.secondaryText} />
+                      ) : (
+                        <ChevronDown size={18} color={colors.secondaryText} />
+                      )}
                     </div>
                   </button>
 
@@ -811,6 +1100,7 @@ function SettlementsContent({ onUpdate }: { onUpdate?: () => void }) {
                             alignItems: 'center',
                             gap: 8,
                             fontSize: 12,
+                            opacity: savingDelete ? 0.7 : 1,
                           }}
                         >
                           <Trash2 size={14} /> Διαγραφή
@@ -861,11 +1151,7 @@ function SettlementsContent({ onUpdate }: { onUpdate?: () => void }) {
                               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                                 <span style={amountChipStyle}>{toMoney(inst.amount)}</span>
                                 {isPending ? (
-                                  <button
-                                    type="button"
-                                    style={payBtnStyle}
-                                    onClick={() => openPaymentFor(settlement, inst)}
-                                  >
+                                  <button type="button" style={payBtnStyle} onClick={() => openPaymentFor(settlement, inst)}>
                                     Πληρωμή
                                   </button>
                                 ) : (
@@ -893,7 +1179,7 @@ function SettlementsContent({ onUpdate }: { onUpdate?: () => void }) {
         <div style={modalBackdropStyle} onClick={() => !savingSettlement && setOpenCreateModal(false)}>
           <div style={modalCardStyle} onClick={(e) => e.stopPropagation()}>
             <div style={modalHeaderStyle}>
-              <h2 style={modalTitleStyle}>{editingSettlementId ? 'Επεξεργασία Ρύθμισης' : 'Νέα Ρύθμιση'}</h2>
+              <h2 style={modalTitleStyle}>{editingSettlementId ? 'Επεξεργασία Συμφωνίας' : 'Νέα Συμφωνία'}</h2>
               <button
                 type="button"
                 style={iconCloseBtnStyle}
@@ -913,20 +1199,62 @@ function SettlementsContent({ onUpdate }: { onUpdate?: () => void }) {
                 <div style={typeToggleWrapStyle}>
                   <button
                     type="button"
-                    style={{ ...typeBtnStyle, ...(type === 'settlement' ? typeBtnActiveStyle : {}) }}
+                    style={{
+                      ...typeBtnStyle,
+                      ...(type === 'settlement' ? typeBtnActiveStyleGreen : {}),
+                    }}
                     onClick={() => setType('settlement')}
                   >
                     Ρύθμιση (π.χ. Εφορία)
                   </button>
                   <button
                     type="button"
-                    style={{ ...typeBtnStyle, ...(type === 'loan' ? typeBtnActiveStyle : {}) }}
+                    style={{
+                      ...typeBtnStyle,
+                      ...(type === 'loan' ? typeBtnActiveStyleBlue : {}),
+                    }}
                     onClick={() => setType('loan')}
                   >
                     Δάνειο (Τράπεζα)
                   </button>
                 </div>
               </div>
+
+              {showLoanPlan && (
+                <div style={inputGroupStyle}>
+                  <label style={labelStyle}>Πλάνο Πληρωμών (Δάνειο)</label>
+                  <div style={loanPlanWrapStyle}>
+                    <button
+                      type="button"
+                      style={{ ...loanPlanBtnStyle, ...(loanPlan === 'fixed' ? loanPlanBtnActiveStyle : {}) }}
+                      onClick={() => setLoanPlan('fixed')}
+                      title="Ίδιο ποσό κάθε μήνα"
+                    >
+                      <Repeat size={14} /> Σταθερό
+                    </button>
+                    <button
+                      type="button"
+                      style={{ ...loanPlanBtnStyle, ...(loanPlan === 'seasonal' ? loanPlanBtnActiveStyle : {}) }}
+                      onClick={() => setLoanPlan('seasonal')}
+                      title="Μάιος–Οκτώβριος ένα ποσό, Νοέμβριος–Απρίλιος άλλο ποσό"
+                    >
+                      <Sun size={14} /> <Snowflake size={14} /> Εποχικό
+                    </button>
+                    <button
+                      type="button"
+                      style={{ ...loanPlanBtnStyle, ...(loanPlan === 'summer_only' ? loanPlanBtnActiveStyle : {}) }}
+                      onClick={() => setLoanPlan('summer_only')}
+                      title="Πληρώνω μόνο Μάιο–Οκτώβριο, χειμώνα 0 (δεν δημιουργούνται δόσεις)"
+                    >
+                      <Sun size={14} /> Μόνο Καλοκαίρι
+                    </button>
+                  </div>
+
+                  <div style={{ fontSize: 11, fontWeight: 800, color: colors.secondaryText, marginTop: 6 }}>
+                    * Στο «Μόνο Καλοκαίρι» δεν μπαίνουν χειμερινές δόσεις (0€).
+                  </div>
+                </div>
+              )}
 
               <div style={inputGroupStyle}>
                 <label style={labelStyle}>Όνομα</label>
@@ -940,18 +1268,39 @@ function SettlementsContent({ onUpdate }: { onUpdate?: () => void }) {
 
               <div style={twoColGridStyle}>
                 <div style={inputGroupStyle}>
-                  <label style={labelStyle}>Συνολικό Ποσό</label>
+                  <label style={labelStyle}>
+                    {type === 'loan' && loanPlan !== 'fixed' ? 'Συνολικό Ποσό (Αυτόματο)' : 'Συνολικό Ποσό'}
+                  </label>
                   <input
-                    style={inputStyle}
-                    type="number"
-                    min="0"
-                    step="0.01"
+                    style={{
+                      ...inputStyle,
+                      opacity: type === 'loan' && loanPlan !== 'fixed' ? 0.85 : 1,
+                    }}
+                    inputMode="decimal"
+                    placeholder="π.χ. 3.056,32"
                     value={totalAmount}
-                    onChange={(e) => setTotalAmount(e.target.value)}
+                    onChange={(e) => {
+                      const v = normalizeMoneyInput(e.target.value)
+                      setAmountFocus('total')
+                      setTotalAmount(v)
+                    }}
+                    onBlur={() => {
+                      const n = parseMoney(totalAmount)
+                      if (n != null) setTotalAmount(formatMoneyInputEl(n))
+                    }}
+                    disabled={type === 'loan' && loanPlan !== 'fixed'} // auto in seasonal/summer-only
                   />
+                  <div style={{ fontSize: 11, fontWeight: 800, color: colors.secondaryText, marginTop: 6 }}>
+                    Δέχεται: <span style={{ fontWeight: 900 }}>3.056,32</span> ή <span style={{ fontWeight: 900 }}>3056.32</span>
+                  </div>
                 </div>
+
                 <div style={inputGroupStyle}>
-                  <label style={labelStyle}>Αριθμός Δόσεων</label>
+                  <label style={labelStyle}>
+                    {type === 'loan' && loanPlan === 'summer_only'
+                      ? 'Αριθμός Δόσεων (Πληρωμές)'
+                      : 'Αριθμός Δόσεων'}
+                  </label>
                   <input
                     style={inputStyle}
                     type="number"
@@ -963,33 +1312,106 @@ function SettlementsContent({ onUpdate }: { onUpdate?: () => void }) {
                 </div>
               </div>
 
-              <div style={twoColGridStyle}>
-                <div style={inputGroupStyle}>
-                  <label style={labelStyle}>Ποσό ανά Δόση</label>
-                  <input
-                    style={inputStyle}
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={installmentAmount}
-                    onChange={(e) => {
-                      setInstallmentManual(true)
-                      setInstallmentAmount(e.target.value)
-                    }}
-                  />
-                  <div style={{ fontSize: 11, fontWeight: 800, color: colors.secondaryText }}>
-                    {installmentManual ? 'Χειροκίνητο ποσό δόσης' : 'Αυτόματο (Σύνολο / Δόσεις)'}
+              {/* Amount area */}
+              {type === 'loan' && loanPlan === 'seasonal' ? (
+                <div style={twoColGridStyle}>
+                  <div style={inputGroupStyle}>
+                    <label style={labelStyle}>Ποσό Καλοκαίρι (Μάιος–Οκτώβριος)</label>
+                    <input
+                      style={inputStyle}
+                      inputMode="decimal"
+                      placeholder="π.χ. 1.000,00"
+                      value={summerAmount}
+                      onChange={(e) => setSummerAmount(normalizeMoneyInput(e.target.value))}
+                      onBlur={() => {
+                        const n = parseMoney(summerAmount)
+                        if (n != null) setSummerAmount(formatMoneyInputEl(n))
+                      }}
+                    />
+                  </div>
+                  <div style={inputGroupStyle}>
+                    <label style={labelStyle}>Ποσό Χειμώνας (Νοέμβριος–Απρίλιος)</label>
+                    <input
+                      style={inputStyle}
+                      inputMode="decimal"
+                      placeholder="π.χ. 150,00"
+                      value={winterAmount}
+                      onChange={(e) => setWinterAmount(normalizeMoneyInput(e.target.value))}
+                      onBlur={() => {
+                        const n = parseMoney(winterAmount)
+                        if (n != null) setWinterAmount(formatMoneyInputEl(n))
+                      }}
+                    />
                   </div>
                 </div>
-                <div style={inputGroupStyle}>
-                  <label style={labelStyle}>Ημερομηνία 1ης Δόσης</label>
-                  <input style={inputStyle} type="date" value={firstDueDate} onChange={(e) => setFirstDueDate(e.target.value)} />
+              ) : type === 'loan' && loanPlan === 'summer_only' ? (
+                <div style={twoColGridStyle}>
+                  <div style={inputGroupStyle}>
+                    <label style={labelStyle}>Ποσό Καλοκαιρινής Δόσης (Μάιος–Οκτώβριος)</label>
+                    <input
+                      style={inputStyle}
+                      inputMode="decimal"
+                      placeholder="π.χ. 1.000,00"
+                      value={summerAmount}
+                      onChange={(e) => setSummerAmount(normalizeMoneyInput(e.target.value))}
+                      onBlur={() => {
+                        const n = parseMoney(summerAmount)
+                        if (n != null) setSummerAmount(formatMoneyInputEl(n))
+                      }}
+                    />
+                    <div style={{ fontSize: 11, fontWeight: 800, color: colors.secondaryText, marginTop: 6 }}>
+                      * Χειμώνα δεν δημιουργούνται δόσεις (0€).
+                    </div>
+                  </div>
+                  <div style={inputGroupStyle}>
+                    <label style={labelStyle}>Ημερομηνία 1ης Δόσης</label>
+                    <input
+                      style={inputStyle}
+                      type="date"
+                      value={firstDueDate}
+                      onChange={(e) => setFirstDueDate(e.target.value)}
+                    />
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <div style={twoColGridStyle}>
+                  <div style={inputGroupStyle}>
+                    <label style={labelStyle}>Ποσό ανά Δόση</label>
+                    <input
+                      style={inputStyle}
+                      inputMode="decimal"
+                      placeholder="π.χ. 254,69"
+                      value={installmentAmount}
+                      onChange={(e) => {
+                        const v = normalizeMoneyInput(e.target.value)
+                        setAmountFocus('installment')
+                        setInstallmentAmount(v)
+                      }}
+                      onBlur={() => {
+                        const n = parseMoney(installmentAmount)
+                        if (n != null) setInstallmentAmount(formatMoneyInputEl(n))
+                      }}
+                    />
+                    <div style={{ fontSize: 11, fontWeight: 800, color: colors.secondaryText }}>
+                      Αυτόματο: γράψε Σύνολο ή Δόση — υπολογίζει το άλλο.
+                    </div>
+                  </div>
+
+                  <div style={inputGroupStyle}>
+                    <label style={labelStyle}>Ημερομηνία 1ης Δόσης</label>
+                    <input
+                      style={inputStyle}
+                      type="date"
+                      value={firstDueDate}
+                      onChange={(e) => setFirstDueDate(e.target.value)}
+                    />
+                  </div>
+                </div>
+              )}
             </div>
 
             <button type="button" style={saveBtnStyle} onClick={onSaveSettlement} disabled={savingSettlement}>
-              {savingSettlement ? 'Αποθήκευση...' : editingSettlementId ? 'Αποθήκευση Αλλαγών' : 'Αποθήκευση Ρύθμισης'}
+              {savingSettlement ? 'Αποθήκευση...' : editingSettlementId ? 'Αποθήκευση Αλλαγών' : 'Αποθήκευση'}
             </button>
 
             {editingSettlementId && (
@@ -1033,18 +1455,22 @@ function SettlementsContent({ onUpdate }: { onUpdate?: () => void }) {
             <div style={paymentInfoBoxStyle}>
               <p style={paymentInfoTitleStyle}>{selectedSettlement.name}</p>
               <p style={paymentInfoMetaStyle}>
-                Δόση #{selectedInstallment.installment_number} • {toMoney(selectedInstallment.amount)} • Λήξη: {formatDateGr(selectedInstallment.due_date)}
+                Δόση #{selectedInstallment.installment_number} • {toMoney(selectedInstallment.amount)} • Λήξη:{' '}
+                {formatDateGr(selectedInstallment.due_date)}
               </p>
             </div>
 
             <label style={{ ...labelStyle, marginTop: 10 }}>Ποσό Πληρωμής</label>
             <input
               style={inputStyle}
-              type="number"
-              min="0"
-              step="0.01"
+              inputMode="decimal"
+              placeholder="π.χ. 150,00"
               value={paymentAmount}
-              onChange={(e) => setPaymentAmount(e.target.value.replace(',', '.'))}
+              onChange={(e) => setPaymentAmount(normalizeMoneyInput(e.target.value))}
+              onBlur={() => {
+                const n = parseMoney(paymentAmount)
+                if (n != null) setPaymentAmount(formatMoneyInputEl(n))
+              }}
             />
             <div style={{ fontSize: 11, fontWeight: 800, color: colors.secondaryText, marginTop: 6 }}>
               * Μπορείς να αλλάξεις ποσό (μερική/διαφορετική πληρωμή). Θα γραφτεί αυτό στα Έξοδα και θα “κλειδώσει” η δόση ως πληρωμένη.
@@ -1231,6 +1657,7 @@ const copyBtnStyle: CSSProperties = {
   alignItems: 'center',
   justifyContent: 'center',
   color: colors.secondaryText,
+  cursor: 'pointer',
 }
 
 const miniBadgeStyle: CSSProperties = {
@@ -1322,6 +1749,7 @@ const amountChipStyle: CSSProperties = {
   padding: '6px 8px',
   fontWeight: 900,
   fontSize: '12px',
+  whiteSpace: 'nowrap',
 }
 
 const payBtnStyle: CSSProperties = {
@@ -1346,6 +1774,7 @@ const paidChipStyle: CSSProperties = {
   alignItems: 'center',
   gap: 4,
   padding: '7px 9px',
+  whiteSpace: 'nowrap',
 }
 
 const loadingCardStyle: CSSProperties = {
@@ -1440,17 +1869,25 @@ const typeBtnStyle: CSSProperties = {
   borderRadius: '9px',
   padding: '10px 8px',
   fontSize: '12px',
-  fontWeight: 800,
+  fontWeight: 900,
   color: colors.secondaryText,
   background: 'transparent',
   cursor: 'pointer',
   textAlign: 'center',
 }
 
-const typeBtnActiveStyle: CSSProperties = {
-  background: colors.white,
-  color: colors.primaryDark,
-  boxShadow: '0 1px 2px rgba(0,0,0,0.1)',
+const typeBtnActiveStyleGreen: CSSProperties = {
+  background: '#ecfdf5',
+  color: '#065f46',
+  boxShadow: '0 1px 2px rgba(0,0,0,0.10)',
+  border: '1px solid #a7f3d0',
+}
+
+const typeBtnActiveStyleBlue: CSSProperties = {
+  background: '#eff6ff',
+  color: '#1d4ed8',
+  boxShadow: '0 1px 2px rgba(0,0,0,0.10)',
+  border: '1px solid #bfdbfe',
 }
 
 const inputStyle: CSSProperties = {
@@ -1518,7 +1955,7 @@ const methodBtnStyle: CSSProperties = {
   borderRadius: '9px',
   padding: '10px',
   fontSize: '13px',
-  fontWeight: 800,
+  fontWeight: 900,
   color: colors.secondaryText,
   background: 'transparent',
   display: 'flex',
@@ -1532,6 +1969,38 @@ const methodBtnActiveStyle: CSSProperties = {
   background: colors.white,
   color: colors.primaryDark,
   boxShadow: '0 1px 2px rgba(0,0,0,0.1)',
+}
+
+const loanPlanWrapStyle: CSSProperties = {
+  border: `1px solid ${colors.border}`,
+  borderRadius: 12,
+  background: colors.bgLight,
+  padding: 4,
+  display: 'grid',
+  gridTemplateColumns: '1fr 1fr 1fr',
+  gap: 4,
+}
+
+const loanPlanBtnStyle: CSSProperties = {
+  border: 'none',
+  borderRadius: 9,
+  padding: '10px 8px',
+  fontSize: 12,
+  fontWeight: 900,
+  color: colors.secondaryText,
+  background: 'transparent',
+  cursor: 'pointer',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: 6,
+  textAlign: 'center',
+}
+
+const loanPlanBtnActiveStyle: CSSProperties = {
+  background: colors.white,
+  color: colors.primaryDark,
+  boxShadow: '0 1px 2px rgba(0,0,0,0.10)',
 }
 
 export default function SettlementsPage({ onUpdate }: { onUpdate?: () => void }) {
