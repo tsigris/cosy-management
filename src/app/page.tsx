@@ -404,7 +404,7 @@ function DashboardContent() {
       // ✅ FIX: fetch day rows by (date = selectedDate) OR (created_at inside business window)
       const { data: tx, error: txError } = await supabase
         .from('transactions')
-        .select('*, profiles(username), suppliers(name), fixed_assets(name), revenue_sources(name)')
+        .select('*, suppliers(name), fixed_assets(name), revenue_sources(name)')
         .eq('store_id', storeIdFromUrl)
         .or(`date.eq.${selectedDate},and(created_at.gte.${windowStartIso},created_at.lte.${windowEndIso})`)
         .order('created_at', { ascending: false })
@@ -897,7 +897,7 @@ function DashboardContent() {
 
             const txMethod = isZMaster ? 'Συγκεντρωτική εγγραφή' : t?.method
             const txCreatedAt = isZMaster ? row.created_at : t?.created_at
-            const txCreatedBy = isZMaster ? row.created_by_name || zTransactions[0]?.profiles?.username || '—' : t?.created_by_name || t?.profiles?.username || '—'
+            const txCreatedBy = isZMaster ? row.created_by_name : t?.created_by_name || 'Χρήστης'
             const txAmountValue = isZMaster ? row.amount : Number(t?.amount) || 0
 
             return (
