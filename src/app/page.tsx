@@ -75,7 +75,20 @@ function DashboardContent() {
   }
 
   const getEntityLabelFromTx = (t: any) => {
-    return t?.revenue_sources?.name || t?.suppliers?.name || t?.fixed_assets?.name || t?.category || 'Συναλλαγή'
+    if (t?.revenue_sources?.name) return t.revenue_sources.name
+    if (t?.suppliers?.name) return t.suppliers.name
+    if (t?.fixed_assets?.name) return t.fixed_assets.name
+
+    // Αν είναι πληρωμή δόσης, βγάλε τον τίτλο της ρύθμισης αντί για "Λοιπά"
+    if (t?.notes && t.notes.startsWith('Πληρωμή Δόσης')) {
+      const parts = t.notes.split(':')
+      if (parts.length > 1) {
+        return parts[1].split('(')[0].trim()
+      }
+      return 'Πληρωμή Δόσης'
+    }
+
+    return t?.category || 'Συναλλαγή'
   }
 
   const loadYtdForTx = useCallback(
@@ -547,6 +560,14 @@ function DashboardContent() {
                       {!isZMaster && t?.is_credit && <span style={creditBadgeStyle}>ΠΙΣΤΩΣΗ</span>}
                       {isZMaster && <span style={creditBadgeStyle}>{row.itemsCount} ΚΙΝΗΣΕΙΣ</span>}
                     </p>
+
+                    {/* ΝΕΟ: Εμφάνιση Σημειώσεων (π.χ. Δόση #1, RF Code) */}
+                    {!isZMaster && t?.notes && (
+                      <p style={{ fontSize: '11px', fontWeight: 800, color: '#64748b', margin: '4px 0 2px 0' }}>
+                        {t.notes}
+                      </p>
+                    )}
+
                     <p style={txMeta}>
                       {txMethod} • {txCreatedAt ? format(parseISO(txCreatedAt), 'HH:mm') : '--:--'} • {txCreatedBy || 'Admin'}
                     </p>
@@ -856,6 +877,7 @@ const txIconContainer = (isInc: boolean): any => ({
   justifyContent: 'center',
 })
 const txTitle = { fontWeight: '800', fontSize: '14px', margin: 0, color: colors.primaryDark }
+const txNotes = { fontSize: '11px', color: colors.secondaryText, margin: '4px 0 0', fontWeight: '600' }
 const txMeta = { fontSize: '11px', color: colors.secondaryText, margin: 0, fontWeight: '600' }
 const txAmount = { fontWeight: '900', fontSize: '16px' }
 const creditBadgeStyle = { fontSize: '8px', marginLeft: '6px', color: colors.accentBlue, background: '#eef2ff', padding: '2px 5px', borderRadius: '4px' }
