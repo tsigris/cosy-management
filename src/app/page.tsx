@@ -26,18 +26,11 @@ const colors = {
 
 type YtdInfo = {
   loading: boolean
-  // income via revenue_source
   turnoverIncome?: number
-  // income collections (received) for revenue_source (optional)
   receivedIncome?: number
-  // open (credit - received) for revenue_source (optional)
   openIncome?: number
-
-  // expenses for supplier/asset
   totalExpenses?: number
-  // payments for supplier/asset
   payments?: number
-  // open (expenses on credit - payments) for supplier/asset (optional)
   openExpense?: number
 }
 
@@ -63,13 +56,13 @@ function DashboardContent() {
   const [loading, setLoading] = useState(true)
   const [expandedTx, setExpandedTx] = useState<string | null>(null)
 
-  // ✅ NEW: Z visibility flag (from settings)
+  // ✅ Z visibility flag
   const [zEnabled, setZEnabled] = useState<boolean>(true)
 
-  // NEW: cache YTD metrics per entity key
+  // cache YTD metrics per entity key
   const [ytdCache, setYtdCache] = useState<Record<string, YtdInfo>>({})
 
-  // ✅ YTD should follow BUSINESS day (same as app logic)
+  // ✅ YTD uses BUSINESS day
   const businessTodayStr = getBusinessDate()
   const businessYear = String(businessTodayStr).slice(0, 4)
   const yearStartStr = `${businessYear}-01-01`
@@ -90,7 +83,6 @@ function DashboardContent() {
       const key = getEntityKeyFromTx(t)
       if (!key || !storeIdFromUrl) return
 
-      // avoid refetch
       if (ytdCache[key]?.loading === true) return
       if (ytdCache[key]?.loading === false) return
 
@@ -112,13 +104,11 @@ function DashboardContent() {
         if (res.error) throw res.error
         const rows = res.data || []
 
-        // --- Revenue source YTD ---
         if (key.startsWith('rev:')) {
           const turnoverIncome = rows
             .filter((r: any) => String(r.type || '') === 'income')
             .reduce((acc: number, r: any) => acc + Math.abs(Number(r.amount) || 0), 0)
 
-          // ✅ RECEIVED types for revenue sources (do NOT include debt_payment here)
           const RECEIVED_TYPES = ['income_collection', 'debt_received']
           const receivedIncome = rows
             .filter((r: any) => RECEIVED_TYPES.includes(String(r.type || '')))
@@ -137,7 +127,6 @@ function DashboardContent() {
           return
         }
 
-        // --- Supplier / Asset YTD ---
         const totalExpenses = rows
           .filter((r: any) => String(r.type || '') === 'expense')
           .reduce((acc: number, r: any) => acc + Math.abs(Number(r.amount) || 0), 0)
@@ -172,12 +161,13 @@ function DashboardContent() {
 
     try {
       setLoading(true)
+
       const {
         data: { session },
       } = await supabase.auth.getSession()
       if (!session) return router.push('/login')
 
-      // ✅ store name + settings (z_enabled)
+      // store name + settings
       const { data: storeData, error: storeErr } = await supabase
         .from('stores')
         .select('name, z_enabled')
@@ -186,20 +176,29 @@ function DashboardContent() {
 
       if (storeErr) console.error(storeErr)
       if (storeData?.name) setStoreName(storeData.name)
-
-      // default: true (if null/undefined)
       setZEnabled(storeData?.z_enabled === false ? false : true)
 
-      // ✅ day transactions
+      // ✅ BUSINESS WINDOW: selectedDate 07:00 → next day 06:59:59.999 (local → ISO UTC)
+      const nextDateStr = format(addDays(parseISO(selectedDate), 1), 'yyyy-MM-dd')
+      const windowStartIso = new Date(`${selectedDate}T07:00:00`).toISOString()
+      const windowEndIso = new Date(`${nextDateStr}T06:59:59.999`).toISOString()
+
+      // ✅ FIX: fetch day rows by (date = selectedDate) OR (created_at inside business window)
       const { data: tx, error: txError } = await supabase
         .from('transactions')
         .select('*, suppliers(name), fixed_assets(name), revenue_sources(name)')
         .eq('store_id', storeIdFromUrl)
-        .eq('date', selectedDate)
+        .or(`date.eq.${selectedDate},and(created_at.gte.${windowStartIso},created_at.lte.${windowEndIso})`)
         .order('created_at', { ascending: false })
 
       if (txError) throw txError
-      setTransactions(tx || [])
+
+      // ✅ DEDUPE (σε περίπτωση που κάποια εγγραφή πιαστεί και από τα 2)
+      const map = new Map<string, any>()
+      for (const row of tx || []) {
+        map.set(String(row.id), row)
+      }
+      setTransactions(Array.from(map.values()))
 
       // RBAC
       const { data: access } = await supabase
@@ -237,7 +236,7 @@ function DashboardContent() {
     try {
       const { error } = await supabase.from('transactions').delete().eq('id', id).eq('store_id', storeIdFromUrl)
       if (error) throw error
-      setTransactions((prev) => prev.filter((t) => t.id !== id))
+      setTransactions((prev) => prev.filter((t) => String(t.id) !== String(id)))
       setExpandedTx(null)
       toast.success('Η κίνηση διαγράφηκε')
     } catch (err) {
@@ -275,15 +274,9 @@ function DashboardContent() {
   const Z_MASTER_ROW_ID = '__z_master__'
 
   const isZTransaction = useCallback((t: any) => {
-    const category = String(t?.category || '')
-      .trim()
-      .toLowerCase()
-    const method = String(t?.method || t?.payment_method || '')
-      .trim()
-      .toLowerCase()
-    const notes = String(t?.notes || '')
-      .trim()
-      .toLowerCase()
+    const category = String(t?.category || '').trim().toLowerCase()
+    const method = String(t?.method || t?.payment_method || '').trim().toLowerCase()
+    const notes = String(t?.notes || '').trim().toLowerCase()
 
     const categoryLooksZ = category === 'ζ' || category === 'εσοδα ζ' || category.includes(' ζ') || category.endsWith('ζ')
     const looksLikeDayClose = method.includes('(ζ)') || notes.includes('ζ ταμειακης') || notes === 'χωρις σημανση'
@@ -349,23 +342,16 @@ function DashboardContent() {
     return rows
   }, [transactions, isZTransaction, selectedDate])
 
-  // ✅ FIX: Expense of day must include ALL debt_payments (even if mistakenly marked is_credit=true)
-  // ✅ Credits of day should show ONLY "new credit purchases" (expense rows with is_credit=true), not payments
+  // ✅ Totals (now that tx actually loads correctly, this will work)
   const totals = useMemo(() => {
-    const income = transactions
-      .filter((t) => t.type === 'income')
-      .reduce((acc, t) => acc + (Number(t.amount) || 0), 0)
+    const income = transactions.filter((t) => t.type === 'income').reduce((acc, t) => acc + (Number(t.amount) || 0), 0)
 
     const expense = transactions
-      .filter(
-        (t) =>
-          (t.type === 'expense' && t.is_credit !== true) || // normal cash/bank expenses
-          t.type === 'debt_payment' // payments are always money-out
-      )
+      .filter((t) => (t.type === 'expense' && t.is_credit !== true) || t.type === 'debt_payment')
       .reduce((acc, t) => acc + (Math.abs(Number(t.amount)) || 0), 0)
 
     const credits = transactions
-      .filter((t) => t.type === 'expense' && t.is_credit === true) // only purchases on credit
+      .filter((t) => t.type === 'expense' && t.is_credit === true)
       .reduce((acc: number, t: any) => acc + Math.abs(Number(t.amount) || 0), 0)
 
     return { income, expense, credits, balance: income - expense }
@@ -389,7 +375,7 @@ function DashboardContent() {
           <div style={logoBox}>{storeName?.charAt(0) || '?'}</div>
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <h1 style={storeTitleText}>{storeName?.toUpperCase() || 'ΦΟΡΡΤΩΣΗ...'}</h1>
+              <h1 style={storeTitleText}>{storeName?.toUpperCase() || 'ΦΟΡΤΩΣΗ...'}</h1>
               <NextLink href="/select-store" style={switchBtnStyle}>
                 ΑΛΛΑΓΗ
               </NextLink>
@@ -430,7 +416,6 @@ function DashboardContent() {
               <NextLink href={`/instructions?store=${storeIdFromUrl}`} style={menuItem} onClick={() => setIsMenuOpen(false)}>
                 📖 Οδηγίες Χρήσης
               </NextLink>
-
               <NextLink href={`/permissions?store=${storeIdFromUrl}`} style={menuItem} onClick={() => setIsMenuOpen(false)}>
                 🔐 Δικαιώματα
               </NextLink>
@@ -479,7 +464,6 @@ function DashboardContent() {
           </div>
         </div>
 
-        {/* ✅ Credits of day (only new credit purchases) */}
         <div style={heroCreditWrap}>
           <div style={heroCreditPill}>
             <div style={creditIconCircle}>
@@ -491,7 +475,6 @@ function DashboardContent() {
         </div>
       </div>
 
-      {/* ✅ NEW LAYOUT: Income/Expense row + Z centered below */}
       <div style={actionGrid}>
         <div style={actionRow}>
           <NextLink href={`/add-income?date=${selectedDate}&store=${storeIdFromUrl}`} style={{ ...actionBtn, backgroundColor: colors.accentGreen }}>
@@ -503,7 +486,6 @@ function DashboardContent() {
           </NextLink>
         </div>
 
-        {/* ✅ Hide Z if disabled from Settings */}
         {zEnabled && (
           <div style={zRowWrap}>
             <NextLink href={`/daily-z?store=${storeIdFromUrl}`} style={{ ...actionBtn, ...zBtnStyle, backgroundColor: colors.primaryDark }}>
@@ -527,12 +509,14 @@ function DashboardContent() {
             const isZMaster = row.kind === 'z-master'
             const t = row.kind === 'normal' ? row.tx : ({ __collapsedZ: true, date: row.date } as any)
             const txId = row.id
+
             const txTitleText = isZMaster ? 'ΚΛΕΙΣΙΜΟ Ζ' : getEntityLabelFromTx(t)
             const entityKey = !isZMaster && t ? getEntityKeyFromTx(t) : null
             const ytd = entityKey ? ytdCache[entityKey] : undefined
 
             const INCOME_TYPES = ['income', 'income_collection', 'debt_received']
             const isIncomeTx = isZMaster ? true : INCOME_TYPES.includes(t?.type)
+
             const txMethod = isZMaster ? 'Συγκεντρωτική εγγραφή' : t?.method
             const txCreatedAt = isZMaster ? row.created_at : t?.created_at
             const txCreatedBy = isZMaster ? row.created_by_name : t?.created_by_name
@@ -623,10 +607,7 @@ function DashboardContent() {
                       </div>
                     ) : (
                       <>
-                        <button
-                          onClick={() => router.push(`/add-${isIncomeTx ? 'income' : 'expense'}?editId=${t.id}&store=${storeIdFromUrl}`)}
-                          style={editRowBtn}
-                        >
+                        <button onClick={() => router.push(`/add-${isIncomeTx ? 'income' : 'expense'}?editId=${t.id}&store=${storeIdFromUrl}`)} style={editRowBtn}>
                           Επεξεργασία
                         </button>
                         <button onClick={() => handleDelete(t.id)} style={deleteRowBtn}>
@@ -818,7 +799,6 @@ const statCircle = (bg: string): any => ({
   color: 'white',
 })
 
-// ✅ hero credit pill styles
 const heroCreditWrap: any = { marginTop: '18px', display: 'flex', justifyContent: 'center' }
 const heroCreditPill: any = {
   display: 'flex',
@@ -842,7 +822,6 @@ const creditIconCircle: any = {
 const heroCreditLabel: any = { fontSize: '10px', fontWeight: '900', opacity: 0.9, letterSpacing: '0.6px' }
 const heroCreditValue: any = { fontSize: '14px', fontWeight: '900' }
 
-// ✅ action layout
 const actionGrid: any = { display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '30px' }
 const actionRow: any = { display: 'flex', gap: '12px' }
 const zRowWrap: any = { display: 'flex', justifyContent: 'center' }
@@ -862,15 +841,7 @@ const zBtnStyle: any = { flex: 'unset', width: '100%', maxWidth: '260px' }
 
 const listContainer = { backgroundColor: 'transparent' }
 const listHeader = { fontSize: '11px', fontWeight: '900', color: colors.secondaryText, marginBottom: '15px', letterSpacing: '0.5px' }
-const txRow: any = {
-  display: 'flex',
-  justifyContent: 'space-between',
-  alignItems: 'center',
-  padding: '16px',
-  backgroundColor: 'white',
-  border: `1px solid ${colors.border}`,
-  cursor: 'pointer',
-}
+const txRow: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px', backgroundColor: 'white', border: `1px solid ${colors.border}`, cursor: 'pointer' }
 const txIconContainer = (isInc: boolean): any => ({
   width: '42px',
   height: '42px',
@@ -886,39 +857,9 @@ const txMeta = { fontSize: '11px', color: colors.secondaryText, margin: 0, fontW
 const txAmount = { fontWeight: '900', fontSize: '16px' }
 const creditBadgeStyle = { fontSize: '8px', marginLeft: '6px', color: colors.accentBlue, background: '#eef2ff', padding: '2px 5px', borderRadius: '4px' }
 
-const actionPanel: any = {
-  display: 'flex',
-  gap: '10px',
-  padding: '15px',
-  backgroundColor: 'white',
-  border: `1px solid ${colors.border}`,
-  borderTop: 'none',
-  borderRadius: '0 0 20px 20px',
-  alignItems: 'stretch',
-  flexWrap: 'wrap',
-}
-const editRowBtn: any = {
-  flex: 1,
-  padding: '10px',
-  backgroundColor: colors.bgLight,
-  color: colors.primaryDark,
-  border: `1px solid ${colors.border}`,
-  borderRadius: '10px',
-  fontWeight: '700',
-  fontSize: '12px',
-  minWidth: '140px',
-}
-const deleteRowBtn: any = {
-  flex: 1,
-  padding: '10px',
-  backgroundColor: '#fee2e2',
-  color: colors.accentRed,
-  border: 'none',
-  borderRadius: '10px',
-  fontWeight: '700',
-  fontSize: '12px',
-  minWidth: '120px',
-}
+const actionPanel: any = { display: 'flex', gap: '10px', padding: '15px', backgroundColor: 'white', border: `1px solid ${colors.border}`, borderTop: 'none', borderRadius: '0 0 20px 20px', alignItems: 'stretch', flexWrap: 'wrap' }
+const editRowBtn: any = { flex: 1, padding: '10px', backgroundColor: colors.bgLight, color: colors.primaryDark, border: `1px solid ${colors.border}`, borderRadius: '10px', fontWeight: '700', fontSize: '12px', minWidth: '140px' }
+const deleteRowBtn: any = { flex: 1, padding: '10px', backgroundColor: '#fee2e2', color: colors.accentRed, border: 'none', borderRadius: '10px', fontWeight: '700', fontSize: '12px', minWidth: '120px' }
 
 const ytdCard: any = { width: '100%', padding: '14px', borderRadius: '16px', border: `1px solid ${colors.border}`, background: '#f8fafc', marginTop: '10px' }
 const ytdTitle: any = { margin: 0, fontSize: '10px', fontWeight: '900', color: colors.secondaryText, letterSpacing: '0.8px' }
@@ -935,15 +876,7 @@ const zBreakdownCard: any = { width: '100%', padding: '14px', borderRadius: '16p
 const zBreakdownRow: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', marginTop: '10px' }
 
 const emptyStateStyle: any = { textAlign: 'center', padding: '40px 20px', color: colors.secondaryText, fontWeight: '600', fontSize: '13px' }
-const spinnerStyle: any = {
-  width: '24px',
-  height: '24px',
-  border: '3px solid #f3f3f3',
-  borderTop: '3px solid #6366f1',
-  borderRadius: '50%',
-  animation: 'spin 1s linear infinite',
-  margin: '0 auto',
-}
+const spinnerStyle: any = { width: '24px', height: '24px', border: '3px solid #f3f3f3', borderTop: '3px solid #6366f1', borderRadius: '50%', animation: 'spin 1s linear infinite', margin: '0 auto' }
 
 export default function DashboardPage() {
   return (
