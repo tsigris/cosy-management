@@ -442,7 +442,10 @@ function DashboardContent() {
 
   // ✅ Totals
   const totals = useMemo(() => {
-    const income = transactions.filter((t) => t.type === 'income').reduce((acc, t) => acc + (Number(t.amount) || 0), 0)
+    const INCOME_TYPES = ['income', 'income_collection', 'debt_received']
+    const income = transactions
+      .filter((t) => INCOME_TYPES.includes(String(t.type)))
+      .reduce((acc, t) => acc + (Number(t.amount) || 0), 0)
 
     const expense = transactions
       .filter((t) => (t.type === 'expense' && t.is_credit !== true) || t.type === 'debt_payment')
