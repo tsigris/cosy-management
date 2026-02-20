@@ -236,7 +236,7 @@ function DashboardContent() {
       // ✅ FIX: fetch day rows by (date = selectedDate) OR (created_at inside business window)
       const { data: tx, error: txError } = await supabase
         .from('transactions')
-        .select('*, suppliers(name), fixed_assets(name), revenue_sources(name)')
+        .select('*, profiles(username), suppliers(name), fixed_assets(name), revenue_sources(name)')
         .eq('store_id', storeIdFromUrl)
         .or(`date.eq.${selectedDate},and(created_at.gte.${windowStartIso},created_at.lte.${windowEndIso})`)
         .order('created_at', { ascending: false })
@@ -294,6 +294,42 @@ function DashboardContent() {
     }
   }
 
+  const handleDeleteLoanPayment = async (txId: string) => {
+    if (!confirm('Οριστική διαγραφή πληρωμής δόσης; Θα γυρίσει η δόση σε εκκρεμότητα.')) return
+    if (!storeIdFromUrl) {
+      toast.error('Σφάλμα καταστήματος')
+      return
+    }
+
+    try {
+      const { data: installment, error: installmentError } = await supabase
+        .from('installments')
+        .select('id')
+        .eq('transaction_id', txId)
+        .maybeSingle()
+
+      if (installmentError) throw installmentError
+
+      if (installment?.id) {
+        const { error: updateError } = await supabase
+          .from('installments')
+          .update({ status: 'pending', transaction_id: null })
+          .eq('id', installment.id)
+
+        if (updateError) throw updateError
+      }
+
+      const { error: deleteError } = await supabase.from('transactions').delete().eq('id', txId).eq('store_id', storeIdFromUrl)
+      if (deleteError) throw deleteError
+
+      setTransactions((prev) => prev.filter((t) => String(t.id) !== String(txId)))
+      setExpandedTx(null)
+      toast.success('Η πληρωμή διαγράφηκε')
+    } catch (err) {
+      toast.error('Σφάλμα κατά τη διαγραφή')
+    }
+  }
+
   const handleEditZ = async (date: string) => {
     router.push(`/daily-z?store=${storeIdFromUrl}&date=${date}`)
   }
@@ -334,8 +370,10 @@ function DashboardContent() {
     return categoryLooksZ || (t?.type === 'income' && looksLikeDayClose)
   }, [])
 
+  const zTransactions = useMemo(() => transactions.filter((t) => isZTransaction(t)), [transactions, isZTransaction])
+
   const displayTransactions = useMemo(() => {
-    const zTx = transactions.filter((t) => isZTransaction(t))
+    const zTx = zTransactions
 
     if (zTx.length <= 1) {
       return transactions.map((t) => ({ kind: 'normal' as const, id: String(t.id), tx: t }))
@@ -390,7 +428,7 @@ function DashboardContent() {
     }
 
     return rows
-  }, [transactions, isZTransaction, selectedDate])
+  }, [transactions, zTransactions, isZTransaction, selectedDate])
 
   // ✅ Totals (now that tx actually loads correctly, this will work)
   const totals = useMemo(() => {
@@ -572,7 +610,7 @@ function DashboardContent() {
 
             const txMethod = isZMaster ? 'Συγκεντρωτική εγγραφή' : t?.method
             const txCreatedAt = isZMaster ? row.created_at : t?.created_at
-            const txCreatedBy = isZMaster ? row.created_by_name : t?.created_by_name
+            const txCreatedBy = isZMaster ? row.created_by_name || zTransactions[0]?.profiles?.username || '—' : t?.created_by_name || t?.profiles?.username || '—'
             const txAmountValue = isZMaster ? row.amount : Number(t?.amount) || 0
 
             return (
@@ -603,7 +641,7 @@ function DashboardContent() {
                       </p>
                     )}
 
-                    <p style={txMeta}>{txMethod} • {txCreatedAt ? format(parseISO(txCreatedAt), 'HH:mm') : '--:--'} • {txCreatedBy || 'Χρήστης'}</p>
+                    <p style={txMeta}>{txMethod} • {txCreatedAt ? format(parseISO(txCreatedAt), 'HH:mm') : '--:--'} • {txCreatedBy}</p>
                   </div>
 
                   <p style={{ ...txAmount, color: isIncomeTx ? colors.accentGreen : colors.accentRed }}>
@@ -677,6 +715,9 @@ function DashboardContent() {
                           <div style={{ display: 'flex', gap: 10, width: '100%' }}>
                             <button onClick={() => router.push(`/settlements?store=${storeIdFromUrl}`)} style={{ ...editRowBtn, width: '100%' }}>
                               💳 Διαχείριση Ρύθμισης
+                            </button>
+                            <button onClick={() => handleDeleteLoanPayment(t.id)} style={deleteRowBtn}>
+                              🗑️ Διαγραφή
                             </button>
                           </div>
                         )}
