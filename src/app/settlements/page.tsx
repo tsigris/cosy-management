@@ -301,7 +301,7 @@ function SettlementsContent() {
       if (!amount) throw new Error('Μη έγκυρο ποσό δόσης')
 
       const today = new Date().toISOString().split('T')[0]
-      const notes = `Πληρωμή Δόσης: ${selectedSettlement.name}`
+      const notes = `Πληρωμή Δόσης #${selectedInstallment.installment_number}: ${selectedSettlement.name} ${selectedSettlement.rf_code ? `(RF: ${selectedSettlement.rf_code})` : ''}`
 
       const { data: transactionRow, error: transErr } = await supabase
         .from('transactions')
@@ -312,7 +312,7 @@ function SettlementsContent() {
             type: 'expense',
             amount: -amount,
             method: paymentMethod,
-            category: 'Λοιπά',
+            category: 'Λοιπά', // Στην Ανάλυση θα πάει στο Other
             notes,
             date: today,
           },
@@ -446,8 +446,10 @@ function SettlementsContent() {
                       </div>
                     </div>
 
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <span style={miniBadgeStyle}>{settlementInstallments.length} δόσεις</span>
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
+                      <span style={miniBadgeStyle}>
+                        {settlementInstallments.filter(i => i.status === 'paid').length} / {settlementInstallments.length} Πληρωμένες
+                      </span>
                       {isOpen ? <ChevronUp size={18} color={colors.secondaryText} /> : <ChevronDown size={18} color={colors.secondaryText} />}
                     </div>
                   </button>
