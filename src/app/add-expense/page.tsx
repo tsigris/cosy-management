@@ -19,13 +19,7 @@ const colors = {
   modalBackdrop: 'rgba(2,6,23,0.6)',
 }
 
-const BANK_OPTIONS = [
-  'Εθνική Τράπεζα',
-  'Eurobank',
-  'Alpha Bank',
-  'Viva Wallet',
-  'Τράπεζα Πειραιώς',
-] as const
+const BANK_OPTIONS = ['Εθνική Τράπεζα', 'Eurobank', 'Alpha Bank', 'Viva Wallet', 'Τράπεζα Πειραιώς'] as const
 
 type SmartKind = 'supplier' | 'asset'
 type AssetGroup = 'staff' | 'maintenance' | 'utility' | 'other'
@@ -50,7 +44,6 @@ type SmartItem = {
 }
 
 type SelectedEntity = { kind: SmartKind; id: string } | null
-
 type CreateTab = 'suppliers' | 'utility' | 'staff' | 'maintenance' | 'other'
 
 function stripDiacritics(str: string) {
@@ -374,6 +367,14 @@ function AddExpenseForm() {
           setSelectedEntity(null)
           setSmartQuery('')
         }
+
+        // ✅ AUTO-NOTES για πληρωμή παλαιού χρέους (μόνο σε νέο, όχι edit)
+        const isDebtMode = searchParams.get('mode') === 'debt'
+        if (isDebtMode) {
+          setIsAgainstDebt(true)
+          setIsCredit(false)
+          setNotes((prev) => prev?.trim() ? prev : 'ΕΞΟΦΛΗΣΗ ΥΠΟΛΟΙΠΟΥ ΚΑΡΤΕΛΑΣ')
+        }
       }
     } catch (error) {
       console.error(error)
@@ -381,7 +382,7 @@ function AddExpenseForm() {
     } finally {
       setLoading(false)
     }
-  }, [editId, router, selectedDate, urlStoreId, urlSupId, urlAssetId])
+  }, [editId, router, selectedDate, urlStoreId, urlSupId, urlAssetId, searchParams])
 
   useEffect(() => {
     loadFormData()
@@ -435,32 +436,13 @@ function AddExpenseForm() {
   const filtered = useMemo(() => {
     const q = smartQuery.trim()
     if (!q) return []
-    return smartItems.filter(i => smartMatch(i.name, q)).slice(0, 80)
+    return smartItems.filter((i) => smartMatch(i.name, q)).slice(0, 80)
   }, [smartQuery, smartItems])
-
-  const groupedResults = useMemo(() => {
-    const groups: Record<string, SmartItem[]> = {}
-    for (const it of filtered) {
-      const key = it.kind === 'supplier' ? 'suppliers' : (it.group || 'other')
-      const title = groupTitle(key as any)
-      if (!groups[title]) groups[title] = []
-      groups[title].push(it)
-    }
-    for (const g of Object.keys(groups)) {
-      groups[g] = groups[g].sort((a, b) => String(a.name).localeCompare(String(b.name)))
-    }
-    return groups
-  }, [filtered])
-
-  // fix sort typo safely
-  useEffect(() => {
-    // no-op: kept to avoid TS unused warnings in some configs
-  }, [])
 
   const groupedResultsSafe = useMemo(() => {
     const groups: Record<string, SmartItem[]> = {}
     for (const it of filtered) {
-      const key = it.kind === 'supplier' ? 'suppliers' : (it.group || 'other')
+      const key = it.kind === 'supplier' ? 'suppliers' : it.group || 'other'
       const title = groupTitle(key as any)
       if (!groups[title]) groups[title] = []
       groups[title].push(it)
@@ -492,7 +474,6 @@ function AddExpenseForm() {
   }
 
   const openCreateModal = () => {
-    // default suggestion based on query hints
     const q = normalizeGreek(smartQuery)
     const suggest: CreateTab =
       q.includes('δεη') || q.includes('deh') || q.includes('dei') || q.includes('ενοικ') || q.includes('rf')
@@ -516,7 +497,6 @@ function AddExpenseForm() {
     const nm = cName.trim()
     if (!nm) return toast.error('Γράψε όνομα')
 
-    // field checks
     if (createTab === 'utility') {
       const rf = cRf.trim()
       if (!rf) return toast.error('Γράψε κωδικό RF')
@@ -533,7 +513,6 @@ function AddExpenseForm() {
     try {
       setCreateSaving(true)
 
-      // ---------------- create SUPPLIER ----------------
       if (createTab === 'suppliers') {
         const payload: any = {
           name: nm,
@@ -544,10 +523,15 @@ function AddExpenseForm() {
           store_id: activeStoreId,
         }
 
-        const { data, error } = await supabase.from('suppliers').insert([payload]).select('id, name, phone, vat_number, bank_name, iban').single()
+        const { data, error } = await supabase
+          .from('suppliers')
+          .insert([payload])
+          .select('id, name, phone, vat_number, bank_name, iban')
+          .single()
+
         if (error) throw error
 
-        setSuppliers(prev => [...prev, data].sort((a, b) => String(a.name).localeCompare(String(b.name))))
+        setSuppliers((prev) => [...prev, data].sort((a, b) => String(a.name).localeCompare(String(b.name))))
         setSelectedEntity({ kind: 'supplier', id: String(data.id) })
         setSmartQuery(String(data.name || nm))
         toast.success('Προστέθηκε στους Προμηθευτές')
@@ -555,9 +539,14 @@ function AddExpenseForm() {
         return
       }
 
-      // ---------------- create FIXED_ASSET ----------------
       const sub_category =
-        createTab === 'maintenance' ? 'Maintenance' : createTab === 'utility' ? 'utility' : createTab === 'staff' ? 'staff' : 'other'
+        createTab === 'maintenance'
+          ? 'Maintenance'
+          : createTab === 'utility'
+            ? 'utility'
+            : createTab === 'staff'
+              ? 'staff'
+              : 'other'
 
       let payload: any = { store_id: activeStoreId, sub_category, name: nm }
 
@@ -590,14 +579,12 @@ function AddExpenseForm() {
           vat_number: null,
         }
       } else {
-        // maintenance / other
         payload = {
           ...payload,
           phone: cPhone.trim() || null,
           vat_number: cVat.trim() || null,
           bank_name: cBank || null,
           iban: cIban.trim() || null,
-
           rf_code: null,
           pay_basis: null,
           monthly_days: null,
@@ -615,7 +602,7 @@ function AddExpenseForm() {
 
       if (error) throw error
 
-      setFixedAssets(prev => [...prev, data].sort((a, b) => String(a.name).localeCompare(String(b.name))))
+      setFixedAssets((prev) => [...prev, data].sort((a, b) => String(a.name).localeCompare(String(b.name))))
       setSelectedEntity({ kind: 'asset', id: String(data.id) })
       setSmartQuery(String(data.name || nm))
       toast.success(`Προστέθηκε σε: ${createTabLabel(createTab)}`)
@@ -654,11 +641,25 @@ function AddExpenseForm() {
 
       const category = categoryFromSelection(selectedEntity, smartItemMap)
 
+      // ✅ Canonical type
+      const txType = isAgainstDebt ? 'debt_payment' : 'expense'
+
+      // ✅ HARD RULES: debt_payment δεν μπορεί ΠΟΤΕ να είναι "πίστωση"
+      const finalIsCredit = txType === 'debt_payment' ? false : isCredit
+      const finalMethod = txType === 'debt_payment' ? method : isCredit ? 'Πίστωση' : method
+
+      // ✅ auto notes for debt payment (και στο save, για extra ασφάλεια)
+      const baseNotes = notes?.trim() || ''
+      const debtNote =
+        txType === 'debt_payment' && !/εξοφλησ/i.test(baseNotes)
+          ? (baseNotes ? `${baseNotes} | ΕΞΟΦΛΗΣΗ ΥΠΟΛΟΙΠΟΥ ΚΑΡΤΕΛΑΣ` : 'ΕΞΟΦΛΗΣΗ ΥΠΟΛΟΙΠΟΥ ΚΑΡΤΕΛΑΣ')
+          : baseNotes
+
       const payload: any = {
         amount: -Math.abs(Number(amount)),
-        method: isCredit ? 'Πίστωση' : method,
-        is_credit: isCredit,
-        type: isAgainstDebt ? 'debt_payment' : 'expense',
+        method: finalMethod,
+        is_credit: finalIsCredit,
+        type: txType,
         date: selectedDate,
         user_id: session.user.id,
         store_id: activeStoreId,
@@ -668,7 +669,11 @@ function AddExpenseForm() {
 
         category,
         created_by_name: currentUsername,
-        notes: noInvoice ? (notes ? `${notes} (ΧΩΡΙΣ ΤΙΜΟΛΟΓΙΟ)` : 'ΧΩΡΙΣ ΤΙΜΟΛΟΓΙΟ') : notes,
+        notes: noInvoice
+          ? debtNote
+            ? `${debtNote} (ΧΩΡΙΣ ΤΙΜΟΛΟΓΙΟ)`
+            : 'ΧΩΡΙΣ ΤΙΜΟΛΟΓΙΟ'
+          : debtNote,
       }
 
       if (imageFile && !noInvoice && !editId) {
@@ -754,7 +759,7 @@ function AddExpenseForm() {
           <div ref={smartBoxRef} style={{ position: 'relative' }}>
             <input
               value={smartQuery}
-              onChange={e => {
+              onChange={(e) => {
                 setSmartQuery(e.target.value)
                 setSelectedEntity(null)
                 setSmartOpen(true)
@@ -778,7 +783,7 @@ function AddExpenseForm() {
                 {showCreateInline && (
                   <button
                     type="button"
-                    onPointerDown={e => {
+                    onPointerDown={(e) => {
                       e.preventDefault()
                       e.stopPropagation()
                       openCreateModal()
@@ -810,16 +815,16 @@ function AddExpenseForm() {
                     <div key={group}>
                       <div style={groupHeader}>{group}</div>
 
-                      {items.map(item => (
+                      {items.map((item) => (
                         <button
                           key={`${item.kind}-${item.id}`}
                           type="button"
-                          onPointerDown={e => {
+                          onPointerDown={(e) => {
                             e.preventDefault()
                             e.stopPropagation()
                             pickSmartItem(item)
                           }}
-                          onTouchStart={e => {
+                          onTouchStart={(e) => {
                             e.preventDefault()
                             e.stopPropagation()
                             pickSmartItem(item)
@@ -859,7 +864,14 @@ function AddExpenseForm() {
           )}
 
           <label style={{ ...labelStyle, marginTop: 20 }}>Ποσό (€)</label>
-          <input type="number" inputMode="decimal" value={amount} onChange={e => setAmount(e.target.value)} style={inputStyle} placeholder="0.00" />
+          <input
+            type="number"
+            inputMode="decimal"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            style={inputStyle}
+            placeholder="0.00"
+          />
 
           <div
             onClick={() => setNoInvoice(!noInvoice)}
@@ -921,7 +933,7 @@ function AddExpenseForm() {
               <input
                 type="checkbox"
                 checked={isCredit}
-                onChange={e => {
+                onChange={(e) => {
                   setIsCredit(e.target.checked)
                   if (e.target.checked) setIsAgainstDebt(false)
                 }}
@@ -937,21 +949,24 @@ function AddExpenseForm() {
               <input
                 type="checkbox"
                 checked={isAgainstDebt}
-                onChange={e => {
+                onChange={(e) => {
                   setIsAgainstDebt(e.target.checked)
                   if (e.target.checked) setIsCredit(false)
                 }}
                 id="against"
                 style={checkboxStyle}
               />
-              <label htmlFor="against" style={{ ...checkLabel, color: isAgainstDebt ? colors.accentBlue : colors.primaryDark }}>
+              <label
+                htmlFor="against"
+                style={{ ...checkLabel, color: isAgainstDebt ? colors.accentBlue : colors.primaryDark }}
+              >
                 Έναντι παλαιού χρέους
               </label>
             </div>
           </div>
 
           <label style={{ ...labelStyle, marginTop: 20 }}>Σημειώσεις</label>
-          <textarea value={notes} onChange={e => setNotes(e.target.value)} style={{ ...inputStyle, height: 80 }} />
+          <textarea value={notes} onChange={(e) => setNotes(e.target.value)} style={{ ...inputStyle, height: 80 }} />
 
           {!editId && !noInvoice && (
             <div style={{ marginTop: 20 }}>
@@ -993,8 +1008,12 @@ function AddExpenseForm() {
               }}
             >
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                <span style={{ fontSize: 14, fontWeight: 900 }}>{loading ? 'Αποθήκευση...' : editId ? 'Ενημέρωση' : 'Καταχώρηση'}</span>
-                <span style={{ fontSize: 14, opacity: 0.85, fontWeight: 800, marginTop: 6 }}>Καθαρό ταμείο: {currentBalance.toFixed(2)}€</span>
+                <span style={{ fontSize: 14, fontWeight: 900 }}>
+                  {loading ? 'Αποθήκευση...' : editId ? 'Ενημέρωση' : 'Καταχώρηση'}
+                </span>
+                <span style={{ fontSize: 14, opacity: 0.85, fontWeight: 800, marginTop: 6 }}>
+                  Καθαρό ταμείο: {currentBalance.toFixed(2)}€
+                </span>
               </div>
             </button>
           </div>
@@ -1004,7 +1023,7 @@ function AddExpenseForm() {
       {/* ✅ CREATE MODAL */}
       {createOpen && (
         <div style={modalOverlay} onMouseDown={() => !createSaving && setCreateOpen(false)}>
-          <div style={modalCard} onMouseDown={e => e.stopPropagation()}>
+          <div style={modalCard} onMouseDown={(e) => e.stopPropagation()}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
               <h2 style={{ margin: 0, fontSize: 16, fontWeight: 900, color: colors.primaryDark }}>Νέα καταχώρηση</h2>
               <button
@@ -1021,11 +1040,10 @@ function AddExpenseForm() {
               Δεν βρέθηκε <strong>{smartQuery.trim()}</strong>. Διάλεξε κατηγορία και συμπλήρωσε τα πεδία.
             </p>
 
-            {/* category picker */}
             <label style={modalLabel}>Κατηγορία</label>
             <select
               value={createTab}
-              onChange={e => {
+              onChange={(e) => {
                 setCreateTab(e.target.value as CreateTab)
                 resetCreateForm()
               }}
@@ -1039,10 +1057,15 @@ function AddExpenseForm() {
               <option value="other">Λοιπά</option>
             </select>
 
-            {/* forms */}
             <div style={{ marginTop: 12 }}>
               <label style={modalLabel}>{createTab === 'staff' ? 'Ονοματεπώνυμο' : 'Όνομα'}</label>
-              <input value={cName} onChange={e => setCName(e.target.value)} style={modalInput} placeholder="π.χ. Τζήλιος" disabled={createSaving} />
+              <input
+                value={cName}
+                onChange={(e) => setCName(e.target.value)}
+                style={modalInput}
+                placeholder="π.χ. Τζήλιος"
+                disabled={createSaving}
+              />
             </div>
 
             {(createTab === 'suppliers' || createTab === 'maintenance' || createTab === 'other') && (
@@ -1050,19 +1073,19 @@ function AddExpenseForm() {
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 10 }}>
                   <div>
                     <label style={modalLabel}>Τηλέφωνο</label>
-                    <input value={cPhone} onChange={e => setCPhone(e.target.value)} style={modalInput} disabled={createSaving} />
+                    <input value={cPhone} onChange={(e) => setCPhone(e.target.value)} style={modalInput} disabled={createSaving} />
                   </div>
                   <div>
                     <label style={modalLabel}>ΑΦΜ</label>
-                    <input value={cVat} onChange={e => setCVat(e.target.value)} style={modalInput} disabled={createSaving} />
+                    <input value={cVat} onChange={(e) => setCVat(e.target.value)} style={modalInput} disabled={createSaving} />
                   </div>
                 </div>
 
                 <div style={{ marginTop: 10 }}>
                   <label style={modalLabel}>Τράπεζα</label>
-                  <select value={cBank} onChange={e => setCBank(e.target.value)} style={modalSelect} disabled={createSaving}>
+                  <select value={cBank} onChange={(e) => setCBank(e.target.value)} style={modalSelect} disabled={createSaving}>
                     <option value="">Επιλέξτε...</option>
-                    {BANK_OPTIONS.map(b => (
+                    {BANK_OPTIONS.map((b) => (
                       <option key={b} value={b}>
                         {b}
                       </option>
@@ -1072,7 +1095,7 @@ function AddExpenseForm() {
 
                 <div style={{ marginTop: 10 }}>
                   <label style={modalLabel}>IBAN</label>
-                  <input value={cIban} onChange={e => setCIban(e.target.value)} style={modalInput} placeholder="GR..." disabled={createSaving} />
+                  <input value={cIban} onChange={(e) => setCIban(e.target.value)} style={modalInput} placeholder="GR..." disabled={createSaving} />
                 </div>
               </>
             )}
@@ -1081,14 +1104,14 @@ function AddExpenseForm() {
               <>
                 <div style={{ marginTop: 10 }}>
                   <label style={modalLabel}>Κωδικός RF</label>
-                  <input value={cRf} onChange={e => setCRf(e.target.value)} style={modalInput} placeholder="RF..." disabled={createSaving} />
+                  <input value={cRf} onChange={(e) => setCRf(e.target.value)} style={modalInput} placeholder="RF..." disabled={createSaving} />
                 </div>
 
                 <div style={{ marginTop: 10 }}>
                   <label style={modalLabel}>Τράπεζα</label>
-                  <select value={cBank} onChange={e => setCBank(e.target.value)} style={modalSelect} disabled={createSaving}>
+                  <select value={cBank} onChange={(e) => setCBank(e.target.value)} style={modalSelect} disabled={createSaving}>
                     <option value="">Επιλέξτε...</option>
-                    {BANK_OPTIONS.map(b => (
+                    {BANK_OPTIONS.map((b) => (
                       <option key={b} value={b}>
                         {b}
                       </option>
@@ -1137,7 +1160,7 @@ function AddExpenseForm() {
                     <label style={modalLabel}>{cPayBasis === 'monthly' ? 'Μισθός' : 'Ημερομίσθιο'}</label>
                     <input
                       value={cPayBasis === 'monthly' ? cMonthlySalary : cDailyRate}
-                      onChange={e => (cPayBasis === 'monthly' ? setCMonthlySalary(e.target.value) : setCDailyRate(e.target.value))}
+                      onChange={(e) => (cPayBasis === 'monthly' ? setCMonthlySalary(e.target.value) : setCDailyRate(e.target.value))}
                       style={modalInput}
                       inputMode="decimal"
                       disabled={createSaving}
@@ -1145,19 +1168,19 @@ function AddExpenseForm() {
                   </div>
                   <div>
                     <label style={modalLabel}>Μέρες μήνα</label>
-                    <input value={cMonthlyDays} onChange={e => setCMonthlyDays(e.target.value)} style={modalInput} inputMode="numeric" disabled={createSaving} />
+                    <input value={cMonthlyDays} onChange={(e) => setCMonthlyDays(e.target.value)} style={modalInput} inputMode="numeric" disabled={createSaving} />
                   </div>
                   <div>
                     <label style={modalLabel}>Ημ. πρόσληψης</label>
-                    <input value={cStartDate} onChange={e => setCStartDate(e.target.value)} style={modalInput} type="date" disabled={createSaving} />
+                    <input value={cStartDate} onChange={(e) => setCStartDate(e.target.value)} style={modalInput} type="date" disabled={createSaving} />
                   </div>
                 </div>
 
                 <div style={{ marginTop: 10 }}>
                   <label style={modalLabel}>Τράπεζα</label>
-                  <select value={cBank} onChange={e => setCBank(e.target.value)} style={modalSelect} disabled={createSaving}>
+                  <select value={cBank} onChange={(e) => setCBank(e.target.value)} style={modalSelect} disabled={createSaving}>
                     <option value="">Επιλέξτε...</option>
-                    {BANK_OPTIONS.map(b => (
+                    {BANK_OPTIONS.map((b) => (
                       <option key={b} value={b}>
                         {b}
                       </option>
@@ -1167,7 +1190,7 @@ function AddExpenseForm() {
 
                 <div style={{ marginTop: 10 }}>
                   <label style={modalLabel}>IBAN</label>
-                  <input value={cIban} onChange={e => setCIban(e.target.value)} style={modalInput} placeholder="GR..." disabled={createSaving} />
+                  <input value={cIban} onChange={(e) => setCIban(e.target.value)} style={modalInput} placeholder="GR..." disabled={createSaving} />
                 </div>
               </>
             )}
