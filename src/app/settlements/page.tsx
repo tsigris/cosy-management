@@ -357,6 +357,24 @@ function SettlementsContent() {
     }
   }
 
+  const onDeleteSettlement = async (settlementId: string) => {
+    if (!confirm('Είστε σίγουροι; Θα διαγραφεί η ρύθμιση και όλες οι δόσεις της. (Τυχόν δόσεις που έχετε ήδη πληρώσει θα παραμείνουν στα έξοδα του ταμείου σας).')) return
+    if (!storeId) return
+
+    setLoading(true)
+    try {
+      const { error } = await supabase.from('settlements').delete().eq('id', settlementId).eq('store_id', storeId)
+      if (error) throw error
+
+      toast.success('Η ρύθμιση διαγράφηκε επιτυχώς!')
+      setExpandedSettlementId(null)
+      await loadData()
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error) || 'Αποτυχία διαγραφής ρύθμισης')
+      setLoading(false)
+    }
+  }
+
   const onCopyRf = async (rf: string | null) => {
     if (!rf) return
     try {
@@ -492,42 +510,56 @@ function SettlementsContent() {
                   </div>
 
                   {isOpen && (
-                    <div style={installmentsWrapStyle}>
-                      {settlementInstallments.length === 0 ? (
-                        <p style={{ margin: 0, color: colors.secondaryText, fontWeight: 700 }}>Δεν υπάρχουν δόσεις.</p>
-                      ) : (
-                        settlementInstallments.map((inst) => {
-                          const isPending = (inst.status || 'pending').toLowerCase() === 'pending'
+                    <>
+                      <div style={installmentsWrapStyle}>
+                        {settlementInstallments.length === 0 ? (
+                          <p style={{ margin: 0, color: colors.secondaryText, fontWeight: 700 }}>Δεν υπάρχουν δόσεις.</p>
+                        ) : (
+                          settlementInstallments.map((inst) => {
+                            const isPending = (inst.status || 'pending').toLowerCase() === 'pending'
 
-                          return (
-                            <div key={inst.id} style={installmentRowStyle}>
-                              <div>
-                                <p style={installmentTitleStyle}>Δόση #{inst.installment_number}</p>
-                                <p style={installmentMetaStyle}>Λήξη: {formatDateGr(inst.due_date)}</p>
-                              </div>
+                            return (
+                              <div key={inst.id} style={installmentRowStyle}>
+                                <div>
+                                  <p style={installmentTitleStyle}>Δόση #{inst.installment_number}</p>
+                                  <p style={installmentMetaStyle}>Λήξη: {formatDateGr(inst.due_date)}</p>
+                                </div>
 
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                                <span style={amountChipStyle}>{toMoney(inst.amount)}</span>
-                                {isPending ? (
-                                  <button
-                                    type="button"
-                                    style={payBtnStyle}
-                                    onClick={() => openPaymentFor(settlement, inst)}
-                                  >
-                                    Πληρωμή
-                                  </button>
-                                ) : (
-                                  <span style={paidChipStyle}>
-                                    <CheckCircle2 size={13} />
-                                    Πληρωμένη
-                                  </span>
-                                )}
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                  <span style={amountChipStyle}>{toMoney(inst.amount)}</span>
+                                  {isPending ? (
+                                    <button
+                                      type="button"
+                                      style={payBtnStyle}
+                                      onClick={() => openPaymentFor(settlement, inst)}
+                                    >
+                                      Πληρωμή
+                                    </button>
+                                  ) : (
+                                    <span style={paidChipStyle}>
+                                      <CheckCircle2 size={13} />
+                                      Πληρωμένη
+                                    </span>
+                                  )}
+                                </div>
                               </div>
-                            </div>
-                          )
-                        })
-                      )}
-                    </div>
+                            )
+                          })
+                        )}
+                      </div>
+
+                      <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: `1px dashed ${colors.border}`, display: 'flex', justifyContent: 'center' }}>
+                        <button
+                          type="button"
+                          onClick={() => onDeleteSettlement(settlement.id)}
+                          style={{
+                            background: 'transparent', border: 'none', color: colors.accentRed, fontSize: '12px', fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6
+                          }}
+                        >
+                          <X size={14} /> Διαγραφή Ρύθμισης
+                        </button>
+                      </div>
+                    </>
                   )}
                 </article>
               )

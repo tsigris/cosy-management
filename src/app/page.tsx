@@ -32,6 +32,11 @@ type YtdInfo = {
   totalExpenses?: number
   payments?: number
   openExpense?: number
+  loanTotal?: number
+  loanPaid?: number
+  loanRemaining?: number
+  loanInstallmentsPaid?: number
+  loanInstallmentsTotal?: number
 }
 
 function DashboardContent() {
@@ -68,6 +73,7 @@ function DashboardContent() {
   const yearStartStr = `${businessYear}-01-01`
 
   const getEntityKeyFromTx = (t: any) => {
+    if (t?.notes && t.notes.startsWith('Πληρωμή Δόσης')) return `loan:${t.id}`
     if (t?.revenue_source_id) return `rev:${t.revenue_source_id}`
     if (t?.supplier_id) return `sup:${t.supplier_id}`
     if (t?.fixed_asset_id) return `asset:${t.fixed_asset_id}`
@@ -98,6 +104,39 @@ function DashboardContent() {
       if (ytdCache[key]?.loading === false) return
 
       setYtdCache((prev) => ({ ...prev, [key]: { loading: true } }))
+
+      if (key.startsWith('loan:')) {
+        try {
+          const txId = key.replace('loan:', '')
+          const { data: inst } = await supabase.from('installments').select('settlement_id').eq('transaction_id', txId).maybeSingle()
+          if (!inst?.settlement_id) {
+            setYtdCache((prev) => ({ ...prev, [key]: { loading: false } }))
+            return
+          }
+          const { data: sett } = await supabase.from('settlements').select('total_amount, installments_count').eq('id', inst.settlement_id).single()
+          const { data: allInst } = await supabase.from('installments').select('amount, status').eq('settlement_id', inst.settlement_id)
+
+          const paidInst = (allInst || []).filter((i: any) => i.status === 'paid')
+          const loanPaid = paidInst.reduce((acc: number, i: any) => acc + Number(i.amount), 0)
+          const loanTotal = Number(sett?.total_amount || 0)
+
+          setYtdCache((prev) => ({
+            ...prev,
+            [key]: {
+              loading: false,
+              loanTotal,
+              loanPaid,
+              loanRemaining: loanTotal - loanPaid,
+              loanInstallmentsPaid: paidInst.length,
+              loanInstallmentsTotal: sett?.installments_count || 0,
+            },
+          }))
+        } catch (e) {
+          console.error(e)
+          setYtdCache((prev) => ({ ...prev, [key]: { loading: false } }))
+        }
+        return
+      }
 
       try {
         let q = supabase
@@ -625,27 +664,50 @@ function DashboardContent() {
                       </div>
                     ) : (
                       <>
-                        <button onClick={() => router.push(`/add-${isIncomeTx ? 'income' : 'expense'}?editId=${t.id}&store=${storeIdFromUrl}`)} style={editRowBtn}>
-                          Επεξεργασία
-                        </button>
-                        <button onClick={() => handleDelete(t.id)} style={deleteRowBtn}>
-                          Διαγραφή
-                        </button>
+                        {!entityKey?.startsWith('loan:') ? (
+                          <>
+                            <button onClick={() => router.push(`/add-${isIncomeTx ? 'income' : 'expense'}?editId=${t.id}&store=${storeIdFromUrl}`)} style={editRowBtn}>
+                              Επεξεργασία
+                            </button>
+                            <button onClick={() => handleDelete(t.id)} style={deleteRowBtn}>
+                              Διαγραφή
+                            </button>
+                          </>
+                        ) : (
+                          <div style={{ display: 'flex', gap: 10, width: '100%' }}>
+                            <button onClick={() => router.push(`/settlements?store=${storeIdFromUrl}`)} style={{ ...editRowBtn, width: '100%' }}>
+                              💳 Διαχείριση Ρύθμισης
+                            </button>
+                          </div>
+                        )}
 
                         <div style={ytdCard}>
-                          <p style={ytdTitle}>ΣΥΝΟΨΗ ΕΤΟΥΣ (YTD)</p>
-                          <p style={ytdSubTitle}>
-                            Από {yearStartStr} έως {businessTodayStr}
-                          </p>
+                          <p style={ytdTitle}>{entityKey?.startsWith('loan:') ? 'ΚΑΤΑΣΤΑΣΗ ΡΥΘΜΙΣΗΣ' : 'ΣΥΝΟΨΗ ΕΤΟΥΣ (YTD)'}</p>
+                          {!entityKey?.startsWith('loan:') && (
+                            <p style={ytdSubTitle}>
+                              Από {yearStartStr} έως {businessTodayStr}
+                            </p>
+                          )}
 
                           {!entityKey ? (
-                            t?.notes?.startsWith('Πληρωμή Δόσης') ? (
-                              <p style={ytdHint}>📌 Η ανάλυση και το υπόλοιπο αυτής της ρύθμισης βρίσκονται στη σελίδα "Δάνεια & Ρυθμίσεις".</p>
-                            ) : (
-                              <p style={ytdHint}>Δεν υπάρχει συνδεδεμένη καρτέλα (supplier / asset / revenue source) σε αυτή την κίνηση.</p>
-                            )
+                            <p style={ytdHint}>Δεν υπάρχει συνδεδεμένη καρτέλα σε αυτή την κίνηση.</p>
                           ) : ytd?.loading ? (
                             <p style={ytdLoading}>Υπολογισμός…</p>
+                          ) : entityKey.startsWith('loan:') ? (
+                            <>
+                              <div style={ytdRow}>
+                                <span style={ytdLabel}>Σύνολο Ρύθμισης</span>
+                                <span style={ytdValue}>{money(ytd?.loanTotal)}€</span>
+                              </div>
+                              <div style={ytdRow}>
+                                <span style={ytdLabel}>Πληρωμένες ({ytd?.loanInstallmentsPaid}/{ytd?.loanInstallmentsTotal})</span>
+                                <span style={ytdValueGreen}>{money(ytd?.loanPaid)}€</span>
+                              </div>
+                              <div style={ytdRow}>
+                                <span style={ytdLabel}>Υπόλοιπο Οφειλής</span>
+                                <span style={ytdValueRed}>{money(ytd?.loanRemaining)}€</span>
+                              </div>
+                            </>
                           ) : entityKey.startsWith('rev:') ? (
                             <>
                               <div style={ytdRow}>
@@ -662,7 +724,6 @@ function DashboardContent() {
                                   {money(ytd?.openIncome)}€
                                 </span>
                               </div>
-                              <p style={ytdHint}>Πηγή: {txTitleText.toUpperCase()}</p>
                             </>
                           ) : (
                             <>
@@ -680,7 +741,6 @@ function DashboardContent() {
                                   {money(ytd?.openExpense)}€
                                 </span>
                               </div>
-                              <p style={ytdHint}>Οντότητα: {txTitleText.toUpperCase()}</p>
                             </>
                           )}
                         </div>
