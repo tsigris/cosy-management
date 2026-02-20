@@ -560,12 +560,12 @@ function SettlementsContent() {
 
               <div style={inputGroupStyle}>
                 <label style={labelStyle}>Όνομα</label>
-                <input style={inputStyle} value={name} onChange={(e) => setName(e.target.value)} placeholder="π.χ. Ρύθμιση Εφορίας" />
+                <input style={inputStyle} value={name} onChange={(e) => setName(e.target.value)} />
               </div>
 
               <div style={inputGroupStyle}>
                 <label style={labelStyle}>Κωδικός RF / Ταυτότητα Οφειλής</label>
-                <input style={inputStyle} value={rfCode} onChange={(e) => setRfCode(e.target.value)} placeholder="RF..." />
+                <input style={inputStyle} value={rfCode} onChange={(e) => setRfCode(e.target.value)} />
               </div>
 
               <div style={twoColGridStyle}>
