@@ -15,7 +15,7 @@ import {
   addDays,
 } from 'date-fns'
 import { toast, Toaster } from 'sonner'
-import { Coins, Users, ShoppingBag, Lightbulb, Wrench, Printer, ShieldCheck } from 'lucide-react'
+import { Coins, Users, ShoppingBag, Lightbulb, Wrench, Printer } from 'lucide-react'
 
 // --- MODERN PREMIUM PALETTE ---
 const colors = {
@@ -124,9 +124,6 @@ function AnalysisContent() {
 
   // ✅ Print Mode toggle
   const [printMode, setPrintMode] = useState<PrintMode>('full')
-
-  // ✅ Auditing
-  const [reconciledOnly, setReconciledOnly] = useState(false)
 
   // ✅ Forecasting
   const [expectedOutflows30d, setExpectedOutflows30d] = useState<number>(0)
@@ -515,27 +512,17 @@ function AnalysisContent() {
     return null
   }, [])
 
-  // ✅ base period rows + optional reconciledOnly
+  // ✅ base period rows
   const periodTx = useMemo(() => {
     if (!storeId || storeId === 'null') return []
-    const rows = transactions.filter((t) => t.date >= startDate && t.date <= endDate)
-    if (!reconciledOnly) return rows
-    // if is_verified column doesn't exist, it will just be undefined => false, filtering all out.
-    // so we fail-open by keeping rows if field missing on ALL rows:
-    const hasAnyVerifiedField = rows.some((t) => typeof t.is_verified !== 'undefined')
-    if (!hasAnyVerifiedField) return rows
-    return rows.filter((t) => t.is_verified === true)
-  }, [transactions, storeId, startDate, endDate, reconciledOnly])
+    return transactions.filter((t) => t.date >= startDate && t.date <= endDate)
+  }, [transactions, storeId, startDate, endDate])
 
   const prevPeriodTx = useMemo(() => {
     if (!storeId || storeId === 'null') return []
     const { prevStart, prevEnd } = getPrevRange()
-    const rows = prevTransactions.filter((t) => t.date >= prevStart && t.date <= prevEnd)
-    if (!reconciledOnly) return rows
-    const hasAnyVerifiedField = rows.some((t) => typeof t.is_verified !== 'undefined')
-    if (!hasAnyVerifiedField) return rows
-    return rows.filter((t) => t.is_verified === true)
-  }, [prevTransactions, storeId, getPrevRange, reconciledOnly])
+    return prevTransactions.filter((t) => t.date >= prevStart && t.date <= prevEnd)
+  }, [prevTransactions, storeId, getPrevRange])
 
   // ✅ balances calculation from SAME dataset (periodTx)
   const calcBalancesFromRows = useCallback(
@@ -848,7 +835,7 @@ function AnalysisContent() {
           <h1 className="print-title">{isZReport ? 'Αναφορά Ημέρας (Ζ)' : 'Ανάλυση'}</h1>
           <p className="print-sub">{isZReport ? 'ΚΑΘΑΡΟ ΤΑΜΕΙΟ ΗΜΕΡΑΣ' : 'ΠΛΗΡΗΣ ΟΙΚΟΝΟΜΙΚΗ ΕΙΚΟΝΑ'}</p>
           <p className="print-meta">
-            Περίοδος: {startDate} → {endDate} • Φίλτρο: {filterA} • Reconciled: {reconciledOnly ? 'ΝΑΙ' : 'ΟΧΙ'} • Εκτύπωση:{' '}
+            Περίοδος: {startDate} → {endDate} • Φίλτρο: {filterA} • Εκτύπωση:{' '}
             {printMode === 'summary' ? 'Σύνοψη' : 'Πλήρες'}
           </p>
         </div>
@@ -951,35 +938,6 @@ function AnalysisContent() {
                 </div>
               </div>
             )}
-
-            {/* ✅ Reconciled toggle */}
-            <div style={tile}>
-              <div style={tileIcon}>
-                <ShieldCheck size={18} />
-              </div>
-              <div style={tileBody}>
-                <div style={tileLabel}>AUDIT / RECONCILIATION</div>
-                <button
-                  type="button"
-                  onClick={() => setReconciledOnly((v) => !v)}
-                  style={{
-                    ...tileControl,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    cursor: 'pointer',
-                    background: reconciledOnly ? '#ecfdf5' : colors.background,
-                    border: reconciledOnly ? '1px solid #a7f3d0' : `1px solid ${colors.border}`,
-                  }}
-                >
-                  <span style={{ fontWeight: 950 }}>{reconciledOnly ? 'Reconciled only: ON' : 'Reconciled only: OFF'}</span>
-                  <span style={{ fontWeight: 950 }}>{reconciledOnly ? '✓' : '—'}</span>
-                </button>
-                <div style={{ marginTop: 6, fontSize: 12, fontWeight: 800, color: colors.secondary }}>
-                  Δείχνει μόνο κινήσεις με <b>is_verified = true</b> (αν υπάρχει πεδίο).
-                </div>
-              </div>
-            </div>
 
             <div style={rangeHint}>Περίοδος: {rangeText}</div>
           </div>
