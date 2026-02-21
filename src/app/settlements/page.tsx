@@ -3611,6 +3611,8 @@ display: 'flex',
 
 flexDirection: 'column',
 
+position: 'relative',
+
 width: '100%',
 
 maxWidth: '520px',
@@ -3623,7 +3625,7 @@ border: `1px solid ${colors.border}`,
 
 padding: '16px',
 
-maxHeight: '80vh',
+maxHeight: '70vh',
 
 overflow: 'hidden',
 
@@ -3639,6 +3641,8 @@ minHeight: 0,
 
 overflowY: 'auto',
 
+paddingBottom: '80px',
+
 WebkitOverflowScrolling: 'touch',
 
 paddingRight: 2,
@@ -3649,15 +3653,21 @@ paddingRight: 2,
 
 const modalFooterStyle: CSSProperties = {
 
-flexShrink: 0,
+position: 'absolute',
 
-marginTop: 'auto',
+bottom: 0,
+
+left: 0,
+
+right: 0,
 
 borderTop: '1px solid #e2e8f0',
 
-background: colors.white,
+background: 'white',
 
-paddingTop: 12,
+padding: '16px',
+
+zIndex: 100,
 
 }
 
