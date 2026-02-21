@@ -524,6 +524,11 @@ function DashboardContent() {
                     📊 Ανάλυση
                   </NextLink>
                 )}
+                {isStoreAdmin && (
+                  <NextLink href={`/goals?store=${storeIdFromUrl}`} style={menuItem} onClick={() => setIsMenuOpen(false)}>
+                    🎯 Στόχοι & Κουμπαράδες
+                  </NextLink>
+                )}
                 <div style={menuDivider} />
                 <p style={menuSectionLabel}>ΥΠΟΣΤΗΡΙΞΗ & ΡΥΘΜΙΣΕΙΣ</p>
                 <NextLink href={`/settings?store=${storeIdFromUrl}`} style={menuItem} onClick={() => setIsMenuOpen(false)}>
