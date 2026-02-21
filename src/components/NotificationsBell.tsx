@@ -38,6 +38,12 @@ type DbNotification = {
   kind: string
 }
 
+type StaffRow = {
+  id: string
+  name: string | null
+  start_date: string | null
+}
+
 type UiNotification =
   | {
       key: string
@@ -58,6 +64,16 @@ type UiNotification =
       message: string
       dueDate?: string | null
       row: DbNotification
+    }
+  | {
+      key: string
+      source: 'employee_pay'
+      severity: 'warning' | 'danger'
+      title: string
+      message: string
+      dueDate: string
+      employee: { id: string; name: string }
+      daysLeft: number
     }
 
 const colors = {
@@ -105,6 +121,39 @@ const getBusinessDate = () => {
   return yyyyMmDd(now)
 }
 
+// ✅ Correct next pay date:
+// - payday = day-of-month from start_date
+// - if not passed yet => this month
+// - else => next month
+// - clamp for months with fewer days (e.g. 31 -> 30/28)
+function getNextMonthlyPayDate(startDateStr: string, todayStr: string) {
+  const today = new Date(`${todayStr}T00:00:00`)
+  const start = new Date(`${startDateStr}T00:00:00`)
+  if (isNaN(start.getTime()) || isNaN(today.getTime())) return null
+
+  const payDay = start.getDate()
+
+  const lastDayOfMonth = (y: number, mZeroBased: number) => new Date(y, mZeroBased + 1, 0).getDate()
+
+  // candidate: this month
+  const y = today.getFullYear()
+  const m = today.getMonth()
+
+  const clampDayThisMonth = Math.min(payDay, lastDayOfMonth(y, m))
+  let candidate = new Date(y, m, clampDayThisMonth)
+
+  // if candidate already passed => next month
+  if (candidate < today) {
+    const nextM = m + 1
+    const ny = nextM > 11 ? y + 1 : y
+    const nm = nextM % 12
+    const clampDayNextMonth = Math.min(payDay, lastDayOfMonth(ny, nm))
+    candidate = new Date(ny, nm, clampDayNextMonth)
+  }
+
+  return yyyyMmDd(candidate)
+}
+
 export default function NotificationsBell({ storeId, onUpdate }: { storeId: string; onUpdate?: () => void }) {
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -112,6 +161,9 @@ export default function NotificationsBell({ storeId, onUpdate }: { storeId: stri
   const [installments, setInstallments] = useState<InstallmentRow[]>([])
   const [settlementsMap, setSettlementsMap] = useState<Record<string, SettlementRow>>({})
   const [customRows, setCustomRows] = useState<DbNotification[]>([])
+
+  // ✅ staff for payroll notifications
+  const [staff, setStaff] = useState<StaffRow[]>([])
 
   const [payOpen, setPayOpen] = useState(false)
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('Μετρητά')
@@ -134,6 +186,7 @@ export default function NotificationsBell({ storeId, onUpdate }: { storeId: stri
       const min = yyyyMmDd(new Date(Date.now() - 60 * 24 * 3600 * 1000))
       const max = yyyyMmDd(new Date(Date.now() + 14 * 24 * 3600 * 1000))
 
+      // 1) installments
       const { data: inst, error: instErr } = await supabase
         .from('installments')
         .select('id, settlement_id, installment_number, due_date, amount, status, transaction_id, store_id')
@@ -146,7 +199,7 @@ export default function NotificationsBell({ storeId, onUpdate }: { storeId: stri
       const pending = (inst || []).filter((r: any) => String(r.status || 'pending').toLowerCase() === 'pending')
 
       const settlementIds = Array.from(new Set(pending.map((r: any) => String(r.settlement_id))))
-      let setMap: Record<string, SettlementRow> = {}
+      const setMap: Record<string, SettlementRow> = {}
 
       if (settlementIds.length) {
         const { data: sets, error: setsErr } = await supabase
@@ -156,15 +209,13 @@ export default function NotificationsBell({ storeId, onUpdate }: { storeId: stri
           .in('id', settlementIds)
 
         if (setsErr) throw setsErr
-
-        for (const s of (sets || []) as any[]) {
-          setMap[String(s.id)] = s as SettlementRow
-        }
+        for (const s of (sets || []) as any[]) setMap[String(s.id)] = s as SettlementRow
       }
 
       setInstallments(pending as any)
       setSettlementsMap(setMap)
 
+      // 2) custom notifications
       const { data: custom, error: customErr } = await supabase
         .from('notifications')
         .select('id, title, message, severity, due_date, show_from, show_until, dismissed_at, resolved_at, kind')
@@ -177,6 +228,22 @@ export default function NotificationsBell({ storeId, onUpdate }: { storeId: stri
         setCustomRows([])
       } else {
         setCustomRows((custom || []) as any)
+      }
+
+      // 3) staff payment reminders
+      const { data: staffRows, error: staffErr } = await supabase
+        .from('fixed_assets')
+        .select('id, name, start_date')
+        .eq('store_id', storeId)
+        .eq('sub_category', 'staff')
+        .eq('is_active', true)
+        .order('name')
+
+      if (staffErr) {
+        console.warn(staffErr)
+        setStaff([])
+      } else {
+        setStaff((staffRows || []) as any)
       }
     } catch (e: any) {
       console.error(e)
@@ -209,8 +276,6 @@ export default function NotificationsBell({ storeId, onUpdate }: { storeId: stri
       } else if (dueMinusToday <= -3) {
         severity = 'danger'
         daysText = `${Math.abs(dueMinusToday)} μέρες σε καθυστέρηση`
-      } else {
-        severity = null
       }
 
       if (!severity) continue
@@ -240,6 +305,51 @@ export default function NotificationsBell({ storeId, onUpdate }: { storeId: stri
     })
   }, [installments, settlementsMap, todayStr])
 
+  const employeePayNotifications: UiNotification[] = useMemo(() => {
+    const out: UiNotification[] = []
+
+    for (const emp of staff) {
+      const name = String(emp.name || 'Υπάλληλος').toUpperCase()
+      if (!emp.start_date) continue
+
+      const dueDate = getNextMonthlyPayDate(emp.start_date, todayStr)
+      if (!dueDate) continue
+
+      const daysLeft = daysDiff(dueDate, todayStr) // due - today
+
+      let severity: 'warning' | 'danger' | null = null
+      let msg = ''
+
+      if (daysLeft === 0) {
+        severity = 'danger'
+        msg = `ΣΗΜΕΡΑ ΠΛΗΡΩΜΗ 💰 • ${name}`
+      } else if (daysLeft >= 1 && daysLeft <= 3) {
+        severity = 'warning'
+        msg = `Πληρωμή σε ${daysLeft} μέρες • ${name}`
+      }
+
+      if (!severity) continue
+
+      out.push({
+        key: `empPay:${emp.id}:${dueDate}`,
+        source: 'employee_pay',
+        severity,
+        title: 'Πληρωμή Υπαλλήλου',
+        message: msg,
+        dueDate,
+        employee: { id: emp.id, name },
+        daysLeft,
+      })
+    }
+
+    return out.sort((a, b) => {
+      const sevA = a.severity === 'danger' ? 0 : 1
+      const sevB = b.severity === 'danger' ? 0 : 1
+      if (sevA !== sevB) return sevA - sevB
+      return String(a.dueDate).localeCompare(String(b.dueDate))
+    })
+  }, [staff, todayStr])
+
   const customNotifications: UiNotification[] = useMemo(() => {
     const out: UiNotification[] = []
 
@@ -264,8 +374,8 @@ export default function NotificationsBell({ storeId, onUpdate }: { storeId: stri
   }, [customRows, todayStr])
 
   const allNotifications = useMemo(() => {
-    return [...installmentNotifications, ...customNotifications]
-  }, [installmentNotifications, customNotifications])
+    return [...installmentNotifications, ...employeePayNotifications, ...customNotifications]
+  }, [installmentNotifications, employeePayNotifications, customNotifications])
 
   const dangerCount = useMemo(() => allNotifications.filter((n) => n.severity === 'danger').length, [allNotifications])
   const warningCount = useMemo(() => allNotifications.filter((n) => n.severity === 'warning').length, [allNotifications])
@@ -334,7 +444,7 @@ export default function NotificationsBell({ storeId, onUpdate }: { storeId: stri
       setPayOpen(false)
       setSelectedInst(null)
       setSelectedSet(null)
-      
+
       await loadNotifications()
       if (onUpdate) onUpdate()
     } catch (e: any) {
@@ -347,7 +457,12 @@ export default function NotificationsBell({ storeId, onUpdate }: { storeId: stri
 
   const dismissCustom = async (id: string) => {
     try {
-      const { error } = await supabase.from('notifications').update({ dismissed_at: new Date().toISOString() }).eq('id', id).eq('store_id', storeId)
+      const { error } = await supabase
+        .from('notifications')
+        .update({ dismissed_at: new Date().toISOString() })
+        .eq('id', id)
+        .eq('store_id', storeId)
+
       if (error) throw error
       setCustomRows((prev) => prev.filter((x) => x.id !== id))
       toast.success('Έγινε απόκρυψη')
@@ -359,7 +474,7 @@ export default function NotificationsBell({ storeId, onUpdate }: { storeId: stri
   const onSaveCustomNotification = async () => {
     if (!storeId) return toast.error('Λείπει το κατάστημα')
     if (!customTitle.trim()) return toast.error('Βάλε τίτλο υπενθύμισης')
-    
+
     setSavingCustom(true)
     try {
       const { data: { session } } = await supabase.auth.getSession()
@@ -399,6 +514,11 @@ export default function NotificationsBell({ storeId, onUpdate }: { storeId: stri
     if (sev === 'danger') return { background: colors.dangerBg, color: colors.dangerText, borderColor: '#fecdd3' }
     if (sev === 'warning') return { background: colors.warningBg, color: colors.warningText, borderColor: '#fde68a' }
     return { background: '#eff6ff', color: '#1d4ed8', borderColor: '#bfdbfe' }
+  }
+
+  const payEmployeeHref = (id: string, name: string) => {
+    const n = encodeURIComponent(name)
+    return `/pay-employee?id=${id}&name=${n}&store=${storeId}`
   }
 
   return (
@@ -561,10 +681,10 @@ export default function NotificationsBell({ storeId, onUpdate }: { storeId: stri
                           </div>
 
                           <div style={{ marginTop: 6, color: colors.secondaryText, fontWeight: 800, fontSize: 12 }}>
-                            {n.source === 'installment' ? n.message : (n.message || '')}
+                            {n.message}
                           </div>
 
-                          {n.source === 'installment' ? (
+                          {('dueDate' in n && n.dueDate) ? (
                             <div style={{ marginTop: 8, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                               <span
                                 style={{
@@ -577,19 +697,7 @@ export default function NotificationsBell({ storeId, onUpdate }: { storeId: stri
                                   color: colors.primaryDark,
                                 }}
                               >
-                                Λήξη: {formatDateGr(n.dueDate)}
-                              </span>
-                            </div>
-                          ) : n.dueDate ? (
-                             <div style={{ marginTop: 8, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                              <span
-                                style={{
-                                  fontSize: 11,
-                                  fontWeight: 800,
-                                  color: colors.secondaryText,
-                                }}
-                              >
-                                Ημ/νία: {formatDateGr(n.dueDate)}
+                                Ημ/νία: {formatDateGr(String(n.dueDate))}
                               </span>
                             </div>
                           ) : null}
@@ -611,6 +719,25 @@ export default function NotificationsBell({ storeId, onUpdate }: { storeId: stri
                             >
                               Πληρωμή
                             </button>
+                          ) : n.source === 'employee_pay' ? (
+                            <a
+                              href={payEmployeeHref(n.employee.id, n.employee.name)}
+                              style={{
+                                textDecoration: 'none',
+                                borderRadius: 12,
+                                padding: '10px 10px',
+                                fontWeight: 900,
+                                cursor: 'pointer',
+                                background: colors.accentGreen,
+                                color: 'white',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: 8,
+                              }}
+                            >
+                              <Banknote size={16} /> ΠΛΗΡΩΜΗ
+                            </a>
                           ) : (
                             <button
                               onClick={() => dismissCustom(n.row.id)}
@@ -777,7 +904,20 @@ export default function NotificationsBell({ storeId, onUpdate }: { storeId: stri
                 >
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
                     <div style={{ fontWeight: 900, color: colors.primaryDark }}>Νέα Υπενθύμιση</div>
-                    <button onClick={() => setAddOpen(false)} style={{ width: 32, height: 32, borderRadius: 12, border: `1px solid ${colors.border}`, background: colors.white, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <button
+                      onClick={() => setAddOpen(false)}
+                      style={{
+                        width: 32,
+                        height: 32,
+                        borderRadius: 12,
+                        border: `1px solid ${colors.border}`,
+                        background: colors.white,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center'
+                      }}
+                    >
                       <X size={16} />
                     </button>
                   </div>
@@ -785,15 +925,30 @@ export default function NotificationsBell({ storeId, onUpdate }: { storeId: stri
                   <div style={{ display: 'grid', gap: 12 }}>
                     <div>
                       <label style={{ fontSize: 12, fontWeight: 800, color: colors.secondaryText }}>Τίτλος (π.χ. Πληρωμή Ενοικίου)</label>
-                      <input value={customTitle} onChange={(e) => setCustomTitle(e.target.value)} style={{ width: '100%', marginTop: 4, padding: 12, borderRadius: 12, border: `1px solid ${colors.border}`, background: colors.bgLight, fontWeight: 800 }} placeholder="Τίτλος..." />
+                      <input
+                        value={customTitle}
+                        onChange={(e) => setCustomTitle(e.target.value)}
+                        style={{ width: '100%', marginTop: 4, padding: 12, borderRadius: 12, border: `1px solid ${colors.border}`, background: colors.bgLight, fontWeight: 800 }}
+                        placeholder="Τίτλος..."
+                      />
                     </div>
                     <div>
                       <label style={{ fontSize: 12, fontWeight: 800, color: colors.secondaryText }}>Σημειώσεις (Προαιρετικό)</label>
-                      <input value={customMessage} onChange={(e) => setCustomMessage(e.target.value)} style={{ width: '100%', marginTop: 4, padding: 12, borderRadius: 12, border: `1px solid ${colors.border}`, background: colors.bgLight, fontWeight: 800 }} placeholder="Λεπτομέρειες..." />
+                      <input
+                        value={customMessage}
+                        onChange={(e) => setCustomMessage(e.target.value)}
+                        style={{ width: '100%', marginTop: 4, padding: 12, borderRadius: 12, border: `1px solid ${colors.border}`, background: colors.bgLight, fontWeight: 800 }}
+                        placeholder="Λεπτομέρειες..."
+                      />
                     </div>
                     <div>
                       <label style={{ fontSize: 12, fontWeight: 800, color: colors.secondaryText }}>Ημερομηνία</label>
-                      <input type="date" value={customDueDate} onChange={(e) => setCustomDueDate(e.target.value)} style={{ width: '100%', marginTop: 4, padding: 12, borderRadius: 12, border: `1px solid ${colors.border}`, background: colors.bgLight, fontWeight: 800 }} />
+                      <input
+                        type="date"
+                        value={customDueDate}
+                        onChange={(e) => setCustomDueDate(e.target.value)}
+                        style={{ width: '100%', marginTop: 4, padding: 12, borderRadius: 12, border: `1px solid ${colors.border}`, background: colors.bgLight, fontWeight: 800 }}
+                      />
                     </div>
                   </div>
 
