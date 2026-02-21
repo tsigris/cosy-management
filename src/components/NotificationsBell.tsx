@@ -163,7 +163,6 @@ export default function NotificationsBell({ storeId, onUpdate }: { storeId: stri
   const [installments, setInstallments] = useState<InstallmentRow[]>([])
   const [settlementsMap, setSettlementsMap] = useState<Record<string, SettlementRow>>({})
   const [customRows, setCustomRows] = useState<DbNotification[]>([])
-  const [notifications, setNotifications] = useState<UiNotification[]>([])
   const [dismissedKeys, setDismissedKeys] = useState<Set<string>>(new Set())
   const [dismissalsLoaded, setDismissalsLoaded] = useState(false)
 
@@ -274,7 +273,6 @@ export default function NotificationsBell({ storeId, onUpdate }: { storeId: stri
       setDismissalsLoaded(true)
     } finally {
       setLoading(false)
-      setDismissalsLoaded(true)
     }
   }, [storeId, sessionUserId])
 
@@ -436,12 +434,8 @@ export default function NotificationsBell({ storeId, onUpdate }: { storeId: stri
     return allNotifications.filter((n) => !dismissedKeys.has(n.notificationKey))
   }, [allNotifications, dismissedKeys])
 
-  useEffect(() => {
-    setNotifications(visibleNotifications)
-  }, [visibleNotifications])
-
-  const dangerCount = useMemo(() => notifications.filter((n) => n.severity === 'danger').length, [notifications])
-  const warningCount = useMemo(() => notifications.filter((n) => n.severity === 'warning').length, [notifications])
+  const dangerCount = useMemo(() => visibleNotifications.filter((n) => n.severity === 'danger').length, [visibleNotifications])
+  const warningCount = useMemo(() => visibleNotifications.filter((n) => n.severity === 'warning').length, [visibleNotifications])
   const badgeCount = dangerCount + warningCount
 
   const bellColor = useMemo(() => {
@@ -525,7 +519,7 @@ export default function NotificationsBell({ storeId, onUpdate }: { storeId: stri
         return
       }
 
-      const target = notifications.find((n) => n.notificationKey === notificationKey)
+      const target = allNotifications.find((n) => n.notificationKey === notificationKey)
       if (!target) return
 
       const { error } = await supabase
@@ -545,12 +539,7 @@ export default function NotificationsBell({ storeId, onUpdate }: { storeId: stri
         return
       }
 
-      setDismissedKeys((prev) => {
-        const next = new Set(prev)
-        next.add(target.notificationKey)
-        return next
-      })
-      setNotifications((prev) => prev.filter((x) => x.notificationKey !== target.notificationKey))
+      setDismissedKeys((prev) => new Set(prev).add(target.notificationKey))
     } catch (err) {
       toast.error('Σφάλμα απόκρυψης')
       console.error(err)
@@ -734,11 +723,11 @@ export default function NotificationsBell({ storeId, onUpdate }: { storeId: stri
             <div style={{ padding: 14 }}>
               {loading ? (
                 <div style={{ padding: 18, textAlign: 'center', color: colors.secondaryText, fontWeight: 800 }}>Φόρτωση…</div>
-              ) : notifications.length === 0 ? (
+              ) : visibleNotifications.length === 0 ? (
                 <div style={{ padding: 18, textAlign: 'center', color: colors.secondaryText, fontWeight: 800 }}>Δεν υπάρχουν ειδοποιήσεις</div>
               ) : (
                 <div style={{ display: 'grid', gap: 10 }}>
-                  {notifications.map((n) => (
+                  {visibleNotifications.map((n) => (
                     <div
                       key={n.notificationKey}
                       style={{
