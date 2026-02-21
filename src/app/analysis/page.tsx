@@ -633,89 +633,34 @@ function AnalysisContent() {
           </div>
         </div>
 
-        {/* SIMPLE OWNER VIEW */}
-        <div style={balancesGrid} data-print-section="true">
-          {/* SAVINGS CARD - ALWAYS PROMINENT */}
-          <div style={{ ...smallKpiCard, border: `1px solid rgba(124,58,237,0.35)`, background: '#f5f3ff' }}>
-            <div style={{ ...smallKpiLabel, color: colors.purple }}>Κουμπαράς (Κινήσεις)</div>
-            <div style={{ ...smallKpiValue, color: colors.purple }}>
-              {money(kpis.savingsDeposits - kpis.savingsWithdrawals)}
+        {/* ✅ OWNER SIMPLE PANEL (Updated with Bank) */}
+        {uiMode === 'simple' && (
+          <div style={balancesGrid} data-print-section="true">
+            <div style={{ ...smallKpiCard, border: '1px solid rgba(139,92,246,0.30)', background: 'linear-gradient(180deg, #f5f3ff, #ffffff)' }}>
+              <div style={smallKpiLabel}>Κινήσεις Κουμπαρά</div>
+              <div style={{ ...smallKpiValue, color: colors.purple }}>{money(kpis.savingsDeposits - kpis.savingsWithdrawals)}</div>
+              <div style={smallKpiHint}>IN: {money(kpis.savingsDeposits)} • OUT: {money(kpis.savingsWithdrawals)}</div>
             </div>
-            <div style={smallKpiHint}>
-              IN: {money(kpis.savingsDeposits)} • OUT: {money(kpis.savingsWithdrawals)}
+
+            <div style={smallKpiCard}>
+              <div style={smallKpiLabel}>{isZReport ? 'Μετρητά στο Συρτάρι' : 'Υπόλοιπο Μετρητών'}</div>
+              <div style={smallKpiValue}>{money(totalCashDisplay)}</div>
+              <div style={smallKpiHint}>{isZReport ? 'Φυσικό ποσό (με κουμπαρά)' : `Έως: ${endDate}`}</div>
+            </div>
+
+            <div style={smallKpiCard}>
+              <div style={smallKpiLabel}>Υπόλοιπο Τράπεζας</div>
+              <div style={smallKpiValue}>{money(calcBalances?.bank_balance || 0)}</div>
+              <div style={smallKpiHint}>Κάρτα + Τράπεζα (χωρίς Πίστωση)</div>
+            </div>
+
+            <div style={{ ...smallKpiCard, border: '1px solid rgba(16,185,129,0.20)', background: 'linear-gradient(180deg, #ecfdf5, #ffffff)' }}>
+              <div style={smallKpiLabel}>Συνολικό Ρευστό</div>
+              <div style={{ ...smallKpiValue, color: colors.success }}>{money((calcBalances?.bank_balance || 0) + Number(totalCashDisplay || 0))}</div>
+              <div style={smallKpiHint}>Μετρητά + Τράπεζα</div>
             </div>
           </div>
-
-          <div style={smallKpiCard}>
-            <div style={smallKpiLabel}>{isZReport ? 'Μετρητά στο Συρτάρι' : 'Υπόλοιπο Μετρητών'}</div>
-            <div style={smallKpiValue}>{money(totalCashDisplay)}</div>
-            <div style={smallKpiHint}>
-              {isZReport ? 'Φυσικό συρτάρι (με κουμπαρά)' : `As of: ${endDate} (χωρίς Πίστωση)`}
-            </div>
-          </div>
-
-          {uiMode === 'pro' && (
-            <>
-              <div style={smallKpiCard}>
-                <div style={smallKpiLabel}>Υπόλοιπο Τράπεζας</div>
-                <div style={smallKpiValue}>{money(calcBalances?.bank_balance || 0)}</div>
-                <div style={smallKpiHint}>Κάρτα + Τράπεζα (χωρίς Πίστωση)</div>
-              </div>
-
-              <div style={smallKpiCard}>
-                <div style={smallKpiLabel}>Σύνολο Καθαρό</div>
-                <div style={smallKpiValue}>{money(calcBalances?.total_balance || 0)}</div>
-                <div style={smallKpiHint}>Cash + Bank (χωρίς Πίστωση)</div>
-              </div>
-
-              <div style={smallKpiCard}>
-                <div style={smallKpiLabel}>Προβλέψεις (30 ημ)</div>
-                <div style={{ ...smallKpiValue, color: colors.indigo }}>{money(expectedOutflows30d)}</div>
-                <div style={smallKpiHint}>Μελλοντικά έξοδα (χωρίς Πίστωση)</div>
-              </div>
-
-              <div
-                style={{
-                  ...smallKpiCard,
-                  border: '1px solid rgba(244,63,94,0.25)',
-                  background: 'linear-gradient(180deg, #fff1f2, #ffffff)',
-                }}
-              >
-                <div style={smallKpiLabel}>Υπόλοιπο Πιστώσεων</div>
-                <div style={{ ...smallKpiValue, color: colors.danger }}>{money(calcBalances?.credit_outstanding || 0)}</div>
-                <div style={smallKpiHint}>Έξοδα σε Πίστωση (δεν μειώνουν Cash/Bank)</div>
-              </div>
-
-              {/* Optional: Z breakdown details */}
-              {isZReport && (
-                <div style={{ ...smallKpiCard, gridColumn: 'span 2' }}>
-                  <div style={smallKpiLabel}>Z Breakdown</div>
-                  <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 10 }}>
-                    <div style={{ fontSize: 12, fontWeight: 900, color: colors.secondary }}>
-                      Μετρητά (Z): <span style={{ color: colors.primary }}>{money(zBreakdown.zCash)}</span>
-                    </div>
-                    <div style={{ fontSize: 12, fontWeight: 900, color: colors.secondary }}>
-                      Κάρτα (POS): <span style={{ color: colors.primary }}>{money(zBreakdown.zPos)}</span>
-                    </div>
-                    <div style={{ fontSize: 12, fontWeight: 900, color: colors.secondary }}>
-                      Χωρίς Σήμανση: <span style={{ color: colors.primary }}>{money(zBreakdown.blackCash)}</span>
-                    </div>
-                    <div style={{ fontSize: 12, fontWeight: 900, color: colors.secondary }}>
-                      Έξοδα Μετρητών: <span style={{ color: colors.primary }}>{money(zBreakdown.cashExpenses)}</span>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Drawer view (if exists) */}
-              <div style={smallKpiCard}>
-                <div style={smallKpiLabel}>Ταμείο Ημέρας (View)</div>
-                <div style={smallKpiValue}>{drawer ? money(Number(drawer.total_cash_drawer || 0)) : '—'}</div>
-                <div style={smallKpiHint}>{drawer ? `Ημερομηνία Ζ: ${drawer.date}` : `Δεν βρέθηκε Ζ έως: ${endDate}`}</div>
-              </div>
-            </>
-          )}
-        </div>
+        )}
 
         {/* CATEGORY BREAKDOWN (PRO ONLY) */}
         {uiMode === 'pro' && (
