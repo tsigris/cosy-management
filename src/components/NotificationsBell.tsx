@@ -724,17 +724,22 @@ export default function NotificationsBell({ storeId, onUpdate }: { storeId: stri
                         }}
                         style={{
                           position: 'absolute',
-                          top: 6,
-                          right: 6,
-                          width: 22,
-                          height: 22,
-                          borderRadius: '50%',
-                          border: 'none',
-                          background: 'transparent',
+                          top: 8,
+                          right: 8,
+                          width: 32,
+                          height: 32,
+                          borderRadius: 10,
+                          border: '1px solid #e2e8f0',
+                          background: '#ffffff',
                           color: '#64748b',
                           cursor: 'pointer',
                           fontWeight: 900,
-                          fontSize: 14,
+                          fontSize: 18,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
+                          zIndex: 10,
                         }}
                       >
                         ×
