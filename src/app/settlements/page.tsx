@@ -336,8 +336,6 @@ return { state: 'ok', text: '', days: d }
 
 // ---------------------- ✅ MONEY INPUT (Greek friendly) ----------------------
 
-// Accepts: 3.056,32 | 3056,32 | 3056.32 | 3 056,32 | etc.
-
 function normalizeMoneyInput(raw: string) {
 
 return String(raw || '')
@@ -350,8 +348,6 @@ return String(raw || '')
 
 
 
-// Parse to number (best-effort). Returns null if invalid.
-
 function parseMoney(raw: string): number | null {
 
 const s0 = normalizeMoneyInput(raw)
@@ -359,8 +355,6 @@ const s0 = normalizeMoneyInput(raw)
 if (!s0) return null
 
 
-
-// keep only first '-' at start
 
 let s = s0
 
@@ -376,25 +370,19 @@ const hasDot = s.includes('.')
 
 if (hasComma && hasDot) {
 
-// assume dots are thousands, comma is decimal
-
 s = s.replace(/\./g, '').replace(',', '.')
 
 } else if (hasComma && !hasDot) {
-
-// comma as decimal
 
 s = s.replace(',', '.')
 
 } else {
 
-// dot as decimal (or plain integer) -> keep
+// dot as decimal or integer
 
 }
 
 
-
-// allow only one decimal dot
 
 const parts = s.split('.')
 
@@ -464,7 +452,7 @@ const [selectedSettlement, setSelectedSettlement] = useState<Settlement | null>(
 
 const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('Μετρητά')
 
-const [paymentAmount, setPaymentAmount] = useState<string>('') // ✅ μερική/override πληρωμή (el input)
+const [paymentAmount, setPaymentAmount] = useState<string>('')
 
 
 
@@ -498,19 +486,39 @@ const [firstDueDate, setFirstDueDate] = useState(getBusinessDate())
 
 const [loanPlan, setLoanPlan] = useState<LoanPlan>('fixed')
 
-const [summerAmount, setSummerAmount] = useState('') // el input
+const [summerAmount, setSummerAmount] = useState('')
 
-const [winterAmount, setWinterAmount] = useState('') // el input
+const [winterAmount, setWinterAmount] = useState('')
 
 
-
-// ✅ Two-way calc: which field user edited last
 
 const [amountFocus, setAmountFocus] = useState<AmountFocus>('total')
 
 
 
 const todayStr = useMemo(() => getBusinessDate(), [])
+
+
+
+// ✅ prevent background scroll when modal open (helps mobile + PC)
+
+useEffect(() => {
+
+const anyOpen = openCreateModal || openPaymentModal
+
+if (!anyOpen) return
+
+const prev = document.body.style.overflow
+
+document.body.style.overflow = 'hidden'
+
+return () => {
+
+document.body.style.overflow = prev
+
+}
+
+}, [openCreateModal, openPaymentModal])
 
 
 
@@ -658,8 +666,6 @@ return
 
 
 
-// fixed / settlement -> two-way
-
 if (amountFocus === 'total') {
 
 const total = parseMoney(totalAmount)
@@ -739,6 +745,7 @@ const { data: settlementsData, error: settlementsErr } = await supabase
 
 
 if (settlementsErr) throw settlementsErr
+
 
 
 const mappedSettlements = (settlementsData || []) as Settlement[]
@@ -995,6 +1002,8 @@ const buildInstallmentsForPlan = useCallback(
 
 if (!storeId) return []
 
+const sid = storeId // keep as string
+
 
 
 const due0 = firstDueDate
@@ -1041,7 +1050,7 @@ const amount = isSummerMonth(due) ? (sAmt as number) : (wAmt as number)
 
 rows.push({
 
-store_id: storeId,
+store_id: sid,
 
 settlement_id: settlementId,
 
@@ -1083,7 +1092,7 @@ for (let i = 0; i < count; i++) {
 
 rows.push({
 
-store_id: storeId,
+store_id: sid,
 
 settlement_id: settlementId,
 
@@ -1117,7 +1126,7 @@ for (let i = 0; i < count; i++) {
 
 rows.push({
 
-store_id: storeId,
+store_id: sid,
 
 settlement_id: settlementId,
 
@@ -1184,6 +1193,8 @@ if (!Number.isFinite(sAmt || NaN) || (sAmt as number) <= 0) return toast.error('
 if (!Number.isFinite(wAmt || NaN) || (wAmt as number) <= 0) return toast.error('Μη έγκυρο ποσό Χειμώνα')
 
 if (!firstDueDate) return toast.error('Λείπει ημερομηνία 1ης δόσης')
+
+
 
 let due = firstDueDate
 
@@ -1368,34 +1379,25 @@ const { data: settlementRow, error: settlementErr } = await supabase
 
 
 if (settlementErr) throw settlementErr
+      createdSettlementId = settlementRow.id
 
-createdSettlementId = settlementRow.id
+      // Προσθήκη του ! μετά το createdSettlementId για να φύγει το TypeScript error
+      const installmentsPayload = buildInstallmentsForPlan(createdSettlementId!, parsedCount)
+      
+      if (!installmentsPayload.length) {
+        throw new Error('Δεν μπορώ να δημιουργήσω δόσεις: έλεγξε ποσά/ημερομηνία.')
+      }
 
-if (!createdSettlementId) {
-throw new Error('Settlement ID not created')
-}
+      const { error: installmentsErr } = await supabase
+        .from('installments')
+        .insert(installmentsPayload)
 
+      if (installmentsErr) throw installmentsErr
 
-
-const installmentsPayload = buildInstallmentsForPlan(createdSettlementId, parsedCount)
-
-if (!installmentsPayload.length) throw new Error('Δεν μπορώ να δημιουργήσω δόσεις: έλεγξε ποσά/ημερομηνία.')
-
-
-
-const { error: installmentsErr } = await supabase.from('installments').insert(installmentsPayload)
-
-if (installmentsErr) throw installmentsErr
-
-
-
-toast.success('Η συμφωνία δημιουργήθηκε με επιτυχία')
-
-setOpenCreateModal(false)
-
-resetCreateForm()
-
-await loadData()
+      toast.success('Η συμφωνία δημιουργήθηκε με επιτυχία')
+      setOpenCreateModal(false)
+      resetCreateForm()
+      await loadData()
 
 } catch (error: unknown) {
 
@@ -2329,6 +2331,8 @@ disabled={savingSettlement}
 
 
 
+{/* ✅ SCROLLABLE BODY */}
+
 <div style={modalBodyStyle}>
 
 <div style={formGridStyle}>
@@ -2539,11 +2543,7 @@ disabled={type === 'loan' && loanPlan !== 'fixed'}
 
 <label style={labelStyle}>
 
-{type === 'loan' && loanPlan === 'summer_only'
-
-? 'Αριθμός Δόσεων (Πληρωμές)'
-
-: 'Αριθμός Δόσεων'}
+{type === 'loan' && loanPlan === 'summer_only' ? 'Αριθμός Δόσεων (Πληρωμές)' : 'Αριθμός Δόσεων'}
 
 </label>
 
@@ -2637,7 +2637,7 @@ if (n != null) setWinterAmount(formatMoneyInputEl(n))
 
 
 
-{/* ✅ FIX #1: date picker και στο εποχικό */}
+{/* ✅ FIX #1: seasonal start date */}
 
 <div style={inputGroupStyle}>
 
@@ -2799,6 +2799,8 @@ onChange={(e) => setFirstDueDate(e.target.value)}
 
 
 
+{/* ✅ STICKY FOOTER (always reachable) */}
+
 <div style={modalFooterStyle}>
 
 <button type="button" style={saveBtnStyle} onClick={onSaveSettlement} disabled={savingSettlement}>
@@ -2887,6 +2889,8 @@ color: colors.primaryDark,
 
 
 
+<div style={modalBodyStyle}>
+
 <div style={paymentInfoBoxStyle}>
 
 <p style={paymentInfoTitleStyle}>{selectedSettlement.name}</p>
@@ -2973,13 +2977,19 @@ onClick={() => setPaymentMethod('Τράπεζα')}
 
 </div>
 
+</div>
 
+
+
+<div style={modalFooterStyle}>
 
 <button type="button" style={saveBtnStyle} onClick={onConfirmPayment} disabled={savingPayment}>
 
 {savingPayment ? 'Καταχώρηση...' : 'Ολοκλήρωση Πληρωμής'}
 
 </button>
+
+</div>
 
 </div>
 
@@ -3565,7 +3575,7 @@ fontWeight: 800,
 
 
 
-/* ✅ FIX #2: modal scroll σε κινητά */
+/* ✅ FIX #2: Backdrop scroll + align top */
 
 const modalBackdropStyle: CSSProperties = {
 
@@ -3576,8 +3586,6 @@ inset: 0,
 background: colors.modalBackdrop,
 
 zIndex: 120,
-
-
 
 display: 'flex',
 
@@ -3594,6 +3602,8 @@ WebkitOverflowScrolling: 'touch',
 }
 
 
+
+/* ✅ FIX #2: Card becomes flex column, body scroll, footer sticky */
 
 const modalCardStyle: CSSProperties = {
 
@@ -3613,21 +3623,39 @@ border: `1px solid ${colors.border}`,
 
 padding: '16px',
 
-
-
-marginTop: '14px',
-
 maxHeight: 'calc(100dvh - 32px)',
-
-margin: '16px 0',
 
 overflow: 'hidden',
 
+}
+
+
+
+const modalBodyStyle: CSSProperties = {
+
+flex: 1,
+
+minHeight: 0,
+
+overflowY: 'auto',
+
 WebkitOverflowScrolling: 'touch',
 
+paddingRight: 2,
+
+}
 
 
-paddingBottom: '26px',
+
+const modalFooterStyle: CSSProperties = {
+
+position: 'sticky',
+
+bottom: 0,
+
+background: colors.white,
+
+paddingTop: 12,
 
 }
 
@@ -3692,36 +3720,6 @@ const formGridStyle: CSSProperties = {
 display: 'grid',
 
 gap: 10,
-
-}
-
-
-
-const modalBodyStyle: CSSProperties = {
-
-flex: 1,
-
-minHeight: 0,
-
-overflowY: 'auto',
-
-WebkitOverflowScrolling: 'touch',
-
-paddingRight: 2,
-
-}
-
-
-
-const modalFooterStyle: CSSProperties = {
-
-position: 'sticky',
-
-bottom: 0,
-
-background: '#fff',
-
-paddingTop: 12,
 
 }
 
@@ -3860,8 +3858,6 @@ gap: 10,
 const saveBtnStyle: CSSProperties = {
 
 width: '100%',
-
-marginTop: '14px',
 
 border: 'none',
 
