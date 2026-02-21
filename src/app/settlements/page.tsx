@@ -4,7 +4,7 @@ export const dynamic = 'force-dynamic'
 
 
 
-import { useCallback, useEffect, useMemo, useState, Suspense, type CSSProperties } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, Suspense, type CSSProperties } from 'react'
 
 import { useRouter, useSearchParams } from 'next/navigation'
 
@@ -428,6 +428,8 @@ const [savingSettlement, setSavingSettlement] = useState(false)
 
 const [savingPayment, setSavingPayment] = useState(false)
 
+const previousLoanPlanRef = useRef<LoanPlan>('fixed')
+
 const [savingDelete, setSavingDelete] = useState(false)
 
 
@@ -713,6 +715,24 @@ installmentAmount,
 amountFocus,
 
 ])
+
+
+
+useEffect(() => {
+
+const previousPlan = previousLoanPlanRef.current
+
+previousLoanPlanRef.current = loanPlan
+
+if (loanPlan !== 'summer_only' || previousPlan === 'summer_only') return
+
+const parsedCount = Number(installmentsCount)
+
+if (!Number.isInteger(parsedCount) || parsedCount <= 6) return
+
+toast.warning('6 δόσεις αντιστοιχούν σε 1 πλήρη καλοκαιρινή σεζόν')
+
+}, [loanPlan, installmentsCount])
 
 
 
@@ -1078,6 +1098,10 @@ if (type === 'loan' && loanPlan === 'summer_only') {
 
 const sAmt = parseMoney(summerAmount)
 
+const parsedCount = Number(count)
+
+if (!Number.isInteger(parsedCount) || parsedCount <= 0) return []
+
 if (!Number.isFinite(sAmt || NaN) || (sAmt as number) <= 0) return []
 
 
@@ -1088,7 +1112,7 @@ while (!isSummerMonth(due)) due = addMonthsSafe(due, 1)
 
 
 
-for (let i = 0; i < count; i++) {
+for (let i = 0; i < parsedCount; i++) {
 
 rows.push({
 
