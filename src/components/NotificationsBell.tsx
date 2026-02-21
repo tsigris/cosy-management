@@ -187,6 +187,10 @@ export default function NotificationsBell({ storeId, onUpdate }: { storeId: stri
     if (!storeId || !sessionUserId) return
     setLoading(true)
     setDismissalsLoaded(false)
+    setInstallments([])
+    setSettlementsMap({})
+    setCustomRows([])
+    setStaff([])
     try {
       const min = yyyyMmDd(new Date(Date.now() - 60 * 24 * 3600 * 1000))
       const max = yyyyMmDd(new Date(Date.now() + 14 * 24 * 3600 * 1000))
@@ -265,7 +269,6 @@ export default function NotificationsBell({ storeId, onUpdate }: { storeId: stri
         setDismissedKeys(new Set((dismissalRows || []).map((r: any) => String(r.notification_key))))
         setDismissalsLoaded(true)
       }
-
       setHasLoaded(true)
     } catch (e: any) {
       console.error(e)
@@ -437,6 +440,7 @@ export default function NotificationsBell({ storeId, onUpdate }: { storeId: stri
   const dangerCount = useMemo(() => visibleNotifications.filter((n) => n.severity === 'danger').length, [visibleNotifications])
   const warningCount = useMemo(() => visibleNotifications.filter((n) => n.severity === 'warning').length, [visibleNotifications])
   const badgeCount = dangerCount + warningCount
+  const readyForBadge = dismissalsLoaded && hasLoaded && !loading
 
   const bellColor = useMemo(() => {
     if (dangerCount > 0) return colors.accentRed
@@ -622,7 +626,7 @@ export default function NotificationsBell({ storeId, onUpdate }: { storeId: stri
         title="Ειδοποιήσεις"
       >
         <Bell size={18} />
-        {dismissalsLoaded && badgeCount > 0 && (
+        {readyForBadge && badgeCount > 0 && (
           <span
             style={{
               position: 'absolute',
