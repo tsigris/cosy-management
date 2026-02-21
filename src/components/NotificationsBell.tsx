@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { toast } from 'sonner'
 import { Bell, X, AlertTriangle, AlertOctagon, Info, Banknote, Landmark, PlusCircle } from 'lucide-react'
@@ -312,6 +312,25 @@ export default function NotificationsBell({ storeId, onUpdate }: { storeId: stri
 
   useEffect(() => {
     setHydrated(true)
+  }, [])
+
+  useLayoutEffect(() => {
+    const onPageShow = (e: PageTransitionEvent) => {
+      // Αν ο browser επαναφέρει τη σελίδα από BFCache, για κλάσμα δευτερολέπτου δείχνει παλιό DOM (badge=1).
+      // Κάνουμε άμεσο reset state ώστε να μην προλάβει να "αναβοσβήσει".
+      if ((e as any).persisted) {
+        setDismissalsLoaded(false)
+        setHasLoaded(false)
+        setDismissedKeys(new Set())
+        setInstallments([])
+        setSettlementsMap({})
+        setCustomRows([])
+        setStaff([])
+      }
+    }
+
+    window.addEventListener('pageshow', onPageShow)
+    return () => window.removeEventListener('pageshow', onPageShow)
   }, [])
 
   const installmentNotifications: UiNotification[] = useMemo(() => {
