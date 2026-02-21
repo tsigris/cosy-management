@@ -173,7 +173,6 @@ function GoalsContent() {
       }
 
       if (editingGoalId) {
-        // ✅ SECURITY FIX 1
         const { error } = await supabase
           .from('savings_goals')
           .update(payload)
@@ -199,7 +198,6 @@ function GoalsContent() {
   const onDeleteGoal = async (id: string) => {
     if (!confirm('Διαγραφή αυτού του στόχου; Οι κινήσεις του ταμείου ΔΕΝ θα διαγραφούν.')) return
     try {
-      // ✅ SECURITY FIX 2
       const { error } = await supabase
         .from('savings_goals')
         .delete()
@@ -213,7 +211,7 @@ function GoalsContent() {
     }
   }
 
-  // --- TRANSACTION ACTIONS ---
+  // --- ATOMIC TRANSACTION ACTIONS ---
   const startTransaction = (g: Goal, action: 'deposit' | 'withdraw') => {
     setSelectedGoal(g)
     setTxAction(action)
@@ -223,56 +221,93 @@ function GoalsContent() {
 
   const onSaveTransaction = async () => {
     if (!storeId || !selectedGoal) return
+  
     const amount = parseMoney(txAmount)
     if (!amount || amount <= 0) return toast.error('Βάλε σωστό ποσό')
 
+    // Πρώτο check UI επιπέδου για αποφυγή περιττού request
     if (txAction === 'withdraw' && amount > selectedGoal.current_amount) {
       return toast.error('Δεν επαρκεί το υπόλοιπο του κουμπαρά')
     }
-
+  
     setSavingTx(true)
+  
     try {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) throw new Error('Η συνεδρία έληξε')
-
-      const rawUser = session.user.user_metadata?.username || session.user.user_metadata?.full_name || session.user.email || 'Χρήστης'
+  
+      const rawUser =
+        session.user.user_metadata?.username ||
+        session.user.user_metadata?.full_name ||
+        session.user.email ||
+        'Χρήστης'
+  
       const userName = String(rawUser).split('@')[0]
+  
+      const delta = txAction === 'deposit' ? amount : -amount
 
-      const newCurrent = txAction === 'deposit' 
-        ? Number(selectedGoal.current_amount) + amount 
-        : Number(selectedGoal.current_amount) - amount
-
-      // ✅ SECURITY FIX 3
-      const { error: goalErr } = await supabase
-        .from('savings_goals')
-        .update({ current_amount: newCurrent })
-        .eq('id', selectedGoal.id)
-        .eq('store_id', storeId)
+      // 1. ATOMIC DB UPDATE ΜΕΣΩ RPC
+      const { data: newAmount, error: goalErr } = await supabase.rpc(
+        'increment_goal_amount',
+        {
+          goal_id: selectedGoal.id,
+          store_id: storeId,
+          amount: delta,
+        }
+      )
+  
       if (goalErr) throw goalErr
-
+  
+      // 2. ΕΓΓΡΑΦΗ ΚΙΝΗΣΗΣ ΣΤΟ ΤΑΜΕΙΟ
       const dbAmount = txAction === 'deposit' ? -amount : amount
       const dbType = txAction === 'deposit' ? 'savings_deposit' : 'savings_withdrawal'
-      const dbNotes = txAction === 'deposit' ? `Κατάθεση στον Κουμπαρά: ${selectedGoal.name}` : `Ανάληψη από Κουμπαρά: ${selectedGoal.name}`
-
-      const { error: txErr } = await supabase.from('transactions').insert([{
-        store_id: storeId,
-        goal_id: selectedGoal.id, // ✅ BONUS: Reporting ready!
-        user_id: session.user.id,
-        created_by_name: userName,
-        type: dbType,
-        amount: dbAmount,
-        method: 'Μετρητά',
-        category: 'Αποταμίευση',
-        notes: dbNotes,
-        date: getBusinessDate()
-      }])
+      const dbNotes = txAction === 'deposit'
+          ? `Κατάθεση στον Κουμπαρά: ${selectedGoal.name}`
+          : `Ανάληψη από Κουμπαρά: ${selectedGoal.name}`
+  
+      const { error: txErr } = await supabase
+        .from('transactions')
+        .insert([{
+          store_id: storeId,
+          goal_id: selectedGoal.id,
+          user_id: session.user.id,
+          created_by_name: userName,
+          type: dbType,
+          amount: dbAmount,
+          method: 'Μετρητά',
+          category: 'Αποταμίευση',
+          notes: dbNotes,
+          date: getBusinessDate(),
+        }])
+  
       if (txErr) throw txErr
-
-      toast.success(txAction === 'deposit' ? 'Η κατάθεση ολοκληρώθηκε!' : 'Η ανάληψη ολοκληρώθηκε!')
+  
+      toast.success(
+        txAction === 'deposit'
+          ? 'Η κατάθεση ολοκληρώθηκε!'
+          : 'Η ανάληψη ολοκληρώθηκε!'
+      )
+  
       setOpenTxModal(false)
-      loadGoals()
+      
+      // 3. OPTIMISTIC UI UPDATE
+      setGoals(prev =>
+        prev.map(g => {
+          if (g.id === selectedGoal.id) {
+            const updatedAmount = Number(newAmount);
+            // Σεβόμαστε τον κανόνα No-Reopen και στο UI
+            const finalStatus = (g.status === 'completed' && updatedAmount < g.target_amount)
+               ? 'completed'
+               : (updatedAmount >= g.target_amount ? 'completed' : 'active');
+            
+            return { ...g, current_amount: updatedAmount, status: finalStatus };
+          }
+          return g;
+        })
+      )
+  
     } catch (e: any) {
-      toast.error('Σφάλμα συναλλαγής')
+      toast.error(e.message || 'Σφάλμα συναλλαγής')
     } finally {
       setSavingTx(false)
     }
