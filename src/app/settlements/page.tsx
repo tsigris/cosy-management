@@ -2329,6 +2329,8 @@ disabled={savingSettlement}
 
 
 
+<div style={modalBodyStyle}>
+
 <div style={formGridStyle}>
 
 <div style={inputGroupStyle}>
@@ -2793,7 +2795,11 @@ onChange={(e) => setFirstDueDate(e.target.value)}
 
 </div>
 
+</div>
 
+
+
+<div style={modalFooterStyle}>
 
 <button type="button" style={saveBtnStyle} onClick={onSaveSettlement} disabled={savingSettlement}>
 
@@ -2848,6 +2854,8 @@ color: colors.primaryDark,
 </button>
 
 )}
+
+</div>
 
 </div>
 
