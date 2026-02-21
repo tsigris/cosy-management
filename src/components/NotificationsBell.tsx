@@ -224,7 +224,6 @@ export default function NotificationsBell({ storeId, onUpdate }: { storeId: stri
         .select('id, title, message, severity, due_date, show_from, show_until, dismissed_at, resolved_at, kind')
         .eq('store_id', storeId)
         .is('dismissed_at', null)
-        .is('resolved_at', null)
 
       if (customErr) {
         console.warn(customErr)
