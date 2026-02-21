@@ -3623,7 +3623,7 @@ border: `1px solid ${colors.border}`,
 
 padding: '16px',
 
-maxHeight: 'calc(100dvh - 40px)',
+maxHeight: '80vh',
 
 overflow: 'hidden',
 
@@ -3633,7 +3633,7 @@ overflow: 'hidden',
 
 const modalBodyStyle: CSSProperties = {
 
-flex: 1,
+flex: '1 1 auto',
 
 minHeight: 0,
 
@@ -3650,6 +3650,8 @@ paddingRight: 2,
 const modalFooterStyle: CSSProperties = {
 
 flexShrink: 0,
+
+marginTop: 'auto',
 
 borderTop: '1px solid #e2e8f0',
 
