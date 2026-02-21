@@ -5,26 +5,9 @@ import { useEffect, useState, Suspense, useMemo, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
-import {
-  format,
-  startOfMonth,
-  endOfMonth,
-  parseISO,
-  differenceInCalendarDays,
-  subDays,
-} from 'date-fns'
+import { format, startOfMonth, endOfMonth, parseISO, differenceInCalendarDays, subDays } from 'date-fns'
 import { toast, Toaster } from 'sonner'
-import {
-  Coins,
-  Users,
-  ShoppingBag,
-  Lightbulb,
-  Wrench,
-  Printer,
-  SlidersHorizontal,
-  Sparkles,
-  ChevronRight,
-} from 'lucide-react'
+import { Coins, Users, ShoppingBag, Lightbulb, Wrench, Printer, SlidersHorizontal, Sparkles, ChevronRight } from 'lucide-react'
 
 // --- COLORS & META ---
 const colors = {
@@ -47,14 +30,7 @@ const CATEGORY_META = [
   { key: 'Other', label: 'Λοιπά', color: '#64748b', Icon: Coins },
 ] as const
 
-type FilterA =
-  | 'Όλες'
-  | 'Έσοδα'
-  | 'Εμπορεύματα'
-  | 'Προσωπικό'
-  | 'Λογαριασμοί'
-  | 'Συντήρηση'
-  | 'Λοιπά'
+type FilterA = 'Όλες' | 'Έσοδα' | 'Εμπορεύματα' | 'Προσωπικό' | 'Λογαριασμοί' | 'Συντήρηση' | 'Λοιπά'
 type UiMode = 'simple' | 'pro'
 
 function AnalysisContent() {
@@ -89,6 +65,7 @@ function AnalysisContent() {
 
   const isZReport = useMemo(() => startDate === endDate, [startDate, endDate])
 
+  // ✅ ΜΗΝ το πειράξει ο Cursor: χρησιμοποιείται παντού
   const norm = useCallback((v: any) => String(v ?? '').trim().toLowerCase(), [])
 
   const getMethod = useCallback((t: any) => {
@@ -96,6 +73,7 @@ function AnalysisContent() {
     return String(t?.method ?? t?.payment_method ?? '').trim()
   }, [])
 
+  // ✅ Dependencies σωστά: [getMethod, norm]
   const isCreditTx = useCallback(
     (t: any) => {
       if (t?.is_credit === true) return true
@@ -106,9 +84,7 @@ function AnalysisContent() {
 
   const signedAmount = useCallback((t: any) => {
     const val = Math.abs(Number(t.amount) || 0)
-    // savings_deposit = έξοδο (βγάζω μετρητά προς κουμπαρά)
     if (t.type === 'expense' || t.type === 'debt_payment' || t.type === 'savings_deposit') return -val
-    // savings_withdrawal = έσοδο (φέρνω μετρητά από κουμπαρά)
     return val
   }, [])
 
@@ -126,7 +102,8 @@ function AnalysisContent() {
     })()
   }, [storeId, router])
 
-  // Data Loading
+  // ✅ Data Loading
+  // ✅ FIX: dependencies includes startDate & endDate
   const loadData = useCallback(async () => {
     if (!storeId || storeId === 'null') return
     setLoading(true)
@@ -135,7 +112,6 @@ function AnalysisContent() {
       const s = parseISO(startDate)
       const e = parseISO(endDate)
 
-      // Previous period = same duration immediately before startDate
       const diff = Math.max(0, differenceInCalendarDays(e, s))
       const prevEnd = subDays(s, 1)
       const prevStart = subDays(prevEnd, diff)
@@ -171,7 +147,7 @@ function AnalysisContent() {
     } finally {
       setLoading(false)
     }
-  }, [storeId, startDate, endDate])
+  }, [storeId, startDate, endDate]) // ✅ FIXED
 
   useEffect(() => {
     loadData()
@@ -179,16 +155,13 @@ function AnalysisContent() {
 
   const normalizeCategory = useCallback(
     (t: any): string => {
-      // Προμηθευτής = Εμπορεύματα
       if (t.supplier_id || t.suppliers?.name) return 'Εμπορεύματα'
 
-      // Από fixed_assets.sub_category (αν υπάρχει join)
       const sub = norm(t.fixed_assets?.sub_category || '')
       if (sub === 'staff') return 'Staff'
       if (sub === 'utility' || sub === 'utilities') return 'Utilities'
       if (sub === 'worker' || sub === 'maintenance') return 'Maintenance'
 
-      // fallback από category label
       const cat = String(t.category || '').trim()
       if (cat === 'Εμπορεύματα') return 'Εμπορεύματα'
       if (cat === 'Staff') return 'Staff'
@@ -211,7 +184,10 @@ function AnalysisContent() {
     }
 
     return transactions.filter((t) => {
-      if (filterA === 'Έσοδα') return ['income', 'income_collection', 'debt_received', 'savings_withdrawal'].includes(t.type)
+      // ✅ Φίλτρο Έσοδα περιλαμβάνει savings_withdrawal
+      if (filterA === 'Έσοδα')
+        return ['income', 'income_collection', 'debt_received', 'savings_withdrawal'].includes(t.type)
+
       if (filterA !== 'Όλες') return normalizeCategory(t) === keyMap[filterA]
       return true
     })
@@ -239,7 +215,8 @@ function AnalysisContent() {
     return {
       income,
       expenses,
-      savings: savingsDeposits - savingsWithdrawals, // (+) σημαίνει “μπήκαν στον κουμπαρά”
+      savings: savingsDeposits - savingsWithdrawals,
+      netProfit: income - expenses, // ✅ BUSINESS PERFORMANCE KPI
     }
   }, [transactions, isCreditTx])
 
@@ -310,7 +287,19 @@ function AnalysisContent() {
           </div>
         </div>
 
-        {/* MAIN BALANCES (Always shown in Simple) */}
+        {/* ✅ BUSINESS PERFORMANCE (Black Box KPI) */}
+        <div style={{ ...businessKpiCard, background: colors.primary, color: '#fff' }}>
+          <div style={{ fontSize: 11, fontWeight: 900, letterSpacing: 1, color: '#94a3b8' }}>
+            {isZReport ? 'ΚΑΘΑΡΟ ΚΕΡΔΟΣ ΗΜΕΡΑΣ' : 'ΚΑΘΑΡΟ ΚΕΡΔΟΣ ΠΕΡΙΟΔΟΥ'}
+          </div>
+          <div style={{ fontSize: 34, fontWeight: 1000, marginTop: 6 }}>{money(kpis.netProfit)}</div>
+          <div style={{ marginTop: 10, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            <div style={chip}>Έσοδα: <b style={{ marginLeft: 6 }}>{money(kpis.income)}</b></div>
+            <div style={chip}>Έξοδα: <b style={{ marginLeft: 6 }}>{money(kpis.expenses)}</b></div>
+          </div>
+        </div>
+
+        {/* MAIN BALANCES */}
         <div style={balancesGrid}>
           <div style={{ ...smallKpiCard, border: `1px solid ${colors.purple}`, background: '#f5f3ff' }}>
             <div style={{ ...smallKpiLabel, color: colors.purple }}>Κουμπαράς</div>
@@ -404,6 +393,7 @@ function AnalysisContent() {
 
 // --- STYLES ---
 const iphoneWrapper: any = { background: colors.background, minHeight: '100vh', padding: 16 }
+
 const headerCard: any = {
   display: 'flex',
   justifyContent: 'space-between',
@@ -463,6 +453,23 @@ const tileControl: any = {
   width: '100%',
 }
 
+const businessKpiCard: any = {
+  marginTop: 14,
+  padding: 18,
+  borderRadius: 22,
+  border: `1px solid ${colors.border}`,
+  boxShadow: '0 8px 24px rgba(0,0,0,0.10)',
+}
+
+const chip: any = {
+  background: 'rgba(255,255,255,0.08)',
+  border: '1px solid rgba(255,255,255,0.12)',
+  padding: '8px 10px',
+  borderRadius: 14,
+  fontSize: 12,
+  fontWeight: 800,
+}
+
 const balancesGrid: any = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 12 }
 const smallKpiCard: any = {
   background: '#fff',
@@ -502,6 +509,7 @@ const listRow: any = {
 const rowTitle: any = { fontSize: 13, fontWeight: 900, color: colors.primary, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }
 const rowMeta: any = { fontSize: 10, fontWeight: 700, color: colors.secondary, marginTop: 2 }
 const rowAmount: any = { fontSize: 14, fontWeight: 1000, display: 'flex', alignItems: 'center' }
+
 const emptyBox: any = {
   padding: 40,
   textAlign: 'center',
