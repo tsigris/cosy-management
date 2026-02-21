@@ -1,7 +1,7 @@
 'use client'
 export const dynamic = 'force-dynamic'
 
-import { useEffect, useState, Suspense, useCallback, useMemo, useRef } from 'react'
+import React, { useEffect, useState, Suspense, useCallback, useMemo, useRef } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
@@ -185,6 +185,21 @@ function createTabLabel(t: CreateTab) {
 const clampText = (v: any, max = 300) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, max)
 const upper = (v: any) => String(v ?? '').trim().toUpperCase()
 
+// ✅ Amount parsing: accepts "10,50" and "10.50"
+function parseAmount(input: string) {
+  const s = String(input || '').trim().replace(/\s+/g, '').replace(',', '.')
+  const n = Number(s)
+  return n
+}
+
+function ymFromDate(dateStr: string) {
+  // dateStr expected: YYYY-MM-DD
+  const [y, m] = String(dateStr || '').split('-')
+  const year = (y || '0000').padStart(4, '0')
+  const month = (m || '01').padStart(2, '0')
+  return { year, month }
+}
+
 function AddExpenseForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -272,6 +287,8 @@ function AddExpenseForm() {
   // ✅ Safer active store resolver (URL -> localStorage -> state)
   const resolveActiveStoreId = useCallback(() => {
     const ls = typeof window !== 'undefined' ? localStorage.getItem('active_store_id') : null
+    // If both exist and mismatch, prefer localStorage to avoid URL swap
+    if (ls && urlStoreId && ls !== urlStoreId) return ls
     return urlStoreId || ls || storeId
   }, [urlStoreId, storeId])
 
@@ -625,8 +642,50 @@ function AddExpenseForm() {
     }
   }
 
+  // ✅ Balance lock: block entries before last Z date (assumes type='z_report')
+  const checkBalanceLock = async (activeStoreId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('transactions')
+        .select('date')
+        .eq('store_id', activeStoreId)
+        .eq('type', 'z_report')
+        .order('date', { ascending: false })
+        .limit(1)
+
+      if (error) return null
+      const last = data?.[0]?.date ? String(data[0].date) : null
+      return last
+    } catch {
+      return null
+    }
+  }
+
+  // ✅ Duplicate detection: same day + same amount + same receiver (+ same txType)
+  const checkPossibleDuplicate = async (activeStoreId: string, txType: 'expense' | 'debt_payment', amtAbs: number) => {
+    try {
+      let q = supabase
+        .from('transactions')
+        .select('id, amount, date, supplier_id, fixed_asset_id, created_at')
+        .eq('store_id', activeStoreId)
+        .eq('date', selectedDate)
+        .in('type', [txType])
+        .eq(selectedEntity?.kind === 'supplier' ? 'supplier_id' : 'fixed_asset_id', selectedEntity?.id || '')
+        .eq('amount', -Math.abs(amtAbs)) // same signed amount (expenses negative)
+
+      if (editId) q = q.neq('id', editId)
+
+      const { data, error } = await q.limit(3)
+      if (error) return null
+      return data && data.length > 0 ? data : null
+    } catch {
+      return null
+    }
+  }
+
   const handleSave = async () => {
-    const amt = Number(amount)
+    // ✅ comma-safe parsing
+    const amt = parseAmount(amount)
     if (!amount || !Number.isFinite(amt) || amt <= 0) return toast.error('Συμπλήρωσε σωστό ποσό')
     if (amt > 1_000_000) return toast.error('Το ποσό είναι υπερβολικά μεγάλο')
     if (!selectedEntity) return toast.error('Επίλεξε δικαιούχο από την αναζήτηση')
@@ -649,14 +708,20 @@ function AddExpenseForm() {
         return toast.error('Δεν βρέθηκε κατάστημα (store)')
       }
 
-      // ✅ IMPORTANT: In SaaS you MUST also enforce this at DB level (RLS).
-      // Here we just avoid relying on URL only.
       setStoreId(activeStoreId)
+
+      // ✅ Balance lock check
+      const lastZ = await checkBalanceLock(activeStoreId)
+      if (lastZ && selectedDate < lastZ) {
+        setLoading(false)
+        toast.error(`Η ημερομηνία είναι κλειδωμένη λόγω Z Report (τελευταίο κλείσιμο: ${lastZ})`)
+        return
+      }
 
       const category = categoryFromSelection(selectedEntity, smartItemMap)
 
       // ✅ Canonical type
-      const txType = isAgainstDebt ? 'debt_payment' : 'expense'
+      const txType: 'expense' | 'debt_payment' = isAgainstDebt ? 'debt_payment' : 'expense'
 
       // ✅ HARD RULES:
       // 1) debt_payment cannot be credit
@@ -671,13 +736,28 @@ function AddExpenseForm() {
         return toast.error('Μη αποδεκτή μέθοδος πληρωμής')
       }
 
+      // ✅ Duplicate detection confirm (only for new saves OR edits too—kept for both)
+      const dup = await checkPossibleDuplicate(activeStoreId, txType, amt)
+      if (dup && dup.length > 0) {
+        const label = smartQuery || 'Δικαιούχο'
+        const ok = window.confirm(
+          `⚠️ Πιθανό διπλό έξοδο!\n\nΒρέθηκε άλλη κίνηση την ίδια μέρα για ${amt.toFixed(2)}€ προς "${label}".\n\nΘες σίγουρα να συνεχίσεις;`,
+        )
+        if (!ok) {
+          setLoading(false)
+          return
+        }
+      }
+
       // ✅ notes hardening
       const baseNotes = clampText(notes, 500)
       const mustDebtNote = txType === 'debt_payment' ? 'ΕΞΟΦΛΗΣΗ ΥΠΟΛΟΙΠΟΥ ΚΑΡΤΕΛΑΣ' : ''
       const debtNote =
         txType === 'debt_payment'
           ? baseNotes
-            ? baseNotes.toUpperCase().includes('ΕΞΟΦΛΗΣΗ') ? baseNotes : `${baseNotes} | ${mustDebtNote}`
+            ? baseNotes.toUpperCase().includes('ΕΞΟΦΛΗΣΗ')
+              ? baseNotes
+              : `${baseNotes} | ${mustDebtNote}`
             : mustDebtNote
           : baseNotes
 
@@ -707,7 +787,10 @@ function AddExpenseForm() {
         const safeExt = (imageFile.name.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '')
         const fileExt = safeExt || 'jpg'
         const fileName = `${session.user.id}-${Date.now()}.${fileExt}`
-        const filePath = `${activeStoreId}/${fileName}`
+
+        // ✅ storage path: store/YYYY/MM/file
+        const { year, month } = ymFromDate(selectedDate)
+        const filePath = `${activeStoreId}/${year}/${month}/${fileName}`
 
         const { data: uploadData, error: uploadError } = await supabase.storage.from('invoices').upload(filePath, imageFile, {
           cacheControl: '3600',
@@ -768,7 +851,9 @@ function AddExpenseForm() {
 
   return (
     <div style={iphoneWrapper}>
-      <Toaster position="top-center" richColors />
+      {/* ✅ Toasts above modal */}
+      <Toaster position="top-center" richColors toastOptions={{ style: { zIndex: 3000 } }} />
+
       <div style={{ maxWidth: '500px', margin: '0 auto', paddingBottom: '120px' }}>
         <div style={headerStyle}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
@@ -899,13 +984,16 @@ function AddExpenseForm() {
 
           <label style={{ ...labelStyle, marginTop: 20 }}>Ποσό (€)</label>
           <input
-            type="number"
+            type="text"
             inputMode="decimal"
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
             style={inputStyle}
             placeholder="0.00"
           />
+          <div style={{ marginTop: 6, fontSize: 12, fontWeight: 800, color: colors.secondaryText }}>
+            Tip: δέχεται και <b>10,50</b>.
+          </div>
 
           <div
             onClick={() => setNoInvoice(!noInvoice)}
@@ -1012,12 +1100,6 @@ function AddExpenseForm() {
                 Έναντι παλαιού χρέους
               </label>
             </div>
-
-            {(isAgainstDebt && isCredit) ? (
-              <div style={{ marginTop: 10, fontSize: 12, fontWeight: 900, color: colors.accentRed }}>
-                ⚠️ Δεν γίνεται “Έναντι παλαιού χρέους” και “Πίστωση” μαζί.
-              </div>
-            ) : null}
           </div>
 
           <label style={{ ...labelStyle, marginTop: 20 }}>Σημειώσεις</label>
@@ -1055,7 +1137,7 @@ function AddExpenseForm() {
                 )}
               </div>
               <div style={{ marginTop: 8, fontSize: 12, fontWeight: 800, color: colors.secondaryText }}>
-                * Max 5MB. Δεν ανεβάζουμε αν έχεις “Χωρίς τιμολόγιο”.
+                * Max 5MB. Δεν ανεβάζουμε αν έχεις “Χωρίς τιμολόγιο”. (Path: store/YYYY/MM)
               </div>
             </div>
           )}
@@ -1083,7 +1165,7 @@ function AddExpenseForm() {
           </div>
 
           <div style={{ marginTop: 10, fontSize: 12, fontWeight: 800, color: colors.secondaryText }}>
-            * Αποθηκεύουμε στο Supabase την στήλη <b>method</b>. Για Πίστωση: <b>method="Πίστωση"</b> + <b>is_credit=true</b>.
+            * Αποθηκεύουμε στη στήλη <b>method</b>. Για Πίστωση: <b>method="Πίστωση"</b> + <b>is_credit=true</b>.
           </div>
         </div>
       </div>
@@ -1094,12 +1176,7 @@ function AddExpenseForm() {
           <div style={modalCard} onMouseDown={(e) => e.stopPropagation()}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
               <h2 style={{ margin: 0, fontSize: 16, fontWeight: 900, color: colors.primaryDark }}>Νέα καταχώρηση</h2>
-              <button
-                type="button"
-                onClick={() => !createSaving && setCreateOpen(false)}
-                style={modalCloseBtn}
-                aria-label="Κλείσιμο"
-              >
+              <button type="button" onClick={() => !createSaving && setCreateOpen(false)} style={modalCloseBtn} aria-label="Κλείσιμο">
                 ✕
               </button>
             </div>
@@ -1127,14 +1204,7 @@ function AddExpenseForm() {
 
             <div style={{ marginTop: 12 }}>
               <label style={modalLabel}>{createTab === 'staff' ? 'Ονοματεπώνυμο' : 'Όνομα'}</label>
-              <input
-                value={cName}
-                onChange={(e) => setCName(e.target.value)}
-                style={modalInput}
-                placeholder="π.χ. Τζήλιος"
-                disabled={createSaving}
-                maxLength={80}
-              />
+              <input value={cName} onChange={(e) => setCName(e.target.value)} style={modalInput} placeholder="π.χ. Τζήλιος" disabled={createSaving} maxLength={80} />
             </div>
 
             {(createTab === 'suppliers' || createTab === 'maintenance' || createTab === 'other') && (
