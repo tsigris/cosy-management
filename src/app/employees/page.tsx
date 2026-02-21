@@ -1,7 +1,7 @@
 'use client'
 export const dynamic = 'force-dynamic'
 
-import { useEffect, useState, Suspense, useCallback, useMemo } from 'react'
+import { useEffect, useState, Suspense, useCallback, useMemo, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import PermissionGuard from '@/components/PermissionGuard'
 import Link from 'next/link'
@@ -90,6 +90,7 @@ function EmployeesContent() {
   })
   const [showTipsList, setShowTipsList] = useState(false)
   const [isAmountFocused, setIsAmountFocused] = useState(false)
+  const formRef = useRef<HTMLDivElement | null>(null)
 
   const availableYears: number[] = []
   for (let y = 2024; y <= new Date().getFullYear(); y++) availableYears.push(y)
@@ -1061,6 +1062,7 @@ function EmployeesContent() {
             {/* FORM */}
             {isAdding && isAdmin && (
               <div
+                ref={formRef}
                 style={{
                   ...formCard,
                   borderColor: isEditMode ? '#f59e0b' : colors.primaryDark,
@@ -1402,7 +1404,7 @@ function EmployeesContent() {
                                 })
                                 setEditingId(emp.id)
                                 setIsAdding(true)
-                                window.scrollTo({ top: 0, behavior: 'smooth' })
+                                setTimeout(() => formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50)
                               }}
                               style={editBtn}
                             >
