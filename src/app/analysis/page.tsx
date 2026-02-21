@@ -912,6 +912,42 @@ function AnalysisContent() {
   return (
     <div style={iphoneWrapper} data-print-root="true">
       <Toaster position="top-center" richColors />
+      <style jsx>{`
+        @media (max-width: 520px) {
+          .analysis-filters-stack {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+          }
+
+          .analysis-filter-tile {
+            width: 100%;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            box-sizing: border-box;
+            overflow: hidden;
+          }
+
+          .analysis-filter-icon {
+            flex: 0 0 46px;
+          }
+
+          .analysis-filter-body {
+            flex: 1;
+            min-width: 0;
+          }
+
+          .analysis-filter-control {
+            width: 100%;
+            min-width: 0;
+            max-width: 100%;
+            box-sizing: border-box;
+            font-size: 16px;
+            overflow: hidden;
+          }
+        }
+      `}</style>
 
       <div style={{ maxWidth: 560, margin: '0 auto', paddingBottom: 120 }}>
         {/* PRINT HEADER */}
@@ -964,41 +1000,43 @@ function AnalysisContent() {
 
         {/* FILTER CARD */}
         <div style={filterCard} className="no-print">
-          <div style={filtersStack}>
-            <div style={tile}>
-              <div style={tileIcon}>📅</div>
-              <div style={tileBody}>
+          <div style={filtersStack} className="analysis-filters-stack">
+            <div style={tile} className="analysis-filter-tile">
+              <div style={tileIcon} className="analysis-filter-icon">📅</div>
+              <div style={tileBody} className="analysis-filter-body">
                 <div style={tileLabel}>ΑΠΟ</div>
                 <input
                   type="date"
                   value={startDate}
                   onChange={(e) => setStartDate(e.target.value)}
                   style={tileControl}
+                  className="analysis-filter-control"
                   inputMode="none"
                 />
               </div>
             </div>
 
-            <div style={tile}>
-              <div style={tileIcon}>📅</div>
-              <div style={tileBody}>
+            <div style={tile} className="analysis-filter-tile">
+              <div style={tileIcon} className="analysis-filter-icon">📅</div>
+              <div style={tileBody} className="analysis-filter-body">
                 <div style={tileLabel}>ΕΩΣ</div>
                 <input
                   type="date"
                   value={endDate}
                   onChange={(e) => setEndDate(e.target.value)}
                   style={tileControl}
+                  className="analysis-filter-control"
                   inputMode="none"
                 />
               </div>
             </div>
 
             {/* SIMPLE + PRO: Category filter always visible */}
-            <div style={tile}>
-              <div style={tileIcon}>⛃</div>
-              <div style={tileBody}>
+            <div style={tile} className="analysis-filter-tile">
+              <div style={tileIcon} className="analysis-filter-icon">⛃</div>
+              <div style={tileBody} className="analysis-filter-body">
                 <div style={tileLabel}>ΦΙΛΤΡΟ</div>
-                <select value={filterA} onChange={(e) => setFilterA(e.target.value as FilterA)} style={tileControl}>
+                <select value={filterA} onChange={(e) => setFilterA(e.target.value as FilterA)} style={tileControl} className="analysis-filter-control">
                   <option value="Όλες">Όλες</option>
                   <option value="Έσοδα">Έσοδα</option>
                   <option value="Εμπορεύματα">Εμπορεύματα</option>
@@ -1012,11 +1050,11 @@ function AnalysisContent() {
 
             {/* Drill-down detail */}
             {detailMode !== 'none' && (
-              <div style={tile}>
-                <div style={tileIcon}>≡</div>
-                <div style={tileBody}>
+              <div style={tile} className="analysis-filter-tile">
+                <div style={tileIcon} className="analysis-filter-icon">≡</div>
+                <div style={tileBody} className="analysis-filter-body">
                   <div style={tileLabel}>ΛΕΠΤΟΜΕΡΕΙΑ</div>
-                  <select value={detailId} onChange={(e) => setDetailId(e.target.value)} style={tileControl}>
+                  <select value={detailId} onChange={(e) => setDetailId(e.target.value)} style={tileControl} className="analysis-filter-control">
                     <option value="all">Όλοι</option>
                     {detailOptions.map((x: any) => (
                       <option key={x.id} value={x.id}>
