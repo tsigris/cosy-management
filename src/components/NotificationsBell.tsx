@@ -165,6 +165,7 @@ export default function NotificationsBell({ storeId, onUpdate }: { storeId: stri
   const [customRows, setCustomRows] = useState<DbNotification[]>([])
   const [notifications, setNotifications] = useState<UiNotification[]>([])
   const [dismissedKeys, setDismissedKeys] = useState<Set<string>>(new Set())
+  const [dismissalsLoaded, setDismissalsLoaded] = useState(false)
 
   // ✅ staff for payroll notifications
   const [staff, setStaff] = useState<StaffRow[]>([])
@@ -186,6 +187,7 @@ export default function NotificationsBell({ storeId, onUpdate }: { storeId: stri
   const loadNotifications = useCallback(async () => {
     if (!storeId || !sessionUserId) return
     setLoading(true)
+    setDismissalsLoaded(false)
     try {
       const min = yyyyMmDd(new Date(Date.now() - 60 * 24 * 3600 * 1000))
       const max = yyyyMmDd(new Date(Date.now() + 14 * 24 * 3600 * 1000))
@@ -259,16 +261,20 @@ export default function NotificationsBell({ storeId, onUpdate }: { storeId: stri
       if (dismissErr) {
         console.warn(dismissErr)
         setDismissedKeys(new Set())
+        setDismissalsLoaded(true)
       } else {
         setDismissedKeys(new Set((dismissalRows || []).map((r: any) => String(r.notification_key))))
+        setDismissalsLoaded(true)
       }
 
       setHasLoaded(true)
     } catch (e: any) {
       console.error(e)
       toast.error('Σφάλμα φόρτωσης ειδοποιήσεων')
+      setDismissalsLoaded(true)
     } finally {
       setLoading(false)
+      setDismissalsLoaded(true)
     }
   }, [storeId, sessionUserId])
 
@@ -627,7 +633,7 @@ export default function NotificationsBell({ storeId, onUpdate }: { storeId: stri
         title="Ειδοποιήσεις"
       >
         <Bell size={18} />
-        {badgeCount > 0 && (
+        {dismissalsLoaded && badgeCount > 0 && (
           <span
             style={{
               position: 'absolute',
