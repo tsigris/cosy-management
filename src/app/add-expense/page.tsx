@@ -21,6 +21,10 @@ const colors = {
 
 const BANK_OPTIONS = ['Εθνική Τράπεζα', 'Eurobank', 'Alpha Bank', 'Viva Wallet', 'Τράπεζα Πειραιώς'] as const
 
+// ✅ Canonical payment methods (keep consistent across the app)
+const METHOD_VALUES = ['Μετρητά', 'Τράπεζα', 'Κάρτα', 'Πίστωση'] as const
+type PaymentMethod = (typeof METHOD_VALUES)[number]
+
 type SmartKind = 'supplier' | 'asset'
 type AssetGroup = 'staff' | 'maintenance' | 'utility' | 'other'
 
@@ -177,6 +181,10 @@ function createTabLabel(t: CreateTab) {
   return 'Λοιπά'
 }
 
+// ✅ Harden helpers
+const clampText = (v: any, max = 300) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, max)
+const upper = (v: any) => String(v ?? '').trim().toUpperCase()
+
 function AddExpenseForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -189,7 +197,7 @@ function AddExpenseForm() {
   const urlAssetId = searchParams.get('assetId')
 
   const [amount, setAmount] = useState('')
-  const [method, setMethod] = useState<'Μετρητά' | 'Τράπεζα'>('Μετρητά')
+  const [method, setMethod] = useState<PaymentMethod>('Μετρητά')
   const [notes, setNotes] = useState('')
   const [isCredit, setIsCredit] = useState(false)
   const [isAgainstDebt, setIsAgainstDebt] = useState(searchParams.get('mode') === 'debt')
@@ -261,6 +269,12 @@ function AddExpenseForm() {
     return () => document.removeEventListener('pointerdown', handler, true)
   }, [])
 
+  // ✅ Safer active store resolver (URL -> localStorage -> state)
+  const resolveActiveStoreId = useCallback(() => {
+    const ls = typeof window !== 'undefined' ? localStorage.getItem('active_store_id') : null
+    return urlStoreId || ls || storeId
+  }, [urlStoreId, storeId])
+
   const loadFormData = useCallback(async () => {
     try {
       const {
@@ -268,31 +282,23 @@ function AddExpenseForm() {
       } = await supabase.auth.getSession()
       if (!session) return router.push('/login')
 
-      const activeStoreId =
-        urlStoreId || (typeof window !== 'undefined' ? localStorage.getItem('active_store_id') : null)
-
+      const activeStoreId = resolveActiveStoreId()
       if (!activeStoreId) {
         setLoading(false)
+        toast.error('Δεν βρέθηκε κατάστημα (store)')
         return
       }
 
       setStoreId(activeStoreId)
 
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('username')
-        .eq('id', session.user.id)
-        .maybeSingle()
-
+      const { data: profile } = await supabase.from('profiles').select('username').eq('id', session.user.id).maybeSingle()
       if (profile) setCurrentUsername(profile.username || 'Admin')
 
       const [sRes, fRes, tRes] = await Promise.all([
         supabase.from('suppliers').select('id, name, phone, vat_number, bank_name, iban').eq('store_id', activeStoreId).order('name'),
         supabase
           .from('fixed_assets')
-          .select(
-            'id, name, sub_category, phone, vat_number, bank_name, iban, monthly_days, monthly_salary, daily_rate, start_date, rf_code, pay_basis',
-          )
+          .select('id, name, sub_category, phone, vat_number, bank_name, iban, monthly_days, monthly_salary, daily_rate, start_date, rf_code, pay_basis')
           .eq('store_id', activeStoreId)
           .order('name'),
         supabase.from('transactions').select('amount, type').eq('store_id', activeStoreId).eq('date', selectedDate),
@@ -321,21 +327,29 @@ function AddExpenseForm() {
         setDayStats({ income: inc, expenses: exp })
       }
 
+      // ✅ edit mode
       if (editId) {
-        const { data: tx } = await supabase
+        const { data: tx, error } = await supabase
           .from('transactions')
           .select('*')
           .eq('id', editId)
           .eq('store_id', activeStoreId)
           .single()
 
+        if (error) throw error
+
         if (tx) {
           setAmount(Math.abs(tx.amount).toString())
-          setMethod(tx.method === 'Τράπεζα' ? 'Τράπεζα' : 'Μετρητά')
-          setNotes(tx.notes || '')
-          setIsCredit(!!tx.is_credit)
+
+          // ✅ Canonical method loading
+          const m = String(tx.method || '').trim()
+          const safeMethod: PaymentMethod = (METHOD_VALUES as readonly string[]).includes(m) ? (m as PaymentMethod) : 'Μετρητά'
+          setMethod(safeMethod === 'Πίστωση' ? 'Μετρητά' : safeMethod) // UI keeps credit via checkbox
+
+          setNotes(String(tx.notes || ''))
+          setIsCredit(!!tx.is_credit || m === 'Πίστωση')
           setIsAgainstDebt(tx.type === 'debt_payment')
-          setNoInvoice((tx.notes || '').includes('ΧΩΡΙΣ ΤΙΜΟΛΟΓΙΟ'))
+          setNoInvoice(String(tx.notes || '').includes('ΧΩΡΙΣ ΤΙΜΟΛΟΓΙΟ'))
 
           if (tx.supplier_id) {
             const id = String(tx.supplier_id)
@@ -353,6 +367,7 @@ function AddExpenseForm() {
           }
         }
       } else {
+        // ✅ new mode pre-select
         if (urlSupId) {
           const id = String(urlSupId)
           setSelectedEntity({ kind: 'supplier', id })
@@ -373,16 +388,16 @@ function AddExpenseForm() {
         if (isDebtMode) {
           setIsAgainstDebt(true)
           setIsCredit(false)
-          setNotes((prev) => prev?.trim() ? prev : 'ΕΞΟΦΛΗΣΗ ΥΠΟΛΟΙΠΟΥ ΚΑΡΤΕΛΑΣ')
+          setNotes((prev) => (prev?.trim() ? prev : 'ΕΞΟΦΛΗΣΗ ΥΠΟΛΟΙΠΟΥ ΚΑΡΤΕΛΑΣ'))
         }
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error(error)
-      toast.error('Σφάλμα φόρτωσης')
+      toast.error(error?.message || 'Σφάλμα φόρτωσης')
     } finally {
       setLoading(false)
     }
-  }, [editId, router, selectedDate, urlStoreId, urlSupId, urlAssetId, searchParams])
+  }, [editId, router, selectedDate, urlSupId, urlAssetId, searchParams, resolveActiveStoreId])
 
   useEffect(() => {
     loadFormData()
@@ -468,6 +483,11 @@ function AddExpenseForm() {
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0]
+      // ✅ basic size guard (5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        toast.error('Η φωτογραφία είναι πολύ μεγάλη (max 5MB)')
+        return
+      }
       setImageFile(file)
       setImagePreview(URL.createObjectURL(file))
     }
@@ -487,18 +507,14 @@ function AddExpenseForm() {
   }
 
   const doCreate = async () => {
-    const activeStoreId =
-      urlStoreId ||
-      (typeof window !== 'undefined' ? localStorage.getItem('active_store_id') : null) ||
-      storeId
-
+    const activeStoreId = resolveActiveStoreId()
     if (!activeStoreId) return toast.error('Δεν βρέθηκε κατάστημα (store)')
 
-    const nm = cName.trim()
+    const nm = clampText(cName, 80)
     if (!nm) return toast.error('Γράψε όνομα')
 
     if (createTab === 'utility') {
-      const rf = cRf.trim()
+      const rf = clampText(cRf, 60)
       if (!rf) return toast.error('Γράψε κωδικό RF')
       if (!cBank) return toast.error('Επίλεξε τράπεζα')
     }
@@ -516,19 +532,14 @@ function AddExpenseForm() {
       if (createTab === 'suppliers') {
         const payload: any = {
           name: nm,
-          phone: cPhone.trim() || null,
-          vat_number: cVat.trim() || null,
+          phone: clampText(cPhone, 30) || null,
+          vat_number: clampText(cVat, 30) || null,
           bank_name: cBank || null,
-          iban: cIban.trim() || null,
+          iban: upper(cIban) || null, // ✅ uppercase
           store_id: activeStoreId,
         }
 
-        const { data, error } = await supabase
-          .from('suppliers')
-          .insert([payload])
-          .select('id, name, phone, vat_number, bank_name, iban')
-          .single()
-
+        const { data, error } = await supabase.from('suppliers').insert([payload]).select('id, name, phone, vat_number, bank_name, iban').single()
         if (error) throw error
 
         setSuppliers((prev) => [...prev, data].sort((a, b) => String(a.name).localeCompare(String(b.name))))
@@ -553,7 +564,7 @@ function AddExpenseForm() {
       if (createTab === 'utility') {
         payload = {
           ...payload,
-          rf_code: cRf.trim(),
+          rf_code: upper(cRf), // ✅ uppercase
           bank_name: cBank,
           phone: null,
           vat_number: null,
@@ -568,7 +579,7 @@ function AddExpenseForm() {
         payload = {
           ...payload,
           bank_name: cBank || null,
-          iban: cIban.trim() || null,
+          iban: upper(cIban) || null, // ✅ uppercase
           pay_basis: cPayBasis,
           monthly_days: cMonthlyDays.trim() ? Number(cMonthlyDays.trim()) : null,
           monthly_salary: cPayBasis === 'monthly' && cMonthlySalary.trim() ? Number(cMonthlySalary.trim()) : null,
@@ -581,10 +592,10 @@ function AddExpenseForm() {
       } else {
         payload = {
           ...payload,
-          phone: cPhone.trim() || null,
-          vat_number: cVat.trim() || null,
+          phone: clampText(cPhone, 30) || null,
+          vat_number: clampText(cVat, 30) || null,
           bank_name: cBank || null,
-          iban: cIban.trim() || null,
+          iban: upper(cIban) || null, // ✅ uppercase
           rf_code: null,
           pay_basis: null,
           monthly_days: null,
@@ -615,7 +626,9 @@ function AddExpenseForm() {
   }
 
   const handleSave = async () => {
-    if (!amount || Number(amount) <= 0) return toast.error('Συμπλήρωσε το ποσό')
+    const amt = Number(amount)
+    if (!amount || !Number.isFinite(amt) || amt <= 0) return toast.error('Συμπλήρωσε σωστό ποσό')
+    if (amt > 1_000_000) return toast.error('Το ποσό είναι υπερβολικά μεγάλο')
     if (!selectedEntity) return toast.error('Επίλεξε δικαιούχο από την αναζήτηση')
 
     setLoading(true)
@@ -624,64 +637,83 @@ function AddExpenseForm() {
       const {
         data: { session },
       } = await supabase.auth.getSession()
+
       if (!session) {
         setLoading(false)
         return router.push('/login')
       }
 
-      const activeStoreId =
-        urlStoreId ||
-        (typeof window !== 'undefined' ? localStorage.getItem('active_store_id') : null) ||
-        storeId
-
+      const activeStoreId = resolveActiveStoreId()
       if (!activeStoreId) {
         setLoading(false)
         return toast.error('Δεν βρέθηκε κατάστημα (store)')
       }
+
+      // ✅ IMPORTANT: In SaaS you MUST also enforce this at DB level (RLS).
+      // Here we just avoid relying on URL only.
+      setStoreId(activeStoreId)
 
       const category = categoryFromSelection(selectedEntity, smartItemMap)
 
       // ✅ Canonical type
       const txType = isAgainstDebt ? 'debt_payment' : 'expense'
 
-      // ✅ HARD RULES: debt_payment δεν μπορεί ΠΟΤΕ να είναι "πίστωση"
-      const finalIsCredit = txType === 'debt_payment' ? false : isCredit
-      const finalMethod = txType === 'debt_payment' ? method : isCredit ? 'Πίστωση' : method
+      // ✅ HARD RULES:
+      // 1) debt_payment cannot be credit
+      // 2) if credit -> method stored as "Πίστωση"
+      // 3) method must be one of METHOD_VALUES
+      const finalIsCredit = txType === 'debt_payment' ? false : !!isCredit
+      const chosenMethod: PaymentMethod = method === 'Πίστωση' ? 'Μετρητά' : method
+      const finalMethod: PaymentMethod = finalIsCredit ? 'Πίστωση' : chosenMethod
 
-      // ✅ auto notes for debt payment (και στο save, για extra ασφάλεια)
-      const baseNotes = notes?.trim() || ''
+      if (!(METHOD_VALUES as readonly string[]).includes(finalMethod)) {
+        setLoading(false)
+        return toast.error('Μη αποδεκτή μέθοδος πληρωμής')
+      }
+
+      // ✅ notes hardening
+      const baseNotes = clampText(notes, 500)
+      const mustDebtNote = txType === 'debt_payment' ? 'ΕΞΟΦΛΗΣΗ ΥΠΟΛΟΙΠΟΥ ΚΑΡΤΕΛΑΣ' : ''
       const debtNote =
-        txType === 'debt_payment' && !/εξοφλησ/i.test(baseNotes)
-          ? (baseNotes ? `${baseNotes} | ΕΞΟΦΛΗΣΗ ΥΠΟΛΟΙΠΟΥ ΚΑΡΤΕΛΑΣ` : 'ΕΞΟΦΛΗΣΗ ΥΠΟΛΟΙΠΟΥ ΚΑΡΤΕΛΑΣ')
+        txType === 'debt_payment'
+          ? baseNotes
+            ? baseNotes.toUpperCase().includes('ΕΞΟΦΛΗΣΗ') ? baseNotes : `${baseNotes} | ${mustDebtNote}`
+            : mustDebtNote
           : baseNotes
 
+      const finalNotes = noInvoice
+        ? debtNote
+          ? `${debtNote} (ΧΩΡΙΣ ΤΙΜΟΛΟΓΙΟ)`
+          : 'ΧΩΡΙΣ ΤΙΜΟΛΟΓΙΟ'
+        : debtNote
+
       const payload: any = {
-        amount: -Math.abs(Number(amount)),
-        method: finalMethod,
+        amount: -Math.abs(amt), // ✅ expenses negative
+        method: finalMethod, // ✅ method column (exists in Supabase)
         is_credit: finalIsCredit,
         type: txType,
         date: selectedDate,
         user_id: session.user.id,
         store_id: activeStoreId,
-
         supplier_id: selectedEntity.kind === 'supplier' ? selectedEntity.id : null,
         fixed_asset_id: selectedEntity.kind === 'asset' ? selectedEntity.id : null,
-
         category,
-        created_by_name: currentUsername,
-        notes: noInvoice
-          ? debtNote
-            ? `${debtNote} (ΧΩΡΙΣ ΤΙΜΟΛΟΓΙΟ)`
-            : 'ΧΩΡΙΣ ΤΙΜΟΛΟΓΙΟ'
-          : debtNote,
+        created_by_name: clampText(currentUsername, 60),
+        notes: finalNotes,
       }
 
+      // ✅ invoice upload (only for new tx, only if not noInvoice)
       if (imageFile && !noInvoice && !editId) {
-        const fileExt = imageFile.name.split('.').pop() || 'jpg'
-        const fileName = `${Date.now()}.${fileExt}`
+        const safeExt = (imageFile.name.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '')
+        const fileExt = safeExt || 'jpg'
+        const fileName = `${session.user.id}-${Date.now()}.${fileExt}`
         const filePath = `${activeStoreId}/${fileName}`
 
-        const { data: uploadData, error: uploadError } = await supabase.storage.from('invoices').upload(filePath, imageFile)
+        const { data: uploadData, error: uploadError } = await supabase.storage.from('invoices').upload(filePath, imageFile, {
+          cacheControl: '3600',
+          upsert: false,
+          contentType: imageFile.type || undefined,
+        })
         if (uploadError) throw uploadError
 
         payload.invoice_image = uploadData?.path || null
@@ -702,6 +734,7 @@ function AddExpenseForm() {
       router.push(`/?date=${selectedDate}&store=${activeStoreId}`)
       router.refresh()
     } catch (error: any) {
+      console.error(error)
       toast.error(error?.message || 'Κάτι πήγε στραβά')
       setLoading(false)
     }
@@ -748,7 +781,7 @@ function AddExpenseForm() {
             </div>
           </div>
 
-          <Link href={`/?store=${urlStoreId || storeId || ''}`} style={backBtnStyle}>
+          <Link href={`/?store=${resolveActiveStoreId() || ''}`} style={backBtnStyle}>
             ✕
           </Link>
         </div>
@@ -770,6 +803,7 @@ function AddExpenseForm() {
               autoCapitalize="none"
               autoCorrect="off"
               spellCheck={false}
+              maxLength={80}
             />
 
             {!!smartQuery && (
@@ -912,6 +946,7 @@ function AddExpenseForm() {
             >
               💵 Μετρητά
             </button>
+
             <button
               type="button"
               onClick={() => {
@@ -926,6 +961,21 @@ function AddExpenseForm() {
             >
               🏛️ Τράπεζα
             </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setMethod('Κάρτα')
+                setIsCredit(false)
+              }}
+              style={{
+                ...methodBtn,
+                backgroundColor: method === 'Κάρτα' && !isCredit ? colors.primaryDark : colors.white,
+                color: method === 'Κάρτα' && !isCredit ? 'white' : colors.secondaryText,
+              }}
+            >
+              💳 Κάρτα
+            </button>
           </div>
 
           <div style={creditPanel}>
@@ -934,8 +984,9 @@ function AddExpenseForm() {
                 type="checkbox"
                 checked={isCredit}
                 onChange={(e) => {
-                  setIsCredit(e.target.checked)
-                  if (e.target.checked) setIsAgainstDebt(false)
+                  const checked = e.target.checked
+                  setIsCredit(checked)
+                  if (checked) setIsAgainstDebt(false) // ✅ cannot both
                 }}
                 id="credit"
                 style={checkboxStyle}
@@ -950,23 +1001,33 @@ function AddExpenseForm() {
                 type="checkbox"
                 checked={isAgainstDebt}
                 onChange={(e) => {
-                  setIsAgainstDebt(e.target.checked)
-                  if (e.target.checked) setIsCredit(false)
+                  const checked = e.target.checked
+                  setIsAgainstDebt(checked)
+                  if (checked) setIsCredit(false) // ✅ cannot both
                 }}
                 id="against"
                 style={checkboxStyle}
               />
-              <label
-                htmlFor="against"
-                style={{ ...checkLabel, color: isAgainstDebt ? colors.accentBlue : colors.primaryDark }}
-              >
+              <label htmlFor="against" style={{ ...checkLabel, color: isAgainstDebt ? colors.accentBlue : colors.primaryDark }}>
                 Έναντι παλαιού χρέους
               </label>
             </div>
+
+            {(isAgainstDebt && isCredit) ? (
+              <div style={{ marginTop: 10, fontSize: 12, fontWeight: 900, color: colors.accentRed }}>
+                ⚠️ Δεν γίνεται “Έναντι παλαιού χρέους” και “Πίστωση” μαζί.
+              </div>
+            ) : null}
           </div>
 
           <label style={{ ...labelStyle, marginTop: 20 }}>Σημειώσεις</label>
-          <textarea value={notes} onChange={(e) => setNotes(e.target.value)} style={{ ...inputStyle, height: 80 }} />
+          <textarea
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            style={{ ...inputStyle, height: 80 }}
+            maxLength={500}
+            placeholder="π.χ. Απόδειξη, περιγραφή, αριθμός..."
+          />
 
           {!editId && !noInvoice && (
             <div style={{ marginTop: 20 }}>
@@ -993,6 +1054,9 @@ function AddExpenseForm() {
                   </label>
                 )}
               </div>
+              <div style={{ marginTop: 8, fontSize: 12, fontWeight: 800, color: colors.secondaryText }}>
+                * Max 5MB. Δεν ανεβάζουμε αν έχεις “Χωρίς τιμολόγιο”.
+              </div>
             </div>
           )}
 
@@ -1016,6 +1080,10 @@ function AddExpenseForm() {
                 </span>
               </div>
             </button>
+          </div>
+
+          <div style={{ marginTop: 10, fontSize: 12, fontWeight: 800, color: colors.secondaryText }}>
+            * Αποθηκεύουμε στο Supabase την στήλη <b>method</b>. Για Πίστωση: <b>method="Πίστωση"</b> + <b>is_credit=true</b>.
           </div>
         </div>
       </div>
@@ -1065,6 +1133,7 @@ function AddExpenseForm() {
                 style={modalInput}
                 placeholder="π.χ. Τζήλιος"
                 disabled={createSaving}
+                maxLength={80}
               />
             </div>
 
@@ -1073,11 +1142,11 @@ function AddExpenseForm() {
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 10 }}>
                   <div>
                     <label style={modalLabel}>Τηλέφωνο</label>
-                    <input value={cPhone} onChange={(e) => setCPhone(e.target.value)} style={modalInput} disabled={createSaving} />
+                    <input value={cPhone} onChange={(e) => setCPhone(e.target.value)} style={modalInput} disabled={createSaving} maxLength={30} />
                   </div>
                   <div>
                     <label style={modalLabel}>ΑΦΜ</label>
-                    <input value={cVat} onChange={(e) => setCVat(e.target.value)} style={modalInput} disabled={createSaving} />
+                    <input value={cVat} onChange={(e) => setCVat(e.target.value)} style={modalInput} disabled={createSaving} maxLength={30} />
                   </div>
                 </div>
 
@@ -1095,7 +1164,10 @@ function AddExpenseForm() {
 
                 <div style={{ marginTop: 10 }}>
                   <label style={modalLabel}>IBAN</label>
-                  <input value={cIban} onChange={(e) => setCIban(e.target.value)} style={modalInput} placeholder="GR..." disabled={createSaving} />
+                  <input value={cIban} onChange={(e) => setCIban(e.target.value)} style={modalInput} placeholder="GR..." disabled={createSaving} maxLength={40} />
+                </div>
+                <div style={{ marginTop: 8, fontSize: 12, fontWeight: 800, color: colors.secondaryText }}>
+                  * IBAN αποθηκεύεται με ΚΕΦΑΛΑΙΑ.
                 </div>
               </>
             )}
@@ -1104,7 +1176,7 @@ function AddExpenseForm() {
               <>
                 <div style={{ marginTop: 10 }}>
                   <label style={modalLabel}>Κωδικός RF</label>
-                  <input value={cRf} onChange={(e) => setCRf(e.target.value)} style={modalInput} placeholder="RF..." disabled={createSaving} />
+                  <input value={cRf} onChange={(e) => setCRf(e.target.value)} style={modalInput} placeholder="RF..." disabled={createSaving} maxLength={60} />
                 </div>
 
                 <div style={{ marginTop: 10 }}>
@@ -1117,6 +1189,10 @@ function AddExpenseForm() {
                       </option>
                     ))}
                   </select>
+                </div>
+
+                <div style={{ marginTop: 8, fontSize: 12, fontWeight: 800, color: colors.secondaryText }}>
+                  * RF αποθηκεύεται με ΚΕΦΑΛΑΙΑ.
                 </div>
               </>
             )}
@@ -1190,7 +1266,7 @@ function AddExpenseForm() {
 
                 <div style={{ marginTop: 10 }}>
                   <label style={modalLabel}>IBAN</label>
-                  <input value={cIban} onChange={(e) => setCIban(e.target.value)} style={modalInput} placeholder="GR..." disabled={createSaving} />
+                  <input value={cIban} onChange={(e) => setCIban(e.target.value)} style={modalInput} placeholder="GR..." disabled={createSaving} maxLength={40} />
                 </div>
               </>
             )}
@@ -1302,7 +1378,13 @@ const smartSaveBtn: any = {
   fontSize: 16,
 }
 
-const imageUploadContainer: any = { width: '100%', backgroundColor: colors.bgLight, borderRadius: 14, border: `2px dashed ${colors.border}`, overflow: 'hidden' }
+const imageUploadContainer: any = {
+  width: '100%',
+  backgroundColor: colors.bgLight,
+  borderRadius: 14,
+  border: `2px dashed ${colors.border}`,
+  overflow: 'hidden',
+}
 const uploadPlaceholder: any = { display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, cursor: 'pointer' }
 const imagePreviewStyle: any = { width: '100%', height: 140, objectFit: 'cover' as const }
 const removeImageBtn: any = {

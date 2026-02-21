@@ -21,17 +21,16 @@ const colors = {
 
 const AUTO_DEBT_NOTES = 'ΕΞΟΦΛΗΣΗ ΥΠΟΛΟΙΠΟΥ ΚΑΡΤΕΛΑΣ'
 
+// ---------- Helpers ----------
 function stripDiacritics(str: string) {
   return str.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
 }
-
 function normalizeGreek(str: any) {
   return stripDiacritics(String(str || ''))
     .toLowerCase()
     .trim()
     .replace(/ς/g, 'σ')
 }
-
 function greekToGreeklish(input: string) {
   let s = normalizeGreek(input)
 
@@ -83,7 +82,6 @@ function greekToGreeklish(input: string) {
   for (const ch of s) out += map[ch] ?? ch
   return out
 }
-
 function fuzzyIHI(str: string) {
   return normalizeGreek(str)
     .replace(/h/g, 'i')
@@ -93,7 +91,6 @@ function fuzzyIHI(str: string) {
     .replace(/oi/g, 'i')
     .replace(/yi/g, 'i')
 }
-
 function smartMatch(name: string, query: string) {
   const q = normalizeGreek(query)
   if (!q) return false
@@ -111,6 +108,7 @@ function smartMatch(name: string, query: string) {
   return false
 }
 
+// ---------- Types ----------
 type RevenueSource = {
   id: string
   name: string
@@ -123,7 +121,7 @@ function AddIncomeForm() {
   const editId = searchParams.get('editId')
   const selectedDate = searchParams.get('date') || new Date().toISOString().split('T')[0]
   const urlStoreId = searchParams.get('store')
-  const urlSourceId = searchParams.get('sourceId') // Deep link από καρτέλες εσόδων
+  const urlSourceId = searchParams.get('sourceId')
   const mode = searchParams.get('mode')
 
   const [amount, setAmount] = useState('')
@@ -135,8 +133,10 @@ function AddIncomeForm() {
   const [currentUsername, setCurrentUsername] = useState('Χρήστης')
   const [loading, setLoading] = useState(true)
   const [storeId, setStoreId] = useState<string | null>(urlStoreId)
+
   const [sources, setSources] = useState<any[]>([])
   const [selectedSourceId, setSelectedSourceId] = useState<string>('')
+
   const [smartQuery, setSmartQuery] = useState('')
   const [smartOpen, setSmartOpen] = useState(false)
   const smartBoxRef = useRef<HTMLDivElement | null>(null)
@@ -145,6 +145,7 @@ function AddIncomeForm() {
   const [createSaving, setCreateSaving] = useState(false)
   const [cName, setCName] = useState('')
 
+  // close dropdown on outside
   useEffect(() => {
     const handler = (e: any) => {
       const el = smartBoxRef.current
@@ -155,20 +156,33 @@ function AddIncomeForm() {
     return () => document.removeEventListener('pointerdown', handler, true)
   }, [])
 
+  // ✅ ERP/SaaS safety: prefer localStorage active_store_id, ignore swapped URL store if differs
+  const getActiveStoreId = useCallback(() => {
+    const ls =
+      typeof window !== 'undefined' ? (localStorage.getItem('active_store_id') || '').trim() : ''
+    const url = (urlStoreId || '').trim()
+
+    // If both exist and mismatch → use localStorage (prevents id swapping via URL)
+    if (ls && url && ls !== url) return ls
+    return ls || url || storeId || null
+  }, [urlStoreId, storeId])
+
   const loadFormData = useCallback(async () => {
     try {
-      const { data: { session } } = await supabase.auth.getSession()
+      const {
+        data: { session },
+      } = await supabase.auth.getSession()
       if (!session) return router.push('/login')
 
-      const activeStoreId =
-        urlStoreId ||
-        (typeof window !== 'undefined' ? localStorage.getItem('active_store_id') : null)
-
-      if (!activeStoreId) return setLoading(false)
+      const activeStoreId = getActiveStoreId()
+      if (!activeStoreId) {
+        setLoading(false)
+        return
+      }
       setStoreId(activeStoreId)
 
       const [sourcesRes, profileRes] = await Promise.all([
-        supabase.from('revenue_sources').select('*').eq('store_id', activeStoreId).order('name'),
+        supabase.from('revenue_sources').select('id, name').eq('store_id', activeStoreId).order('name'),
         supabase.from('profiles').select('username').eq('id', session.user.id).maybeSingle(),
       ])
 
@@ -178,18 +192,23 @@ function AddIncomeForm() {
       if (profileRes.data) setCurrentUsername(profileRes.data.username || 'Admin')
 
       if (editId) {
-        const { data: tx } = await supabase
+        const { data: tx, error } = await supabase
           .from('transactions')
           .select('*')
           .eq('id', editId)
           .eq('store_id', activeStoreId)
           .single()
+
+        if (error) throw error
+
         if (tx) {
           setAmount(Math.abs(tx.amount).toString())
           setMethod(tx.method === 'Τράπεζα' ? 'Τράπεζα' : 'Μετρητά')
           setNotes(tx.notes || '')
           setIsCredit(!!tx.is_credit)
-          setIsAgainstDebt(tx.type === 'debt_payment')
+
+          // ✅ Canonical: for income-side debt collection we use debt_received
+          setIsAgainstDebt(tx.type === 'debt_received')
 
           const txSourceId = tx.revenue_source_id ? String(tx.revenue_source_id) : ''
           setSelectedSourceId(txSourceId)
@@ -205,16 +224,18 @@ function AddIncomeForm() {
         }
 
         if (mode === 'debt') {
-          setNotes(prev => (prev && prev.trim().length > 0 ? prev : AUTO_DEBT_NOTES))
+          setNotes((prev) => (prev && prev.trim().length > 0 ? prev : AUTO_DEBT_NOTES))
           setIsAgainstDebt(true)
+          setIsCredit(false) // hard rule
         }
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error(error)
+      toast.error(error?.message || 'Σφάλμα φόρτωσης')
     } finally {
       setLoading(false)
     }
-  }, [editId, router, urlStoreId, urlSourceId, mode])
+  }, [editId, router, urlSourceId, mode, getActiveStoreId])
 
   useEffect(() => {
     loadFormData()
@@ -226,7 +247,7 @@ function AddIncomeForm() {
         id: String(s.id),
         name: String(s.name || ''),
       }))
-      .filter(s => !!s.id && !!s.name)
+      .filter((s) => !!s.id && !!s.name)
   }, [sources])
 
   const sourceMap = useMemo(() => {
@@ -238,14 +259,14 @@ function AddIncomeForm() {
   const filtered = useMemo(() => {
     const q = smartQuery.trim()
     if (!q) return []
-    return sourceItems.filter(s => smartMatch(s.name, q)).slice(0, 80)
+    return sourceItems.filter((s) => smartMatch(s.name, q)).slice(0, 80)
   }, [smartQuery, sourceItems])
 
   const hasExactMatch = useMemo(() => {
     const q = smartQuery.trim()
     if (!q) return false
     const nq = normalizeGreek(q)
-    return sourceItems.some(s => normalizeGreek(s.name) === nq)
+    return sourceItems.some((s) => normalizeGreek(s.name) === nq)
   }, [smartQuery, sourceItems])
 
   const showCreateInline = useMemo(() => {
@@ -275,17 +296,13 @@ function AddIncomeForm() {
   }
 
   const doCreateSource = async () => {
-    const activeStoreId =
-      urlStoreId ||
-      (typeof window !== 'undefined' ? localStorage.getItem('active_store_id') : null) ||
-      storeId
-
+    const activeStoreId = getActiveStoreId()
     if (!activeStoreId) return toast.error('Δεν βρέθηκε κατάστημα')
 
     const nm = cName.trim()
     if (!nm) return toast.error('Γράψε όνομα πηγής')
 
-    const existing = sourceItems.find(s => normalizeGreek(s.name) === normalizeGreek(nm))
+    const existing = sourceItems.find((s) => normalizeGreek(s.name) === normalizeGreek(nm))
     if (existing) {
       pickSource(existing)
       setCreateOpen(false)
@@ -303,7 +320,9 @@ function AddIncomeForm() {
 
       if (error) throw error
 
-      setSources(prev => [...prev, data].sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''))))
+      setSources((prev) =>
+        [...prev, data].sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''))),
+      )
       setSelectedSourceId(String(data.id))
       setSmartQuery(String(data.name || nm))
       setCreateOpen(false)
@@ -319,29 +338,50 @@ function AddIncomeForm() {
     if (!amount || Number(amount) <= 0) return toast.error('Συμπληρώστε το ποσό')
     if (!selectedSourceId) return toast.error('Επιλέξτε πηγή εσόδου')
 
-    if (isAgainstDebt && (isCredit || method === ('Πίστωση' as any))) {
-      return toast.error('Δεν μπορείς να εξοφλείς χρέος με Πίστωση. Επίλεξε Μετρητά ή Τράπεζα.')
+    // ✅ HARD RULES:
+    // - debt_received δεν μπορεί να είναι "Πίστωση"
+    // - debt_received δεν επιτρέπεται is_credit
+    if (isAgainstDebt && isCredit) {
+      return toast.error('Η εξόφληση χρέους δεν μπορεί να είναι "Αναμονή είσπραξης". Βάλε Μετρητά ή Τράπεζα.')
     }
 
     setLoading(true)
     try {
-      const { data: { session } } = await supabase.auth.getSession()
+      const {
+        data: { session },
+      } = await supabase.auth.getSession()
       if (!session?.user?.id) throw new Error('Δεν βρέθηκε session χρήστη')
-      const activeStoreId = storeId
+
+      const activeStoreId = getActiveStoreId()
       if (!activeStoreId) throw new Error('Δεν βρέθηκε κατάστημα')
 
+      // ✅ Canonical transaction type:
+      // income side debt collection = debt_received
+      const txType = isAgainstDebt ? 'debt_received' : 'income'
+      const finalIsCredit = txType === 'debt_received' ? false : isCredit
+      const finalMethod = txType === 'debt_received' ? method : isCredit ? ('Πίστωση' as any) : method
+
+      // ✅ Auto notes safety for debt collection
+      const baseNotes = (notes || '').trim()
+      const finalNotes =
+        txType === 'debt_received' && !/εξοφλησ/i.test(baseNotes)
+          ? baseNotes
+            ? `${baseNotes} | ${AUTO_DEBT_NOTES}`
+            : AUTO_DEBT_NOTES
+          : baseNotes
+
       const payload: any = {
-        amount: Math.abs(Number(amount)),
-        method: isCredit ? 'Πίστωση' : method,
-        is_credit: isCredit,
-        type: isAgainstDebt ? 'debt_payment' : 'income',
+        amount: Math.abs(Number(amount)), // income always +
+        method: finalMethod,
+        is_credit: finalIsCredit,
+        type: txType,
         category: 'income',
         date: selectedDate,
         user_id: session.user.id,
         store_id: activeStoreId,
         revenue_source_id: selectedSourceId,
         created_by_name: currentUsername,
-        notes: notes,
+        notes: finalNotes,
       }
 
       const { error } = editId
@@ -350,10 +390,11 @@ function AddIncomeForm() {
 
       if (error) throw error
 
-      toast.success('Το έσοδο καταχωρήθηκε!')
+      toast.success(editId ? 'Το έσοδο ενημερώθηκε!' : 'Το έσοδο καταχωρήθηκε!')
       router.push(`/?date=${selectedDate}&store=${activeStoreId}`)
+      router.refresh()
     } catch (error: any) {
-      toast.error(error.message)
+      toast.error(error?.message || 'Κάτι πήγε στραβά')
       setLoading(false)
     }
   }
@@ -378,23 +419,16 @@ function AddIncomeForm() {
                   {editId ? 'ΔΙΟΡΘΩΣΗ ΕΣΟΔΟΥ' : 'ΝΕΟ ΕΣΟΔΟ'}
                 </h1>
 
-                {/* ✅ Header Badge */}
-                {isAgainstDebt && (
-                  <span style={headerBadge}>
-                    ΕΞΟΦΛΗΣΗ
-                  </span>
-                )}
+                {isAgainstDebt && <span style={headerBadge}>ΕΞΟΦΛΗΣΗ</span>}
               </div>
 
               <p style={{ margin: 0, fontSize: 16, color: colors.secondaryText, fontWeight: 700 }}>
-                {new Date(selectedDate)
-                  .toLocaleDateString('el-GR', { day: 'numeric', month: 'long' })
-                  .toUpperCase()}
+                {new Date(selectedDate).toLocaleDateString('el-GR', { day: 'numeric', month: 'long' }).toUpperCase()}
               </p>
             </div>
           </div>
 
-          <Link href={`/?store=${storeId}`} style={backBtnStyle}>
+          <Link href={`/?store=${storeId || ''}`} style={backBtnStyle}>
             ✕
           </Link>
         </div>
@@ -405,7 +439,7 @@ function AddIncomeForm() {
           <div ref={smartBoxRef} style={{ position: 'relative' }}>
             <input
               value={smartQuery}
-              onChange={e => {
+              onChange={(e) => {
                 setSmartQuery(e.target.value)
                 setSelectedSourceId('')
                 setSmartOpen(true)
@@ -429,7 +463,7 @@ function AddIncomeForm() {
                 {showCreateInline && (
                   <button
                     type="button"
-                    onPointerDown={e => {
+                    onPointerDown={(e) => {
                       e.preventDefault()
                       e.stopPropagation()
                       openCreateModal()
@@ -441,9 +475,7 @@ function AddIncomeForm() {
                         <div style={{ fontSize: 15, fontWeight: 900, color: colors.primaryDark }}>
                           Δεν βρέθηκε: <span style={{ color: colors.accentBlue }}>{smartQuery.trim()}</span>
                         </div>
-                        <div style={{ fontSize: 12, fontWeight: 700, color: colors.secondaryText }}>
-                          Πάτα για καταχώρηση
-                        </div>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: colors.secondaryText }}>Πάτα για καταχώρηση</div>
                       </div>
                       <div style={plusPill}>＋</div>
                     </div>
@@ -457,16 +489,16 @@ function AddIncomeForm() {
                     </div>
                   ) : null
                 ) : (
-                  filtered.map(item => (
+                  filtered.map((item) => (
                     <button
                       key={item.id}
                       type="button"
-                      onPointerDown={e => {
+                      onPointerDown={(e) => {
                         e.preventDefault()
                         e.stopPropagation()
                         pickSource(item)
                       }}
-                      onTouchStart={e => {
+                      onTouchStart={(e) => {
                         e.preventDefault()
                         e.stopPropagation()
                         pickSource(item)
@@ -496,7 +528,7 @@ function AddIncomeForm() {
             inputMode="decimal"
             autoFocus
             value={amount}
-            onChange={e => setAmount(e.target.value)}
+            onChange={(e) => setAmount(e.target.value)}
             style={amountInput}
             placeholder="0.00"
           />
@@ -539,7 +571,12 @@ function AddIncomeForm() {
               <input
                 type="checkbox"
                 checked={isCredit}
-                onChange={e => {
+                onChange={(e) => {
+                  // ✅ If debt collection, forbid credit
+                  if (isAgainstDebt && e.target.checked) {
+                    toast.error('Η εξόφληση χρέους δεν μπορεί να είναι "Αναμονή είσπραξης".')
+                    return
+                  }
                   setIsCredit(e.target.checked)
                   if (e.target.checked) setIsAgainstDebt(false)
                 }}
@@ -555,7 +592,7 @@ function AddIncomeForm() {
               <input
                 type="checkbox"
                 checked={isAgainstDebt}
-                onChange={e => {
+                onChange={(e) => {
                   setIsAgainstDebt(e.target.checked)
                   if (e.target.checked) setIsCredit(false)
                 }}
@@ -574,7 +611,7 @@ function AddIncomeForm() {
           <label style={{ ...labelStyle, marginTop: 20 }}>ΣΗΜΕΙΩΣΕΙΣ</label>
           <textarea
             value={notes}
-            onChange={e => setNotes(e.target.value)}
+            onChange={(e) => setNotes(e.target.value)}
             style={{ ...inputStyle, height: 80 }}
             placeholder="Λεπτομέρειες εσόδου..."
           />
@@ -600,7 +637,7 @@ function AddIncomeForm() {
 
       {createOpen && (
         <div style={modalOverlay} onMouseDown={() => !createSaving && setCreateOpen(false)}>
-          <div style={modalCard} onMouseDown={e => e.stopPropagation()}>
+          <div style={modalCard} onMouseDown={(e) => e.stopPropagation()}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
               <h2 style={{ margin: 0, fontSize: 16, fontWeight: 900, color: colors.primaryDark }}>Νέα πηγή εσόδου</h2>
               <button
@@ -620,7 +657,7 @@ function AddIncomeForm() {
             <label style={modalLabel}>Όνομα πηγής</label>
             <input
               value={cName}
-              onChange={e => setCName(e.target.value)}
+              onChange={(e) => setCName(e.target.value)}
               style={modalInput}
               placeholder="π.χ. Airbnb"
               disabled={createSaving}
@@ -628,7 +665,12 @@ function AddIncomeForm() {
             />
 
             <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
-              <button type="button" onClick={() => setCreateOpen(false)} style={modalSecondaryBtn} disabled={createSaving}>
+              <button
+                type="button"
+                onClick={() => setCreateOpen(false)}
+                style={modalSecondaryBtn}
+                disabled={createSaving}
+              >
                 Ακύρωση
               </button>
               <button type="button" onClick={doCreateSource} style={modalPrimaryBtn} disabled={createSaving}>
@@ -642,7 +684,7 @@ function AddIncomeForm() {
   )
 }
 
-// STYLES
+// ---------- Styles ----------
 const iphoneWrapper: any = {
   backgroundColor: colors.bgLight,
   minHeight: '100dvh',
