@@ -415,26 +415,20 @@ function AnalysisContent() {
     const key = filterAToKey(filterA)
 
     return periodTx.filter((t) => {
+      // 1. Φίλτρο Κατηγορίας (Pro Mode)
       if (filterA === 'Έσοδα') {
-        const isIncomeLike = t.type === 'income' || t.type === 'income_collection' || t.type === 'debt_received'
+        const isIncomeLike = ['income', 'income_collection', 'debt_received'].includes(t.type)
         if (!isIncomeLike) return false
-      }
-
-      if (filterA !== 'Όλες' && filterA !== 'Έσοδα') {
+      } else if (filterA !== 'Όλες') {
         if (normalizeExpenseCategory(t) !== key) return false
       }
 
-      if (detailMode === 'staff' && detailId !== 'all') {
-        if (String(t.fixed_asset_id) !== String(detailId)) return false
-      }
-      if (detailMode === 'supplier' && detailId !== 'all') {
-        if (String(t.supplier_id) !== String(detailId)) return false
-      }
-      if (detailMode === 'revenue_source' && detailId !== 'all') {
-        if (String(t.revenue_source_id) !== String(detailId)) return false
-      }
-      if (detailMode === 'maintenance' && detailId !== 'all') {
-        if (String(t.fixed_asset_id) !== String(detailId)) return false
+      // 2. Φίλτρο Λεπτομέρειας (Drill-down)
+      if (detailId !== 'all') {
+        if (detailMode === 'staff' && String(t.fixed_asset_id) !== String(detailId)) return false
+        if (detailMode === 'supplier' && String(t.supplier_id) !== String(detailId)) return false
+        if (detailMode === 'revenue_source' && String(t.revenue_source_id) !== String(detailId)) return false
+        if (detailMode === 'maintenance' && String(t.fixed_asset_id) !== String(detailId)) return false
       }
 
       return true
