@@ -158,6 +158,7 @@ export default function NotificationsBell({ storeId, onUpdate }: { storeId: stri
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [hasLoaded, setHasLoaded] = useState(false)
+  const [hydrated, setHydrated] = useState(false)
   const [sessionUserId, setSessionUserId] = useState<string | null>(null)
 
   const [installments, setInstallments] = useState<InstallmentRow[]>([])
@@ -309,6 +310,10 @@ export default function NotificationsBell({ storeId, onUpdate }: { storeId: stri
     loadNotifications()
   }, [storeId, sessionUserId, loadNotifications])
 
+  useEffect(() => {
+    setHydrated(true)
+  }, [])
+
   const installmentNotifications: UiNotification[] = useMemo(() => {
     const out: UiNotification[] = []
 
@@ -440,7 +445,7 @@ export default function NotificationsBell({ storeId, onUpdate }: { storeId: stri
   const dangerCount = useMemo(() => visibleNotifications.filter((n) => n.severity === 'danger').length, [visibleNotifications])
   const warningCount = useMemo(() => visibleNotifications.filter((n) => n.severity === 'warning').length, [visibleNotifications])
   const badgeCount = dangerCount + warningCount
-  const readyForBadge = dismissalsLoaded && hasLoaded && !loading
+  const readyForBadge = hydrated && dismissalsLoaded && hasLoaded && !loading
 
   const bellColor = useMemo(() => {
     if (dangerCount > 0) return colors.accentRed
