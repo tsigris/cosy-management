@@ -197,7 +197,7 @@ function AnalysisContent() {
       const m = norm(getMethod(t))
       return m === 'πίστωση'
     },
-    [getMethod, norm],
+    [getMethod, norm]
   )
 
   // ✅ CASH / BANK classification
@@ -206,7 +206,7 @@ function AnalysisContent() {
       const m = norm(method)
       return m === 'μετρητά' || m === 'μετρητά (z)' || m === 'χωρίς απόδειξη'
     },
-    [norm],
+    [norm]
   )
 
   const isBankMethod = useCallback(
@@ -214,7 +214,7 @@ function AnalysisContent() {
       const m = norm(method)
       return m === 'κάρτα' || m === 'τράπεζα'
     },
-    [norm],
+    [norm]
   )
 
   // ✅ robust signed amount (supports both styles: negatives in DB OR positive+type)
@@ -409,7 +409,7 @@ function AnalysisContent() {
 
       return '-'
     },
-    [staff, suppliers, revenueSources, maintenanceWorkers],
+    [staff, suppliers, revenueSources, maintenanceWorkers]
   )
 
   const filterAToKey = useCallback((fa: FilterA) => {
@@ -458,7 +458,7 @@ function AnalysisContent() {
         credit_incoming: creditIncoming,
       }
     },
-    [getMethod, isCreditTx, signedAmount, isCashMethod, isBankMethod],
+    [getMethod, isCreditTx, signedAmount, isCashMethod, isBankMethod]
   )
 
   // ✅ keep calcBalances in sync with period
@@ -518,11 +518,10 @@ function AnalysisContent() {
     return { income, expenses, tips, netProfit }
   }, [filteredTx, isCreditTx])
 
-  // ✅ PROFESSIONAL: Loans & Settlements outflow (separate metrics + cash/bank split, without credit)
+  // ✅ (NEW) Loans & Settlements outflow (separate metrics + cash/bank split, without credit)
   const debtOutflows = useMemo(() => {
     const rowsNoCredit = filteredTx.filter((t) => !isCreditTx(t))
     const isExpenseLike = (t: any) => t.type === 'expense' || t.type === 'debt_payment'
-
     const catKey = (t: any) => norm(t.category)
 
     const isLoan = (t: any) => catKey(t) === norm('Δάνεια')
@@ -548,6 +547,65 @@ function AnalysisContent() {
       },
     }
   }, [filteredTx, isCreditTx, getMethod, isCashMethod, isBankMethod, norm])
+
+  // ✅ (NEW) Top Loans / Top Settlements (grouped by notes)
+  const topDebtTables = useMemo(() => {
+    const rowsNoCredit = filteredTx.filter((t) => !isCreditTx(t))
+    const isExpenseLike = (t: any) => t.type === 'expense' || t.type === 'debt_payment'
+    const catKey = (t: any) => norm(t.category)
+
+    const isLoan = (t: any) => catKey(t) === norm('Δάνεια')
+    const isSettlement = (t: any) => catKey(t) === norm('Ρυθμίσεις')
+
+    const extractDebtNameFromNotes = (notesRaw: any) => {
+      const notes = String(notesRaw || '').replace(/\s+/g, ' ').trim()
+      if (!notes) return 'Χωρίς Περιγραφή'
+
+      // Heuristic (safe): try to pick what comes after ":" or " - "
+      if (notes.includes(':')) {
+        const after = notes.split(':').slice(1).join(':').trim()
+        if (after) return after
+      }
+      if (notes.includes(' - ')) {
+        const after = notes.split(' - ').slice(1).join(' - ').trim()
+        if (after) return after
+      }
+
+      // If it contains bullets, take first segment
+      const first = notes.split('•')[0]?.trim()
+      if (first) return first
+
+      return notes
+    }
+
+    const buildTop = (predicate: (t: any) => boolean) => {
+      const byName: Record<string, { name: string; total: number; cash: number; bank: number; count: number }> = {}
+
+      for (const t of rowsNoCredit) {
+        if (!isExpenseLike(t)) continue
+        if (!predicate(t)) continue
+
+        const name = extractDebtNameFromNotes(t.notes)
+        const amt = Math.abs(Number(t.amount) || 0)
+        const method = getMethod(t)
+
+        if (!byName[name]) byName[name] = { name, total: 0, cash: 0, bank: 0, count: 0 }
+        byName[name].total += amt
+        byName[name].count += 1
+        if (isCashMethod(method)) byName[name].cash += amt
+        if (isBankMethod(method)) byName[name].bank += amt
+      }
+
+      return Object.values(byName)
+        .sort((a, b) => b.total - a.total)
+        .slice(0, 6)
+    }
+
+    return {
+      loans: buildTop(isLoan),
+      settlements: buildTop(isSettlement),
+    }
+  }, [filteredTx, isCreditTx, norm, getMethod, isCashMethod, isBankMethod])
 
   // ✅ CREDIT totals for the selected period (so cards show correctly)
   const creditPeriod = useMemo(() => {
@@ -586,7 +644,7 @@ function AnalysisContent() {
         (r) =>
           r.category === 'Εσοδα Ζ' &&
           (r.notes === 'ΧΩΡΙΣ ΣΗΜΑΝΣΗ' || r.method === 'Μετρητά' || r.method === 'Χωρίς Απόδειξη') &&
-          r.method !== 'Μετρητά (Z)',
+          r.method !== 'Μετρητά (Z)'
       )
       .reduce((a, r) => a + r.amount, 0)
 
@@ -935,6 +993,79 @@ function AnalysisContent() {
           </div>
         </div>
 
+        {/* ✅ NEW: TOP LOANS / TOP SETTLEMENTS TABLES */}
+        <div style={sectionCard} data-print-section="true">
+          <div style={sectionTitleRow}>
+            <div>
+              <h3 style={sectionTitle}>Δάνεια & Ρυθμίσεις</h3>
+              <div style={sectionSub}>Top εκροές της περιόδου (βάσει Notes). Χωρίς Πίστωση.</div>
+            </div>
+            <div style={sectionPill}>Περίοδος</div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 12 }}>
+            {/* Loans */}
+            <div style={subCard}>
+              <div style={subCardHead}>
+                <div style={{ fontSize: 14, fontWeight: 950, color: colors.indigo }}>Top Δάνεια</div>
+                <div style={{ fontSize: 13, fontWeight: 950, color: colors.primary }}>{money(debtOutflows.loans.total)}</div>
+              </div>
+
+              {topDebtTables.loans.length === 0 ? (
+                <div style={hintBox}>Δεν υπάρχουν κινήσεις με κατηγορία “Δάνεια” στην επιλεγμένη περίοδο.</div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {topDebtTables.loans.map((x, idx) => (
+                    <div key={`${x.name}-${idx}`} style={miniRow}>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={miniTitle}>
+                          {idx + 1}. {String(x.name || '').toUpperCase()}
+                        </div>
+                        <div style={miniSub}>
+                          Μετρητά: {money(x.cash)} • Τράπεζα: {money(x.bank)} • Εγγραφές: {x.count}
+                        </div>
+                      </div>
+                      <div style={{ ...miniAmount, color: colors.indigo }}>{money(x.total)}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Settlements */}
+            <div style={subCard}>
+              <div style={subCardHead}>
+                <div style={{ fontSize: 14, fontWeight: 950, color: colors.success }}>Top Ρυθμίσεις</div>
+                <div style={{ fontSize: 13, fontWeight: 950, color: colors.primary }}>{money(debtOutflows.settlements.total)}</div>
+              </div>
+
+              {topDebtTables.settlements.length === 0 ? (
+                <div style={hintBox}>Δεν υπάρχουν κινήσεις με κατηγορία “Ρυθμίσεις” στην επιλεγμένη περίοδο.</div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {topDebtTables.settlements.map((x, idx) => (
+                    <div key={`${x.name}-${idx}`} style={miniRow}>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={miniTitle}>
+                          {idx + 1}. {String(x.name || '').toUpperCase()}
+                        </div>
+                        <div style={miniSub}>
+                          Μετρητά: {money(x.cash)} • Τράπεζα: {money(x.bank)} • Εγγραφές: {x.count}
+                        </div>
+                      </div>
+                      <div style={{ ...miniAmount, color: colors.success }}>{money(x.total)}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div style={{ marginTop: 10, fontSize: 12, fontWeight: 800, color: colors.secondary }}>
+            * Για καλύτερη ακρίβεια, βάλε στα Notes ένα σταθερό format π.χ. <b>“ΔΑΝΕΙΟ: Eurobank Van”</b> ή <b>“ΡΥΘΜΙΣΗ: ΔΕΗ”</b>.
+          </div>
+        </div>
+
         {/* ✅ CATEGORY BREAKDOWN */}
         <div style={sectionCard} data-print-section="true">
           <div style={sectionTitleRow}>
@@ -1078,16 +1209,7 @@ function AnalysisContent() {
                           </div>
                         </div>
 
-                        <div
-                          style={{
-                            fontSize: 18,
-                            fontWeight: 900,
-                            color: colors.primary,
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                            whiteSpace: 'nowrap',
-                          }}
-                        >
+                        <div style={{ fontSize: 18, fontWeight: 900, color: colors.primary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           {String(name || '').toUpperCase()}
                         </div>
 
@@ -1100,7 +1222,9 @@ function AnalysisContent() {
                         )}
 
                         {credit && (
-                          <div style={{ fontSize: 12, fontWeight: 900, color: colors.danger }}>⚠️ ΠΙΣΤΩΣΗ (δεν επηρεάζει Cash/Bank)</div>
+                          <div style={{ fontSize: 12, fontWeight: 900, color: colors.danger }}>
+                            ⚠️ ΠΙΣΤΩΣΗ (δεν επηρεάζει Cash/Bank)
+                          </div>
                         )}
                       </div>
                     </div>
@@ -1113,17 +1237,13 @@ function AnalysisContent() {
 
         <div style={{ marginTop: 16, fontSize: 13, fontWeight: 800, color: colors.secondary }} data-print-section="true">
           * Τα KPI (Κέρδος/Έξοδα/Έσοδα) υπολογίζονται χωρίς Πίστωση. Η Πίστωση εμφανίζεται ξεχωριστά. Τα “Δάνεια” και “Ρυθμίσεις”
-          εμφανίζονται και σαν ξεχωριστές μετρήσεις εκροών.
+          εμφανίζονται και σαν ξεχωριστές μετρήσεις εκροών + top λίστες.
         </div>
 
         {/* ✅ PRINT BUTTON + MODE TOGGLE */}
         <div className="no-print" style={printWrap}>
           <div style={printModeSwitchWrap}>
-            <button
-              type="button"
-              onClick={() => setPrintMode('summary')}
-              style={{ ...printModeBtn, ...(printMode === 'summary' ? printModeBtnActive : {}) }}
-            >
+            <button type="button" onClick={() => setPrintMode('summary')} style={{ ...printModeBtn, ...(printMode === 'summary' ? printModeBtnActive : {}) }}>
               Σύνοψη
             </button>
             <button type="button" onClick={() => setPrintMode('full')} style={{ ...printModeBtn, ...(printMode === 'full' ? printModeBtnActive : {}) }}>
@@ -1486,6 +1606,62 @@ const printBtn: any = {
 }
 
 const printHint: any = { fontSize: 13, fontWeight: 850, color: colors.secondary, textAlign: 'center' }
+
+/* ✅ NEW styles for mini tables */
+const subCard: any = {
+  borderRadius: 18,
+  border: `1px solid ${colors.border}`,
+  background: '#fff',
+  padding: 12,
+}
+
+const subCardHead: any = {
+  display: 'flex',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+  gap: 10,
+  paddingBottom: 10,
+  borderBottom: `1px solid ${colors.border}`,
+  marginBottom: 10,
+}
+
+const miniRow: any = {
+  display: 'flex',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+  gap: 12,
+  padding: 12,
+  borderRadius: 14,
+  background: colors.background,
+  border: `1px solid ${colors.border}`,
+}
+
+const miniTitle: any = {
+  fontSize: 14,
+  fontWeight: 950,
+  color: colors.primary,
+  whiteSpace: 'nowrap',
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  maxWidth: 340,
+}
+
+const miniSub: any = {
+  marginTop: 4,
+  fontSize: 12,
+  fontWeight: 800,
+  color: colors.secondary,
+  whiteSpace: 'nowrap',
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  maxWidth: 340,
+}
+
+const miniAmount: any = {
+  fontSize: 14,
+  fontWeight: 950,
+  whiteSpace: 'nowrap',
+}
 
 export default function AnalysisPage() {
   return (
