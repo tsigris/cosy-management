@@ -163,6 +163,7 @@ export default function NotificationsBell({ storeId, onUpdate }: { storeId: stri
   const [installments, setInstallments] = useState<InstallmentRow[]>([])
   const [settlementsMap, setSettlementsMap] = useState<Record<string, SettlementRow>>({})
   const [customRows, setCustomRows] = useState<DbNotification[]>([])
+  const [notifications, setNotifications] = useState<Array<UiNotification & { id: string }>>([])
 
   // ✅ staff for payroll notifications
   const [staff, setStaff] = useState<StaffRow[]>([])
@@ -407,6 +408,15 @@ export default function NotificationsBell({ storeId, onUpdate }: { storeId: stri
     return [...installmentNotifications, ...employeePayNotifications, ...customNotifications]
   }, [installmentNotifications, employeePayNotifications, customNotifications])
 
+  useEffect(() => {
+    setNotifications(
+      allNotifications.map((n) => ({
+        ...n,
+        id: n.source === 'custom' ? n.row.id : n.key,
+      }))
+    )
+  }, [allNotifications])
+
   const dangerCount = useMemo(() => allNotifications.filter((n) => n.severity === 'danger').length, [allNotifications])
   const warningCount = useMemo(() => allNotifications.filter((n) => n.severity === 'warning').length, [allNotifications])
   const badgeCount = dangerCount + warningCount
@@ -498,6 +508,20 @@ export default function NotificationsBell({ storeId, onUpdate }: { storeId: stri
       toast.success('Έγινε απόκρυψη')
     } catch (e) {
       toast.error('Σφάλμα απόκρυψης')
+    }
+  }
+
+  const dismissNotification = async (id: string) => {
+    try {
+      await supabase
+        .from('notifications')
+        .update({ dismissed_at: new Date().toISOString() })
+        .eq('id', id)
+        .eq('store_id', storeId)
+
+      setNotifications((prev) => prev.filter((n) => n.id !== id))
+    } catch (err) {
+      console.error(err)
     }
   }
 
@@ -678,20 +702,44 @@ export default function NotificationsBell({ storeId, onUpdate }: { storeId: stri
             <div style={{ padding: 14 }}>
               {loading ? (
                 <div style={{ padding: 18, textAlign: 'center', color: colors.secondaryText, fontWeight: 800 }}>Φόρτωση…</div>
-              ) : allNotifications.length === 0 ? (
+              ) : notifications.length === 0 ? (
                 <div style={{ padding: 18, textAlign: 'center', color: colors.secondaryText, fontWeight: 800 }}>Δεν υπάρχουν ειδοποιήσεις</div>
               ) : (
                 <div style={{ display: 'grid', gap: 10 }}>
-                  {allNotifications.map((n) => (
+                  {notifications.map((n) => (
                     <div
                       key={n.key}
                       style={{
+                        position: 'relative',
                         border: `1px solid ${colors.border}`,
                         borderRadius: 14,
                         padding: 12,
                         background: 'white',
                       }}
                     >
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          dismissNotification(n.id)
+                        }}
+                        style={{
+                          position: 'absolute',
+                          top: 6,
+                          right: 6,
+                          width: 22,
+                          height: 22,
+                          borderRadius: '50%',
+                          border: 'none',
+                          background: 'transparent',
+                          color: '#64748b',
+                          cursor: 'pointer',
+                          fontWeight: 900,
+                          fontSize: 14,
+                        }}
+                      >
+                        ×
+                      </button>
+
                       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
                         <div style={{ flex: 1 }}>
                           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
