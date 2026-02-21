@@ -512,14 +512,29 @@ export default function NotificationsBell({ storeId, onUpdate }: { storeId: stri
 
   const dismissNotification = async (id: string) => {
     try {
-      await supabase
+      const target = notifications.find((n) => n.id === id)
+      if (!target) return
+
+      if (target.source !== 'custom') {
+        setNotifications((prev) => prev.filter((n) => n.id !== id))
+        return
+      }
+
+      const { error } = await supabase
         .from('notifications')
         .update({ dismissed_at: new Date().toISOString() })
         .eq('id', id)
         .eq('store_id', storeId)
 
+      if (error) {
+        toast.error('Σφάλμα απόκρυψης')
+        return
+      }
+
       setNotifications((prev) => prev.filter((n) => n.id !== id))
+      setCustomRows((prev) => prev.filter((x) => x.id !== id))
     } catch (err) {
+      toast.error('Σφάλμα απόκρυψης')
       console.error(err)
     }
   }
@@ -716,33 +731,35 @@ export default function NotificationsBell({ storeId, onUpdate }: { storeId: stri
                         background: 'white',
                       }}
                     >
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          dismissNotification(n.id)
-                        }}
-                        style={{
-                          position: 'absolute',
-                          top: 8,
-                          right: 8,
-                          width: 32,
-                          height: 32,
-                          borderRadius: 10,
-                          border: '1px solid #e2e8f0',
-                          background: '#ffffff',
-                          color: '#64748b',
-                          cursor: 'pointer',
-                          fontWeight: 900,
-                          fontSize: 18,
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
-                          zIndex: 10,
-                        }}
-                      >
-                        ×
-                      </button>
+                      {n.source === 'custom' && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            dismissNotification(n.id)
+                          }}
+                          style={{
+                            position: 'absolute',
+                            top: 8,
+                            right: 8,
+                            width: 32,
+                            height: 32,
+                            borderRadius: 10,
+                            border: '1px solid #e2e8f0',
+                            background: '#ffffff',
+                            color: '#64748b',
+                            cursor: 'pointer',
+                            fontWeight: 900,
+                            fontSize: 18,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
+                            zIndex: 10,
+                          }}
+                        >
+                          ×
+                        </button>
+                      )}
 
                       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
                         <div style={{ flex: 1 }}>
