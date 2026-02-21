@@ -109,6 +109,10 @@ function parseMoney(raw: string): number | null {
   return Number.isFinite(n) ? n : null
 }
 
+function getPaymentMethod(tx: any): string {
+  return String(tx?.payment_method ?? tx?.method ?? '').trim()
+}
+
 function formatMoneyInputEl(n: number) {
   return n.toLocaleString('el-GR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
@@ -378,7 +382,6 @@ function GoalsContent() {
           type: dbType,
           amount: dbAmount,
           method: methodValue,
-          payment_method: methodValue,
           category: 'Αποταμίευση',
           notes: dbNotes,
           date: getBusinessDate(),
@@ -435,7 +438,7 @@ function GoalsContent() {
       try {
         let q = supabase
           .from('transactions')
-          .select('id, date, type, amount, method, payment_method, notes, created_at, created_by_name', { count: 'exact' })
+          .select('id, date, type, amount, method, notes, created_at, created_by_name', { count: 'exact' })
           .eq('store_id', storeId)
           .eq('goal_id', goalId)
           .order('date', { ascending: false })
@@ -929,7 +932,7 @@ function GoalsContent() {
                     const amt = Number(t.amount) || 0
                     const isDeposit = t.type === 'savings_deposit' || amt < 0
                     const abs = Math.abs(amt)
-                    const method = String(t.method || t.payment_method || '').trim()
+                    const method = getPaymentMethod(t)
                     return (
                       <div key={t.id} style={historyRow}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>

@@ -107,6 +107,10 @@ function moneyGR(n: any) {
   return `${v.toLocaleString('el-GR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}€`
 }
 
+function getPaymentMethod(tx: any): string {
+  return String(tx?.payment_method ?? tx?.method ?? '').trim()
+}
+
 function AnalysisContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -154,7 +158,7 @@ function AnalysisContent() {
   const isZReport = useMemo(() => startDate === endDate, [startDate, endDate])
 
   const norm = useCallback((v: any) => String(v ?? '').trim().toLowerCase(), [])
-  const getMethod = useCallback((t: any) => String(t?.method ?? t?.payment_method ?? '').trim(), [])
+  const getMethod = useCallback((t: any) => getPaymentMethod(t), [])
 
   const isCreditTx = useCallback(
     (t: any) => {
@@ -308,7 +312,7 @@ function AnalysisContent() {
 
         supabase
           .from('transactions')
-          .select('amount, type, is_credit, method, payment_method, category, date')
+          .select('amount, type, is_credit, method, category, date')
           .eq('store_id', storeId)
           .gt('date', endDate)
           .lte('date', forecastTo)
@@ -855,7 +859,7 @@ function AnalysisContent() {
         type: 'income',
         category: 'Εσοδα Ζ',
         amount,
-        payment_method: 'Z (Σύνολο)',
+        method: 'Z (Σύνολο)',
         notes: `Μετρητά (Z): ${moneyGR(zCash)} • Κάρτα (POS): ${moneyGR(zPos)} • Χωρίς Σήμανση: ${moneyGR(withoutMarking)}`,
         __collapsedZ: true,
       }
@@ -1579,7 +1583,7 @@ function AnalysisContent() {
                   const pillBr = isInc ? '#d1fae5' : isTip ? '#fde68a' : '#ffe4e6'
                   const pillTx = isInc ? colors.success : isTip ? '#92400e' : colors.danger
 
-                  const pm = String((t.payment_method ?? t.method ?? '') || '').trim()
+                  const pm = getPaymentMethod(t)
                   const credit = isCreditTx(t)
                   const verified = t?.is_verified === true
 

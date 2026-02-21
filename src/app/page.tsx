@@ -40,6 +40,10 @@ type YtdInfo = {
   loanInstallmentsTotal?: number
 }
 
+function getPaymentMethod(tx: any): string {
+  return String(tx?.payment_method ?? tx?.method ?? '').trim()
+}
+
 function DashboardContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -352,7 +356,7 @@ function DashboardContent() {
 
   const isZTransaction = useCallback((t: any) => {
     const category = String(t?.category || '').trim().toLowerCase()
-    const method = String(t?.method || t?.payment_method || '').trim().toLowerCase()
+    const method = getPaymentMethod(t).toLowerCase()
     const notes = String(t?.notes || '').trim().toLowerCase()
 
     const categoryLooksZ = category === 'ζ' || category === 'εσοδα ζ' || category.includes(' ζ') || category.endsWith('ζ')
