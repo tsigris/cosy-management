@@ -5,9 +5,17 @@ import { useEffect, useState, Suspense, useMemo, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { format, startOfMonth, endOfMonth } from 'date-fns'
+import {
+  format,
+  startOfMonth,
+  endOfMonth,
+  parseISO,
+  differenceInCalendarDays,
+  subDays,
+  addDays,
+} from 'date-fns'
 import { toast, Toaster } from 'sonner'
-import { Coins, Users, ShoppingBag, Lightbulb, Wrench, Printer } from 'lucide-react'
+import { Coins, Users, ShoppingBag, Lightbulb, Wrench, Printer, ShieldCheck } from 'lucide-react'
 
 // --- MODERN PREMIUM PALETTE ---
 const colors = {
@@ -56,12 +64,35 @@ type CalcBalances = {
   as_of_date: string
 }
 
+type Kpis = {
+  income: number
+  expenses: number
+  tips: number
+  netProfit: number
+}
+
+function safePctChange(curr: number, prev: number) {
+  if (!isFinite(curr) || !isFinite(prev)) return null
+  if (prev === 0) {
+    if (curr === 0) return 0
+    return null // avoid misleading infinity
+  }
+  return ((curr - prev) / Math.abs(prev)) * 100
+}
+
+function fmtPct(p: number | null) {
+  if (p === null) return '—'
+  const sign = p >= 0 ? '+' : ''
+  return `${sign}${p.toFixed(0)}%`
+}
+
 function AnalysisContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const storeId = searchParams.get('store')
 
   const [transactions, setTransactions] = useState<any[]>([])
+  const [prevTransactions, setPrevTransactions] = useState<any[]>([]) // ✅ previous period
   const [loading, setLoading] = useState(true)
 
   // ✅ transactions current month (for Staff panel to stay correct even if user selects other range)
@@ -93,6 +124,12 @@ function AnalysisContent() {
 
   // ✅ Print Mode toggle
   const [printMode, setPrintMode] = useState<PrintMode>('full')
+
+  // ✅ Auditing
+  const [reconciledOnly, setReconciledOnly] = useState(false)
+
+  // ✅ Forecasting
+  const [expectedOutflows30d, setExpectedOutflows30d] = useState<number>(0)
 
   const norm = useCallback((v: any) => String(v ?? '').trim().toLowerCase(), [])
 
@@ -226,6 +263,19 @@ function AnalysisContent() {
     return Math.abs(raw)
   }, [])
 
+  const getPrevRange = useCallback(() => {
+    // “Previous period” = same duration immediately before startDate
+    const s = parseISO(startDate)
+    const e = parseISO(endDate)
+    const days = Math.max(0, differenceInCalendarDays(e, s))
+    const prevEnd = subDays(s, 1)
+    const prevStart = subDays(prevEnd, days)
+    return {
+      prevStart: format(prevStart, 'yyyy-MM-dd'),
+      prevEnd: format(prevEnd, 'yyyy-MM-dd'),
+    }
+  }, [startDate, endDate])
+
   const loadData = useCallback(async () => {
     try {
       setLoading(true)
@@ -240,6 +290,8 @@ function AnalysisContent() {
       } = await supabase.auth.getSession()
       if (!session) return router.push('/login')
 
+      const { prevStart, prevEnd } = getPrevRange()
+
       // ✅ selected period
       const txQuery = supabase
         .from('transactions')
@@ -247,6 +299,15 @@ function AnalysisContent() {
         .eq('store_id', storeId)
         .gte('date', startDate)
         .lte('date', endDate)
+        .order('date', { ascending: false })
+
+      // ✅ previous period (for variance)
+      const prevTxQuery = supabase
+        .from('transactions')
+        .select('*, suppliers(id, name), fixed_assets(id, name, sub_category), revenue_sources(id, name)')
+        .eq('store_id', storeId)
+        .gte('date', prevStart)
+        .lte('date', prevEnd)
         .order('date', { ascending: false })
 
       // ✅ current month (for staff details)
@@ -297,26 +358,52 @@ function AnalysisContent() {
         .limit(1)
         .maybeSingle()
 
+      // ✅ forecasting: expected outflows next 30d (based on future-dated expense rows)
+      const forecastTo = format(addDays(parseISO(endDate), 30), 'yyyy-MM-dd')
+      const expectedOutflowsQuery = supabase
+        .from('transactions')
+        .select('amount, type, is_credit, method, payment_method, category, date')
+        .eq('store_id', storeId)
+        .gt('date', endDate)
+        .lte('date', forecastTo)
+        .in('type', ['expense', 'debt_payment'])
+        .order('date', { ascending: true })
+
       const [
         { data: tx, error: txErr },
+        { data: prevTx, error: prevErr },
         { data: monthTx, error: monthTxErr },
         { data: staffData, error: staffErr },
         { data: supData, error: supErr },
         { data: revData, error: revErr },
         { data: maintData, error: maintErr },
         { data: drawerData, error: drawerErr },
-      ] = await Promise.all([txQuery, monthTxQuery, staffQuery, suppliersQuery, revenueSourcesQuery, maintenanceQuery, drawerPromise])
+        { data: expOut, error: expOutErr },
+      ] = await Promise.all([
+        txQuery,
+        prevTxQuery,
+        monthTxQuery,
+        staffQuery,
+        suppliersQuery,
+        revenueSourcesQuery,
+        maintenanceQuery,
+        drawerPromise,
+        expectedOutflowsQuery,
+      ])
 
       if (txErr) throw txErr
+      if (prevErr) throw prevErr
       if (monthTxErr) throw monthTxErr
       if (staffErr) throw staffErr
       if (supErr) throw supErr
       if (revErr) throw revErr
       if (maintErr) throw maintErr
+      if (expOutErr) console.warn('Expected outflows query error:', expOutErr)
 
       if (drawerErr) console.warn('v_cash_drawer_today error:', drawerErr)
 
       setTransactions(tx || [])
+      setPrevTransactions(prevTx || [])
       setMonthTransactions(monthTx || [])
 
       setStaff(staffData || [])
@@ -325,13 +412,20 @@ function AnalysisContent() {
       setMaintenanceWorkers((maintData || []).filter((x: any) => String(x?.name || '').trim().length > 0))
 
       setDrawer(drawerData || null)
+
+      // expected outflows (exclude credit)
+      const out = (expOut || [])
+        .filter((t: any) => !isCreditTx(t))
+        .reduce((a: number, t: any) => a + Math.abs(Number(t.amount) || 0), 0)
+
+      setExpectedOutflows30d(out)
     } catch (err) {
       console.error(err)
       toast.error('Σφάλμα φόρτωσης δεδομένων')
     } finally {
       setLoading(false)
     }
-  }, [router, storeId, startDate, endDate])
+  }, [router, storeId, startDate, endDate, getPrevRange, isCreditTx])
 
   useEffect(() => {
     loadData()
@@ -421,10 +515,27 @@ function AnalysisContent() {
     return null
   }, [])
 
+  // ✅ base period rows + optional reconciledOnly
   const periodTx = useMemo(() => {
     if (!storeId || storeId === 'null') return []
-    return transactions.filter((t) => t.date >= startDate && t.date <= endDate)
-  }, [transactions, storeId, startDate, endDate])
+    const rows = transactions.filter((t) => t.date >= startDate && t.date <= endDate)
+    if (!reconciledOnly) return rows
+    // if is_verified column doesn't exist, it will just be undefined => false, filtering all out.
+    // so we fail-open by keeping rows if field missing on ALL rows:
+    const hasAnyVerifiedField = rows.some((t) => typeof t.is_verified !== 'undefined')
+    if (!hasAnyVerifiedField) return rows
+    return rows.filter((t) => t.is_verified === true)
+  }, [transactions, storeId, startDate, endDate, reconciledOnly])
+
+  const prevPeriodTx = useMemo(() => {
+    if (!storeId || storeId === 'null') return []
+    const { prevStart, prevEnd } = getPrevRange()
+    const rows = prevTransactions.filter((t) => t.date >= prevStart && t.date <= prevEnd)
+    if (!reconciledOnly) return rows
+    const hasAnyVerifiedField = rows.some((t) => typeof t.is_verified !== 'undefined')
+    if (!hasAnyVerifiedField) return rows
+    return rows.filter((t) => t.is_verified === true)
+  }, [prevTransactions, storeId, getPrevRange, reconciledOnly])
 
   // ✅ balances calculation from SAME dataset (periodTx)
   const calcBalancesFromRows = useCallback(
@@ -437,10 +548,9 @@ function AnalysisContent() {
       for (const t of rows) {
         const method = getMethod(t)
         const credit = isCreditTx(t)
-        const amt = signedAmount(t) // signed by type or db sign
+        const amt = signedAmount(t)
 
         if (credit) {
-          // credits NEVER affect cash/bank
           if (t.type === 'expense' || t.type === 'debt_payment') creditOutstanding += Math.abs(amt)
           if (t.type === 'income' || t.type === 'income_collection' || t.type === 'debt_received') creditIncoming += Math.abs(amt)
           continue
@@ -461,13 +571,9 @@ function AnalysisContent() {
     [getMethod, isCreditTx, signedAmount, isCashMethod, isBankMethod]
   )
 
-  // ✅ keep calcBalances in sync with period
   useEffect(() => {
     const b = calcBalancesFromRows(periodTx)
-    setCalcBalances({
-      ...b,
-      as_of_date: endDate,
-    })
+    setCalcBalances({ ...b, as_of_date: endDate })
   }, [periodTx, endDate, calcBalancesFromRows])
 
   const filteredTx = useMemo(() => {
@@ -500,126 +606,44 @@ function AnalysisContent() {
     })
   }, [periodTx, filterA, detailMode, detailId, filterAToKey, normalizeExpenseCategory])
 
-  // ✅ KPIs WITHOUT CREDIT (so profit is correct)
-  const kpis = useMemo(() => {
-    const rowsNoCredit = filteredTx.filter((t) => !isCreditTx(t))
+  const computeKpis = useCallback(
+    (rows: any[]): Kpis => {
+      const rowsNoCredit = rows.filter((t) => !isCreditTx(t))
 
-    const income = rowsNoCredit
-      .filter((t) => t.type === 'income' || t.type === 'income_collection' || t.type === 'debt_received')
-      .reduce((acc, t) => acc + (Number(t.amount) || 0), 0)
+      const income = rowsNoCredit
+        .filter((t) => t.type === 'income' || t.type === 'income_collection' || t.type === 'debt_received')
+        .reduce((acc, t) => acc + (Number(t.amount) || 0), 0)
 
-    const tips = rowsNoCredit.filter((t) => t.type === 'tip_entry').reduce((acc, t) => acc + Math.abs(Number(t.amount) || 0), 0)
+      const tips = rowsNoCredit
+        .filter((t) => t.type === 'tip_entry')
+        .reduce((acc, t) => acc + Math.abs(Number(t.amount) || 0), 0)
 
-    const expenses = rowsNoCredit
-      .filter((t) => t.type === 'expense' || t.type === 'debt_payment')
-      .reduce((acc, t) => acc + Math.abs(Number(t.amount) || 0), 0)
+      const expenses = rowsNoCredit
+        .filter((t) => t.type === 'expense' || t.type === 'debt_payment')
+        .reduce((acc, t) => acc + Math.abs(Number(t.amount) || 0), 0)
 
-    const netProfit = income - expenses
-    return { income, expenses, tips, netProfit }
-  }, [filteredTx, isCreditTx])
+      const netProfit = income - expenses
+      return { income, expenses, tips, netProfit }
+    },
+    [isCreditTx]
+  )
 
-  // ✅ (NEW) Loans & Settlements outflow (separate metrics + cash/bank split, without credit)
-  const debtOutflows = useMemo(() => {
-    const rowsNoCredit = filteredTx.filter((t) => !isCreditTx(t))
-    const isExpenseLike = (t: any) => t.type === 'expense' || t.type === 'debt_payment'
-    const catKey = (t: any) => norm(t.category)
+  // ✅ KPIs
+  const kpis = useMemo(() => computeKpis(filteredTx), [filteredTx, computeKpis])
 
-    const isLoan = (t: any) => catKey(t) === norm('Δάνεια')
-    const isSettlement = (t: any) => catKey(t) === norm('Ρυθμίσεις')
+  // ✅ Previous Period KPIs (same filters as “Όλες” για να είναι συγκρίσιμο dashboard-level)
+  // Αν θες να ακολουθεί και το filterA/ detail, το κάνουμε εύκολα.
+  const kpisPrev = useMemo(() => computeKpis(prevPeriodTx), [prevPeriodTx, computeKpis])
 
-    const sumAbs = (rows: any[]) => rows.reduce((a, t) => a + Math.abs(Number(t.amount) || 0), 0)
-    const sumAbsCash = (rows: any[]) => rows.filter((t) => isCashMethod(getMethod(t))).reduce((a, t) => a + Math.abs(Number(t.amount) || 0), 0)
-    const sumAbsBank = (rows: any[]) => rows.filter((t) => isBankMethod(getMethod(t))).reduce((a, t) => a + Math.abs(Number(t.amount) || 0), 0)
-
-    const loanRows = rowsNoCredit.filter((t) => isExpenseLike(t) && isLoan(t))
-    const settlementRows = rowsNoCredit.filter((t) => isExpenseLike(t) && isSettlement(t))
-
+  // ✅ Variance % (MoM / Previous Period)
+  const variance = useMemo(() => {
     return {
-      loans: {
-        total: sumAbs(loanRows),
-        cash: sumAbsCash(loanRows),
-        bank: sumAbsBank(loanRows),
-      },
-      settlements: {
-        total: sumAbs(settlementRows),
-        cash: sumAbsCash(settlementRows),
-        bank: sumAbsBank(settlementRows),
-      },
+      income: safePctChange(kpis.income, kpisPrev.income),
+      expenses: safePctChange(kpis.expenses, kpisPrev.expenses),
+      tips: safePctChange(kpis.tips, kpisPrev.tips),
+      netProfit: safePctChange(kpis.netProfit, kpisPrev.netProfit),
     }
-  }, [filteredTx, isCreditTx, getMethod, isCashMethod, isBankMethod, norm])
-
-  // ✅ (NEW) Top Loans / Top Settlements (grouped by notes)
-  const topDebtTables = useMemo(() => {
-    const rowsNoCredit = filteredTx.filter((t) => !isCreditTx(t))
-    const isExpenseLike = (t: any) => t.type === 'expense' || t.type === 'debt_payment'
-    const catKey = (t: any) => norm(t.category)
-
-    const isLoan = (t: any) => catKey(t) === norm('Δάνεια')
-    const isSettlement = (t: any) => catKey(t) === norm('Ρυθμίσεις')
-
-    const extractDebtNameFromNotes = (notesRaw: any) => {
-      const notes = String(notesRaw || '').replace(/\s+/g, ' ').trim()
-      if (!notes) return 'Χωρίς Περιγραφή'
-
-      // Heuristic (safe): try to pick what comes after ":" or " - "
-      if (notes.includes(':')) {
-        const after = notes.split(':').slice(1).join(':').trim()
-        if (after) return after
-      }
-      if (notes.includes(' - ')) {
-        const after = notes.split(' - ').slice(1).join(' - ').trim()
-        if (after) return after
-      }
-
-      // If it contains bullets, take first segment
-      const first = notes.split('•')[0]?.trim()
-      if (first) return first
-
-      return notes
-    }
-
-    const buildTop = (predicate: (t: any) => boolean) => {
-      const byName: Record<string, { name: string; total: number; cash: number; bank: number; count: number }> = {}
-
-      for (const t of rowsNoCredit) {
-        if (!isExpenseLike(t)) continue
-        if (!predicate(t)) continue
-
-        const name = extractDebtNameFromNotes(t.notes)
-        const amt = Math.abs(Number(t.amount) || 0)
-        const method = getMethod(t)
-
-        if (!byName[name]) byName[name] = { name, total: 0, cash: 0, bank: 0, count: 0 }
-        byName[name].total += amt
-        byName[name].count += 1
-        if (isCashMethod(method)) byName[name].cash += amt
-        if (isBankMethod(method)) byName[name].bank += amt
-      }
-
-      return Object.values(byName)
-        .sort((a, b) => b.total - a.total)
-        .slice(0, 6)
-    }
-
-    return {
-      loans: buildTop(isLoan),
-      settlements: buildTop(isSettlement),
-    }
-  }, [filteredTx, isCreditTx, norm, getMethod, isCashMethod, isBankMethod])
-
-  // ✅ CREDIT totals for the selected period (so cards show correctly)
-  const creditPeriod = useMemo(() => {
-    const creditRows = periodTx.filter((t) => isCreditTx(t))
-    const creditOutstanding = creditRows
-      .filter((t) => t.type === 'expense' || t.type === 'debt_payment')
-      .reduce((a, t) => a + Math.abs(Number(t.amount) || 0), 0)
-
-    const creditIncoming = creditRows
-      .filter((t) => t.type === 'income' || t.type === 'income_collection' || t.type === 'debt_received')
-      .reduce((a, t) => a + Math.abs(Number(t.amount) || 0), 0)
-
-    return { creditOutstanding, creditIncoming }
-  }, [periodTx, isCreditTx])
+  }, [kpis, kpisPrev])
 
   // ✅ Z BREAKDOWN (μόνο όταν startDate === endDate)
   const zBreakdown = useMemo(() => {
@@ -667,7 +691,7 @@ function AnalysisContent() {
   const categoryBreakdown = useMemo(() => {
     const expenseTx = filteredTx
       .filter((t) => t.type === 'expense' || t.type === 'debt_payment')
-      .filter((t) => !isCreditTx(t)) // ✅ exclude credits from expense breakdown
+      .filter((t) => !isCreditTx(t))
 
     const result: Record<string, number> = {}
     let total = 0
@@ -693,7 +717,10 @@ function AnalysisContent() {
 
     const byStaff: Record<string, number> = {}
     for (const t of staffTxs) {
-      const name = t.fixed_assets?.name || staff.find((s) => String(s.id) === String(t.fixed_asset_id))?.name || 'Άγνωστος'
+      const name =
+        t.fixed_assets?.name ||
+        staff.find((s) => String(s.id) === String(t.fixed_asset_id))?.name ||
+        'Άγνωστος'
       byStaff[name] = (byStaff[name] || 0) + Math.abs(Number(t.amount) || 0)
     }
 
@@ -735,7 +762,10 @@ function AnalysisContent() {
 
         if (method === 'Μετρητά (Z)') zCash += rowAmount
         if (method === 'Κάρτα') zPos += rowAmount
-        if (method !== 'Μετρητά (Z)' && (notes === 'ΧΩΡΙΣ ΣΗΜΑΝΣΗ' || method === 'Μετρητά' || method === 'Χωρίς Απόδειξη')) {
+        if (
+          method !== 'Μετρητά (Z)' &&
+          (notes === 'ΧΩΡΙΣ ΣΗΜΑΝΣΗ' || method === 'Μετρητά' || method === 'Χωρίς Απόδειξη')
+        ) {
           withoutMarking += rowAmount
         }
       }
@@ -767,8 +797,6 @@ function AnalysisContent() {
   const money = useCallback((n: any) => `${Number(n || 0).toFixed(2)}€`, [])
 
   // ✅ TOTAL CASH DISPLAY
-  // Z day: (zCash + blackCash - cashExpensesToday)
-  // Non-Z: use computed cash balance (for the selected period, without credit)
   const totalCashDisplay = useMemo(() => {
     if (isZReport) return zBreakdown.zCash + zBreakdown.blackCash - cashExpensesToday
     return Number(calcBalances?.cash_balance || 0)
@@ -781,6 +809,35 @@ function AnalysisContent() {
   const drawerZCash = isZReport ? zBreakdown.zCash : Number(drawer?.z_cash || 0)
   const drawerWithoutMarking = isZReport ? zBreakdown.blackCash : Number(drawer?.extra_cash || 0)
 
+  // ✅ Break-even (simple & ERP-like)
+  // Fixed costs heuristic (until you add is_fixed_cost): Staff + Utilities + (optional “Ενοίκιο” category)
+  const breakEven = useMemo(() => {
+    const rowsNoCredit = periodTx.filter((t) => !isCreditTx(t))
+    const expenses = rowsNoCredit.filter((t) => t.type === 'expense' || t.type === 'debt_payment')
+
+    const fixed = expenses.filter((t) => {
+      const cat = normalizeExpenseCategory(t)
+      const rawCat = String(t.category || '').trim()
+      if (cat === 'Staff') return true
+      if (cat === 'Utilities') return true
+      if (rawCat === 'Ενοίκιο' || rawCat === 'Rent') return true
+      // αν θες, βάλε και Maintenance ως fixed:
+      // if (cat === 'Maintenance') return true
+      return false
+    })
+
+    const fixedTotal = fixed.reduce((a, t) => a + Math.abs(Number(t.amount) || 0), 0)
+
+    // revenue without credit
+    const incomeTotal = rowsNoCredit
+      .filter((t) => t.type === 'income' || t.type === 'income_collection' || t.type === 'debt_received')
+      .reduce((a, t) => a + (Number(t.amount) || 0), 0)
+
+    const remaining = Math.max(0, fixedTotal - incomeTotal)
+
+    return { fixedTotal, incomeTotal, remaining }
+  }, [periodTx, isCreditTx, normalizeExpenseCategory])
+
   return (
     <div style={iphoneWrapper} data-print-root="true">
       <Toaster position="top-center" richColors />
@@ -791,7 +848,8 @@ function AnalysisContent() {
           <h1 className="print-title">{isZReport ? 'Αναφορά Ημέρας (Ζ)' : 'Ανάλυση'}</h1>
           <p className="print-sub">{isZReport ? 'ΚΑΘΑΡΟ ΤΑΜΕΙΟ ΗΜΕΡΑΣ' : 'ΠΛΗΡΗΣ ΟΙΚΟΝΟΜΙΚΗ ΕΙΚΟΝΑ'}</p>
           <p className="print-meta">
-            Περίοδος: {startDate} → {endDate} • Φίλτρο: {filterA} • Εκτύπωση: {printMode === 'summary' ? 'Σύνοψη' : 'Πλήρες'}
+            Περίοδος: {startDate} → {endDate} • Φίλτρο: {filterA} • Reconciled: {reconciledOnly ? 'ΝΑΙ' : 'ΟΧΙ'} • Εκτύπωση:{' '}
+            {printMode === 'summary' ? 'Σύνοψη' : 'Πλήρες'}
           </p>
         </div>
 
@@ -827,7 +885,7 @@ function AnalysisContent() {
               <div style={filterIconBubble}>⛃</div>
               <div>
                 <div style={filterTitle}>Φίλτρα</div>
-                <div style={filterSub}>Περίοδος, κατηγορία και drill-down</div>
+                <div style={filterSub}>Περίοδος, κατηγορία, drill-down, auditing</div>
               </div>
             </div>
           </div>
@@ -837,7 +895,13 @@ function AnalysisContent() {
               <div style={tileIcon}>📅</div>
               <div style={tileBody}>
                 <div style={tileLabel}>ΑΠΟ</div>
-                <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} style={tileControl} inputMode="none" />
+                <input
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  style={tileControl}
+                  inputMode="none"
+                />
               </div>
             </div>
 
@@ -845,7 +909,13 @@ function AnalysisContent() {
               <div style={tileIcon}>📅</div>
               <div style={tileBody}>
                 <div style={tileLabel}>ΕΩΣ</div>
-                <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} style={tileControl} inputMode="none" />
+                <input
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  style={tileControl}
+                  inputMode="none"
+                />
               </div>
             </div>
 
@@ -882,15 +952,46 @@ function AnalysisContent() {
               </div>
             )}
 
+            {/* ✅ Reconciled toggle */}
+            <div style={tile}>
+              <div style={tileIcon}>
+                <ShieldCheck size={18} />
+              </div>
+              <div style={tileBody}>
+                <div style={tileLabel}>AUDIT / RECONCILIATION</div>
+                <button
+                  type="button"
+                  onClick={() => setReconciledOnly((v) => !v)}
+                  style={{
+                    ...tileControl,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    cursor: 'pointer',
+                    background: reconciledOnly ? '#ecfdf5' : colors.background,
+                    border: reconciledOnly ? '1px solid #a7f3d0' : `1px solid ${colors.border}`,
+                  }}
+                >
+                  <span style={{ fontWeight: 950 }}>{reconciledOnly ? 'Reconciled only: ON' : 'Reconciled only: OFF'}</span>
+                  <span style={{ fontWeight: 950 }}>{reconciledOnly ? '✓' : '—'}</span>
+                </button>
+                <div style={{ marginTop: 6, fontSize: 12, fontWeight: 800, color: colors.secondary }}>
+                  Δείχνει μόνο κινήσεις με <b>is_verified = true</b> (αν υπάρχει πεδίο).
+                </div>
+              </div>
+            </div>
+
             <div style={rangeHint}>Περίοδος: {rangeText}</div>
           </div>
         </div>
 
-        {/* ✅ KPIs */}
+        {/* ✅ KPIs + Variance */}
         <div style={kpiGrid} data-print-section="true">
           <div style={{ ...kpiCard, borderColor: '#d1fae5', background: 'linear-gradient(180deg, #ecfdf5, #ffffff)' }}>
             <div style={kpiTopRow}>
-              <div style={{ ...kpiLabel, color: colors.success }}>Έσοδα</div>
+              <div style={{ ...kpiLabel, color: colors.success }}>
+                Έσοδα <span style={kpiDelta}>{fmtPct(variance.income)} vs prev</span>
+              </div>
               <div style={{ ...kpiSign, color: colors.success }}>+</div>
             </div>
             <div style={{ ...kpiValue, color: colors.success }}>+ {kpis.income.toLocaleString('el-GR')}€</div>
@@ -901,7 +1002,9 @@ function AnalysisContent() {
 
           <div style={{ ...kpiCard, borderColor: '#ffe4e6', background: 'linear-gradient(180deg, #fff1f2, #ffffff)' }}>
             <div style={kpiTopRow}>
-              <div style={{ ...kpiLabel, color: colors.danger }}>Έξοδα</div>
+              <div style={{ ...kpiLabel, color: colors.danger }}>
+                Έξοδα <span style={kpiDelta}>{fmtPct(variance.expenses)} vs prev</span>
+              </div>
               <div style={{ ...kpiSign, color: colors.danger }}>-</div>
             </div>
             <div style={{ ...kpiValue, color: colors.danger }}>- {kpis.expenses.toLocaleString('el-GR')}€</div>
@@ -912,7 +1015,9 @@ function AnalysisContent() {
 
           <div style={{ ...kpiCard, borderColor: '#fde68a', background: 'linear-gradient(180deg, #fffbeb, #ffffff)' }}>
             <div style={kpiTopRow}>
-              <div style={{ ...kpiLabel, color: '#b45309' }}>Σύνολο Tips</div>
+              <div style={{ ...kpiLabel, color: '#b45309' }}>
+                Σύνολο Tips <span style={kpiDelta}>{fmtPct(variance.tips)} vs prev</span>
+              </div>
               <div style={{ ...kpiSign, color: '#b45309' }}>+</div>
             </div>
             <div style={{ ...kpiValue, color: '#b45309' }}>+ {kpis.tips.toLocaleString('el-GR')}€</div>
@@ -923,7 +1028,9 @@ function AnalysisContent() {
 
           <div style={{ ...kpiCard, borderColor: '#111827', background: 'linear-gradient(180deg, #0b1220, #111827)', color: '#fff' }}>
             <div style={kpiTopRow}>
-              <div style={{ ...kpiLabel, color: '#fff' }}>{isZReport ? 'Πραγματικό Συρτάρι' : 'Καθαρό Κέρδος'}</div>
+              <div style={{ ...kpiLabel, color: '#fff' }}>
+                {isZReport ? 'Πραγματικό Συρτάρι' : 'Καθαρό Κέρδος'} <span style={{ ...kpiDelta, color: '#e5e7eb' }}>{fmtPct(variance.netProfit)} vs prev</span>
+              </div>
               <div style={{ ...kpiSign, color: '#fff' }}>{bigKpiValue >= 0 ? '▲' : '▼'}</div>
             </div>
             <div style={{ ...kpiValue, color: '#fff' }}>{bigKpiValue.toLocaleString('el-GR')}€</div>
@@ -933,14 +1040,28 @@ function AnalysisContent() {
           </div>
         </div>
 
-        {/* ✅ BALANCES + CREDIT + LOANS/SETTLEMENTS */}
+        {/* ✅ BI Widgets: Forecast + Break-even */}
         <div style={balancesGrid} data-print-section="true">
+          <div style={{ ...smallKpiCard, border: '1px solid rgba(99,102,241,0.20)', background: 'linear-gradient(180deg, #eef2ff, #ffffff)' }}>
+            <div style={smallKpiLabel}>Expected Outflows (30d)</div>
+            <div style={{ ...smallKpiValue, color: colors.indigo }}>{money(expectedOutflows30d)}</div>
+            <div style={smallKpiHint}>
+              Μελλοντικά έξοδα που έχουν ήδη περαστεί στο σύστημα (future dated). Χωρίς Πίστωση.
+            </div>
+          </div>
+
+          <div style={{ ...smallKpiCard, border: '1px solid rgba(16,185,129,0.20)', background: 'linear-gradient(180deg, #ecfdf5, #ffffff)' }}>
+            <div style={smallKpiLabel}>Break-even (Fixed Costs)</div>
+            <div style={{ ...smallKpiValue, color: colors.success }}>{money(breakEven.remaining)}</div>
+            <div style={smallKpiHint}>
+              Fixed costs: {money(breakEven.fixedTotal)} • Έσοδα: {money(breakEven.incomeTotal)} (χωρίς Πίστωση)
+            </div>
+          </div>
+
           <div style={smallKpiCard}>
             <div style={smallKpiLabel}>Υπόλοιπο Μετρητών</div>
             <div style={smallKpiValue}>{money(totalCashDisplay)}</div>
-            <div style={smallKpiHint}>
-              {isZReport ? 'Μετρητά (Z) + Χωρίς Σήμανση - Έξοδα Μετρητών' : `As of: ${calcBalances?.as_of_date || endDate} (χωρίς Πίστωση)`}
-            </div>
+            <div style={smallKpiHint}>{isZReport ? 'Μετρητά (Z) + Χωρίς Σήμανση - Έξοδα Μετρητών' : `As of: ${endDate} (χωρίς Πίστωση)`}</div>
           </div>
 
           <div style={smallKpiCard}>
@@ -955,26 +1076,10 @@ function AnalysisContent() {
             <div style={smallKpiHint}>Cash + Bank (χωρίς Πίστωση)</div>
           </div>
 
-          <div style={{ ...smallKpiCard, border: '1px solid rgba(99,102,241,0.20)', background: 'linear-gradient(180deg, #eef2ff, #ffffff)' }}>
-            <div style={smallKpiLabel}>Πληρωμές Δανείων</div>
-            <div style={{ ...smallKpiValue, color: colors.indigo }}>{money(debtOutflows.loans.total)}</div>
-            <div style={smallKpiHint}>
-              Μετρητά: {money(debtOutflows.loans.cash)} • Τράπεζα: {money(debtOutflows.loans.bank)} (χωρίς Πίστωση)
-            </div>
-          </div>
-
-          <div style={{ ...smallKpiCard, border: '1px solid rgba(16,185,129,0.20)', background: 'linear-gradient(180deg, #ecfdf5, #ffffff)' }}>
-            <div style={smallKpiLabel}>Πληρωμές Ρυθμίσεων</div>
-            <div style={{ ...smallKpiValue, color: colors.success }}>{money(debtOutflows.settlements.total)}</div>
-            <div style={smallKpiHint}>
-              Μετρητά: {money(debtOutflows.settlements.cash)} • Τράπεζα: {money(debtOutflows.settlements.bank)} (χωρίς Πίστωση)
-            </div>
-          </div>
-
           <div style={{ ...smallKpiCard, border: '1px solid rgba(244,63,94,0.25)', background: 'linear-gradient(180deg, #fff1f2, #ffffff)' }}>
             <div style={smallKpiLabel}>Υπόλοιπο Πιστώσεων</div>
-            <div style={{ ...smallKpiValue, color: colors.danger }}>{money(creditPeriod.creditOutstanding)}</div>
-            <div style={smallKpiHint}>Έξοδα σε Πίστωση (δεν μειώνουν τα μετρητά)</div>
+            <div style={{ ...smallKpiValue, color: colors.danger }}>{money(calcBalances?.credit_outstanding || 0)}</div>
+            <div style={smallKpiHint}>Έξοδα σε Πίστωση (δεν μειώνουν Cash/Bank)</div>
           </div>
 
           <div style={smallKpiCard}>
@@ -984,85 +1089,6 @@ function AnalysisContent() {
             <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', marginTop: 4 }}>
               {drawer || isZReport ? `Z: ${money(drawerZCash)} • Χωρίς Σήμανση: ${money(drawerWithoutMarking)}` : ''}
             </div>
-          </div>
-
-          <div style={{ ...smallKpiCard, border: '1px solid rgba(99,102,241,0.20)', background: 'linear-gradient(180deg, #eef2ff, #ffffff)' }}>
-            <div style={smallKpiLabel}>Πιστωτικά Έσοδα</div>
-            <div style={{ ...smallKpiValue, color: colors.indigo }}>{money(creditPeriod.creditIncoming)}</div>
-            <div style={smallKpiHint}>Έσοδα σε Πίστωση (αν τα χρησιμοποιείς)</div>
-          </div>
-        </div>
-
-        {/* ✅ NEW: TOP LOANS / TOP SETTLEMENTS TABLES */}
-        <div style={sectionCard} data-print-section="true">
-          <div style={sectionTitleRow}>
-            <div>
-              <h3 style={sectionTitle}>Δάνεια & Ρυθμίσεις</h3>
-              <div style={sectionSub}>Top εκροές της περιόδου (βάσει Notes). Χωρίς Πίστωση.</div>
-            </div>
-            <div style={sectionPill}>Περίοδος</div>
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 12 }}>
-            {/* Loans */}
-            <div style={subCard}>
-              <div style={subCardHead}>
-                <div style={{ fontSize: 14, fontWeight: 950, color: colors.indigo }}>Top Δάνεια</div>
-                <div style={{ fontSize: 13, fontWeight: 950, color: colors.primary }}>{money(debtOutflows.loans.total)}</div>
-              </div>
-
-              {topDebtTables.loans.length === 0 ? (
-                <div style={hintBox}>Δεν υπάρχουν κινήσεις με κατηγορία “Δάνεια” στην επιλεγμένη περίοδο.</div>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {topDebtTables.loans.map((x, idx) => (
-                    <div key={`${x.name}-${idx}`} style={miniRow}>
-                      <div style={{ minWidth: 0 }}>
-                        <div style={miniTitle}>
-                          {idx + 1}. {String(x.name || '').toUpperCase()}
-                        </div>
-                        <div style={miniSub}>
-                          Μετρητά: {money(x.cash)} • Τράπεζα: {money(x.bank)} • Εγγραφές: {x.count}
-                        </div>
-                      </div>
-                      <div style={{ ...miniAmount, color: colors.indigo }}>{money(x.total)}</div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Settlements */}
-            <div style={subCard}>
-              <div style={subCardHead}>
-                <div style={{ fontSize: 14, fontWeight: 950, color: colors.success }}>Top Ρυθμίσεις</div>
-                <div style={{ fontSize: 13, fontWeight: 950, color: colors.primary }}>{money(debtOutflows.settlements.total)}</div>
-              </div>
-
-              {topDebtTables.settlements.length === 0 ? (
-                <div style={hintBox}>Δεν υπάρχουν κινήσεις με κατηγορία “Ρυθμίσεις” στην επιλεγμένη περίοδο.</div>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {topDebtTables.settlements.map((x, idx) => (
-                    <div key={`${x.name}-${idx}`} style={miniRow}>
-                      <div style={{ minWidth: 0 }}>
-                        <div style={miniTitle}>
-                          {idx + 1}. {String(x.name || '').toUpperCase()}
-                        </div>
-                        <div style={miniSub}>
-                          Μετρητά: {money(x.cash)} • Τράπεζα: {money(x.bank)} • Εγγραφές: {x.count}
-                        </div>
-                      </div>
-                      <div style={{ ...miniAmount, color: colors.success }}>{money(x.total)}</div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div style={{ marginTop: 10, fontSize: 12, fontWeight: 800, color: colors.secondary }}>
-            * Για καλύτερη ακρίβεια, βάλε στα Notes ένα σταθερό format π.χ. <b>“ΔΑΝΕΙΟ: Eurobank Van”</b> ή <b>“ΡΥΘΜΙΣΗ: ΔΕΗ”</b>.
           </div>
         </div>
 
@@ -1185,6 +1211,7 @@ function AnalysisContent() {
 
                   const pm = String((t.payment_method ?? t.method ?? '') || '').trim()
                   const credit = isCreditTx(t)
+                  const verified = t?.is_verified === true
 
                   return (
                     <div key={t.id ?? `${t.date}-${t.created_at}-${absAmt}`} style={listRow} data-print-row="true">
@@ -1221,11 +1248,14 @@ function AnalysisContent() {
                           </div>
                         )}
 
-                        {credit && (
-                          <div style={{ fontSize: 12, fontWeight: 900, color: colors.danger }}>
-                            ⚠️ ΠΙΣΤΩΣΗ (δεν επηρεάζει Cash/Bank)
-                          </div>
-                        )}
+                        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                          {credit && <span style={{ fontSize: 12, fontWeight: 900, color: colors.danger }}>⚠️ ΠΙΣΤΩΣΗ</span>}
+                          {typeof t.is_verified !== 'undefined' && (
+                            <span style={{ fontSize: 12, fontWeight: 900, color: verified ? colors.success : colors.secondary }}>
+                              {verified ? '✅ VERIFIED' : '⏳ NOT VERIFIED'}
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
                   )
@@ -1234,11 +1264,6 @@ function AnalysisContent() {
             )}
           </div>
         )}
-
-        <div style={{ marginTop: 16, fontSize: 13, fontWeight: 800, color: colors.secondary }} data-print-section="true">
-          * Τα KPI (Κέρδος/Έξοδα/Έσοδα) υπολογίζονται χωρίς Πίστωση. Η Πίστωση εμφανίζεται ξεχωριστά. Τα “Δάνεια” και “Ρυθμίσεις”
-          εμφανίζονται και σαν ξεχωριστές μετρήσεις εκροών + top λίστες.
-        </div>
 
         {/* ✅ PRINT BUTTON + MODE TOGGLE */}
         <div className="no-print" style={printWrap}>
@@ -1438,6 +1463,7 @@ const kpiTopRow: any = { display: 'flex', justifyContent: 'space-between', align
 const kpiLabel: any = { fontSize: 14, fontWeight: 950 }
 const kpiSign: any = { fontSize: 16, fontWeight: 950 }
 const kpiValue: any = { marginTop: 10, fontSize: 24, fontWeight: 950 }
+const kpiDelta: any = { marginLeft: 8, fontSize: 11, fontWeight: 900, color: colors.secondary }
 
 const kpiTrack: any = { marginTop: 12, height: 8, borderRadius: 999, background: '#e5e7eb', overflow: 'hidden' }
 const kpiFill: any = { height: 8, borderRadius: 999 }
@@ -1606,62 +1632,6 @@ const printBtn: any = {
 }
 
 const printHint: any = { fontSize: 13, fontWeight: 850, color: colors.secondary, textAlign: 'center' }
-
-/* ✅ NEW styles for mini tables */
-const subCard: any = {
-  borderRadius: 18,
-  border: `1px solid ${colors.border}`,
-  background: '#fff',
-  padding: 12,
-}
-
-const subCardHead: any = {
-  display: 'flex',
-  justifyContent: 'space-between',
-  alignItems: 'center',
-  gap: 10,
-  paddingBottom: 10,
-  borderBottom: `1px solid ${colors.border}`,
-  marginBottom: 10,
-}
-
-const miniRow: any = {
-  display: 'flex',
-  justifyContent: 'space-between',
-  alignItems: 'center',
-  gap: 12,
-  padding: 12,
-  borderRadius: 14,
-  background: colors.background,
-  border: `1px solid ${colors.border}`,
-}
-
-const miniTitle: any = {
-  fontSize: 14,
-  fontWeight: 950,
-  color: colors.primary,
-  whiteSpace: 'nowrap',
-  overflow: 'hidden',
-  textOverflow: 'ellipsis',
-  maxWidth: 340,
-}
-
-const miniSub: any = {
-  marginTop: 4,
-  fontSize: 12,
-  fontWeight: 800,
-  color: colors.secondary,
-  whiteSpace: 'nowrap',
-  overflow: 'hidden',
-  textOverflow: 'ellipsis',
-  maxWidth: 340,
-}
-
-const miniAmount: any = {
-  fontSize: 14,
-  fontWeight: 950,
-  whiteSpace: 'nowrap',
-}
 
 export default function AnalysisPage() {
   return (
