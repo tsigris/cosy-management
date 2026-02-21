@@ -315,13 +315,10 @@ export default function NotificationsBell({ storeId, onUpdate }: { storeId: stri
       let severity: 'warning' | 'danger' | null = null
       let daysText = ''
 
-      if (dueMinusToday === 0) {
-        severity = 'danger'
-        daysText = 'ΣΗΜΕΡΑ ΠΛΗΡΩΜΗ'
-      } else if (dueMinusToday > 0 && dueMinusToday <= 3) {
+      if (dueMinusToday >= 0 && dueMinusToday <= 3) {
         severity = 'warning'
-        daysText = `σε ${dueMinusToday} μέρες`
-      } else if (dueMinusToday < 0) {
+        daysText = dueMinusToday === 0 ? 'ΣΗΜΕΡΑ ΠΛΗΡΩΜΗ' : `σε ${dueMinusToday} μέρες`
+      } else if (dueMinusToday <= -3) {
         severity = 'danger'
         daysText = `${Math.abs(dueMinusToday)} μέρες σε καθυστέρηση`
       }
@@ -331,7 +328,8 @@ export default function NotificationsBell({ storeId, onUpdate }: { storeId: stri
       const isLoan = setl.type === 'loan'
       const title = isLoan ? 'Δόση Δανείου' : 'Δόση Ρύθμισης'
       const message = `${setl.name}${setl.rf_code ? ` (RF: ${setl.rf_code})` : ''} • Δόση #${inst.installment_number} • ${money(inst.amount)}€ • ${daysText}`
-      const notificationKey = `inst:${inst.id}:${inst.due_date}:${severity}`
+      const phase = severity
+      const notificationKey = `inst:${inst.id}:${phase}`
 
       out.push({
         notificationKey,
@@ -371,7 +369,7 @@ export default function NotificationsBell({ storeId, onUpdate }: { storeId: stri
 
       if (daysLeft === 0) {
         severity = 'danger'
-        msg = `ΣΗΜΕΡΑ ΠΛΗΡΩΜΗ 💰 • ${name}`
+        msg = 'ΣΗΜΕΡΑ ΠΛΗΡΩΜΗ'
       } else if (daysLeft >= 1 && daysLeft <= 3) {
         severity = 'warning'
         msg = `Πληρωμή σε ${daysLeft} μέρες • ${name}`
@@ -514,7 +512,7 @@ export default function NotificationsBell({ storeId, onUpdate }: { storeId: stri
     }
   }
 
-  const dismissNotification = async (notificationKey: string) => {
+  const dismissAny = async (notificationKey: string) => {
     try {
       if (!storeId || !sessionUserId) {
         toast.error('Δεν βρέθηκε χρήστης')
@@ -527,7 +525,12 @@ export default function NotificationsBell({ storeId, onUpdate }: { storeId: stri
       const { error } = await supabase
         .from('notification_dismissals')
         .upsert(
-          [{ store_id: storeId, user_id: sessionUserId, notification_key: target.notificationKey }],
+          [{
+            store_id: storeId,
+            user_id: sessionUserId,
+            notification_key: target.notificationKey,
+            dismissed_at: new Date().toISOString(),
+          }],
           { onConflict: 'store_id,user_id,notification_key' }
         )
 
@@ -743,7 +746,7 @@ export default function NotificationsBell({ storeId, onUpdate }: { storeId: stri
                       <button
                         onClick={(e) => {
                           e.stopPropagation()
-                          dismissNotification(n.notificationKey)
+                          dismissAny(n.notificationKey)
                         }}
                         style={{
                           position: 'absolute',
@@ -851,7 +854,7 @@ export default function NotificationsBell({ storeId, onUpdate }: { storeId: stri
                             </a>
                           ) : (
                             <button
-                              onClick={() => dismissNotification(n.notificationKey)}
+                              onClick={() => dismissAny(n.notificationKey)}
                               style={{
                                 border: `1px solid ${colors.border}`,
                                 borderRadius: 12,
