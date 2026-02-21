@@ -81,7 +81,12 @@ function DashboardContent() {
     return null
   }
 
+  // ✅ Clean labels για κουμπαρά
   const getEntityLabelFromTx = (t: any) => {
+    const type = String(t?.type || '')
+    if (type === 'savings_deposit') return 'ΚΑΤΑΘΕΣΗ ΚΟΥΜΠΑΡΑ'
+    if (type === 'savings_withdrawal') return 'ΑΝΑΛΗΨΗ ΚΟΥΜΠΑΡΑ'
+
     if (t?.revenue_sources?.name) return t.revenue_sources.name
     if (t?.suppliers?.name) return t.suppliers.name
     if (t?.fixed_assets?.name) return t.fixed_assets.name
@@ -106,11 +111,7 @@ function DashboardContent() {
       if (key.startsWith('loan:')) {
         try {
           const txId = key.replace('loan:', '')
-          const { data: inst } = await supabase
-            .from('installments')
-            .select('settlement_id')
-            .eq('transaction_id', txId)
-            .maybeSingle()
+          const { data: inst } = await supabase.from('installments').select('settlement_id').eq('transaction_id', txId).maybeSingle()
 
           if (!inst?.settlement_id) {
             setYtdCache((prev) => ({ ...prev, [key]: { loading: false } }))
@@ -123,10 +124,7 @@ function DashboardContent() {
             .eq('id', inst.settlement_id)
             .single()
 
-          const { data: allInst } = await supabase
-            .from('installments')
-            .select('amount, status')
-            .eq('settlement_id', inst.settlement_id)
+          const { data: allInst } = await supabase.from('installments').select('amount, status').eq('settlement_id', inst.settlement_id)
 
           const paidInst = (allInst || []).filter((i: any) => i.status === 'paid')
           const loanPaid = paidInst.reduce((acc: number, i: any) => acc + Number(i.amount), 0)
@@ -230,11 +228,7 @@ function DashboardContent() {
       if (!session) return router.push('/login')
 
       // store name + settings
-      const { data: storeData, error: storeErr } = await supabase
-        .from('stores')
-        .select('name, z_enabled')
-        .eq('id', storeIdFromUrl)
-        .maybeSingle()
+      const { data: storeData, error: storeErr } = await supabase.from('stores').select('name, z_enabled').eq('id', storeIdFromUrl).maybeSingle()
 
       if (storeErr) console.error(storeErr)
       if (storeData?.name) setStoreName(storeData.name)
@@ -274,7 +268,6 @@ function DashboardContent() {
         setIsStoreAdmin(false)
         setCanViewAnalysis(false)
       }
-
     } catch (err) {
       console.error('Dashboard error:', err)
       toast.error('Σφάλμα φόρτωσης Dashboard')
@@ -312,19 +305,12 @@ function DashboardContent() {
     }
 
     try {
-      const { data: installment, error: installmentError } = await supabase
-        .from('installments')
-        .select('id')
-        .eq('transaction_id', txId)
-        .maybeSingle()
+      const { data: installment, error: installmentError } = await supabase.from('installments').select('id').eq('transaction_id', txId).maybeSingle()
 
       if (installmentError) throw installmentError
 
       if (installment?.id) {
-        const { error: updateError } = await supabase
-          .from('installments')
-          .update({ status: 'pending', transaction_id: null })
-          .eq('id', installment.id)
+        const { error: updateError } = await supabase.from('installments').update({ status: 'pending', transaction_id: null }).eq('id', installment.id)
 
         if (updateError) throw updateError
       }
@@ -351,12 +337,7 @@ function DashboardContent() {
       return
     }
 
-    const { error } = await supabase
-      .from('transactions')
-      .delete()
-      .eq('store_id', storeIdFromUrl)
-      .eq('category', 'Εσοδα Ζ')
-      .eq('date', date)
+    const { error } = await supabase.from('transactions').delete().eq('store_id', storeIdFromUrl).eq('category', 'Εσοδα Ζ').eq('date', date)
 
     if (error) {
       toast.error('Σφάλμα διαγραφής Ζ')
@@ -440,13 +421,15 @@ function DashboardContent() {
     return rows
   }, [transactions, zTransactions, isZTransaction, selectedDate])
 
-  // ✅ Totals
+  // ✅ Totals (ΣΩΣΤΟ FIX: Ο κουμπαράς επηρεάζει ΜΟΝΟ το ταμείο, ΟΧΙ τα επιχειρηματικά Έσοδα/Έξοδα)
   const totals = useMemo(() => {
+    // 1. Καθαρά Έσοδα Επιχείρησης
     const INCOME_TYPES = ['income', 'income_collection', 'debt_received']
     const income = transactions
       .filter((t) => INCOME_TYPES.includes(String(t.type)))
       .reduce((acc, t) => acc + (Number(t.amount) || 0), 0)
 
+    // 2. Καθαρά Έξοδα Επιχείρησης
     const expense = transactions
       .filter((t) => (t.type === 'expense' && t.is_credit !== true) || t.type === 'debt_payment')
       .reduce((acc, t) => acc + (Math.abs(Number(t.amount)) || 0), 0)
@@ -455,7 +438,22 @@ function DashboardContent() {
       .filter((t) => t.type === 'expense' && t.is_credit === true)
       .reduce((acc: number, t: any) => acc + Math.abs(Number(t.amount) || 0), 0)
 
-    return { income, expense, credits, balance: income - expense }
+    // 3. Κινήσεις Κουμπαρά (Αποταμίευση) – επηρεάζουν ΜΟΝΟ το ταμείο/ρευστό
+    const savingsDeposits = transactions
+      .filter((t) => t.type === 'savings_deposit')
+      .reduce((acc, t) => acc + Math.abs(Number(t.amount) || 0), 0)
+
+    const savingsWithdrawals = transactions
+      .filter((t) => t.type === 'savings_withdrawal')
+      .reduce((acc, t) => acc + Math.abs(Number(t.amount) || 0), 0)
+
+    return {
+      income,
+      expense,
+      credits,
+      // Ρευστό Ημέρας = Καθαρά Έσοδα - Καθαρά Έξοδα - Καταθέσεις στον κουμπαρά + Αναλήψεις από κουμπαρά
+      balance: income - expense - savingsDeposits + savingsWithdrawals,
+    }
   }, [transactions])
 
   const changeDate = (days: number) => {
@@ -466,14 +464,6 @@ function DashboardContent() {
   }
 
   const money = (n: any) => (Number(n) || 0).toLocaleString('el-GR', { minimumFractionDigits: 2 })
-  const formatDateGr = (iso: string) => {
-    try {
-      const d = parseISO(iso)
-      return format(d, 'dd-MM-yyyy')
-    } catch {
-      return iso
-    }
-  }
 
   return (
     <div style={iphoneWrapper}>
@@ -497,7 +487,6 @@ function DashboardContent() {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, position: 'relative' }}>
-          {/* ✅ Εδώ μπήκε το νέο Καμπανάκι! */}
           <NotificationsBell storeId={storeIdFromUrl || ''} onUpdate={loadDashboard} />
 
           <div style={{ position: 'relative' }}>
@@ -636,15 +625,14 @@ function DashboardContent() {
             const entityKey = !isZMaster && t ? getEntityKeyFromTx(t) : null
             const ytd = entityKey ? ytdCache[entityKey] : undefined
 
-            const INCOME_TYPES = ['income', 'income_collection', 'debt_received']
-            const isIncomeTx = isZMaster ? true : INCOME_TYPES.includes(t?.type)
+            // ✅ σωστό πράσινο για ανάληψη κουμπαρά
+            const INCOME_TYPES = ['income', 'income_collection', 'debt_received', 'savings_withdrawal']
+            const isIncomeTx = isZMaster ? true : INCOME_TYPES.includes(String(t?.type))
 
             const txMethod = isZMaster ? 'Συγκεντρωτική εγγραφή' : t?.method
             const txCreatedAt = isZMaster ? row.created_at : t?.created_at
 
-            // ✅ FIX: simpler, no profiles
             const txCreatedBy = isZMaster ? row.created_by_name : t?.created_by_name || 'Χρήστης'
-
             const txAmountValue = isZMaster ? row.amount : Number(t?.amount) || 0
 
             return (
@@ -669,6 +657,7 @@ function DashboardContent() {
                       {!isZMaster && t?.is_credit && <span style={creditBadgeStyle}>ΠΙΣΤΩΣΗ</span>}
                       {isZMaster && <span style={creditBadgeStyle}>{row.itemsCount} ΚΙΝΗΣΕΙΣ</span>}
                     </p>
+
                     {!isZMaster && t?.notes && (
                       <p style={{ fontSize: '11px', fontWeight: 800, color: '#64748b', margin: '4px 0 2px 0' }}>
                         {t.notes}
@@ -740,7 +729,10 @@ function DashboardContent() {
                       <>
                         {!entityKey?.startsWith('loan:') ? (
                           <>
-                            <button onClick={() => router.push(`/add-${isIncomeTx ? 'income' : 'expense'}?editId=${t.id}&store=${storeIdFromUrl}`)} style={editRowBtn}>
+                            <button
+                              onClick={() => router.push(`/add-${isIncomeTx ? 'income' : 'expense'}?editId=${t.id}&store=${storeIdFromUrl}`)}
+                              style={editRowBtn}
+                            >
                               Επεξεργασία
                             </button>
                             <button onClick={() => handleDelete(t.id)} style={deleteRowBtn}>
@@ -760,11 +752,7 @@ function DashboardContent() {
 
                         <div style={ytdCard}>
                           <p style={ytdTitle}>{entityKey?.startsWith('loan:') ? 'ΚΑΤΑΣΤΑΣΗ ΡΥΘΜΙΣΗΣ' : 'ΣΥΝΟΨΗ ΕΤΟΥΣ (YTD)'}</p>
-                          {!entityKey?.startsWith('loan:') && (
-                            <p style={ytdSubTitle}>
-                              Από {yearStartStr} έως {businessTodayStr}
-                            </p>
-                          )}
+                          {!entityKey?.startsWith('loan:') && <p style={ytdSubTitle}>Από {yearStartStr} έως {businessTodayStr}</p>}
 
                           {!entityKey ? (
                             <p style={ytdHint}>Δεν υπάρχει συνδεδεμένη καρτέλα σε αυτή την κίνηση.</p>
@@ -777,7 +765,9 @@ function DashboardContent() {
                                 <span style={ytdValue}>{money(ytd?.loanTotal)}€</span>
                               </div>
                               <div style={ytdRow}>
-                                <span style={ytdLabel}>Πληρωμένες ({ytd?.loanInstallmentsPaid}/{ytd?.loanInstallmentsTotal})</span>
+                                <span style={ytdLabel}>
+                                  Πληρωμένες ({ytd?.loanInstallmentsPaid}/{ytd?.loanInstallmentsTotal})
+                                </span>
                                 <span style={ytdValueGreen}>{money(ytd?.loanPaid)}€</span>
                               </div>
                               <div style={ytdRow}>
