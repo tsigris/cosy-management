@@ -3719,7 +3719,7 @@ position: 'sticky',
 
 bottom: 0,
 
-background: '#ffffff',
+background: '#fff',
 
 paddingTop: 12,
 
