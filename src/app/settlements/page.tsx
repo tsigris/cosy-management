@@ -3623,7 +3623,7 @@ border: `1px solid ${colors.border}`,
 
 padding: '16px',
 
-maxHeight: 'calc(100dvh - 32px)',
+maxHeight: 'calc(100dvh - 40px)',
 
 overflow: 'hidden',
 
@@ -3649,9 +3649,9 @@ paddingRight: 2,
 
 const modalFooterStyle: CSSProperties = {
 
-position: 'sticky',
+flexShrink: 0,
 
-bottom: 0,
+borderTop: '1px solid #e2e8f0',
 
 background: colors.white,
 
