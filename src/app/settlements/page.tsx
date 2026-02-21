@@ -3591,6 +3591,10 @@ padding: '16px',
 
 const modalCardStyle: CSSProperties = {
 
+display: 'flex',
+
+flexDirection: 'column',
+
 width: '100%',
 
 maxWidth: '520px',
@@ -3607,9 +3611,9 @@ padding: '16px',
 
 marginTop: '14px',
 
-maxHeight: 'calc(100dvh - 32px)',
+maxHeight: 'calc(100vh - 32px)',
 
-overflowY: 'auto',
+overflow: 'hidden',
 
 WebkitOverflowScrolling: 'touch',
 
@@ -3680,6 +3684,32 @@ const formGridStyle: CSSProperties = {
 display: 'grid',
 
 gap: 10,
+
+}
+
+
+
+const modalBodyStyle: CSSProperties = {
+
+overflowY: 'auto',
+
+WebkitOverflowScrolling: 'touch',
+
+paddingRight: 2,
+
+}
+
+
+
+const modalFooterStyle: CSSProperties = {
+
+position: 'sticky',
+
+bottom: 0,
+
+background: '#ffffff',
+
+paddingTop: 12,
 
 }
 
