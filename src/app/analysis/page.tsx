@@ -1,10 +1,10 @@
 'use client'
 export const dynamic = 'force-dynamic'
 
-import { useEffect, useMemo, useCallback, useState, Suspense } from 'react'
+import { useEffect, useState, Suspense, useMemo, useCallback } from 'react'
+import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { supabase } from '@/lib/supabase'
 import {
   format,
   startOfMonth,
@@ -27,24 +27,22 @@ import {
   Search,
   ChevronLeft,
   ChevronRight,
-  Settings,
-  Landmark,
-  BadgeEuro,
 } from 'lucide-react'
 
-/* ---------------- CONFIG ---------------- */
+/* ---------------- CONFIG / META ---------------- */
 
 const colors = {
   primary: '#0f172a',
   secondary: '#64748b',
   success: '#10b981',
   danger: '#f43f5e',
-  warning: '#f59e0b',
   background: '#f8fafc',
   surface: '#ffffff',
   border: '#e2e8f0',
   indigo: '#6366f1',
   purple: '#7c3aed',
+  amber: '#f59e0b',
+  sky: '#0ea5e9',
 }
 
 const CATEGORY_META: Array<{
@@ -60,9 +58,18 @@ const CATEGORY_META: Array<{
   { key: 'Other', label: 'Λοιπά', color: '#64748b', Icon: Coins },
 ]
 
-type UiMode = 'simple' | 'pro'
-type FilterA = 'Όλες' | 'Έσοδα' | 'Εμπορεύματα' | 'Προσωπικό' | 'Λογαριασμοί' | 'Συντήρηση' | 'Λοιπά'
+type FilterA =
+  | 'Όλες'
+  | 'Έσοδα'
+  | 'Εμπορεύματα'
+  | 'Προσωπικό'
+  | 'Λογαριασμοί'
+  | 'Συντήρηση'
+  | 'Λοιπά'
+
 type DetailMode = 'none' | 'staff' | 'supplier' | 'revenue_source' | 'maintenance'
+type PrintMode = 'summary' | 'full'
+type UiMode = 'simple' | 'pro'
 
 type CalcBalances = {
   cash_balance: number
@@ -82,6 +89,8 @@ type Kpis = {
   savingsWithdrawals: number
 }
 
+/* ---------------- HELPERS ---------------- */
+
 function safePctChange(curr: number, prev: number) {
   if (!isFinite(curr) || !isFinite(prev)) return null
   if (prev === 0) return curr === 0 ? 0 : null
@@ -89,72 +98,79 @@ function safePctChange(curr: number, prev: number) {
 }
 function fmtPct(p: number | null) {
   if (p === null) return '—'
-  return `${p >= 0 ? '+' : ''}${p.toFixed(0)}%`
+  const sign = p >= 0 ? '+' : ''
+  return `${sign}${p.toFixed(0)}%`
 }
+
 function moneyGR(n: any) {
   const v = Number(n || 0)
   return `${v.toLocaleString('el-GR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}€`
 }
-
-/* ---------------- PAGE ---------------- */
 
 function AnalysisContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const storeId = searchParams.get('store')
 
-  // core
-  const [loading, setLoading] = useState(true)
+  /* ---------------- STATE ---------------- */
+
   const [uiMode, setUiMode] = useState<UiMode>('simple')
+  const [printMode, setPrintMode] = useState<PrintMode>('full')
 
-  // period (SIMPLE & PRO share these)
-  const [startDate, setStartDate] = useState(format(startOfMonth(new Date()), 'yyyy-MM-dd'))
-  const [endDate, setEndDate] = useState(format(endOfMonth(new Date()), 'yyyy-MM-dd'))
-
-  // filter + drilldown
-  const [filterA, setFilterA] = useState<FilterA>('Όλες')
-  const [detailMode, setDetailMode] = useState<DetailMode>('none')
-  const [detailId, setDetailId] = useState<string>('all')
-
-  // data
   const [transactions, setTransactions] = useState<any[]>([])
   const [prevTransactions, setPrevTransactions] = useState<any[]>([])
+  const [monthTransactions, setMonthTransactions] = useState<any[]>([])
+
   const [staff, setStaff] = useState<any[]>([])
   const [suppliers, setSuppliers] = useState<any[]>([])
   const [revenueSources, setRevenueSources] = useState<any[]>([])
   const [maintenanceWorkers, setMaintenanceWorkers] = useState<any[]>([])
+
   const [drawer, setDrawer] = useState<any>(null)
   const [calcBalances, setCalcBalances] = useState<CalcBalances | null>(null)
+
+  const [loading, setLoading] = useState(true)
+
+  // Global period (used for KPI summary)
+  const [startDate, setStartDate] = useState(format(startOfMonth(new Date()), 'yyyy-MM-dd'))
+  const [endDate, setEndDate] = useState(format(endOfMonth(new Date()), 'yyyy-MM-dd'))
+
+  // Simple: drilldown filter
+  const [filterA, setFilterA] = useState<FilterA>('Όλες')
+  const [detailMode, setDetailMode] = useState<DetailMode>('none')
+  const [detailId, setDetailId] = useState<string>('all')
+
   const [expectedOutflows30d, setExpectedOutflows30d] = useState<number>(0)
 
-  // PRO extras (optional settings fetch)
-  const [bizSettings, setBizSettings] = useState<any[]>([])
-  const [settingsLoading, setSettingsLoading] = useState(false)
-
-  // movement search (separate from main period)
+  // Simple/Pro: Transaction search (separate, to avoid loading thousands)
   const [searchFrom, setSearchFrom] = useState(format(new Date(), 'yyyy-MM-dd'))
   const [searchTo, setSearchTo] = useState(format(new Date(), 'yyyy-MM-dd'))
-  const [searchRows, setSearchRows] = useState<any[]>([])
+  const [pageSize, setPageSize] = useState<number>(30)
+  const [searchPage, setSearchPage] = useState<number>(0)
   const [searchLoading, setSearchLoading] = useState(false)
-  const [searchPage, setSearchPage] = useState(0)
-  const SEARCH_PAGE_SIZE = 30
+  const [searchResults, setSearchResults] = useState<any[]>([])
+  const [searchHasMore, setSearchHasMore] = useState<boolean>(false)
 
   const isZReport = useMemo(() => startDate === endDate, [startDate, endDate])
-  const rangeText = useMemo(() => `${startDate} → ${endDate}`, [startDate, endDate])
 
   const norm = useCallback((v: any) => String(v ?? '').trim().toLowerCase(), [])
   const getMethod = useCallback((t: any) => String(t?.method ?? t?.payment_method ?? '').trim(), [])
+
   const isCreditTx = useCallback(
-    (t: any) => t?.is_credit === true || norm(getMethod(t)) === 'πίστωση',
+    (t: any) => {
+      if (t?.is_credit === true) return true
+      return norm(getMethod(t)) === 'πίστωση'
+    },
     [getMethod, norm]
   )
+
   const isCashMethod = useCallback(
-    (m: string) => ['μετρητά', 'μετρητά (z)', 'χωρίς απόδειξη'].includes(norm(m)),
+    (method: string) => ['μετρητά', 'μετρητά (z)', 'χωρίς απόδειξη'].includes(norm(method)),
     [norm]
   )
-  const isBankMethod = useCallback((m: string) => ['κάρτα', 'τράπεζα'].includes(norm(m)), [norm])
+  const isBankMethod = useCallback((method: string) => ['κάρτα', 'τράπεζα'].includes(norm(method)), [norm])
 
-  // signed amount for balances
+  // signedAmount: deposits to “κουμπαρά” are outflow from cash
   const signedAmount = useCallback((t: any) => {
     const raw = Number(t.amount) || 0
     if (raw < 0) return raw
@@ -162,20 +178,36 @@ function AnalysisContent() {
     return Math.abs(raw)
   }, [])
 
-  // print css
+  const getPrevRange = useCallback(() => {
+    const s = parseISO(startDate)
+    const e = parseISO(endDate)
+    const days = Math.max(0, differenceInCalendarDays(e, s))
+    const prevEnd = subDays(s, 1)
+    const prevStart = subDays(prevEnd, days)
+    return { prevStart: format(prevStart, 'yyyy-MM-dd'), prevEnd: format(prevEnd, 'yyyy-MM-dd') }
+  }, [startDate, endDate])
+
+  /* ---------------- PRINT CSS ---------------- */
+
   useEffect(() => {
     const STYLE_ID = 'analysis-print-css'
     if (document.getElementById(STYLE_ID)) return
+
     const style = document.createElement('style')
     style.id = STYLE_ID
     style.innerHTML = `
       @media print {
         @page { size: A4; margin: 12mm; }
-        html, body { background: #fff !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+        html, body { background: #ffffff !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
         .no-print { display: none !important; }
+        a { text-decoration: none !important; color: #000 !important; }
         [data-print-root="true"] { position: static !important; overflow: visible !important; padding: 0 !important; background: #fff !important; }
         [data-print-root="true"] * { box-shadow: none !important; }
         [data-print-section="true"] { break-inside: avoid; page-break-inside: avoid; }
+        .print-header { display: block !important; margin: 0 0 10mm 0 !important; padding-bottom: 6mm !important; border-bottom: 1px solid #e5e7eb !important; }
+        .print-title { font-size: 18px !important; font-weight: 900 !important; margin: 0 !important; color: #000 !important; }
+        .print-sub { margin: 4px 0 0 0 !important; font-size: 12px !important; font-weight: 700 !important; color: #374151 !important; }
+        .print-meta { margin: 6px 0 0 0 !important; font-size: 12px !important; font-weight: 700 !important; color: #374151 !important; }
       }
     `
     document.head.appendChild(style)
@@ -189,70 +221,39 @@ function AnalysisContent() {
     }
   }, [])
 
-  // drilldown mode
+  /* ---------------- AUTH / STORE ---------------- */
+
   useEffect(() => {
-    const modes: Record<string, DetailMode> = {
-      Προσωπικό: 'staff',
-      Εμπορεύματα: 'supplier',
-      Έσοδα: 'revenue_source',
-      Συντήρηση: 'maintenance',
-    }
-    setDetailMode(modes[filterA] || 'none')
-    setDetailId('all')
-  }, [filterA])
+    if (!storeId || storeId === 'null') router.replace('/select-store')
+  }, [storeId, router])
 
-  // normalize expense category (for filters & breakdown)
-  const normalizeExpenseCategory = useCallback((t: any) => {
-    if (t.supplier_id || t.suppliers?.name) return 'Εμπορεύματα'
-    const sub = String(t.fixed_assets?.sub_category || '').trim().toLowerCase()
-    if (sub === 'staff') return 'Staff'
-    if (sub === 'utility' || sub === 'utilities' || sub.includes('utility')) return 'Utilities'
-    if (sub === 'worker' || sub === 'maintenance' || sub === 'maintenancE'.toLowerCase()) return 'Maintenance'
-    return 'Other'
-  }, [])
+  /* ---------------- DATA LOAD (summary dataset) ---------------- */
 
-  const filterAToKey = useCallback((fa: FilterA) => {
-    if (fa === 'Εμπορεύματα') return 'Εμπορεύματα'
-    if (fa === 'Προσωπικό') return 'Staff'
-    if (fa === 'Λογαριασμοί') return 'Utilities'
-    if (fa === 'Συντήρηση') return 'Maintenance'
-    if (fa === 'Λοιπά') return 'Other'
-    return null
-  }, [])
-
-  const getPrevRange = useCallback(() => {
-    const s = parseISO(startDate)
-    const e = parseISO(endDate)
-    const days = Math.max(0, differenceInCalendarDays(e, s))
-    const prevEnd = subDays(s, 1)
-    const prevStart = subDays(prevEnd, days)
-    return { prevStart: format(prevStart, 'yyyy-MM-dd'), prevEnd: format(prevEnd, 'yyyy-MM-dd') }
-  }, [startDate, endDate])
-
-  // fetch main data
   const loadData = useCallback(async () => {
-    if (!storeId || storeId === 'null') return
-
-    setLoading(true)
     try {
-      const { data: auth } = await supabase.auth.getSession()
-      if (!auth?.session) {
-        router.push('/login')
-        return
-      }
+      setLoading(true)
+      if (!storeId || storeId === 'null') return setLoading(false)
+
+      const { data: sessionData } = await supabase.auth.getSession()
+      if (!sessionData?.session) return router.push('/login')
 
       const { prevStart, prevEnd } = getPrevRange()
+
+      const monthStart = format(startOfMonth(new Date()), 'yyyy-MM-dd')
+      const monthEnd = format(endOfMonth(new Date()), 'yyyy-MM-dd')
+
       const forecastTo = format(addDays(parseISO(endDate), 30), 'yyyy-MM-dd')
 
       const [
-        tx,
-        prevTx,
-        staffD,
-        supD,
-        revD,
-        maintD,
-        drawerD,
-        expOut,
+        txRes,
+        prevRes,
+        monthRes,
+        staffRes,
+        supRes,
+        revRes,
+        maintRes,
+        drawerRes,
+        expOutRes,
       ] = await Promise.all([
         supabase
           .from('transactions')
@@ -264,10 +265,19 @@ function AnalysisContent() {
 
         supabase
           .from('transactions')
-          .select('amount, type, is_credit, method, payment_method, category, notes, date, supplier_id, fixed_asset_id, revenue_source_id, suppliers(id,name), fixed_assets(id,name,sub_category), revenue_sources(id,name)')
+          .select('*, suppliers(id, name), fixed_assets(id, name, sub_category), revenue_sources(id, name)')
           .eq('store_id', storeId)
           .gte('date', prevStart)
-          .lte('date', prevEnd),
+          .lte('date', prevEnd)
+          .order('date', { ascending: false }),
+
+        supabase
+          .from('transactions')
+          .select('*, suppliers(id, name), fixed_assets(id, name, sub_category), revenue_sources(id, name)')
+          .eq('store_id', storeId)
+          .gte('date', monthStart)
+          .lte('date', monthEnd)
+          .order('date', { ascending: false }),
 
         supabase
           .from('fixed_assets')
@@ -276,23 +286,15 @@ function AnalysisContent() {
           .eq('sub_category', 'staff')
           .order('name', { ascending: true }),
 
-        supabase
-          .from('suppliers')
-          .select('id, name')
-          .eq('store_id', storeId)
-          .order('name', { ascending: true }),
+        supabase.from('suppliers').select('id, name').eq('store_id', storeId).order('name', { ascending: true }),
 
-        supabase
-          .from('revenue_sources')
-          .select('id, name')
-          .eq('store_id', storeId)
-          .order('name', { ascending: true }),
+        supabase.from('revenue_sources').select('id, name').eq('store_id', storeId).order('name', { ascending: true }),
 
         supabase
           .from('fixed_assets')
           .select('id, name, sub_category')
           .eq('store_id', storeId)
-          .in('sub_category', ['worker', 'maintenance', 'Maintenance'])
+          .in('sub_category', ['worker', 'Maintenance', 'maintenance', 'Maintenance'])
           .order('name', { ascending: true }),
 
         supabase
@@ -306,7 +308,7 @@ function AnalysisContent() {
 
         supabase
           .from('transactions')
-          .select('amount, type, is_credit, method, payment_method, date, category, notes')
+          .select('amount, type, is_credit, method, payment_method, category, date')
           .eq('store_id', storeId)
           .gt('date', endDate)
           .lte('date', forecastTo)
@@ -314,69 +316,131 @@ function AnalysisContent() {
           .order('date', { ascending: true }),
       ])
 
-      const txRows = tx.data || []
-      const prevRows = prevTx.data || []
+      if (txRes.error) throw txRes.error
+      if (prevRes.error) throw prevRes.error
+      if (monthRes.error) throw monthRes.error
 
-      setTransactions(txRows)
-      setPrevTransactions(prevRows)
-      setStaff(staffD.data || [])
-      setSuppliers(supD.data || [])
-      setRevenueSources(revD.data || [])
-      setMaintenanceWorkers((maintD.data || []).filter((x: any) => String(x?.name || '').trim().length > 0))
-      setDrawer(drawerD.data || null)
+      setTransactions(txRes.data || [])
+      setPrevTransactions(prevRes.data || [])
+      setMonthTransactions(monthRes.data || [])
 
-      const out = (expOut.data || [])
+      setStaff(staffRes.data || [])
+      setSuppliers(supRes.data || [])
+      setRevenueSources(revRes.data || [])
+      setMaintenanceWorkers((maintRes.data || []).filter((x: any) => String(x?.name || '').trim().length > 0))
+      setDrawer(drawerRes.data || null)
+
+      const out = (expOutRes.data || [])
         .filter((t: any) => !isCreditTx(t))
         .reduce((a: number, t: any) => a + Math.abs(Number(t.amount) || 0), 0)
       setExpectedOutflows30d(out)
-    } catch (e) {
+    } catch (err) {
       toast.error('Σφάλμα φόρτωσης δεδομένων')
     } finally {
       setLoading(false)
     }
-  }, [storeId, router, startDate, endDate, getPrevRange, isCreditTx])
+  }, [router, storeId, startDate, endDate, getPrevRange, isCreditTx])
 
   useEffect(() => {
-    if (!storeId || storeId === 'null') {
-      router.replace('/select-store')
-      return
-    }
     loadData()
-  }, [storeId, router, loadData])
+  }, [loadData])
 
-  // optional settings (only for PRO display)
-  const loadSettings = useCallback(async () => {
-    if (!storeId || storeId === 'null') return
-    setSettingsLoading(true)
-    try {
-      // if table doesn't exist, it will error; we just ignore
-      const res = await supabase
-        .from('business_settings')
-        .select('key, value_json, updated_at')
-        .eq('store_id', storeId)
-        .order('updated_at', { ascending: false })
-        .limit(30)
-
-      if (res.error) throw res.error
-      setBizSettings(res.data || [])
-    } catch {
-      setBizSettings([])
-    } finally {
-      setSettingsLoading(false)
-    }
-  }, [storeId])
+  /* ---------------- FILTER MODE MAPPING ---------------- */
 
   useEffect(() => {
-    if (uiMode === 'pro') loadSettings()
-  }, [uiMode, loadSettings])
+    let nextMode: DetailMode = 'none'
+    if (filterA === 'Προσωπικό') nextMode = 'staff'
+    if (filterA === 'Εμπορεύματα') nextMode = 'supplier'
+    if (filterA === 'Έσοδα') nextMode = 'revenue_source'
+    if (filterA === 'Συντήρηση') nextMode = 'maintenance'
+    setDetailMode(nextMode)
+    setDetailId('all')
+  }, [filterA])
 
-  // base period rows (already filtered by query, but keep safe)
-  const periodTx = useMemo(
-    () => transactions.filter((t) => String(t.date) >= startDate && String(t.date) <= endDate),
-    [transactions, startDate, endDate]
+  const normalizeExpenseCategory = useCallback((t: any) => {
+    if (t.supplier_id || t.suppliers?.name) return 'Εμπορεύματα'
+    const sub = String(t.fixed_assets?.sub_category || '').trim().toLowerCase()
+    if (sub === 'staff') return 'Staff'
+    if (sub === 'utility' || sub === 'utilities') return 'Utilities'
+    if (sub === 'worker' || sub === 'maintenance') return 'Maintenance'
+    return 'Other'
+  }, [])
+
+  const filterAToKey = useCallback((fa: FilterA) => {
+    if (fa === 'Εμπορεύματα') return 'Εμπορεύματα'
+    if (fa === 'Προσωπικό') return 'Staff'
+    if (fa === 'Λογαριασμοί') return 'Utilities'
+    if (fa === 'Συντήρηση') return 'Maintenance'
+    if (fa === 'Λοιπά') return 'Other'
+    return null
+  }, [])
+
+  const periodTx = useMemo(() => transactions.filter((t) => t.date >= startDate && t.date <= endDate), [transactions, startDate, endDate])
+
+  const prevPeriodTx = useMemo(() => {
+    const { prevStart, prevEnd } = getPrevRange()
+    return prevTransactions.filter((t) => t.date >= prevStart && t.date <= prevEnd)
+  }, [prevTransactions, getPrevRange])
+
+  const filteredTx = useMemo(() => {
+    const key = filterAToKey(filterA)
+    return periodTx.filter((t) => {
+      if (filterA === 'Έσοδα' && !['income', 'income_collection', 'debt_received'].includes(t.type)) return false
+      if (filterA !== 'Όλες' && filterA !== 'Έσοδα' && normalizeExpenseCategory(t) !== key) return false
+
+      if (detailMode === 'staff' && detailId !== 'all' && String(t.fixed_asset_id) !== String(detailId)) return false
+      if (detailMode === 'supplier' && detailId !== 'all' && String(t.supplier_id) !== String(detailId)) return false
+      if (detailMode === 'revenue_source' && detailId !== 'all' && String(t.revenue_source_id) !== String(detailId)) return false
+      if (detailMode === 'maintenance' && detailId !== 'all' && String(t.fixed_asset_id) !== String(detailId)) return false
+
+      return true
+    })
+  }, [periodTx, filterA, detailMode, detailId, filterAToKey, normalizeExpenseCategory])
+
+  /* ---------------- KPI / BALANCES ---------------- */
+
+  const computeKpis = useCallback(
+    (rows: any[]): Kpis => {
+      const rowsNoCredit = rows.filter((t) => !isCreditTx(t))
+
+      const income = rowsNoCredit
+        .filter((t) => t.type === 'income' || t.type === 'income_collection' || t.type === 'debt_received')
+        .reduce((acc, t) => acc + (Number(t.amount) || 0), 0)
+
+      const tips = rowsNoCredit
+        .filter((t) => t.type === 'tip_entry')
+        .reduce((acc, t) => acc + Math.abs(Number(t.amount) || 0), 0)
+
+      const expenses = rowsNoCredit
+        .filter((t) => t.type === 'expense' || t.type === 'debt_payment')
+        .reduce((acc, t) => acc + Math.abs(Number(t.amount) || 0), 0)
+
+      const savingsDeposits = rowsNoCredit
+        .filter((t) => t.type === 'savings_deposit')
+        .reduce((acc, t) => acc + Math.abs(Number(t.amount) || 0), 0)
+
+      const savingsWithdrawals = rowsNoCredit
+        .filter((t) => t.type === 'savings_withdrawal')
+        .reduce((acc, t) => acc + Math.abs(Number(t.amount) || 0), 0)
+
+      return { income, expenses, tips, netProfit: income - expenses, savingsDeposits, savingsWithdrawals }
+    },
+    [isCreditTx]
   )
 
-  // calc balances from rows (cash/bank/credit)
+  const kpis = useMemo(() => computeKpis(filteredTx), [filteredTx, computeKpis])
+  const kpisPrev = useMemo(() => computeKpis(prevPeriodTx), [prevPeriodTx, computeKpis])
+
+  const variance = useMemo(
+    () => ({
+      income: safePctChange(kpis.income, kpisPrev.income),
+      expenses: safePctChange(kpis.expenses, kpisPrev.expenses),
+      tips: safePctChange(kpis.tips, kpisPrev.tips),
+      netProfit: safePctChange(kpis.netProfit, kpisPrev.netProfit),
+    }),
+    [kpis, kpisPrev]
+  )
+
   const calcBalancesFromRows = useCallback(
     (rows: any[]) => {
       let cash = 0,
@@ -414,72 +478,8 @@ function AnalysisContent() {
     setCalcBalances({ ...calcBalancesFromRows(periodTx), as_of_date: endDate })
   }, [periodTx, endDate, calcBalancesFromRows])
 
-  // filtered rows for KPI & breakdown (respects filterA + detail)
-  const filteredTx = useMemo(() => {
-    const key = filterAToKey(filterA)
-    return periodTx.filter((t) => {
-      if (filterA === 'Έσοδα' && !['income', 'income_collection', 'debt_received'].includes(t.type)) return false
-      if (filterA !== 'Όλες' && filterA !== 'Έσοδα' && normalizeExpenseCategory(t) !== key) return false
+  /* ---------------- Z LOGIC (single day) ---------------- */
 
-      if (detailMode === 'staff' && detailId !== 'all' && String(t.fixed_asset_id) !== String(detailId)) return false
-      if (detailMode === 'supplier' && detailId !== 'all' && String(t.supplier_id) !== String(detailId)) return false
-      if (detailMode === 'revenue_source' && detailId !== 'all' && String(t.revenue_source_id) !== String(detailId)) return false
-      if (detailMode === 'maintenance' && detailId !== 'all' && String(t.fixed_asset_id) !== String(detailId)) return false
-
-      return true
-    })
-  }, [periodTx, filterA, detailMode, detailId, filterAToKey, normalizeExpenseCategory])
-
-  // KPIs (no credit)
-  const computeKpis = useCallback(
-    (rows: any[]): Kpis => {
-      const rowsNoCredit = rows.filter((t) => !isCreditTx(t))
-
-      const income = rowsNoCredit
-        .filter((t) => ['income', 'income_collection', 'debt_received'].includes(t.type))
-        .reduce((acc, t) => acc + (Number(t.amount) || 0), 0)
-
-      const tips = rowsNoCredit
-        .filter((t) => t.type === 'tip_entry')
-        .reduce((acc, t) => acc + Math.abs(Number(t.amount) || 0), 0)
-
-      const expenses = rowsNoCredit
-        .filter((t) => ['expense', 'debt_payment'].includes(t.type))
-        .reduce((acc, t) => acc + Math.abs(Number(t.amount) || 0), 0)
-
-      const savingsDeposits = rowsNoCredit
-        .filter((t) => t.type === 'savings_deposit')
-        .reduce((acc, t) => acc + Math.abs(Number(t.amount) || 0), 0)
-
-      const savingsWithdrawals = rowsNoCredit
-        .filter((t) => t.type === 'savings_withdrawal')
-        .reduce((acc, t) => acc + Math.abs(Number(t.amount) || 0), 0)
-
-      return { income, expenses, tips, netProfit: income - expenses, savingsDeposits, savingsWithdrawals }
-    },
-    [isCreditTx]
-  )
-
-  const { prevStart, prevEnd } = useMemo(() => getPrevRange(), [getPrevRange])
-  const prevPeriodTx = useMemo(
-    () => prevTransactions.filter((t) => String(t.date) >= prevStart && String(t.date) <= prevEnd),
-    [prevTransactions, prevStart, prevEnd]
-  )
-
-  const kpis = useMemo(() => computeKpis(filteredTx), [filteredTx, computeKpis])
-  const kpisPrev = useMemo(() => computeKpis(prevPeriodTx), [prevPeriodTx, computeKpis])
-
-  const variance = useMemo(
-    () => ({
-      income: safePctChange(kpis.income, kpisPrev.income),
-      expenses: safePctChange(kpis.expenses, kpisPrev.expenses),
-      tips: safePctChange(kpis.tips, kpisPrev.tips),
-      netProfit: safePctChange(kpis.netProfit, kpisPrev.netProfit),
-    }),
-    [kpis, kpisPrev]
-  )
-
-  // -------- Z BREAKDOWN (Fix σύμφωνα με αυτά που ζήτησες) --------
   const zBreakdown = useMemo(() => {
     if (!isZReport) return { zCash: 0, zPos: 0, blackCash: 0, totalTurnover: 0, blackPct: 0 }
 
@@ -493,18 +493,14 @@ function AnalysisContent() {
       }))
       .filter((r) => r.category === 'Εσοδα Ζ')
 
-    // Z CASH: method === 'Μετρητά (Z)'
     const zCash = rows.filter((r) => r.method === 'Μετρητά (Z)').reduce((a, r) => a + r.amount, 0)
-
-    // Z POS: method === 'Κάρτα'
     const zPos = rows.filter((r) => r.method === 'Κάρτα').reduce((a, r) => a + r.amount, 0)
-
-    // BLACK CASH: category === 'Εσοδα Ζ' AND (notes === 'ΧΩΡΙΣ ΣΗΜΑΝΣΗ' OR method === 'Μετρητά' OR method === 'Χωρίς Απόδειξη') BUT NOT method === 'Μετρητά (Z)'
     const blackCash = rows
       .filter(
         (r) =>
-          r.method !== 'Μετρητά (Z)' &&
-          (r.notes === 'ΧΩΡΙΣ ΣΗΜΑΝΣΗ' || r.method === 'Μετρητά' || r.method === 'Χωρίς Απόδειξη')
+          r.category === 'Εσοδα Ζ' &&
+          (r.notes === 'ΧΩΡΙΣ ΣΗΜΑΝΣΗ' || r.method === 'Μετρητά' || r.method === 'Χωρίς Απόδειξη') &&
+          r.method !== 'Μετρητά (Z)'
       )
       .reduce((a, r) => a + r.amount, 0)
 
@@ -514,20 +510,17 @@ function AnalysisContent() {
 
   const cashExpensesToday = useMemo(() => {
     if (!isZReport) return 0
-    // cash expenses today = expense/debt_payment with method 'Μετρητά' (NOT credit)
     return periodTx
-      .filter((t) => ['expense', 'debt_payment'].includes(t.type))
+      .filter((t) => t.type === 'expense' || t.type === 'debt_payment')
       .filter((t) => getMethod(t) === 'Μετρητά')
       .filter((t) => !isCreditTx(t))
       .reduce((acc, t) => acc + Math.abs(Number(t.amount) || 0), 0)
   }, [isZReport, periodTx, getMethod, isCreditTx])
 
-  // big KPI: Z day or netProfit for range
   const bigKpiValue = useMemo(() => {
-    return isZReport ? (zBreakdown.zCash + zBreakdown.blackCash - cashExpensesToday) : kpis.netProfit
+    return isZReport ? zBreakdown.zCash + zBreakdown.blackCash - cashExpensesToday : kpis.netProfit
   }, [isZReport, zBreakdown, cashExpensesToday, kpis.netProfit])
 
-  // total cash display: for Z = (zCash + blackCash) - cashExpenses - cash vault deposits + cash vault withdrawals
   const totalCashDisplay = useMemo(() => {
     if (isZReport) {
       const cashVaultDeposits = periodTx
@@ -540,13 +533,291 @@ function AnalysisContent() {
 
       return bigKpiValue - cashVaultDeposits + cashVaultWithdrawals
     }
-    return Number(calcBalances?.cash_balance || 0)
-  }, [isZReport, periodTx, getMethod, calcBalances, bigKpiValue])
 
-  // collapsed Z in list (for PRO list)
+    return Number(calcBalances?.cash_balance || 0)
+  }, [isZReport, bigKpiValue, periodTx, getMethod, calcBalances])
+
+  /* ---------------- SIMPLE: ENTITY SUMMARIES (no huge tx list) ---------------- */
+
+  const detailOptions = useMemo(() => {
+    if (detailMode === 'staff') return staff
+    if (detailMode === 'supplier') return suppliers
+    if (detailMode === 'revenue_source') return revenueSources
+    if (detailMode === 'maintenance') return maintenanceWorkers
+    return []
+  }, [detailMode, staff, suppliers, revenueSources, maintenanceWorkers])
+
+  const rangeText = useMemo(() => `${startDate} → ${endDate}`, [startDate, endDate])
+
+  const entitySummary = useMemo(() => {
+    // Build a list of entities (paid/credit totals) depending on filterA
+    // This is the SIMPLE replacement for “show all movements”.
+    const rows = periodTx.filter((t) => ['expense', 'debt_payment'].includes(t.type))
+
+    const pickMode: DetailMode =
+      filterA === 'Εμπορεύματα'
+        ? 'supplier'
+        : filterA === 'Προσωπικό'
+        ? 'staff'
+        : filterA === 'Συντήρηση'
+        ? 'maintenance'
+        : 'none'
+
+    // If no entity filter chosen, show breakdown by category instead (top categories).
+    if (pickMode === 'none') {
+      const map: Record<string, { name: string; total: number; paid: number; credit: number }> = {}
+      for (const t of rows) {
+        if (filterA !== 'Όλες' && filterA !== 'Λογαριασμοί' && filterA !== 'Λοιπά' && filterA !== 'Έσοδα') {
+          // for other filters we handle via pickMode above
+        }
+        // apply category filter if needed
+        if (filterA === 'Λογαριασμοί' && normalizeExpenseCategory(t) !== 'Utilities') continue
+        if (filterA === 'Λοιπά' && normalizeExpenseCategory(t) !== 'Other') continue
+        if (filterA === 'Έσοδα') continue
+
+        const key = normalizeExpenseCategory(t)
+        const name = CATEGORY_META.find((c) => c.key === key)?.label || key
+        const amt = Math.abs(Number(t.amount) || 0)
+        const credit = isCreditTx(t)
+        if (!map[key]) map[key] = { name, total: 0, paid: 0, credit: 0 }
+        map[key].total += amt
+        if (credit) map[key].credit += amt
+        else map[key].paid += amt
+      }
+      return Object.entries(map)
+        .map(([id, v]) => ({ id, ...v }))
+        .sort((a, b) => b.total - a.total)
+        .slice(0, 12)
+    }
+
+    const map: Record<string, { name: string; total: number; paid: number; credit: number }> = {}
+
+    for (const t of rows) {
+      // category filtering first (so it matches the “tab”)
+      if (filterA !== 'Όλες') {
+        const key = filterAToKey(filterA)
+        if (key && normalizeExpenseCategory(t) !== key) continue
+      }
+
+      let id = ''
+      let name = '—'
+
+      if (pickMode === 'supplier') {
+        id = String(t.supplier_id || '')
+        name =
+          t.suppliers?.name ||
+          suppliers.find((s) => String(s.id) === String(t.supplier_id))?.name ||
+          'Προμηθευτής'
+      } else if (pickMode === 'staff') {
+        id = String(t.fixed_asset_id || '')
+        name =
+          t.fixed_assets?.name ||
+          staff.find((s) => String(s.id) === String(t.fixed_asset_id))?.name ||
+          'Υπάλληλος'
+      } else if (pickMode === 'maintenance') {
+        id = String(t.fixed_asset_id || '')
+        name =
+          t.fixed_assets?.name ||
+          maintenanceWorkers.find((m) => String(m.id) === String(t.fixed_asset_id))?.name ||
+          'Μάστορας'
+      }
+
+      if (!id) continue
+
+      const amt = Math.abs(Number(t.amount) || 0)
+      const credit = isCreditTx(t)
+
+      if (!map[id]) map[id] = { name, total: 0, paid: 0, credit: 0 }
+      map[id].total += amt
+      if (credit) map[id].credit += amt
+      else map[id].paid += amt
+    }
+
+    return Object.entries(map)
+      .map(([id, v]) => ({ id, ...v }))
+      .sort((a, b) => b.total - a.total)
+      .slice(0, 20)
+  }, [
+    periodTx,
+    filterA,
+    suppliers,
+    staff,
+    maintenanceWorkers,
+    normalizeExpenseCategory,
+    filterAToKey,
+    isCreditTx,
+  ])
+
+  /* ---------------- PRO: DETAIL CARD (paid vs credit) ---------------- */
+
+  const proDetailSummary = useMemo(() => {
+    if (detailMode === 'none' || detailId === 'all') return null
+
+    const rows = periodTx.filter((t) => {
+      if (detailMode === 'staff') return String(t.fixed_asset_id) === String(detailId)
+      if (detailMode === 'supplier') return String(t.supplier_id) === String(detailId)
+      if (detailMode === 'revenue_source') return String(t.revenue_source_id) === String(detailId)
+      if (detailMode === 'maintenance') return String(t.fixed_asset_id) === String(detailId)
+      return false
+    })
+
+    const expenseRows = rows.filter((t) => ['expense', 'debt_payment'].includes(t.type))
+    const paidRows = expenseRows.filter((t) => !isCreditTx(t))
+    const creditRows = expenseRows.filter((t) => isCreditTx(t))
+
+    const paidCash = paidRows
+      .filter((t) => isCashMethod(getMethod(t)))
+      .reduce((a, t) => a + Math.abs(Number(t.amount) || 0), 0)
+
+    const paidBank = paidRows
+      .filter((t) => isBankMethod(getMethod(t)))
+      .reduce((a, t) => a + Math.abs(Number(t.amount) || 0), 0)
+
+    const paidTotal = paidCash + paidBank
+    const creditTotal = creditRows.reduce((a, t) => a + Math.abs(Number(t.amount) || 0), 0)
+
+    const name =
+      detailMode === 'supplier'
+        ? suppliers.find((s) => String(s.id) === String(detailId))?.name
+        : detailMode === 'staff'
+        ? staff.find((s) => String(s.id) === String(detailId))?.name
+        : detailMode === 'maintenance'
+        ? maintenanceWorkers.find((m) => String(m.id) === String(detailId))?.name
+        : detailMode === 'revenue_source'
+        ? revenueSources.find((r) => String(r.id) === String(detailId))?.name
+        : '—'
+
+    return {
+      name: String(name || '').trim() || '—',
+      paidCash,
+      paidBank,
+      paidTotal,
+      creditTotal,
+      countPaid: paidRows.length,
+      countCredit: creditRows.length,
+      totalAll: paidTotal + creditTotal,
+      paidRows: [...paidRows].sort((a, b) => String(b.date).localeCompare(String(a.date))),
+      creditRows: [...creditRows].sort((a, b) => String(b.date).localeCompare(String(a.date))),
+    }
+  }, [
+    detailMode,
+    detailId,
+    periodTx,
+    suppliers,
+    staff,
+    maintenanceWorkers,
+    revenueSources,
+    isCreditTx,
+    isCashMethod,
+    isBankMethod,
+    getMethod,
+  ])
+
+  /* ---------------- PRO: EXTRA “PRO” CARDS (Loans / Settlements) ---------------- */
+  // Δεν αλλάζουμε βάση. Κάνουμε heuristics από category/notes.
+  const proFinanceCards = useMemo(() => {
+    const rows = periodTx.filter((t) => !isCreditTx(t))
+
+    const cat = (t: any) => String(t.category || '').trim().toLowerCase()
+    const notes = (t: any) => String(t.notes || '').trim().toLowerCase()
+
+    const isLoan = (t: any) =>
+      cat(t).includes('δάνει') || cat(t).includes('loan') || notes(t).includes('δάνει') || notes(t).includes('loan')
+
+    const isSettlement = (t: any) =>
+      cat(t).includes('ρύθμι') ||
+      cat(t).includes('εφορία') ||
+      cat(t).includes('tax') ||
+      notes(t).includes('ρύθμι') ||
+      notes(t).includes('εφορία')
+
+    const loanOut = rows
+      .filter((t) => (t.type === 'expense' || t.type === 'debt_payment') && isLoan(t))
+      .reduce((a, t) => a + Math.abs(Number(t.amount) || 0), 0)
+
+    const loanIn = rows
+      .filter((t) => (t.type === 'income' || t.type === 'income_collection' || t.type === 'debt_received') && isLoan(t))
+      .reduce((a, t) => a + Math.abs(Number(t.amount) || 0), 0)
+
+    const settlementOut = rows
+      .filter((t) => (t.type === 'expense' || t.type === 'debt_payment') && isSettlement(t))
+      .reduce((a, t) => a + Math.abs(Number(t.amount) || 0), 0)
+
+    return { loanOut, loanIn, settlementOut }
+  }, [periodTx, isCreditTx])
+
+  /* ---------------- SIMPLE/PRO: TRANSACTION SEARCH (paged) ---------------- */
+
+  const runTxSearch = useCallback(
+    async (page: number) => {
+      if (!storeId || storeId === 'null') return
+      setSearchLoading(true)
+      try {
+        const from = searchFrom
+        const to = searchTo
+
+        const offset = page * pageSize
+        const limit = pageSize
+
+        // fetch 1 extra to detect "hasMore"
+        const { data, error } = await supabase
+          .from('transactions')
+          .select('*, suppliers(id, name), fixed_assets(id, name, sub_category), revenue_sources(id, name)')
+          .eq('store_id', storeId)
+          .gte('date', from)
+          .lte('date', to)
+          .order('date', { ascending: false })
+          .range(offset, offset + limit) // inclusive range; we’ll still detect hasMore via length === limit+1? (supabase range is inclusive)
+        if (error) throw error
+
+        // Supabase range is inclusive; to keep it simple, we just check if we got "limit+1" by asking range(offset, offset+limit)
+        // That returns limit+1 rows. If > pageSize => hasMore.
+        const rows = data || []
+        const hasMore = rows.length > pageSize
+        const sliced = rows.slice(0, pageSize)
+
+        setSearchResults(sliced)
+        setSearchHasMore(hasMore)
+        setSearchPage(page)
+      } catch (e) {
+        toast.error('Σφάλμα αναζήτησης κινήσεων')
+      } finally {
+        setSearchLoading(false)
+      }
+    },
+    [storeId, searchFrom, searchTo, pageSize]
+  )
+
+  /* ---------------- PARTY NAME FOR LISTS ---------------- */
+
+  const getPartyName = useCallback(
+    (t: any) => {
+      if (t.type === 'savings_deposit') return 'ΚΑΤΑΘΕΣΗ ΣΕ ΚΟΥΜΠΑΡΑ'
+      if (t.type === 'savings_withdrawal') return 'ΑΝΑΛΗΨΗ ΑΠΟ ΚΟΥΜΠΑΡΑ'
+
+      if (t.revenue_source_id || t.revenue_sources?.name)
+        return t.revenue_sources?.name || revenueSources.find((r) => String(r.id) === String(t.revenue_source_id))?.name || 'Πηγή Εσόδων'
+
+      if (String(t.fixed_assets?.sub_category || '').toLowerCase() === 'staff')
+        return t.fixed_assets?.name || staff.find((s) => String(s.id) === String(t.fixed_asset_id))?.name || 'Υπάλληλος'
+
+      if (t.suppliers?.name || t.supplier_id)
+        return t.suppliers?.name || suppliers.find((s) => String(s.id) === String(t.supplier_id))?.name || 'Προμηθευτής'
+
+      if (t.fixed_asset_id)
+        return t.fixed_assets?.name || maintenanceWorkers.find((m) => String(m.id) === String(t.fixed_asset_id))?.name || '-'
+
+      if (t.type === 'tip_entry') return staff.find((s) => String(s.id) === String(t.fixed_asset_id))?.name || 'Tips'
+
+      return t.category || '-'
+    },
+    [staff, suppliers, revenueSources, maintenanceWorkers]
+  )
+
+  /* ---------------- PRO: COLLAPSE Z IN LIST ---------------- */
+
   const collapsedPeriodList = useMemo(() => {
     const sortedTx = [...filteredTx].sort((a, b) => String(b.date).localeCompare(String(a.date)))
-
     const zByDate: Record<string, any[]> = {}
     const others: any[] = []
 
@@ -569,15 +840,13 @@ function AnalysisContent() {
       for (const row of rows) {
         const rowAmount = Number(row.amount) || 0
         amount += rowAmount
-
         const method = getMethod(row)
         const notes = String(row.notes || '').trim()
 
         if (method === 'Μετρητά (Z)') zCash += rowAmount
         if (method === 'Κάρτα') zPos += rowAmount
-        if (method !== 'Μετρητά (Z)' && (notes === 'ΧΩΡΙΣ ΣΗΜΑΝΣΗ' || method === 'Μετρητά' || method === 'Χωρίς Απόδειξη')) {
+        if (method !== 'Μετρητά (Z)' && (notes === 'ΧΩΡΙΣ ΣΗΜΑΝΣΗ' || method === 'Μετρητά' || method === 'Χωρίς Απόδειξη'))
           withoutMarking += rowAmount
-        }
       }
 
       return {
@@ -595,145 +864,20 @@ function AnalysisContent() {
     return [...others, ...collapsedZ].sort((a, b) => String(b.date).localeCompare(String(a.date)))
   }, [filteredTx, getMethod])
 
-  // drilldown options
-  const detailOptions = useMemo(() => {
-    if (detailMode === 'staff') return staff
-    if (detailMode === 'supplier') return suppliers
-    if (detailMode === 'revenue_source') return revenueSources
-    if (detailMode === 'maintenance') return maintenanceWorkers
-    return []
-  }, [detailMode, staff, suppliers, revenueSources, maintenanceWorkers])
+  /* ---------------- CATEGORY BREAKDOWN ---------------- */
 
-  // party display
-  const getPartyName = useCallback(
-    (t: any) => {
-      if (t.type === 'savings_deposit') return 'ΚΑΤΑΘΕΣΗ ΣΕ ΚΟΥΜΠΑΡΑ'
-      if (t.type === 'savings_withdrawal') return 'ΑΝΑΛΗΨΗ ΑΠΟ ΚΟΥΜΠΑΡΑ'
-
-      if (t.revenue_source_id || t.revenue_sources?.name) {
-        return (
-          t.revenue_sources?.name ||
-          revenueSources.find((r) => String(r.id) === String(t.revenue_source_id))?.name ||
-          'Πηγή Εσόδων'
-        )
-      }
-      if (String(t.fixed_assets?.sub_category || '').toLowerCase() === 'staff') {
-        return t.fixed_assets?.name || staff.find((s) => String(s.id) === String(t.fixed_asset_id))?.name || 'Υπάλληλος'
-      }
-      if (t.suppliers?.name || t.supplier_id) {
-        return t.suppliers?.name || suppliers.find((s) => String(s.id) === String(t.supplier_id))?.name || 'Προμηθευτής'
-      }
-      if (t.fixed_asset_id) {
-        return (
-          t.fixed_assets?.name ||
-          maintenanceWorkers.find((m) => String(m.id) === String(t.fixed_asset_id))?.name ||
-          t.category ||
-          '-'
-        )
-      }
-      if (t.type === 'tip_entry') {
-        return staff.find((s) => String(s.id) === String(t.fixed_asset_id))?.name || 'Tips'
-      }
-      return t.category || t.notes || 'Κίνηση'
-    },
-    [staff, suppliers, revenueSources, maintenanceWorkers]
-  )
-
-  // ---------------- SIMPLE BREAKDOWN (αντί για χιλιάδες κινήσεις) ----------------
-  const simpleBreakdown = useMemo(() => {
-    // only expenses (and debt_payment) for expense categories, but for "Έσοδα" show incomes by revenue source
-    const rowsNoCredit = filteredTx.filter((t) => !isCreditTx(t))
-
-    // decide grouping label
-    const groupMode: 'supplier' | 'staff' | 'maintenance' | 'utilities' | 'revenue' | 'other' | 'all' = (() => {
-      if (filterA === 'Εμπορεύματα') return 'supplier'
-      if (filterA === 'Προσωπικό') return 'staff'
-      if (filterA === 'Συντήρηση') return 'maintenance'
-      if (filterA === 'Λογαριασμοί') return 'utilities'
-      if (filterA === 'Έσοδα') return 'revenue'
-      if (filterA === 'Λοιπά') return 'other'
-      return 'all'
-    })()
-
-    const map: Record<string, { label: string; amount: number; count: number }> = {}
-
-    const add = (key: string, label: string, amount: number) => {
-      if (!map[key]) map[key] = { label, amount: 0, count: 0 }
-      map[key].amount += amount
-      map[key].count += 1
-    }
-
-    for (const t of rowsNoCredit) {
-      const amt = Math.abs(Number(t.amount) || 0)
-
-      if (groupMode === 'revenue') {
-        if (!['income', 'income_collection', 'debt_received'].includes(t.type)) continue
-        const label = t.revenue_sources?.name || revenueSources.find((r) => String(r.id) === String(t.revenue_source_id))?.name || 'Άλλη Πηγή'
-        add(String(t.revenue_source_id || label), label, amt)
-        continue
-      }
-
-      // expense side
-      if (!['expense', 'debt_payment'].includes(t.type)) continue
-
-      if (groupMode === 'supplier') {
-        const label = t.suppliers?.name || suppliers.find((s) => String(s.id) === String(t.supplier_id))?.name || 'Άγνωστος Προμηθευτής'
-        add(String(t.supplier_id || label), label, amt)
-        continue
-      }
-
-      if (groupMode === 'staff') {
-        const label = t.fixed_assets?.name || staff.find((s) => String(s.id) === String(t.fixed_asset_id))?.name || 'Άγνωστος Υπάλληλος'
-        add(String(t.fixed_asset_id || label), label, amt)
-        continue
-      }
-
-      if (groupMode === 'maintenance') {
-        const label =
-          t.fixed_assets?.name ||
-          maintenanceWorkers.find((m) => String(m.id) === String(t.fixed_asset_id))?.name ||
-          'Συντήρηση'
-        add(String(t.fixed_asset_id || label), label, amt)
-        continue
-      }
-
-      if (groupMode === 'utilities') {
-        // prefer category/notes as utility label
-        const label = String(t.category || '').trim() || String(t.notes || '').trim() || 'Λογαριασμός'
-        add(label, label, amt)
-        continue
-      }
-
-      if (groupMode === 'other') {
-        const label = String(t.category || '').trim() || String(t.notes || '').trim() || 'Λοιπά'
-        add(label, label, amt)
-        continue
-      }
-
-      // all
-      const catKey = normalizeExpenseCategory(t)
-      const metaLabel = CATEGORY_META.find((c) => c.key === catKey)?.label || 'Λοιπά'
-      add(catKey, metaLabel, amt)
-    }
-
-    const rows = Object.values(map).sort((a, b) => b.amount - a.amount)
-    const total = rows.reduce((a, r) => a + r.amount, 0)
-    return { rows, total, groupMode }
-  }, [filteredTx, filterA, isCreditTx, suppliers, staff, maintenanceWorkers, revenueSources, normalizeExpenseCategory])
-
-  // ---------------- PRO: category breakdown ----------------
   const categoryBreakdown = useMemo(() => {
     const expenseTx = filteredTx
-      .filter((t) => ['expense', 'debt_payment'].includes(t.type))
+      .filter((t) => t.type === 'expense' || t.type === 'debt_payment')
       .filter((t) => !isCreditTx(t))
 
     const result: Record<string, number> = {}
     let total = 0
 
     for (const t of expenseTx) {
-      const cat = normalizeExpenseCategory(t)
+      const catKey = normalizeExpenseCategory(t)
       const val = Math.abs(Number(t.amount) || 0)
-      result[cat] = (result[cat] || 0) + val
+      result[catKey] = (result[catKey] || 0) + val
       total += val
     }
 
@@ -741,90 +885,45 @@ function AnalysisContent() {
     return { result, total }
   }, [filteredTx, normalizeExpenseCategory, isCreditTx])
 
-  // ---------------- PRO: loans control (quick approach χωρίς νέους πίνακες) ----------------
-  const loanControl = useMemo(() => {
-    // Heuristic: loan payments recorded as expense/debt_payment with category or notes containing ΔΑΝΕ / LOAN / ΔΟΣΗ
-    const rowsNoCredit = periodTx.filter((t) => !isCreditTx(t))
-    const isLoan = (t: any) => {
-      const cat = String(t.category || '').toLowerCase()
-      const notes = String(t.notes || '').toLowerCase()
-      return cat.includes('δάνει') || cat.includes('loan') || notes.includes('δάνει') || notes.includes('loan') || notes.includes('δόση')
+  /* ---------------- STAFF PAYROLL (CURRENT MONTH) ---------------- */
+
+  const staffDetailsThisMonth = useMemo(() => {
+    const staffTxs = monthTransactions
+      .filter((t) => t.type === 'expense' || t.type === 'debt_payment')
+      .filter((t) => !isCreditTx(t))
+      .filter((t) => normalizeExpenseCategory(t) === 'Staff')
+
+    const byStaff: Record<string, number> = {}
+    for (const t of staffTxs) {
+      const name =
+        t.fixed_assets?.name ||
+        staff.find((s) => String(s.id) === String(t.fixed_asset_id))?.name ||
+        'Άγνωστος'
+      byStaff[name] = (byStaff[name] || 0) + Math.abs(Number(t.amount) || 0)
     }
 
-    const period = rowsNoCredit
-      .filter((t) => ['expense', 'debt_payment'].includes(t.type))
-      .filter(isLoan)
-
-    const total = period.reduce((a, t) => a + Math.abs(Number(t.amount) || 0), 0)
-
-    // next 30d loans from already-entered future expenses (expected outflows query already computed, but not categorized)
-    // We'll compute upcoming loans using a lightweight query on demand is heavy; keep it simple: infer from current period only.
-    // Show “Σύνολο Δόσεων Περιόδου” + “Top notes”.
-    const byLabel: Record<string, number> = {}
-    for (const t of period) {
-      const label = String(t.notes || t.category || 'Δάνειο').trim() || 'Δάνειο'
-      byLabel[label] = (byLabel[label] || 0) + Math.abs(Number(t.amount) || 0)
-    }
-    const rows = Object.entries(byLabel)
-      .map(([label, amount]) => ({ label, amount }))
+    return Object.entries(byStaff)
+      .map(([name, amount]) => ({ name, amount }))
       .sort((a, b) => b.amount - a.amount)
-
-    return { total, rows, count: period.length }
-  }, [periodTx, isCreditTx])
-
-  // ---------------- Movement Search (separate range) ----------------
-  const runSearch = useCallback(
-    async (page: number) => {
-      if (!storeId || storeId === 'null') return
-      setSearchLoading(true)
-      try {
-        const from = Math.max(0, page) * SEARCH_PAGE_SIZE
-        const to = from + SEARCH_PAGE_SIZE - 1
-
-        const res = await supabase
-          .from('transactions')
-          .select('*, suppliers(id, name), fixed_assets(id, name, sub_category), revenue_sources(id, name)')
-          .eq('store_id', storeId)
-          .gte('date', searchFrom)
-          .lte('date', searchTo)
-          .order('date', { ascending: false })
-          .range(from, to)
-
-        if (res.error) throw res.error
-
-        setSearchRows(res.data || [])
-        setSearchPage(page)
-      } catch {
-        toast.error('Σφάλμα αναζήτησης κινήσεων')
-      } finally {
-        setSearchLoading(false)
-      }
-    },
-    [storeId, searchFrom, searchTo]
-  )
-
-  // Default search range = today (already set). Keep independent.
+  }, [monthTransactions, normalizeExpenseCategory, staff, isCreditTx])
 
   /* ---------------- UI ---------------- */
-
-  const drawerZCash = isZReport ? zBreakdown.zCash : Number(drawer?.z_cash || 0)
-  const drawerWithoutMarking = isZReport ? zBreakdown.blackCash : Number(drawer?.extra_cash || 0)
-
-  const simpleBreakdownTitle = useMemo(() => {
-    if (filterA === 'Εμπορεύματα') return 'Έξοδα ανά Προμηθευτή'
-    if (filterA === 'Προσωπικό') return 'Έξοδα ανά Υπάλληλο'
-    if (filterA === 'Συντήρηση') return 'Έξοδα ανά Συντήρηση'
-    if (filterA === 'Λογαριασμοί') return 'Έξοδα ανά Λογαριασμό'
-    if (filterA === 'Έσοδα') return 'Έσοδα ανά Πηγή'
-    if (filterA === 'Λοιπά') return 'Λοιπά έξοδα (ανά κατηγορία)'
-    return 'Σύνοψη εξόδων (ανά κατηγορία)'
-  }, [filterA])
 
   return (
     <div style={iphoneWrapper} data-print-root="true">
       <Toaster position="top-center" richColors />
 
       <div style={{ maxWidth: 560, margin: '0 auto', paddingBottom: 120 }}>
+        {/* PRINT HEADER */}
+        <div className="print-header" style={{ display: 'none' }}>
+          <h1 className="print-title">{isZReport ? 'Αναφορά Ημέρας (Ζ)' : 'Ανάλυση'}</h1>
+          <p className="print-sub">{uiMode === 'simple' ? 'SIMPLE MODE' : 'PRO MODE'}</p>
+          <p className="print-meta">
+            Περίοδος: {startDate} → {endDate} • Φίλτρο: {filterA} • Εκτύπωση:{' '}
+            {printMode === 'summary' ? 'Σύνοψη' : 'Πλήρες'}
+          </p>
+        </div>
+
         {/* HEADER */}
         <div style={headerCard} className="no-print">
           <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
@@ -832,7 +931,7 @@ function AnalysisContent() {
             <div style={{ minWidth: 0 }}>
               <div style={headerTitle}>{isZReport ? 'Αναφορά Ημέρας (Ζ)' : 'Ανάλυση'}</div>
               <div style={headerSub}>
-                {uiMode === 'simple' ? 'SIMPLE (Καθαρή εικόνα)' : 'PRO (Πλήρες Dashboard)'} • {rangeText}
+                {uiMode === 'simple' ? 'SIMPLE (γρήγορη εικόνα)' : 'PRO (πλήρες dashboard)'}
               </div>
             </div>
           </div>
@@ -848,58 +947,92 @@ function AnalysisContent() {
               {uiMode === 'simple' ? <SlidersHorizontal size={18} /> : <Sparkles size={18} />}
             </button>
 
-            <button type="button" onClick={handlePrint} style={headerCircleBtn} aria-label="print" title="Εκτύπωση">
+            <button type="button" onClick={handlePrint} style={headerCircleBtn} aria-label="print">
               <Printer size={18} />
             </button>
 
-            <Link href={`/?store=${storeId}`} style={headerCircleBtn as any} aria-label="close" title="Κλείσιμο">
+            <Link href={`/?store=${storeId}`} style={headerCircleBtn as any} aria-label="close">
               ✕
             </Link>
           </div>
         </div>
 
-        {/* SIMPLE TOP: Από/Έως ΠΑΝΤΑ ΠΑΝΩ */}
-        <div style={topDateCard} className="no-print">
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <div style={tile}>
-              <div style={tileLabel}>ΑΠΟ</div>
-              <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} style={tileControl} />
-            </div>
-            <div style={tile}>
-              <div style={tileLabel}>ΕΩΣ</div>
-              <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} style={tileControl} />
-            </div>
-          </div>
-
-          <div style={{ marginTop: 12 }}>
-            <div style={tileLabel}>ΦΙΛΤΡΟ</div>
-            <select value={filterA} onChange={(e) => setFilterA(e.target.value as FilterA)} style={tileControl}>
-              <option value="Όλες">Όλες</option>
-              <option value="Έσοδα">Έσοδα</option>
-              <option value="Εμπορεύματα">Εμπορεύματα</option>
-              <option value="Προσωπικό">Προσωπικό</option>
-              <option value="Λογαριασμοί">Λογαριασμοί</option>
-              <option value="Συντήρηση">Συντήρηση</option>
-              <option value="Λοιπά">Λοιπά</option>
-            </select>
-          </div>
-
-          {detailMode !== 'none' && (
-            <div style={{ marginTop: 12 }}>
-              <div style={tileLabel}>ΛΕΠΤΟΜΕΡΕΙΑ</div>
-              <select value={detailId} onChange={(e) => setDetailId(e.target.value)} style={tileControl}>
-                <option value="all">Όλοι</option>
-                {detailOptions.map((x: any) => (
-                  <option key={x.id} value={x.id}>
-                    {x.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
+        {/* SIMPLE: TOP “ΑΠΟ/ΕΩΣ” PILL (όπως ζήτησες) */}
+        <div style={rangePill} className="no-print">
+          {startDate} → {endDate}
         </div>
 
-        {/* KPI GRID (both modes, but PRO shows extra context cards below) */}
+        {/* FILTER CARD */}
+        <div style={filterCard} className="no-print">
+          <div style={filtersStack}>
+            <div style={tile}>
+              <div style={tileIcon}>📅</div>
+              <div style={tileBody}>
+                <div style={tileLabel}>ΑΠΟ</div>
+                <input
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  style={tileControl}
+                  inputMode="none"
+                />
+              </div>
+            </div>
+
+            <div style={tile}>
+              <div style={tileIcon}>📅</div>
+              <div style={tileBody}>
+                <div style={tileLabel}>ΕΩΣ</div>
+                <input
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  style={tileControl}
+                  inputMode="none"
+                />
+              </div>
+            </div>
+
+            {/* SIMPLE + PRO: Category filter always visible */}
+            <div style={tile}>
+              <div style={tileIcon}>⛃</div>
+              <div style={tileBody}>
+                <div style={tileLabel}>ΦΙΛΤΡΟ</div>
+                <select value={filterA} onChange={(e) => setFilterA(e.target.value as FilterA)} style={tileControl}>
+                  <option value="Όλες">Όλες</option>
+                  <option value="Έσοδα">Έσοδα</option>
+                  <option value="Εμπορεύματα">Εμπορεύματα</option>
+                  <option value="Προσωπικό">Προσωπικό</option>
+                  <option value="Λογαριασμοί">Λογαριασμοί</option>
+                  <option value="Συντήρηση">Συντήρηση</option>
+                  <option value="Λοιπά">Λοιπά</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Drill-down detail */}
+            {detailMode !== 'none' && (
+              <div style={tile}>
+                <div style={tileIcon}>≡</div>
+                <div style={tileBody}>
+                  <div style={tileLabel}>ΛΕΠΤΟΜΕΡΕΙΑ</div>
+                  <select value={detailId} onChange={(e) => setDetailId(e.target.value)} style={tileControl}>
+                    <option value="all">Όλοι</option>
+                    {detailOptions.map((x: any) => (
+                      <option key={x.id} value={x.id}>
+                        {x.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            )}
+
+            <div style={rangeHint}>Περίοδος: {rangeText}</div>
+          </div>
+        </div>
+
+        {/* KPI GRID (always) */}
         <div style={kpiGrid} data-print-section="true">
           <div style={{ ...kpiCard, borderColor: '#d1fae5', background: 'linear-gradient(180deg, #ecfdf5, #ffffff)' }}>
             <div style={kpiTopRow}>
@@ -936,57 +1069,56 @@ function AnalysisContent() {
             </div>
             <div style={{ ...kpiValue, color: '#b45309' }}>+ {moneyGR(kpis.tips)}</div>
             <div style={kpiTrack}>
-              <div style={{ ...kpiFill, width: '70%', background: colors.warning }} />
+              <div style={{ ...kpiFill, width: '70%', background: colors.amber }} />
             </div>
           </div>
 
           <div style={{ ...kpiCard, borderColor: '#111827', background: 'linear-gradient(180deg, #0b1220, #111827)', color: '#fff' }}>
             <div style={kpiTopRow}>
               <div style={{ ...kpiLabel, color: '#fff' }}>
-                {isZReport ? 'Καθαρό Ταμείο Ημέρας (Z)' : 'Καθαρό Κέρδος'}{' '}
+                {isZReport ? 'Καθαρό Ταμείο Ημέρας' : 'Καθαρό Κέρδος'}{' '}
                 <span style={{ ...kpiDelta, color: '#e5e7eb' }}>{fmtPct(variance.netProfit)} vs prev</span>
               </div>
               <div style={{ ...kpiSign, color: '#fff' }}>{bigKpiValue >= 0 ? '▲' : '▼'}</div>
             </div>
             <div style={{ ...kpiValue, color: '#fff' }}>{moneyGR(bigKpiValue)}</div>
             <div style={{ fontSize: 13, fontWeight: 800, opacity: 0.85, marginTop: 6 }}>
-              {isZReport
-                ? 'Μετρητά (Z) + Χωρίς Σήμανση - Έξοδα Μετρητών'
-                : 'Έσοδα - Έξοδα (χωρίς Πίστωση)'}
+              {isZReport ? 'Μετρητά (Z) + Χωρίς Σήμανση - Επιχειρ. Έξοδα Μετρητών' : 'Έσοδα - Έξοδα (χωρίς Πίστωση)'}
             </div>
           </div>
         </div>
 
-        {/* BALANCES GRID (both modes) */}
+        {/* BALANCES GRID */}
         <div style={balancesGrid} data-print-section="true">
           <div style={{ ...smallKpiCard, border: '1px solid rgba(139,92,246,0.30)', background: 'linear-gradient(180deg, #f5f3ff, #ffffff)' }}>
-            <div style={smallKpiLabel}>Κουμπαράς</div>
+            <div style={smallKpiLabel}>Κινήσεις Κουμπαρά</div>
             <div style={{ ...smallKpiValue, color: colors.purple }}>
               {moneyGR(kpis.savingsDeposits - kpis.savingsWithdrawals)}
             </div>
             <div style={smallKpiHint}>
-              (+) {moneyGR(kpis.savingsDeposits)} • (-) {moneyGR(kpis.savingsWithdrawals)}
+              IN: {moneyGR(kpis.savingsDeposits)} • OUT: {moneyGR(kpis.savingsWithdrawals)}
             </div>
           </div>
 
           <div style={smallKpiCard}>
-            <div style={smallKpiLabel}>{isZReport ? 'Μετρητά στο Συρτάρι' : 'Υπόλοιπο Μετρητών'}</div>
+            <div style={smallKpiLabel}>Υπόλοιπο Μετρητών</div>
             <div style={smallKpiValue}>{moneyGR(totalCashDisplay)}</div>
-            <div style={smallKpiHint}>{isZReport ? 'Business cash (σωστό)' : `As of: ${endDate} (χωρίς Πίστωση)`}</div>
+            <div style={smallKpiHint}>{isZReport ? 'Συρτάρι ημέρας' : `As of: ${endDate} (χωρίς Πίστωση)`}</div>
           </div>
 
           <div style={smallKpiCard}>
-            <div style={smallKpiLabel}>Τράπεζα</div>
+            <div style={smallKpiLabel}>Υπόλοιπο Τράπεζας</div>
             <div style={smallKpiValue}>{moneyGR(calcBalances?.bank_balance || 0)}</div>
             <div style={smallKpiHint}>Κάρτα + Τράπεζα (χωρίς Πίστωση)</div>
           </div>
 
-          <div style={{ ...smallKpiCard, border: '1px solid rgba(16,185,129,0.22)', background: 'linear-gradient(180deg, #ecfdf5, #ffffff)' }}>
+          <div style={{ ...smallKpiCard, border: '1px solid rgba(16,185,129,0.20)', background: 'linear-gradient(180deg, #ecfdf5, #ffffff)' }}>
             <div style={smallKpiLabel}>Σύνολο Ρευστό</div>
             <div style={{ ...smallKpiValue, color: colors.success }}>{moneyGR(calcBalances?.total_balance || 0)}</div>
             <div style={smallKpiHint}>Cash + Bank (χωρίς Πίστωση)</div>
           </div>
 
+          {/* PRO extras only */}
           {uiMode === 'pro' && (
             <>
               <div style={{ ...smallKpiCard, border: '1px solid rgba(244,63,94,0.25)', background: 'linear-gradient(180deg, #fff1f2, #ffffff)' }}>
@@ -998,151 +1130,293 @@ function AnalysisContent() {
               <div style={{ ...smallKpiCard, border: '1px solid rgba(99,102,241,0.20)', background: 'linear-gradient(180deg, #eef2ff, #ffffff)' }}>
                 <div style={smallKpiLabel}>Expected Outflows (30d)</div>
                 <div style={{ ...smallKpiValue, color: colors.indigo }}>{moneyGR(expectedOutflows30d)}</div>
-                <div style={smallKpiHint}>Μελλοντικά έξοδα (future dated) • Χωρίς Πίστωση</div>
+                <div style={smallKpiHint}>Μελλοντικά έξοδα (future dated). Χωρίς Πίστωση.</div>
               </div>
 
               <div style={smallKpiCard}>
-                <div style={smallKpiLabel}>Ταμείο Ημέρας (Z view)</div>
+                <div style={smallKpiLabel}>Ταμείο Ημέρας (Z View)</div>
                 <div style={smallKpiValue}>{drawer ? moneyGR(drawer.total_cash_drawer) : '—'}</div>
                 <div style={smallKpiHint}>{drawer ? `Ημερομηνία Ζ: ${drawer.date}` : `Δεν βρέθηκε Ζ έως: ${endDate}`}</div>
-                <div style={{ fontSize: 11, fontWeight: 800, color: '#94a3b8', marginTop: 6 }}>
-                  {drawer || isZReport ? `Z: ${moneyGR(drawerZCash)} • Χωρίς Σήμανση: ${moneyGR(drawerWithoutMarking)}` : ''}
+                <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', marginTop: 4 }}>
+                  {drawer ? `Z: ${moneyGR(drawer.z_cash)} • Χωρίς Σήμανση: ${moneyGR(drawer.extra_cash)}` : ''}
                 </div>
               </div>
             </>
           )}
         </div>
 
-        {/* SIMPLE MODE: Breakdown card (αντί για κινήσεις) */}
+        {/* ---------------- SIMPLE MODE: “έξοδα ανά οντότητα” αντί για λίστα κινήσεων ---------------- */}
         {uiMode === 'simple' && (
           <div style={sectionCard} data-print-section="true">
             <div style={sectionTitleRow}>
               <div>
-                <h3 style={sectionTitle}>{simpleBreakdownTitle}</h3>
-                <div style={sectionSub}>
-                  Περίοδος: {rangeText} • Χωρίς Πίστωση
-                </div>
+                <h3 style={sectionTitle}>
+                  {filterA === 'Εμπορεύματα'
+                    ? 'Έξοδα ανά Προμηθευτή'
+                    : filterA === 'Προσωπικό'
+                    ? 'Έξοδα ανά Υπάλληλο'
+                    : filterA === 'Συντήρηση'
+                    ? 'Έξοδα ανά Μάστορα'
+                    : 'Σύνοψη Εξόδων'}
+                </h3>
+                <div style={sectionSub}>Περίοδος: {rangeText} • Δεν φορτώνουμε χιλιάδες κινήσεις</div>
               </div>
-              <div style={sectionPill}>Σύνολο: {moneyGR(simpleBreakdown.total)}</div>
+              <div style={sectionPill}>{entitySummary.length} εγγραφές</div>
             </div>
 
             {loading ? (
-              <div style={hintBox}>Φόρτωση…</div>
-            ) : simpleBreakdown.rows.length === 0 ? (
-              <div style={hintBox}>Δεν υπάρχουν δεδομένα για το φίλτρο/περίοδο που επέλεξες.</div>
+              <div style={hintBox}>Φόρτωση...</div>
+            ) : entitySummary.length === 0 ? (
+              <div style={hintBox}>Δεν βρέθηκαν έξοδα για τα φίλτρα που επέλεξες.</div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {simpleBreakdown.rows.slice(0, 12).map((r) => (
-                  <div key={r.label} style={rowItem}>
+                {entitySummary.map((x: any) => (
+                  <button
+                    key={x.id}
+                    type="button"
+                    onClick={() => {
+                      // Quick drill-down for simple:
+                      if (filterA === 'Εμπορεύματα') {
+                        setFilterA('Εμπορεύματα')
+                        setDetailId(String(x.id))
+                      } else if (filterA === 'Προσωπικό') {
+                        setFilterA('Προσωπικό')
+                        setDetailId(String(x.id))
+                      } else if (filterA === 'Συντήρηση') {
+                        setFilterA('Συντήρηση')
+                        setDetailId(String(x.id))
+                      }
+                      // If it's category summary, just keep it.
+                    }}
+                    style={{
+                      ...rowItem,
+                      cursor: 'pointer',
+                      backgroundColor: '#fff',
+                      border: `1px solid ${colors.border}`,
+                      textAlign: 'left',
+                    }}
+                  >
                     <div style={{ minWidth: 0 }}>
-                      <div style={{ fontSize: 16, fontWeight: 950, color: colors.primary, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {String(r.label || '').toUpperCase()}
+                      <div style={{ fontSize: 15, fontWeight: 950, color: colors.primary, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {String(x.name || '').toUpperCase()}
                       </div>
-                      <div style={{ fontSize: 12, fontWeight: 850, color: colors.secondary, marginTop: 4 }}>
-                        {r.count} εγγραφές
+                      <div style={{ fontSize: 12, fontWeight: 850, color: colors.secondary, marginTop: 6 }}>
+                        Πληρωμένα: <b style={{ color: colors.success }}>{moneyGR(x.paid)}</b> • Πίστωση:{' '}
+                        <b style={{ color: colors.danger }}>{moneyGR(x.credit)}</b>
                       </div>
                     </div>
-                    <div style={{ fontSize: 16, fontWeight: 950, color: colors.danger }}>{moneyGR(r.amount)}</div>
-                  </div>
+                    <div style={{ fontSize: 16, fontWeight: 950, color: colors.primary, whiteSpace: 'nowrap' }}>
+                      {moneyGR(x.total)}
+                    </div>
+                  </button>
                 ))}
-
-                {simpleBreakdown.rows.length > 12 && (
-                  <div style={{ fontSize: 12, fontWeight: 850, color: colors.secondary, textAlign: 'center', marginTop: 6 }}>
-                    Εμφανίζονται οι 12 μεγαλύτερες εγγραφές. (Στο PRO βλέπεις αναλυτικά τα πάντα.)
-                  </div>
-                )}
               </div>
             )}
           </div>
         )}
 
-        {/* SIMPLE: Movement Search με δικό του Από/Έως + pagination */}
+        {/* ---------------- PRO MODE: Detail card when selecting entity (π.χ. Τζηλιος) ---------------- */}
+        {uiMode === 'pro' && proDetailSummary && (
+          <div style={sectionCard} data-print-section="true">
+            <div style={sectionTitleRow}>
+              <div>
+                <h3 style={sectionTitle}>Καρτέλα: {proDetailSummary.name}</h3>
+                <div style={sectionSub}>
+                  Περίοδος: {rangeText} • Φίλτρο: {filterA} • Paid / Credit
+                </div>
+              </div>
+              <div style={sectionPill}>Σύνολο: {moneyGR(proDetailSummary.totalAll)}</div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div style={smallKpiCard}>
+                <div style={smallKpiLabel}>ΠΛΗΡΩΜΕΝΑ (ΣΥΝΟΛΟ)</div>
+                <div style={{ ...smallKpiValue, color: colors.success }}>{moneyGR(proDetailSummary.paidTotal)}</div>
+                <div style={smallKpiHint}>
+                  Μετρητά: {moneyGR(proDetailSummary.paidCash)} • Τράπεζα: {moneyGR(proDetailSummary.paidBank)} • (
+                  {proDetailSummary.countPaid} κινήσεις)
+                </div>
+              </div>
+
+              <div style={{ ...smallKpiCard, border: '1px solid rgba(244,63,94,0.25)', background: 'linear-gradient(180deg, #fff1f2, #ffffff)' }}>
+                <div style={smallKpiLabel}>ΥΠΟΛΟΙΠΟ ΠΙΣΤΩΣΗΣ</div>
+                <div style={{ ...smallKpiValue, color: colors.danger }}>{moneyGR(proDetailSummary.creditTotal)}</div>
+                <div style={smallKpiHint}>({proDetailSummary.countCredit} κινήσεις σε πίστωση)</div>
+              </div>
+            </div>
+
+            {/* δείξε τις πιο πρόσφατες κινήσεις πίστωσης (και προαιρετικά paid) */}
+            <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {proDetailSummary.creditRows.length === 0 ? (
+                <div style={hintBox}>Δεν υπάρχουν κινήσεις σε πίστωση για την περίοδο.</div>
+              ) : (
+                <>
+                  <div style={hintBox}>
+                    <b>Πίστωση:</b> {proDetailSummary.creditRows.length} κινήσεις (δείχνω τις 10 πιο πρόσφατες)
+                  </div>
+                  {proDetailSummary.creditRows.slice(0, 10).map((t: any) => (
+                    <div key={`cr-${t.id}`} style={listRow}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontSize: 13, fontWeight: 950, color: colors.primary }}>{t.date}</div>
+                          <div style={{ fontSize: 12, fontWeight: 850, color: colors.secondary, marginTop: 4 }}>
+                            {String(t.notes || t.category || '').trim() || '—'}
+                          </div>
+                          <div style={{ marginTop: 6, fontSize: 12, fontWeight: 900, color: colors.danger }}>⚠️ ΠΙΣΤΩΣΗ</div>
+                        </div>
+                        <div style={{ fontSize: 14, fontWeight: 950, color: colors.danger, whiteSpace: 'nowrap' }}>
+                          {moneyGR(Math.abs(Number(t.amount) || 0))}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ---------------- PRO MODE: Extra PRO finance cards (Loans / Settlements) ---------------- */}
+        {uiMode === 'pro' && (
+          <div style={sectionCard} data-print-section="true">
+            <div style={sectionTitleRow}>
+              <div>
+                <h3 style={sectionTitle}>PRO Έλεγχοι</h3>
+                <div style={sectionSub}>Δάνεια / Ρυθμίσεις (με βάση category/notes) • Περίοδος: {rangeText}</div>
+              </div>
+              <div style={sectionPill}>PRO</div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div style={smallKpiCard}>
+                <div style={smallKpiLabel}>ΔΑΝΕΙΑ (ΠΛΗΡΩΜΕΣ)</div>
+                <div style={{ ...smallKpiValue, color: colors.danger }}>{moneyGR(proFinanceCards.loanOut)}</div>
+                <div style={smallKpiHint}>Έξοδα που μοιάζουν με “δάνειο”</div>
+              </div>
+
+              <div style={smallKpiCard}>
+                <div style={smallKpiLabel}>ΔΑΝΕΙΑ (ΕΙΣΠΡΑΞΕΙΣ)</div>
+                <div style={{ ...smallKpiValue, color: colors.success }}>{moneyGR(proFinanceCards.loanIn)}</div>
+                <div style={smallKpiHint}>Έσοδα που μοιάζουν με “δάνειο”</div>
+              </div>
+
+              <div style={{ ...smallKpiCard, gridColumn: 'span 2' }}>
+                <div style={smallKpiLabel}>ΡΥΘΜΙΣΕΙΣ / ΕΦΟΡΙΑ (ΠΛΗΡΩΜΕΣ)</div>
+                <div style={{ ...smallKpiValue, color: colors.indigo }}>{moneyGR(proFinanceCards.settlementOut)}</div>
+                <div style={smallKpiHint}>Έξοδα που μοιάζουν με “ρύθμιση/εφορία”</div>
+              </div>
+            </div>
+
+            <div style={{ marginTop: 10, fontSize: 12, fontWeight: 850, color: colors.secondary }}>
+              Αν θες 100% σωστό “Loans” και “Ρυθμίσεις”, πες μου ποιες <b>category</b> χρησιμοποιείς και θα το κάνω με αυστηρούς κανόνες.
+            </div>
+          </div>
+        )}
+
+        {/* ---------------- SIMPLE + PRO: “Αναζήτηση Κινήσεων” card (paged) ---------------- */}
         <div style={sectionCard} className="no-print">
           <div style={sectionTitleRow}>
             <div>
               <h3 style={sectionTitle}>Αναζήτηση Κινήσεων</h3>
-              <div style={sectionSub}>Ψάξε συγκεκριμένη μέρα/περίοδο χωρίς να φορτώνονται χιλιάδες κινήσεις</div>
+              <div style={sectionSub}>Ψάξε συγκεκριμένη μέρα/περίοδο χωρίς να φορτώνουμε χιλιάδες κινήσεις</div>
             </div>
-            <div style={sectionPill}>{SEARCH_PAGE_SIZE}/σελίδα</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={sectionPill}>{pageSize}/σελίδα</div>
+              <select
+                value={pageSize}
+                onChange={(e) => {
+                  const v = Number(e.target.value)
+                  setPageSize(v)
+                  setSearchPage(0)
+                }}
+                style={{ ...tileControl, width: 120, height: 40, fontSize: 14 }}
+              >
+                <option value={20}>20</option>
+                <option value={30}>30</option>
+                <option value={50}>50</option>
+              </select>
+            </div>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
             <div style={tile}>
-              <div style={tileLabel}>ΑΠΟ</div>
-              <input type="date" value={searchFrom} onChange={(e) => setSearchFrom(e.target.value)} style={tileControl} />
+              <div style={tileIcon}>📅</div>
+              <div style={tileBody}>
+                <div style={tileLabel}>ΑΠΟ</div>
+                <input type="date" value={searchFrom} onChange={(e) => setSearchFrom(e.target.value)} style={tileControl} />
+              </div>
             </div>
             <div style={tile}>
-              <div style={tileLabel}>ΕΩΣ</div>
-              <input type="date" value={searchTo} onChange={(e) => setSearchTo(e.target.value)} style={tileControl} />
+              <div style={tileIcon}>📅</div>
+              <div style={tileBody}>
+                <div style={tileLabel}>ΕΩΣ</div>
+                <input type="date" value={searchTo} onChange={(e) => setSearchTo(e.target.value)} style={tileControl} />
+              </div>
             </div>
           </div>
 
-          <div style={{ display: 'flex', gap: 10, marginTop: 12 }}>
+          <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: '1fr 50px 50px', gap: 10 }}>
             <button
               type="button"
-              onClick={() => runSearch(0)}
-              style={primaryBtn}
+              onClick={() => runTxSearch(0)}
+              style={searchBtn}
               disabled={searchLoading}
             >
-              <Search size={18} />
-              {searchLoading ? 'Αναζήτηση…' : 'Αναζήτηση'}
+              <Search size={18} /> {searchLoading ? 'Ψάχνω...' : 'Αναζήτηση'}
             </button>
 
             <button
               type="button"
-              onClick={() => runSearch(Math.max(0, searchPage - 1))}
-              style={ghostBtn}
+              onClick={() => runTxSearch(Math.max(0, searchPage - 1))}
+              style={navBtn}
               disabled={searchLoading || searchPage === 0}
-              title="Προηγούμενη"
+              aria-label="prev"
             >
               <ChevronLeft size={18} />
             </button>
 
             <button
               type="button"
-              onClick={() => runSearch(searchPage + 1)}
-              style={ghostBtn}
-              disabled={searchLoading}
-              title="Επόμενη"
+              onClick={() => runTxSearch(searchPage + 1)}
+              style={navBtn}
+              disabled={searchLoading || !searchHasMore}
+              aria-label="next"
             >
               <ChevronRight size={18} />
             </button>
           </div>
 
           <div style={{ marginTop: 12 }}>
-            {searchLoading ? (
-              <div style={hintBox}>Φόρτωση αποτελεσμάτων…</div>
-            ) : searchRows.length === 0 ? (
+            {searchResults.length === 0 ? (
               <div style={hintBox}>Δεν έχεις τρέξει αναζήτηση ή δεν βρέθηκαν κινήσεις.</div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {searchRows.map((t: any) => {
+                {searchResults.map((t: any) => {
                   const amt = Math.abs(Number(t.amount) || 0)
-                  const isInc = ['income', 'income_collection', 'debt_received', 'savings_withdrawal'].includes(t.type)
-                  const isTip = t.type === 'tip_entry'
+                  const isInc = ['income', 'income_collection', 'debt_received', 'savings_withdrawal', 'tip_entry'].includes(t.type)
                   const isExp = ['expense', 'debt_payment', 'savings_deposit'].includes(t.type)
-                  const sign = isInc || isTip ? '+' : isExp ? '-' : ''
-                  const color = isInc ? colors.success : isTip ? colors.warning : colors.danger
+                  const sign = isInc ? '+' : isExp ? '-' : ''
+                  const color = isInc ? colors.success : isExp ? colors.danger : colors.primary
 
                   return (
                     <div key={t.id} style={listRow}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
                         <div style={{ minWidth: 0 }}>
-                          <div style={{ fontSize: 13, fontWeight: 950, color: colors.primary }}>
-                            {t.date} • {getMethod(t) || '-'}
-                          </div>
-                          <div style={{ fontSize: 12, fontWeight: 850, color: colors.secondary, marginTop: 6, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          <div style={{ fontSize: 13, fontWeight: 950, color: colors.primary }}>{t.date}</div>
+                          <div style={{ marginTop: 6, fontSize: 14, fontWeight: 950, color: colors.primary, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                             {String(getPartyName(t) || '').toUpperCase()}
                           </div>
                           {!!t.notes && (
-                            <div style={{ fontSize: 12, fontWeight: 800, color: colors.secondary, marginTop: 4 }}>
+                            <div style={{ marginTop: 6, fontSize: 12, fontWeight: 850, color: colors.secondary }}>
                               {t.notes}
                             </div>
                           )}
+                          <div style={{ marginTop: 6, fontSize: 12, fontWeight: 850, color: colors.secondary }}>
+                            Μέθοδος: <b>{getMethod(t) || '—'}</b> {isCreditTx(t) ? ' • ⚠️ ΠΙΣΤΩΣΗ' : ''}
+                          </div>
                         </div>
-                        <div style={{ fontSize: 14, fontWeight: 950, color, whiteSpace: 'nowrap' }}>
-                          {sign}
-                          {moneyGR(amt)}
+                        <div style={{ fontSize: 15, fontWeight: 950, color, whiteSpace: 'nowrap' }}>
+                          {sign}{moneyGR(amt)}
                         </div>
                       </div>
                     </div>
@@ -1153,227 +1427,179 @@ function AnalysisContent() {
           </div>
         </div>
 
-        {/* ---------------- PRO MODE: “τα πάντα” ---------------- */}
+        {/* ---------------- PRO MODE: Category Breakdown ---------------- */}
         {uiMode === 'pro' && (
-          <>
-            {/* PRO: Expense category breakdown */}
-            <div style={sectionCard} data-print-section="true">
-              <div style={sectionTitleRow}>
-                <div>
-                  <h3 style={sectionTitle}>Έξοδα ανά Κατηγορία</h3>
-                  <div style={sectionSub}>Κατανομή περιόδου (χωρίς έσοδα και χωρίς πιστώσεις)</div>
-                </div>
-                <div style={sectionPill}>Σύνολο: {moneyGR(categoryBreakdown.total)}</div>
+          <div style={sectionCard} data-print-section="true">
+            <div style={sectionTitleRow}>
+              <div>
+                <h3 style={sectionTitle}>Έξοδα ανά Κατηγορία</h3>
+                <div style={sectionSub}>Κατανομή περιόδου (χωρίς έσοδα και χωρίς πιστώσεις)</div>
               </div>
-
-              {categoryBreakdown.total <= 0 ? (
-                <div style={hintBox}>Δεν υπάρχουν έξοδα στην επιλεγμένη περίοδο.</div>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                  {CATEGORY_META.map((c) => {
-                    const val = categoryBreakdown.result[c.key] || 0
-                    const pct = categoryBreakdown.total > 0 ? (val / categoryBreakdown.total) * 100 : 0
-                    const Icon = c.Icon
-                    return (
-                      <div key={c.key} style={catRow}>
-                        <div style={catLeft}>
-                          <div style={catIconWrap}>
-                            <Icon size={18} />
-                          </div>
-                          <div style={catLabelWrap}>
-                            <div style={catLabel}>{c.label}</div>
-                          </div>
-                        </div>
-                        <div style={catMid}>
-                          <div style={catPct}>{pct.toFixed(0)}%</div>
-                          <div style={catTrack}>
-                            <div style={{ ...catFill, width: `${pct}%`, background: c.color }} />
-                          </div>
-                        </div>
-                        <div style={{ ...catValue, color: c.color }}>{moneyGR(val)}</div>
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
+              <div style={sectionPill}>Σύνολο: {moneyGR(categoryBreakdown.total)}</div>
             </div>
 
-            {/* PRO: Loans control */}
-            <div style={sectionCard} data-print-section="true">
-              <div style={sectionTitleRow}>
-                <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-                  <div style={miniIconBubble}><Landmark size={18} /></div>
-                  <div>
-                    <h3 style={sectionTitle}>Έλεγχος Δανείων</h3>
-                    <div style={sectionSub}>Γρήγορη παρακολούθηση (με βάση category/notes που περιέχουν “Δάνειο / Δόση / Loan”)</div>
-                  </div>
-                </div>
-                <div style={sectionPill}>{loanControl.count} κινήσεις</div>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                <div style={smallKpiCard}>
-                  <div style={smallKpiLabel}>Σύνολο Δόσεων Περιόδου</div>
-                  <div style={{ ...smallKpiValue, color: colors.danger }}>{moneyGR(loanControl.total)}</div>
-                  <div style={smallKpiHint}>Περίοδος: {rangeText}</div>
-                </div>
-                <div style={smallKpiCard}>
-                  <div style={smallKpiLabel}>Expected Outflows (30d)</div>
-                  <div style={{ ...smallKpiValue, color: colors.indigo }}>{moneyGR(expectedOutflows30d)}</div>
-                  <div style={smallKpiHint}>Όλα τα future expenses/debt_payment (χωρίς πίστωση)</div>
-                </div>
-              </div>
-
-              <div style={{ marginTop: 12 }}>
-                {loanControl.rows.length === 0 ? (
-                  <div style={hintBox}>Δεν βρέθηκαν δόσεις δανείου στην περίοδο (βάλε category/notes π.χ. “Δάνειο Scudo”, “Δόση δανείου”).</div>
-                ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                    {loanControl.rows.slice(0, 10).map((r) => (
-                      <div key={r.label} style={rowItem}>
-                        <div style={{ minWidth: 0 }}>
-                          <div style={{ fontSize: 14, fontWeight: 950, color: colors.primary, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                            {String(r.label || '').toUpperCase()}
-                          </div>
+            {categoryBreakdown.total <= 0 ? (
+              <div style={hintBox}>Δεν υπάρχουν έξοδα στην επιλεγμένη περίοδο.</div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                {CATEGORY_META.map((c) => {
+                  const val = categoryBreakdown.result[c.key] || 0
+                  const pct = categoryBreakdown.total > 0 ? (val / categoryBreakdown.total) * 100 : 0
+                  const Icon = c.Icon
+                  return (
+                    <div key={c.key} style={catRow}>
+                      <div style={catLeft}>
+                        <div style={catIconWrap}>
+                          <Icon size={18} />
                         </div>
-                        <div style={{ fontSize: 14, fontWeight: 950, color: colors.danger }}>{moneyGR(r.amount)}</div>
+                        <div style={catLabelWrap}>
+                          <div style={catLabel}>{c.label}</div>
+                        </div>
                       </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
 
-            {/* PRO: Settings card (optional from business_settings table) */}
-            <div style={sectionCard} data-print-section="true">
-              <div style={sectionTitleRow}>
-                <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-                  <div style={miniIconBubble}><Settings size={18} /></div>
-                  <div>
-                    <h3 style={sectionTitle}>Ρυθμίσεις (PRO)</h3>
-                    <div style={sectionSub}>Κανόνες που χρησιμοποιεί η αναφορά (Z, κουμπαράς, πίστωση, κ.λπ.)</div>
-                  </div>
-                </div>
-                <div style={sectionPill}>{settingsLoading ? '…' : `${bizSettings.length} keys`}</div>
-              </div>
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                <div style={hintBox}>
-                  <b>Κανόνες Z που εφαρμόζονται:</b>
-                  <br />• Z Cash = method “Μετρητά (Z)”
-                  <br />• Z POS = method “Κάρτα”
-                  <br />• Black = category “Εσοδα Ζ” + (notes “ΧΩΡΙΣ ΣΗΜΑΝΣΗ” ή method “Μετρητά/Χωρίς Απόδειξη”) χωρίς “Μετρητά (Z)”
-                  <br />• Ταμείο ημέρας = (Z Cash + Black) - Έξοδα Μετρητών
-                  <br />• Συρτάρι = Ταμείο ημέρας - Καταθέσεις κουμπαρά (Μετρητά) + Αναλήψεις κουμπαρά (Μετρητά)
-                </div>
-
-                <div style={hintBox}>
-                  <b>Κανόνας Πίστωσης:</b> Ό,τι έχει method “Πίστωση” ή is_credit=true δεν επηρεάζει Cash/Bank ισοζύγια και εμφανίζεται ξεχωριστά στο PRO.
-                </div>
-
-                {bizSettings.length > 0 ? (
-                  <div style={{ padding: 14, borderRadius: 16, border: `1px solid ${colors.border}`, background: '#fff' }}>
-                    <div style={{ fontSize: 13, fontWeight: 950, color: colors.primary, marginBottom: 10 }}>Business Settings (από βάση)</div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                      {bizSettings.slice(0, 8).map((s: any, idx: number) => (
-                        <div key={`${s.key}-${idx}`} style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
-                          <div style={{ fontSize: 12, fontWeight: 900, color: colors.secondary, minWidth: 120 }}>{s.key}</div>
-                          <div style={{ fontSize: 12, fontWeight: 850, color: colors.primary, textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {typeof s.value_json === 'string' ? s.value_json : JSON.stringify(s.value_json)}
-                          </div>
+                      <div style={catMid}>
+                        <div style={catPct}>{pct.toFixed(0)}%</div>
+                        <div style={catTrack}>
+                          <div style={{ ...catFill, width: `${pct}%`, background: c.color }} />
                         </div>
-                      ))}
+                      </div>
+
+                      <div style={{ ...catValue, color: c.color }}>{moneyGR(val)}</div>
                     </div>
-                    {bizSettings.length > 8 && (
-                      <div style={{ fontSize: 12, fontWeight: 850, color: colors.secondary, marginTop: 10 }}>
-                        (Εμφανίζονται τα 8 πρώτα)
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <div style={hintBox}>
-                    Δεν βρέθηκαν settings από πίνακα <b>business_settings</b>. (Αν δεν τον έχεις, είναι ΟΚ — το PRO δείχνει ήδη τους κανόνες που εφαρμόζονται.)
-                  </div>
-                )}
+                  )
+                })}
               </div>
-            </div>
-
-            {/* PRO: Full movements list (collapsed Z) */}
-            <div style={sectionCard} data-print-section="true">
-              <div style={sectionTitleRow}>
-                <div>
-                  <h3 style={sectionTitle}>Κινήσεις Περιόδου (PRO)</h3>
-                  <div style={sectionSub}>Με collapse του Ζ σε 1 κίνηση ανά ημέρα</div>
-                </div>
-                <div style={sectionPill}>{collapsedPeriodList.length} εγγραφές</div>
-              </div>
-
-              {loading ? (
-                <div style={hintBox}>Φόρτωση…</div>
-              ) : collapsedPeriodList.length === 0 ? (
-                <div style={hintBox}>Δεν υπάρχουν κινήσεις για το φίλτρο που επέλεξες.</div>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  {collapsedPeriodList.map((t: any) => {
-                    const isCollapsedZ = !!t.__collapsedZ
-                    const name = isCollapsedZ ? 'Z REPORT (ΣΥΝΟΛΟ)' : getPartyName(t)
-
-                    const amt = Number(t.amount) || 0
-                    const absAmt = Math.abs(amt)
-
-                    const isInc = ['income', 'income_collection', 'debt_received', 'savings_withdrawal'].includes(t.type)
-                    const isTip = t.type === 'tip_entry'
-                    const isExp = ['expense', 'debt_payment', 'savings_deposit'].includes(t.type)
-
-                    const sign = isInc || isTip ? '+' : isExp ? '-' : ''
-                    const pillBg = isInc ? '#ecfdf5' : isTip ? '#fffbeb' : '#fff1f2'
-                    const pillBr = isInc ? '#d1fae5' : isTip ? '#fde68a' : '#ffe4e6'
-                    const pillTx = isInc ? colors.success : isTip ? '#92400e' : colors.danger
-
-                    const pm = String((t.payment_method ?? t.method ?? '') || '').trim()
-                    const credit = isCreditTx(t)
-
-                    return (
-                      <div key={t.id ?? `${t.date}-${t.created_at}-${absAmt}`} style={listRow} data-print-row="true">
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, minWidth: 0 }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
-                            <div style={{ fontSize: 14, fontWeight: 950, color: colors.primary, whiteSpace: 'nowrap' }}>{t.date}</div>
-                            <div style={{ padding: '8px 12px', borderRadius: 999, backgroundColor: pillBg, border: `1px solid ${pillBr}`, fontSize: 16, fontWeight: 950, color: pillTx, whiteSpace: 'nowrap' }}>
-                              {sign}
-                              {moneyGR(absAmt)}
-                            </div>
-                          </div>
-
-                          <div style={{ fontSize: 16, fontWeight: 950, color: colors.primary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {String(name || '').toUpperCase()}
-                          </div>
-
-                          {!!t.notes && <div style={{ fontSize: 13, fontWeight: 850, color: colors.secondary }}>{t.notes}</div>}
-                          {!!pm && (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 850, color: colors.secondary }}>
-                              <span style={{ fontWeight: 950 }}>Μέθοδος:</span> {pm}
-                            </div>
-                          )}
-
-                          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                            {credit && <span style={{ fontSize: 12, fontWeight: 950, color: colors.danger }}>⚠️ ΠΙΣΤΩΣΗ</span>}
-                            {isCollapsedZ && <span style={{ fontSize: 12, fontWeight: 950, color: colors.indigo }}>📌 COLLAPSED Z</span>}
-                          </div>
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
-            </div>
-          </>
+            )}
+          </div>
         )}
 
-        {/* bottom print shortcut */}
-        <div className="no-print" style={{ marginTop: 18 }}>
+        {/* ---------------- PRO MODE: Staff Payroll (month) ---------------- */}
+        {uiMode === 'pro' && printMode === 'full' && (
+          <div style={sectionCard} data-print-section="true">
+            <div style={sectionTitleRow}>
+              <div>
+                <h3 style={sectionTitle}>Μισθοδοσία ανά Υπάλληλο</h3>
+                <div style={sectionSub}>Τρέχων μήνας (γρήγορη εικόνα)</div>
+              </div>
+              <div style={sectionPill}>{format(new Date(), 'MMMM yyyy')}</div>
+            </div>
+
+            {staffDetailsThisMonth.length === 0 ? (
+              <div style={hintBox}>Δεν υπάρχουν εγγραφές μισθοδοσίας αυτόν τον μήνα.</div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {staffDetailsThisMonth.map((s) => (
+                  <div key={s.name} style={rowItem}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
+                      <div style={{ fontSize: 16, fontWeight: 900, color: colors.primary, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {String(s.name || '').toUpperCase()}
+                      </div>
+                      <div style={{ fontSize: 13, fontWeight: 800, color: colors.secondary }}>Καταβλήθηκε</div>
+                    </div>
+                    <div style={{ fontSize: 16, fontWeight: 900, color: colors.sky }}>{moneyGR(s.amount)}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ---------------- PRO MODE: Movements (collapsed Z) ---------------- */}
+        {uiMode === 'pro' && printMode === 'full' && (
+          <div style={sectionCard} data-print-section="true">
+            <div style={sectionTitleRow}>
+              <div>
+                <h3 style={sectionTitle}>Κινήσεις Περιόδου</h3>
+                <div style={sectionSub}>Ζ ως 1 κίνηση/ημέρα + υπόλοιπες με όνομα</div>
+              </div>
+              <div style={sectionPill}>{collapsedPeriodList.length} εγγραφές</div>
+            </div>
+
+            {loading ? (
+              <div style={hintBox}>Φόρτωση...</div>
+            ) : collapsedPeriodList.length === 0 ? (
+              <div style={hintBox}>Δεν υπάρχουν κινήσεις για το φίλτρο που επέλεξες.</div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {collapsedPeriodList.map((t: any) => {
+                  const isCollapsedZ = !!t.__collapsedZ
+                  const name = isCollapsedZ ? 'Z REPORT (ΣΥΝΟΛΟ)' : getPartyName(t)
+
+                  const amt = Number(t.amount) || 0
+                  const absAmt = Math.abs(amt)
+
+                  const isInc =
+                    t.type === 'income' ||
+                    t.type === 'income_collection' ||
+                    t.type === 'debt_received' ||
+                    t.type === 'savings_withdrawal'
+                  const isTip = t.type === 'tip_entry'
+                  const isExp = t.type === 'expense' || t.type === 'debt_payment' || t.type === 'savings_deposit'
+
+                  const sign = isInc || isTip ? '+' : isExp ? '-' : ''
+                  const pillBg = isInc ? '#ecfdf5' : isTip ? '#fffbeb' : '#fff1f2'
+                  const pillBr = isInc ? '#d1fae5' : isTip ? '#fde68a' : '#ffe4e6'
+                  const pillTx = isInc ? colors.success : isTip ? '#92400e' : colors.danger
+
+                  const pm = String((t.payment_method ?? t.method ?? '') || '').trim()
+                  const credit = isCreditTx(t)
+                  const verified = t?.is_verified === true
+
+                  return (
+                    <div key={t.id ?? `${t.date}-${t.created_at}-${absAmt}`} style={listRow}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, minWidth: 0 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
+                          <div style={{ fontSize: 14, fontWeight: 900, color: colors.primary, whiteSpace: 'nowrap' }}>{t.date}</div>
+                          <div style={{ padding: '8px 12px', borderRadius: 999, backgroundColor: pillBg, border: `1px solid ${pillBr}`, fontSize: 16, fontWeight: 900, color: pillTx, whiteSpace: 'nowrap' }}>
+                            {sign}{absAmt.toLocaleString('el-GR')}€
+                          </div>
+                        </div>
+
+                        <div style={{ fontSize: 18, fontWeight: 900, color: colors.primary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {String(name || '').toUpperCase()}
+                        </div>
+
+                        {!!t.notes && <div style={{ fontSize: 14, fontWeight: 800, color: colors.secondary }}>{t.notes}</div>}
+
+                        {!!pm && (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 800, color: colors.secondary }}>
+                            <span style={{ fontWeight: 900 }}>Μέθοδος:</span> {pm}
+                          </div>
+                        )}
+
+                        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                          {credit && <span style={{ fontSize: 12, fontWeight: 900, color: colors.danger }}>⚠️ ΠΙΣΤΩΣΗ</span>}
+                          {typeof t.is_verified !== 'undefined' && (
+                            <span style={{ fontSize: 12, fontWeight: 900, color: verified ? colors.success : colors.secondary }}>
+                              {verified ? '✅ VERIFIED' : '⏳ NOT VERIFIED'}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* PRINT MODE SWITCH */}
+        <div className="no-print" style={printWrap}>
+          <div style={printModeSwitchWrap}>
+            <button type="button" onClick={() => setPrintMode('summary')} style={{ ...printModeBtn, ...(printMode === 'summary' ? printModeBtnActive : {}) }}>
+              Σύνοψη
+            </button>
+            <button type="button" onClick={() => setPrintMode('full')} style={{ ...printModeBtn, ...(printMode === 'full' ? printModeBtnActive : {}) }}>
+              Πλήρες
+            </button>
+          </div>
           <button type="button" onClick={handlePrint} style={printBtn}>
             <Printer size={18} /> Εκτύπωση Αναφοράς
           </button>
+          <div style={printHint}>
+            Εκτύπωση: <b>{printMode === 'summary' ? 'Σύνοψη' : 'Πλήρες'}</b> • Θα ανοίξει το παράθυρο εκτύπωσης για αποθήκευση σε PDF.
+          </div>
         </div>
       </div>
     </div>
@@ -1424,7 +1650,7 @@ const headerIconBox: any = {
 }
 
 const headerTitle: any = { fontSize: 22, fontWeight: 950, color: colors.primary, lineHeight: 1.1 }
-const headerSub: any = { fontSize: 12, fontWeight: 900, color: colors.secondary, letterSpacing: 0.4, marginTop: 4 }
+const headerSub: any = { fontSize: 12, fontWeight: 900, color: colors.secondary, letterSpacing: 0.8, marginTop: 4 }
 
 const headerCircleBtn: any = {
   width: 46,
@@ -1440,7 +1666,19 @@ const headerCircleBtn: any = {
   cursor: 'pointer',
 }
 
-const topDateCard: any = {
+const rangePill: any = {
+  marginTop: 12,
+  padding: '12px 14px',
+  borderRadius: 999,
+  border: `1px solid ${colors.border}`,
+  background: 'rgba(255,255,255,0.85)',
+  fontWeight: 950,
+  fontSize: 18,
+  color: colors.primary,
+  boxShadow: '0 10px 20px rgba(15,23,42,0.06)',
+}
+
+const filterCard: any = {
   marginTop: 12,
   padding: 14,
   borderRadius: 26,
@@ -1449,8 +1687,35 @@ const topDateCard: any = {
   boxShadow: '0 14px 26px rgba(15,23,42,0.06)',
 }
 
-const tile: any = { display: 'flex', flexDirection: 'column', gap: 8 }
-const tileLabel: any = { fontSize: 12, fontWeight: 950, color: colors.secondary, letterSpacing: 0.7, textTransform: 'uppercase' }
+const filtersStack: any = { display: 'flex', flexDirection: 'column', gap: 12 }
+
+const tile: any = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 12,
+  padding: 14,
+  borderRadius: 20,
+  background: '#fff',
+  border: `1px solid ${colors.border}`,
+  boxShadow: '0 2px 10px rgba(15,23,42,0.04)',
+}
+
+const tileIcon: any = {
+  width: 46,
+  height: 46,
+  borderRadius: 18,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  background: '#eef2ff',
+  border: `1px solid ${colors.border}`,
+  fontSize: 18,
+  flex: '0 0 46px',
+}
+
+const tileBody: any = { flex: 1, minWidth: 0 }
+const tileLabel: any = { fontSize: 12, fontWeight: 950, color: colors.secondary, letterSpacing: 0.7, marginBottom: 8, textTransform: 'uppercase' }
+
 const tileControl: any = {
   width: '100%',
   height: 48,
@@ -1465,6 +1730,8 @@ const tileControl: any = {
   appearance: 'none',
   WebkitAppearance: 'none',
 }
+
+const rangeHint: any = { marginTop: 2, fontSize: 13, fontWeight: 850, color: colors.secondary }
 
 const kpiGrid: any = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 14 }
 const kpiCard: any = { borderRadius: 22, border: `1px solid ${colors.border}`, padding: 14, background: '#fff', boxShadow: '0 12px 22px rgba(15,23,42,0.06)', overflow: 'hidden' }
@@ -1487,10 +1754,8 @@ const sectionTitleRow: any = { display: 'flex', justifyContent: 'space-between',
 const sectionTitle: any = { margin: 0, fontSize: 18, fontWeight: 950, color: colors.primary }
 const sectionSub: any = { marginTop: 4, fontSize: 12, fontWeight: 850, color: colors.secondary }
 const sectionPill: any = { padding: '10px 14px', borderRadius: 999, border: `1px solid ${colors.border}`, background: '#fff', fontSize: 13, fontWeight: 950, color: colors.primary, whiteSpace: 'nowrap' }
-const hintBox: any = { padding: 14, borderRadius: 16, backgroundColor: colors.background, border: `1px solid ${colors.border}`, fontSize: 14, fontWeight: 850, color: colors.secondary }
 
-const rowItem: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 14, borderRadius: 18, backgroundColor: colors.background, border: `1px solid ${colors.border}` }
-const listRow: any = { padding: 14, borderRadius: 18, backgroundColor: colors.background, border: `1px solid ${colors.border}` }
+const hintBox: any = { padding: 14, borderRadius: 16, backgroundColor: colors.background, border: `1px solid ${colors.border}`, fontSize: 14, fontWeight: 850, color: colors.secondary }
 
 const catRow: any = { display: 'grid', gridTemplateColumns: '1fr 120px 110px', alignItems: 'center', gap: 12 }
 const catLeft: any = { display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }
@@ -1503,69 +1768,50 @@ const catTrack: any = { flex: 1, height: 10, borderRadius: 999, background: '#e5
 const catFill: any = { height: 10, borderRadius: 999 }
 const catValue: any = { textAlign: 'right', fontSize: 16, fontWeight: 950, whiteSpace: 'nowrap' }
 
-const primaryBtn: any = {
-  flex: 1,
-  padding: 14,
-  borderRadius: 14,
-  border: 'none',
-  cursor: 'pointer',
-  fontSize: 16,
-  fontWeight: 950,
-  backgroundColor: colors.indigo,
-  color: '#fff',
-  display: 'inline-flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  gap: 10,
-}
+const rowItem: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 14, borderRadius: 18, backgroundColor: colors.background, border: `1px solid ${colors.border}` }
+const listRow: any = { padding: 14, borderRadius: 18, backgroundColor: colors.background, border: `1px solid ${colors.border}` }
 
-const ghostBtn: any = {
-  width: 52,
-  height: 52,
-  borderRadius: 14,
-  border: `1px solid ${colors.border}`,
-  background: '#fff',
-  cursor: 'pointer',
-  display: 'inline-flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  color: colors.primary,
-}
+const printWrap: any = { marginTop: 18, padding: 14, borderRadius: 18, backgroundColor: colors.surface, border: `1px solid ${colors.border}`, display: 'flex', flexDirection: 'column', gap: 10 }
+const printModeSwitchWrap: any = { display: 'flex', backgroundColor: '#e2e8f0', padding: 4, borderRadius: 14, gap: 6 }
+const printModeBtn: any = { flex: 1, padding: 12, borderRadius: 10, border: 'none', fontWeight: 950, fontSize: 16, cursor: 'pointer', backgroundColor: 'transparent', color: colors.primary }
+const printModeBtnActive: any = { backgroundColor: colors.indigo, color: '#fff' }
+const printBtn: any = { width: '100%', padding: 14, borderRadius: 14, border: 'none', cursor: 'pointer', fontSize: 16, fontWeight: 950, backgroundColor: colors.indigo, color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 10 }
+const printHint: any = { fontSize: 13, fontWeight: 850, color: colors.secondary, textAlign: 'center' }
 
-const printBtn: any = {
+const searchBtn: any = {
   width: '100%',
   padding: 14,
   borderRadius: 14,
-  border: 'none',
-  cursor: 'pointer',
-  fontSize: 16,
-  fontWeight: 950,
-  backgroundColor: colors.indigo,
+  background: colors.indigo,
   color: '#fff',
+  border: 'none',
+  fontWeight: 950,
+  fontSize: 16,
+  cursor: 'pointer',
   display: 'inline-flex',
   alignItems: 'center',
   justifyContent: 'center',
   gap: 10,
 }
 
-const miniIconBubble: any = {
-  width: 44,
-  height: 44,
-  borderRadius: 16,
+const navBtn: any = {
+  width: '100%',
+  padding: 14,
+  borderRadius: 14,
+  background: '#fff',
+  color: colors.primary,
   border: `1px solid ${colors.border}`,
-  background: '#eef2ff',
-  display: 'flex',
+  fontWeight: 950,
+  cursor: 'pointer',
+  display: 'inline-flex',
   alignItems: 'center',
   justifyContent: 'center',
-  color: colors.indigo,
 }
-
-/* ---------------- EXPORT ---------------- */
 
 export default function AnalysisPage() {
   return (
     <main>
-      <Suspense fallback={<div style={{ fontSize: 16, padding: 20 }}>Φόρτωση…</div>}>
+      <Suspense fallback={<div style={{ fontSize: 16, padding: 20 }}>Φόρτωση...</div>}>
         <AnalysisContent />
       </Suspense>
     </main>
