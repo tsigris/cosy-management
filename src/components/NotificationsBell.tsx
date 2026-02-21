@@ -46,7 +46,7 @@ type StaffRow = {
 
 type UiNotification =
   | {
-      key: string
+  notificationKey: string
       source: 'installment'
       severity: 'warning' | 'danger'
       title: string
@@ -57,7 +57,7 @@ type UiNotification =
       settlement: SettlementRow
     }
   | {
-      key: string
+      notificationKey: string
       source: 'custom'
       severity: 'info' | 'warning' | 'danger'
       title: string
@@ -66,7 +66,7 @@ type UiNotification =
       row: DbNotification
     }
   | {
-      key: string
+      notificationKey: string
       source: 'employee_pay'
       severity: 'warning' | 'danger'
       title: string
@@ -163,7 +163,8 @@ export default function NotificationsBell({ storeId, onUpdate }: { storeId: stri
   const [installments, setInstallments] = useState<InstallmentRow[]>([])
   const [settlementsMap, setSettlementsMap] = useState<Record<string, SettlementRow>>({})
   const [customRows, setCustomRows] = useState<DbNotification[]>([])
-  const [notifications, setNotifications] = useState<Array<UiNotification & { id: string }>>([])
+  const [notifications, setNotifications] = useState<UiNotification[]>([])
+  const [dismissedKeys, setDismissedKeys] = useState<Set<string>>(new Set())
 
   // ✅ staff for payroll notifications
   const [staff, setStaff] = useState<StaffRow[]>([])
@@ -183,7 +184,7 @@ export default function NotificationsBell({ storeId, onUpdate }: { storeId: stri
   const todayStr = useMemo(() => getBusinessDate(), [])
 
   const loadNotifications = useCallback(async () => {
-    if (!storeId) return
+    if (!storeId || !sessionUserId) return
     setLoading(true)
     try {
       const min = yyyyMmDd(new Date(Date.now() - 60 * 24 * 3600 * 1000))
@@ -248,6 +249,20 @@ export default function NotificationsBell({ storeId, onUpdate }: { storeId: stri
         setStaff((staffRows || []) as any)
       }
 
+      // 4) per-user dismissals
+      const { data: dismissalRows, error: dismissErr } = await supabase
+        .from('notification_dismissals')
+        .select('notification_key')
+        .eq('store_id', storeId)
+        .eq('user_id', sessionUserId)
+
+      if (dismissErr) {
+        console.warn(dismissErr)
+        setDismissedKeys(new Set())
+      } else {
+        setDismissedKeys(new Set((dismissalRows || []).map((r: any) => String(r.notification_key))))
+      }
+
       setHasLoaded(true)
     } catch (e: any) {
       console.error(e)
@@ -255,7 +270,7 @@ export default function NotificationsBell({ storeId, onUpdate }: { storeId: stri
     } finally {
       setLoading(false)
     }
-  }, [storeId])
+  }, [storeId, sessionUserId])
 
   useEffect(() => {
     let mounted = true
@@ -300,10 +315,13 @@ export default function NotificationsBell({ storeId, onUpdate }: { storeId: stri
       let severity: 'warning' | 'danger' | null = null
       let daysText = ''
 
-      if (dueMinusToday >= 0 && dueMinusToday <= 3) {
+      if (dueMinusToday === 0) {
+        severity = 'danger'
+        daysText = 'ΣΗΜΕΡΑ ΠΛΗΡΩΜΗ'
+      } else if (dueMinusToday > 0 && dueMinusToday <= 3) {
         severity = 'warning'
-        daysText = dueMinusToday === 0 ? 'λήγει σήμερα' : `σε ${dueMinusToday} μέρες`
-      } else if (dueMinusToday <= -3) {
+        daysText = `σε ${dueMinusToday} μέρες`
+      } else if (dueMinusToday < 0) {
         severity = 'danger'
         daysText = `${Math.abs(dueMinusToday)} μέρες σε καθυστέρηση`
       }
@@ -313,9 +331,10 @@ export default function NotificationsBell({ storeId, onUpdate }: { storeId: stri
       const isLoan = setl.type === 'loan'
       const title = isLoan ? 'Δόση Δανείου' : 'Δόση Ρύθμισης'
       const message = `${setl.name}${setl.rf_code ? ` (RF: ${setl.rf_code})` : ''} • Δόση #${inst.installment_number} • ${money(inst.amount)}€ • ${daysText}`
+      const notificationKey = `inst:${inst.id}:${inst.due_date}:${severity}`
 
       out.push({
-        key: `inst:${inst.id}`,
+        notificationKey,
         source: 'installment',
         severity,
         title,
@@ -360,8 +379,10 @@ export default function NotificationsBell({ storeId, onUpdate }: { storeId: stri
 
       if (!severity) continue
 
+      const notificationKey = `empPay:${emp.id}:${dueDate}:${severity}`
+
       out.push({
-        key: `empPay:${emp.id}:${dueDate}`,
+        notificationKey,
         source: 'employee_pay',
         severity,
         title: 'Πληρωμή Υπαλλήλου',
@@ -390,7 +411,7 @@ export default function NotificationsBell({ storeId, onUpdate }: { storeId: stri
       if (showUntil && todayStr > showUntil) continue
 
       out.push({
-        key: `custom:${n.id}`,
+        notificationKey: `custom:${n.id}`,
         source: 'custom',
         severity: (n.severity as any) || 'info',
         title: n.title,
@@ -407,17 +428,16 @@ export default function NotificationsBell({ storeId, onUpdate }: { storeId: stri
     return [...installmentNotifications, ...employeePayNotifications, ...customNotifications]
   }, [installmentNotifications, employeePayNotifications, customNotifications])
 
-  useEffect(() => {
-    setNotifications(
-      allNotifications.map((n) => ({
-        ...n,
-        id: n.source === 'custom' ? n.row.id : n.key,
-      }))
-    )
-  }, [allNotifications])
+  const visibleNotifications = useMemo(() => {
+    return allNotifications.filter((n) => !dismissedKeys.has(n.notificationKey))
+  }, [allNotifications, dismissedKeys])
 
-  const dangerCount = useMemo(() => allNotifications.filter((n) => n.severity === 'danger').length, [allNotifications])
-  const warningCount = useMemo(() => allNotifications.filter((n) => n.severity === 'warning').length, [allNotifications])
+  useEffect(() => {
+    setNotifications(visibleNotifications)
+  }, [visibleNotifications])
+
+  const dangerCount = useMemo(() => notifications.filter((n) => n.severity === 'danger').length, [notifications])
+  const warningCount = useMemo(() => notifications.filter((n) => n.severity === 'warning').length, [notifications])
   const badgeCount = dangerCount + warningCount
 
   const bellColor = useMemo(() => {
@@ -494,45 +514,34 @@ export default function NotificationsBell({ storeId, onUpdate }: { storeId: stri
     }
   }
 
-  const dismissCustom = async (id: string) => {
+  const dismissNotification = async (notificationKey: string) => {
     try {
-      const { error } = await supabase
-        .from('notifications')
-        .update({ dismissed_at: new Date().toISOString() })
-        .eq('id', id)
-        .eq('store_id', storeId)
-
-      if (error) throw error
-      setCustomRows((prev) => prev.filter((x) => x.id !== id))
-      toast.success('Έγινε απόκρυψη')
-    } catch (e) {
-      toast.error('Σφάλμα απόκρυψης')
-    }
-  }
-
-  const dismissNotification = async (id: string) => {
-    try {
-      const target = notifications.find((n) => n.id === id)
-      if (!target) return
-
-      if (target.source !== 'custom') {
-        setNotifications((prev) => prev.filter((n) => n.id !== id))
+      if (!storeId || !sessionUserId) {
+        toast.error('Δεν βρέθηκε χρήστης')
         return
       }
 
+      const target = notifications.find((n) => n.notificationKey === notificationKey)
+      if (!target) return
+
       const { error } = await supabase
-        .from('notifications')
-        .update({ dismissed_at: new Date().toISOString() })
-        .eq('id', id)
-        .eq('store_id', storeId)
+        .from('notification_dismissals')
+        .upsert(
+          [{ store_id: storeId, user_id: sessionUserId, notification_key: target.notificationKey }],
+          { onConflict: 'store_id,user_id,notification_key' }
+        )
 
       if (error) {
         toast.error('Σφάλμα απόκρυψης')
         return
       }
 
-      setNotifications((prev) => prev.filter((n) => n.id !== id))
-      setCustomRows((prev) => prev.filter((x) => x.id !== id))
+      setDismissedKeys((prev) => {
+        const next = new Set(prev)
+        next.add(target.notificationKey)
+        return next
+      })
+      setNotifications((prev) => prev.filter((x) => x.notificationKey !== target.notificationKey))
     } catch (err) {
       toast.error('Σφάλμα απόκρυψης')
       console.error(err)
@@ -722,7 +731,7 @@ export default function NotificationsBell({ storeId, onUpdate }: { storeId: stri
                 <div style={{ display: 'grid', gap: 10 }}>
                   {notifications.map((n) => (
                     <div
-                      key={n.key}
+                      key={n.notificationKey}
                       style={{
                         position: 'relative',
                         border: `1px solid ${colors.border}`,
@@ -731,35 +740,33 @@ export default function NotificationsBell({ storeId, onUpdate }: { storeId: stri
                         background: 'white',
                       }}
                     >
-                      {n.source === 'custom' && (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            dismissNotification(n.id)
-                          }}
-                          style={{
-                            position: 'absolute',
-                            top: 8,
-                            right: 8,
-                            width: 32,
-                            height: 32,
-                            borderRadius: 10,
-                            border: '1px solid #e2e8f0',
-                            background: '#ffffff',
-                            color: '#64748b',
-                            cursor: 'pointer',
-                            fontWeight: 900,
-                            fontSize: 18,
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
-                            zIndex: 10,
-                          }}
-                        >
-                          ×
-                        </button>
-                      )}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          dismissNotification(n.notificationKey)
+                        }}
+                        style={{
+                          position: 'absolute',
+                          top: 8,
+                          right: 8,
+                          width: 34,
+                          height: 34,
+                          borderRadius: 12,
+                          border: '1px solid #e2e8f0',
+                          background: '#ffffff',
+                          color: '#64748b',
+                          cursor: 'pointer',
+                          fontWeight: 900,
+                          fontSize: 20,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
+                          zIndex: 10,
+                        }}
+                      >
+                        ×
+                      </button>
 
                       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
                         <div style={{ flex: 1 }}>
@@ -844,7 +851,7 @@ export default function NotificationsBell({ storeId, onUpdate }: { storeId: stri
                             </a>
                           ) : (
                             <button
-                              onClick={() => dismissCustom(n.row.id)}
+                              onClick={() => dismissNotification(n.notificationKey)}
                               style={{
                                 border: `1px solid ${colors.border}`,
                                 borderRadius: 12,
