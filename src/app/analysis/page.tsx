@@ -130,7 +130,7 @@ function AnalysisContent() {
 
         supabase
           .from('transactions')
-          .select('amount, type, is_credit, method, payment_method')
+          .select('amount, type, is_credit, method')
           .eq('store_id', storeId)
           .gte('date', prevStartStr)
           .lte('date', prevEndStr),
