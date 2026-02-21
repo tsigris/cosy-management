@@ -3579,12 +3579,6 @@ zIndex: 120,
 
 
 
-overflowY: 'auto',
-
-WebkitOverflowScrolling: 'touch',
-
-
-
 display: 'flex',
 
 alignItems: 'flex-start',
@@ -3592,6 +3586,10 @@ alignItems: 'flex-start',
 justifyContent: 'center',
 
 padding: '16px',
+
+overflowY: 'auto',
+
+WebkitOverflowScrolling: 'touch',
 
 }
 
@@ -3619,7 +3617,9 @@ padding: '16px',
 
 marginTop: '14px',
 
-maxHeight: 'calc(100vh - 32px)',
+maxHeight: 'calc(100dvh - 32px)',
+
+margin: '16px 0',
 
 overflow: 'hidden',
 
@@ -3698,6 +3698,10 @@ gap: 10,
 
 
 const modalBodyStyle: CSSProperties = {
+
+flex: 1,
+
+minHeight: 0,
 
 overflowY: 'auto',
 
