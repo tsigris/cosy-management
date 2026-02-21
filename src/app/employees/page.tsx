@@ -689,6 +689,7 @@ function EmployeesContent() {
     name: string
     sub_category: 'staff'
     store_id: string
+    start_date: string | null
     pay_basis: PayBasis
     monthly_salary: number | null
     daily_rate: number | null
@@ -724,6 +725,7 @@ function EmployeesContent() {
       name: formData.full_name.trim(),
       sub_category: 'staff',
       store_id: tenantStoreId,
+      start_date: formData.start_date || null,
       pay_basis: payBasis,
       monthly_salary: payBasis === 'monthly' && Number.isFinite(monthlySalaryNum) ? monthlySalaryNum : null,
       daily_rate: payBasis === 'daily' && Number.isFinite(dailyRateNum) ? dailyRateNum : null,
@@ -1201,7 +1203,7 @@ function EmployeesContent() {
                               color: daysLeft === 0 || daysLeft === null ? colors.accentRed : colors.accentBlue,
                             }}
                           >
-                            {daysLeft === 0 ? 'ΣΗΜΕΡΑ 💰' : `ΣΕ ${daysLeft} ΗΜΕΡΕΣ 📅`}
+                            {daysLeft === null ? 'ΟΡΙΣΕ ΗΜ. ΠΡΟΣΛΗΨΗΣ' : daysLeft === 0 ? 'ΣΗΜΕΡΑ 💰' : `ΣΕ ${daysLeft} ΗΜΕΡΕΣ 📅`}
                           </span>
 
                           {pendingOt > 0 && (
