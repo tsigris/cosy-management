@@ -157,6 +157,8 @@ function getNextMonthlyPayDate(startDateStr: string, todayStr: string) {
 export default function NotificationsBell({ storeId, onUpdate }: { storeId: string; onUpdate?: () => void }) {
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [hasLoaded, setHasLoaded] = useState(false)
+  const [sessionUserId, setSessionUserId] = useState<string | null>(null)
 
   const [installments, setInstallments] = useState<InstallmentRow[]>([])
   const [settlementsMap, setSettlementsMap] = useState<Record<string, SettlementRow>>({})
@@ -245,6 +247,8 @@ export default function NotificationsBell({ storeId, onUpdate }: { storeId: stri
       } else {
         setStaff((staffRows || []) as any)
       }
+
+      setHasLoaded(true)
     } catch (e: any) {
       console.error(e)
       toast.error('Σφάλμα φόρτωσης ειδοποιήσεων')
@@ -254,8 +258,34 @@ export default function NotificationsBell({ storeId, onUpdate }: { storeId: stri
   }, [storeId])
 
   useEffect(() => {
-    if (open) loadNotifications()
-  }, [open, loadNotifications])
+    let mounted = true
+
+    const loadSession = async () => {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession()
+      if (mounted) setSessionUserId(session?.user?.id ?? null)
+    }
+
+    loadSession()
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (mounted) setSessionUserId(session?.user?.id ?? null)
+    })
+
+    return () => {
+      mounted = false
+      subscription.unsubscribe()
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!storeId || !sessionUserId) return
+    setHasLoaded(false)
+    loadNotifications()
+  }, [storeId, sessionUserId, loadNotifications])
 
   const installmentNotifications: UiNotification[] = useMemo(() => {
     const out: UiNotification[] = []
@@ -525,7 +555,12 @@ export default function NotificationsBell({ storeId, onUpdate }: { storeId: stri
     <div style={{ position: 'relative' }}>
       <button
         type="button"
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => {
+          if (!open && !hasLoaded && !loading) {
+            loadNotifications()
+          }
+          setOpen((v) => !v)
+        }}
         style={{
           position: 'relative',
           background: colors.white,
