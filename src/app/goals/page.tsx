@@ -492,7 +492,7 @@ function GoalsContent() {
       if (error) throw error
       await loadGoals()
     } catch (e: any) {
-      toast.error('Αποτυχία: Η κίνηση ανήκει σε κλεισμένη ημέρα και δεν μπορεί να διαγραφεί')
+      toast.error(e?.message || 'Αποτυχία διαγραφής κίνησης')
     }
   }
 
