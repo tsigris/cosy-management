@@ -3,13 +3,6 @@ import React, { Suspense, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
-import { 
-  Home, 
-  BarChart3, 
-  Flag, 
-  Users, 
-  Settings2 
-} from 'lucide-react';
 
 const colors = {
   primary: '#0f172a',    
@@ -19,13 +12,13 @@ const colors = {
   border: '#f1f5f9'
 }
 
-// ✅ Ανανεωμένα Nav Items: Αντικατάσταση Προμηθευτών με Διαχείριση
+// ✅ Επαναφορά των Emojis και προσθήκη του ⚙️ για τη Διαχείριση
 const navItems = [
-  { label: 'Αρχική', icon: <Home size={22} />, path: '/' },
-  { label: 'Ανάλυση', icon: <BarChart3 size={22} />, path: '/analysis' },
-  { label: 'Καρτέλες', icon: <Flag size={22} />, path: '/suppliers-balance' },
-  { label: 'Προσωπικό', icon: <Users size={22} />, path: '/employees' },
-  { label: 'Διαχείριση', icon: <Settings2 size={22} />, path: '/management' },
+  { label: 'Αρχική', icon: '🏠', path: '/' },
+  { label: 'Ανάλυση', icon: '📊', path: '/analysis' },
+  { label: 'Καρτέλες', icon: '🚩', path: '/suppliers-balance' },
+  { label: 'Προσωπικό', icon: '👤', path: '/employees' },
+  { label: 'Διαχείριση', icon: '⚙️', path: '/management' },
 ];
 
 function NavContent() {
@@ -114,12 +107,14 @@ function NavContent() {
             <div style={{
               ...iconBox,
               backgroundColor: isActive ? '#f1f5f9' : 'transparent',
-              color: isActive ? colors.indigo : colors.secondary,
             }}>
               <span style={{ 
-                display: 'flex',
+                fontSize: '22px', 
+                filter: isActive ? 'grayscale(0)' : 'grayscale(1)',
+                opacity: isActive ? 1 : 0.5,
                 transform: isActive ? 'scale(1.15)' : 'scale(1)',
                 transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                display: 'block'
               }}>
                 {item.icon}
               </span>
