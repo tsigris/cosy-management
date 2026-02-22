@@ -112,41 +112,74 @@ export const fetchStoresWithStats = async (userId: string): Promise<StoresFetchR
   const now = new Date()
   const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10)
 
-  const storesWithStats = await Promise.all(
-    access.map(async (item: any) => {
-      // H Supabase μπορεί να επιστρέψει το joined object ως αντικείμενο ή πίνακα
+  const stores = access
+    .map((item: any) => {
       const store = Array.isArray(item.stores) ? item.stores[0] : item.stores
       if (!store) return null
-
-      const { data: trans } = await supabase
-        .from('transactions')
-        .select('amount, type, date')
-        .eq('store_id', store.id)
-        .gte('date', firstDay)
-        .order('date', { ascending: false })
-
-      const income = trans?.filter((t: any) => t.type === 'income')
-        .reduce((acc: number, curr: any) => acc + (Number(curr.amount) || 0), 0) || 0
-
-      const expenses = trans?.filter((t: any) => t.type === 'expense' || t.type === 'debt_payment')
-        .reduce((acc: number, curr: any) => acc + Math.abs(Number(curr.amount) || 0), 0) || 0
-
-      const lastUpdated = trans?.[0]?.date || null
-
-      const result: StoreCard = {
-        id: store.id,
-        name: store.name,
-        income,
-        expenses,
-        profit: income - expenses,
-        lastUpdated: String(lastUpdated)
+      return {
+        id: String(store.id),
+        name: String(store.name || 'Κατάστημα')
       }
-      return result
     })
-  )
+    .filter((store): store is { id: string; name: string } => store !== null)
+
+  const uniqueStores = Array.from(new Map(stores.map((store) => [store.id, store])).values())
+  const storeIds = uniqueStores.map((store) => store.id)
+
+  const statsByStoreId = new Map<string, { income: number; expenses: number; lastUpdated: string | null }>()
+  uniqueStores.forEach((store) => {
+    statsByStoreId.set(store.id, { income: 0, expenses: 0, lastUpdated: null })
+  })
+
+  if (storeIds.length > 0) {
+    const { data: trans, error: transError } = await supabase
+      .from('transactions')
+      .select('store_id, amount, type, date')
+      .in('store_id', storeIds)
+      .gte('date', firstDay)
+      .order('date', { ascending: false })
+
+    if (transError) throw transError
+
+    for (const tx of trans || []) {
+      const storeId = String((tx as { store_id?: string }).store_id || '')
+      if (!storeId) continue
+
+      const current = statsByStoreId.get(storeId)
+      if (!current) continue
+
+      const amount = Number((tx as { amount?: number | string }).amount) || 0
+      const type = String((tx as { type?: string }).type || '')
+      const date = String((tx as { date?: string }).date || '') || null
+
+      if (type === 'income') {
+        current.income += amount
+      }
+
+      if (type === 'expense' || type === 'debt_payment') {
+        current.expenses += Math.abs(amount)
+      }
+
+      if (!current.lastUpdated && date) {
+        current.lastUpdated = date
+      }
+    }
+  }
+
+  const storesWithStats: StoreCard[] = uniqueStores.map((store) => {
+    const stats = statsByStoreId.get(store.id) || { income: 0, expenses: 0, lastUpdated: null }
+    return {
+      id: store.id,
+      name: store.name,
+      income: stats.income,
+      expenses: stats.expenses,
+      profit: stats.income - stats.expenses,
+      lastUpdated: stats.lastUpdated
+    }
+  })
 
   return {
-    stores: storesWithStats.filter((s): s is StoreCard => s !== null),
+    stores: storesWithStats,
     accessWarning
   }
 }
