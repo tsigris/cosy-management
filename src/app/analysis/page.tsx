@@ -1060,11 +1060,12 @@ function AnalysisContent() {
       <div style={{ maxWidth: 560, margin: '0 auto', paddingBottom: 120 }}>
         {/* PRINT HEADER */}
         <div className="print-header" style={{ display: 'none' }}>
-          <h1 className="print-title">{isZReport ? 'Αναφορά Ημέρας (Ζ)' : 'Ανάλυση'}</h1>
-          <p className="print-sub">{uiMode === 'simple' ? 'SIMPLE MODE' : 'PRO MODE'}</p>
+          <h1 className="print-title">ΟΙΚΟΝΟΜΙΚΗ ΑΝΑΦΟΡΑ ΚΑΤΑΣΤΗΜΑΤΟΣ</h1>
+          <p className="print-sub">
+            Ημερομηνία Εκτύπωσης: <b>{format(new Date(), 'dd/MM/yyyy HH:mm')}</b>
+          </p>
           <p className="print-meta">
-            Περίοδος: {startDate} → {endDate} • Φίλτρο: {filterA} • Εκτύπωση:{' '}
-            {printMode === 'summary' ? 'Σύνοψη' : 'Πλήρες'}
+            Εύρος Ημερομηνιών: <b>{startDate} → {endDate}</b> • Φίλτρο: <b>{filterA}</b>
           </p>
         </div>
 
@@ -1179,47 +1180,47 @@ function AnalysisContent() {
         </div>
 
         {/* KPI GRID (always) */}
-        <div style={kpiGrid} data-print-section="true">
-          <div style={{ ...kpiCard, borderColor: '#d1fae5', background: 'linear-gradient(180deg, #ecfdf5, #ffffff)' }}>
+        <div style={kpiGrid} data-print-section="true" className="kpi-grid-print">
+          <div className="print-card" style={{ ...kpiCard, borderColor: '#d1fae5', background: 'linear-gradient(180deg, #ecfdf5, #ffffff)' }}>
             <div style={kpiTopRow}>
               <div style={{ ...kpiLabel, color: colors.success }}>
                 Έσοδα <span style={kpiDelta}>{fmtPct(variance.income)} vs prev</span>
               </div>
               <div style={{ ...kpiSign, color: colors.success }}>+</div>
             </div>
-            <div style={{ ...kpiValue, color: colors.success }}>+ {moneyGR(kpis.income)}</div>
-            <div style={kpiTrack}>
+            <div className="print-amount-positive" style={{ ...kpiValue, color: colors.success }}>+ {moneyGR(kpis.income)}</div>
+            <div className="kpi-track-print-hide" style={kpiTrack}>
               <div style={{ ...kpiFill, width: '70%', background: colors.success }} />
             </div>
           </div>
 
-          <div style={{ ...kpiCard, borderColor: '#ffe4e6', background: 'linear-gradient(180deg, #fff1f2, #ffffff)' }}>
+          <div className="print-card" style={{ ...kpiCard, borderColor: '#ffe4e6', background: 'linear-gradient(180deg, #fff1f2, #ffffff)' }}>
             <div style={kpiTopRow}>
               <div style={{ ...kpiLabel, color: colors.danger }}>
                 Έξοδα <span style={kpiDelta}>{fmtPct(variance.expenses)} vs prev</span>
               </div>
               <div style={{ ...kpiSign, color: colors.danger }}>-</div>
             </div>
-            <div style={{ ...kpiValue, color: colors.danger }}>- {moneyGR(kpis.expenses)}</div>
-            <div style={kpiTrack}>
+            <div className="print-amount-negative" style={{ ...kpiValue, color: colors.danger }}>- {moneyGR(kpis.expenses)}</div>
+            <div className="kpi-track-print-hide" style={kpiTrack}>
               <div style={{ ...kpiFill, width: '70%', background: colors.danger }} />
             </div>
           </div>
 
-          <div style={{ ...kpiCard, borderColor: '#fde68a', background: 'linear-gradient(180deg, #fffbeb, #ffffff)' }}>
+          <div className="print-card" style={{ ...kpiCard, borderColor: '#fde68a', background: 'linear-gradient(180deg, #fffbeb, #ffffff)' }}>
             <div style={kpiTopRow}>
               <div style={{ ...kpiLabel, color: '#b45309' }}>
                 Tips <span style={kpiDelta}>{fmtPct(variance.tips)} vs prev</span>
               </div>
               <div style={{ ...kpiSign, color: '#b45309' }}>+</div>
             </div>
-            <div style={{ ...kpiValue, color: '#b45309' }}>+ {moneyGR(kpis.tips)}</div>
-            <div style={kpiTrack}>
+            <div className="print-amount-positive" style={{ ...kpiValue, color: '#b45309' }}>+ {moneyGR(kpis.tips)}</div>
+            <div className="kpi-track-print-hide" style={kpiTrack}>
               <div style={{ ...kpiFill, width: '70%', background: colors.amber }} />
             </div>
           </div>
 
-          <div style={{ ...kpiCard, borderColor: '#111827', background: 'linear-gradient(180deg, #0b1220, #111827)', color: '#fff' }}>
+          <div className="print-card" style={{ ...kpiCard, borderColor: '#111827', background: 'linear-gradient(180deg, #0b1220, #111827)', color: '#fff' }}>
             <div style={kpiTopRow}>
               <div style={{ ...kpiLabel, color: '#fff' }}>
                 {isZReport ? 'Καθαρό Ταμείο Ημέρας' : 'Καθαρό Κέρδος'}{' '}
@@ -1227,7 +1228,7 @@ function AnalysisContent() {
               </div>
               <div style={{ ...kpiSign, color: '#fff' }}>{bigKpiValue >= 0 ? '▲' : '▼'}</div>
             </div>
-            <div style={{ ...kpiValue, color: '#fff' }}>{moneyGR(bigKpiValue)}</div>
+            <div className={bigKpiValue >= 0 ? 'print-amount-positive' : 'print-amount-negative'} style={{ ...kpiValue, color: '#fff' }}>{moneyGR(bigKpiValue)}</div>
             <div style={{ fontSize: 13, fontWeight: 800, opacity: 0.85, marginTop: 6 }}>
               {isZReport ? 'Μετρητά (Z) + Χωρίς Σήμανση - Επιχειρ. Έξοδα Μετρητών' : 'Έσοδα - Έξοδα (χωρίς Πίστωση)'}
             </div>
@@ -1235,10 +1236,10 @@ function AnalysisContent() {
         </div>
 
         {/* BALANCES GRID */}
-        <div style={balancesGrid} data-print-section="true">
-          <div style={{ ...smallKpiCard, border: '1px solid rgba(139,92,246,0.30)', background: 'linear-gradient(180deg, #f5f3ff, #ffffff)' }}>
+        <div style={balancesGrid} data-print-section="true" className="balances-grid-print">
+          <div className="print-card" style={{ ...smallKpiCard, border: '1px solid rgba(139,92,246,0.30)', background: 'linear-gradient(180deg, #f5f3ff, #ffffff)' }}>
             <div style={smallKpiLabel}>Κινήσεις Κουμπαρά</div>
-            <div style={{ ...smallKpiValue, color: colors.purple }}>
+            <div className="print-amount-positive" style={{ ...smallKpiValue, color: colors.purple }}>
               {moneyGR(kpis.savingsDeposits - kpis.savingsWithdrawals)}
             </div>
             <div style={smallKpiHint}>
@@ -1246,40 +1247,40 @@ function AnalysisContent() {
             </div>
           </div>
 
-          <div style={smallKpiCard}>
+          <div className="print-card" style={smallKpiCard}>
             <div style={smallKpiLabel}>Υπόλοιπο Μετρητών</div>
             <div style={smallKpiValue}>{moneyGR(totalCashDisplay)}</div>
             <div style={smallKpiHint}>{isZReport ? 'Συρτάρι ημέρας' : `As of: ${endDate} (χωρίς Πίστωση)`}</div>
           </div>
 
-          <div style={smallKpiCard}>
+          <div className="print-card" style={smallKpiCard}>
             <div style={smallKpiLabel}>Υπόλοιπο Τράπεζας</div>
             <div style={smallKpiValue}>{moneyGR(calcBalances?.bank_balance || 0)}</div>
             <div style={smallKpiHint}>Κάρτα + Τράπεζα (χωρίς Πίστωση)</div>
           </div>
 
-          <div style={{ ...smallKpiCard, border: '1px solid rgba(16,185,129,0.20)', background: 'linear-gradient(180deg, #ecfdf5, #ffffff)' }}>
+          <div className="print-card" style={{ ...smallKpiCard, border: '1px solid rgba(16,185,129,0.20)', background: 'linear-gradient(180deg, #ecfdf5, #ffffff)' }}>
             <div style={smallKpiLabel}>Σύνολο Ρευστό</div>
-            <div style={{ ...smallKpiValue, color: colors.success }}>{moneyGR(calcBalances?.total_balance || 0)}</div>
+            <div className="print-amount-positive" style={{ ...smallKpiValue, color: colors.success }}>{moneyGR(calcBalances?.total_balance || 0)}</div>
             <div style={smallKpiHint}>Cash + Bank (χωρίς Πίστωση)</div>
           </div>
 
           {/* PRO extras only */}
           {uiMode === 'pro' && (
             <>
-              <div style={{ ...smallKpiCard, border: '1px solid rgba(244,63,94,0.25)', background: 'linear-gradient(180deg, #fff1f2, #ffffff)' }}>
+              <div className="print-card" style={{ ...smallKpiCard, border: '1px solid rgba(244,63,94,0.25)', background: 'linear-gradient(180deg, #fff1f2, #ffffff)' }}>
                 <div style={smallKpiLabel}>Υπόλοιπο Πιστώσεων</div>
-                <div style={{ ...smallKpiValue, color: colors.danger }}>{moneyGR(calcBalances?.credit_outstanding || 0)}</div>
+                <div className="print-amount-negative" style={{ ...smallKpiValue, color: colors.danger }}>{moneyGR(calcBalances?.credit_outstanding || 0)}</div>
                 <div style={smallKpiHint}>Έξοδα σε Πίστωση (δεν μειώνουν Cash/Bank)</div>
               </div>
 
-              <div style={{ ...smallKpiCard, border: '1px solid rgba(99,102,241,0.20)', background: 'linear-gradient(180deg, #eef2ff, #ffffff)' }}>
+              <div className="print-card" style={{ ...smallKpiCard, border: '1px solid rgba(99,102,241,0.20)', background: 'linear-gradient(180deg, #eef2ff, #ffffff)' }}>
                 <div style={smallKpiLabel}>Expected Outflows (30d)</div>
-                <div style={{ ...smallKpiValue, color: colors.indigo }}>{moneyGR(expectedOutflows30d)}</div>
+                <div className="print-amount-negative" style={{ ...smallKpiValue, color: colors.indigo }}>{moneyGR(expectedOutflows30d)}</div>
                 <div style={smallKpiHint}>Μελλοντικά έξοδα (future dated). Χωρίς Πίστωση.</div>
               </div>
 
-              <div style={smallKpiCard}>
+              <div className="print-card" style={smallKpiCard}>
                 <div style={smallKpiLabel}>Ταμείο Ημέρας (Z View)</div>
                 <div style={smallKpiValue}>{drawer ? moneyGR(drawer.total_cash_drawer) : '—'}</div>
                 <div style={smallKpiHint}>{drawer ? `Ημερομηνία Ζ: ${drawer.date}` : `Δεν βρέθηκε Ζ έως: ${endDate}`}</div>
@@ -1392,7 +1393,7 @@ function AnalysisContent() {
             </div>
 
             {/* δείξε τις πιο πρόσφατες κινήσεις πίστωσης (και προαιρετικά paid) */}
-            <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 10 }} className="print-table-wrap">
               {proDetailSummary.creditRows.length === 0 ? (
                 <div style={hintBox}>Δεν υπάρχουν κινήσεις σε πίστωση για την περίοδο.</div>
               ) : (
@@ -1400,9 +1401,19 @@ function AnalysisContent() {
                   <div style={hintBox}>
                     <b>Πίστωση:</b> {proDetailSummary.creditRows.length} κινήσεις (δείχνω τις 10 πιο πρόσφατες)
                   </div>
+                  <div className="print-table-head">
+                    <div>Ημερομηνία</div>
+                    <div>Περιγραφή</div>
+                    <div style={{ textAlign: 'right' }}>Ποσό</div>
+                  </div>
                   {proDetailSummary.creditRows.slice(0, 10).map((t: any) => (
                     <div key={`cr-${t.id}`} style={listRow}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
+                      <div className="print-row-compact">
+                        <div className="print-row-date">{t.date}</div>
+                        <div className="print-row-notes">{String(t.notes || t.category || '').trim() || '—'}</div>
+                        <div className="print-row-amount print-amount-negative">{moneyGR(Math.abs(Number(t.amount) || 0))}</div>
+                      </div>
+                      <div className="screen-row" style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
                         <div style={{ minWidth: 0 }}>
                           <div style={{ fontSize: 13, fontWeight: 950, color: colors.primary }}>{t.date}</div>
                           <div style={{ fontSize: 12, fontWeight: 850, color: colors.secondary, marginTop: 4 }}>
@@ -1666,7 +1677,12 @@ function AnalysisContent() {
             ) : collapsedPeriodList.length === 0 ? (
               <div style={hintBox}>Δεν υπάρχουν κινήσεις για το φίλτρο που επέλεξες.</div>
             ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }} className="print-table-wrap">
+                <div className="print-table-head">
+                  <div>Ημερομηνία</div>
+                  <div>Περιγραφή Κίνησης</div>
+                  <div style={{ textAlign: 'right' }}>Ποσό</div>
+                </div>
                 {collapsedPeriodList.map((t: any) => {
                   const isCollapsedZ = !!t.__collapsedZ
                   const name = isCollapsedZ ? 'Z REPORT (ΣΥΝΟΛΟ)' : getPartyName(t)
@@ -1693,7 +1709,18 @@ function AnalysisContent() {
 
                   return (
                     <div key={t.id ?? `${t.date}-${t.created_at}-${absAmt}`} style={listRow}>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, minWidth: 0 }}>
+                      <div className="print-row-compact">
+                        <div className="print-row-date">{t.date}</div>
+                        <div className="print-row-notes">
+                          <div style={{ fontWeight: 800 }}>{String(name || '').toUpperCase()}</div>
+                          {!!t.notes && <div>{String(t.notes)}</div>}
+                          {!!pm && <div>Μέθοδος: {pm}{credit ? ' • ΠΙΣΤΩΣΗ' : ''}</div>}
+                        </div>
+                        <div className={`print-row-amount ${isInc || isTip ? 'print-amount-positive' : isExp ? 'print-amount-negative' : ''}`}>
+                          {sign}{absAmt.toLocaleString('el-GR')}€
+                        </div>
+                      </div>
+                      <div className="screen-row" style={{ display: 'flex', flexDirection: 'column', gap: 8, minWidth: 0 }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
                           <div style={{ fontSize: 14, fontWeight: 900, color: colors.primary, whiteSpace: 'nowrap' }}>{t.date}</div>
                           <div style={{ padding: '8px 12px', borderRadius: 999, backgroundColor: pillBg, border: `1px solid ${pillBr}`, fontSize: 16, fontWeight: 900, color: pillTx, whiteSpace: 'nowrap' }}>
