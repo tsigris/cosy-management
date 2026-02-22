@@ -1380,15 +1380,15 @@ function AnalysisContent() {
             </div>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-            <div style={tile}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div style={{ ...tile, width: '100%' }}>
               <div style={tileIcon}>📅</div>
               <div style={tileBody}>
                 <div style={tileLabel}>ΑΠΟ</div>
                 <input type="date" value={searchFrom} onChange={(e) => setSearchFrom(e.target.value)} style={tileControl} />
               </div>
             </div>
-            <div style={tile}>
+            <div style={{ ...tile, width: '100%' }}>
               <div style={tileIcon}>📅</div>
               <div style={tileBody}>
                 <div style={tileLabel}>ΕΩΣ</div>
