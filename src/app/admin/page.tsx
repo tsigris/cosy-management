@@ -1,92 +1,52 @@
 'use client'
-import { useEffect, useState, Suspense } from 'react'
+import { useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
-import Link from 'next/link'
-import { useSearchParams } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { toast } from 'sonner'
 
-function InviteContent() {
+function LegacyInviteRedirect() {
+  const router = useRouter()
   const searchParams = useSearchParams()
-  // Παίρνουμε τον ρόλο από το URL (π.χ. ?role=admin), αλλιώς default 'user'
-  const targetRole = searchParams.get('role') || 'user'
-  
-  const [storeId, setStoreId] = useState('')
-  const [loading, setLoading] = useState(true)
-  const [copied, setCopied] = useState(false)
+  const storeIdFromUrl = searchParams.get('store')
 
   useEffect(() => {
-    async function getAdminData() {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (user) {
-        // Τραβάμε το store_id του τρέχοντος Admin
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('store_id')
-          .eq('id', user.id)
-          .single()
-        
-        setStoreId(profile?.store_id || user.id)
+    async function redirectToInvitePage() {
+      if (storeIdFromUrl) {
+        router.replace(`/admin/invite?store=${storeIdFromUrl}`)
+        return
       }
-      setLoading(false)
+
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+
+      if (!user) {
+        router.replace('/login')
+        return
+      }
+
+      const { data: access } = await supabase
+        .from('store_access')
+        .select('store_id')
+        .eq('user_id', user.id)
+        .limit(1)
+        .maybeSingle()
+
+      if (access?.store_id) {
+        router.replace(`/admin/invite?store=${access.store_id}`)
+        return
+      }
+
+      toast.error('Δεν βρέθηκε κατάστημα για πρόσκληση')
+      router.replace('/select-store')
     }
-    getAdminData()
-  }, [])
 
-  // Δημιουργία του URL πρόσκλησης με role και store_id
-  const inviteLink = typeof window !== 'undefined' 
-    ? `${window.location.origin}/register?invite=${storeId}&role=${targetRole}` 
-    : ''
+    void redirectToInvitePage()
+  }, [router, storeIdFromUrl])
 
-  const copyToClipboard = () => {
-    navigator.clipboard.writeText(inviteLink)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
-  }
-
-  if (loading) return <div style={{ padding: '50px', textAlign: 'center' }}>Φόρτωση...</div>
-
-  return (
-    <main style={containerStyle}>
-      <div style={cardStyle}>
-        
-        <div style={{ display: 'flex', alignItems: 'center', gap: '15px', marginBottom: '20px' }}>
-          <Link href="/admin/permissions" style={backBtnStyle}>←</Link>
-          <h2 style={{ fontSize: '18px', fontWeight: '900', color: '#1e293b', margin: 0 }}>
-             Πρόσκληση {targetRole === 'admin' ? 'Διαχειριστή' : 'Υπαλλήλου'}
-          </h2>
-        </div>
-
-        <div style={{ ...infoBox, backgroundColor: targetRole === 'admin' ? '#fff7ed' : '#eff6ff', borderColor: targetRole === 'admin' ? '#ffedd5' : '#dbeafe' }}>
-          <p style={{ margin: 0, fontSize: '14px', color: targetRole === 'admin' ? '#9a3412' : '#64748b', lineHeight: '1.6' }}>
-            Στείλτε αυτό το σύνδεσμο. Ο χρήστης θα συνδεθεί αυτόματα στο κατάστημά σας με τον ρόλο: <b>{targetRole.toUpperCase()}</b>.
-          </p>
-        </div>
-
-        <div style={linkContainer}>
-          <div style={linkText}>{inviteLink}</div>
-        </div>
-
-        <button onClick={copyToClipboard} style={{ ...copyBtn, backgroundColor: copied ? '#10b981' : (targetRole === 'admin' ? '#f97316' : '#0f172a') }}>
-          {copied ? '✅ ΑΝΤΙΓΡΑΦΗΚΕ!' : 'ΑΝΤΙΓΡΑΦΗ ΣΥΝΔΕΣΜΟΥ'}
-        </button>
-      </div>
-    </main>
-  )
+  return <div style={{ padding: '50px', textAlign: 'center' }}>Μετάβαση στη νέα ροή προσκλήσεων...</div>
 }
 
-// Χρησιμοποιούμε Suspense γιατί έχουμε useSearchParams
 export default function InvitePage() {
-  return (
-    <Suspense fallback={<div>Φόρτωση...</div>}>
-      <InviteContent />
-    </Suspense>
-  )
+  return <LegacyInviteRedirect />
 }
-
-// STYLES (Προσθήκη στο containerStyle)
-const containerStyle = { minHeight: '100vh', backgroundColor: '#f8fafc', padding: '20px', fontFamily: 'sans-serif' };
-const cardStyle = { maxWidth: '450px', margin: '40px auto', backgroundColor: 'white', padding: '30px', borderRadius: '24px', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)', border: '1px solid #e2e8f0' };
-const backBtnStyle = { display: 'flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none', background: '#f1f5f9', width: '35px', height: '35px', borderRadius: '10px', fontSize: '18px', color: '#64748b' };
-const infoBox = { padding: '15px', borderRadius: '16px', marginBottom: '25px', border: '1px solid' };
-const linkContainer = { backgroundColor: '#f8fafc', padding: '15px', borderRadius: '12px', border: '1px dashed #cbd5e1', marginBottom: '20px', overflow: 'hidden' };
-const linkText = { fontSize: '11px', color: '#1e293b', wordBreak: 'break-all' as const, fontFamily: 'monospace' };
-const copyBtn = { width: '100%', padding: '16px', color: 'white', border: 'none', borderRadius: '14px', fontWeight: '900' as const, fontSize: '14px', cursor: 'pointer', transition: '0.3s' };
