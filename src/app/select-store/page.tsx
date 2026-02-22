@@ -110,9 +110,6 @@ function SelectStorePage() {
         setUserStores(cachedStores)
         setAccessWarning(cached.accessWarning)
         setShowRetryButton(false)
-        if (cachedStores.length > 0) {
-          setLoading(false)
-        }
         if (maybeAutoRedirectSingleStore(cachedStores)) {
           return
         }
@@ -125,9 +122,7 @@ function SelectStorePage() {
           setUserStores(safeStores)
           setAccessWarning(fresh.accessWarning)
           setShowRetryButton(false)
-          if (!hasCachedStores) {
-            setLoading(false)
-          }
+          setLoading(false)
           maybeAutoRedirectSingleStore(safeStores)
         })
         .catch((err: unknown) => {
@@ -135,8 +130,10 @@ function SelectStorePage() {
           if (!hasCachedStores) {
             toast.error('Πρόβλημα κατά την ανάκτηση των καταστημάτων')
           }
-          if (isMounted && !hasCachedStores) {
-            setShowRetryButton(true)
+          if (isMounted) {
+            if (!hasCachedStores) {
+              setShowRetryButton(true)
+            }
             setLoading(false)
           }
         })

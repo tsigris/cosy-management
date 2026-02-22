@@ -58,6 +58,7 @@ export const writeStoresCache = (userId: string, payload: StoresFetchResult) => 
 
 export const fetchStoresWithStats = async (userId: string): Promise<StoresFetchResult> => {
   void userId
+  await new Promise((resolve) => setTimeout(resolve, 800))
 
   type StoresStatsRpcRow = {
     store_id: string | null
