@@ -16,6 +16,7 @@ import {
   Plus,
   Search,
   Pencil,
+  Copy,
   XCircle,
   ChevronLeft,
   Building2,
@@ -777,6 +778,22 @@ function ManageListsContent() {
     resetForm()
   }
 
+  const getItemTransactions = useCallback(
+    (itemId: string) => {
+      const relationKey =
+        activeTab === 'suppliers' ? 'supplier_id' : activeTab === 'revenue' ? 'revenue_source_id' : 'fixed_asset_id'
+
+      return (transactions || [])
+        .filter((t: any) => String(t?.[relationKey] || '') === String(itemId))
+        .sort((a: any, b: any) => {
+          const aTime = getTxDate(a)?.getTime() || 0
+          const bTime = getTxDate(b)?.getTime() || 0
+          return bTime - aTime
+        })
+    },
+    [transactions, activeTab],
+  )
+
   // ---------------------- UI FORMS ----------------------
   const renderSupplierLikeForm = () => (
     <div style={formCard}>
@@ -1234,6 +1251,25 @@ function ManageListsContent() {
             visibleItems.map((item: any, idx: number) => {
               const isEditingThis = editingId && String(editingId) === String(item.id)
               const turnover = getTurnover(String(item.id))
+              const itemTransactions = getItemTransactions(String(item.id))
+              const recentTransactions = itemTransactions.slice(0, 5)
+
+              const totals = itemTransactions.reduce(
+                (acc, tx) => {
+                  const amount = Math.abs(Number(tx?.amount)) || 0
+                  const type = String(tx?.type || '').toLowerCase()
+
+                  if (type === 'debt_payment' || type === 'payment') acc.settlements += amount
+                  else acc.charges += amount
+
+                  return acc
+                },
+                { charges: 0, settlements: 0 },
+              )
+
+              const currentBalance = totals.charges - totals.settlements
+              const topCode = String(item?.rf_code || item?.iban || '').trim()
+              const topCodeLabel = item?.rf_code ? 'RF' : 'IBAN'
 
               return (
                 <div key={item.id} style={{ borderBottom: `1px solid ${colors.border}` }}>
@@ -1266,6 +1302,76 @@ function ManageListsContent() {
 
                   {expandedId === String(item.id) && (
                     <div style={actionPanel}>
+                      {topCode ? (
+                        <div style={copyTopRow}>
+                          <div style={copyCodeText}>
+                            {topCodeLabel}: {topCode}
+                          </div>
+                          <button type="button" onClick={() => copyToClipboard(topCode)} style={copyCodeBtn}>
+                            <Copy size={14} />
+                          </button>
+                        </div>
+                      ) : null}
+
+                      <div style={summaryCardsGrid}>
+                        <div style={summaryOrangeCard}>
+                          <div style={summaryCardLabel}>ΣΥΝΟΛΟ ΧΡΕΩΣΕΩΝ</div>
+                          <div style={summaryCardValue}>
+                            {totals.charges.toLocaleString('el-GR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}€
+                          </div>
+                        </div>
+
+                        <div style={summaryOrangeCard}>
+                          <div style={summaryCardLabel}>ΣΥΝΟΛΟ ΕΞΟΦΛΗΣΕΩΝ</div>
+                          <div style={summaryCardValue}>
+                            {totals.settlements.toLocaleString('el-GR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}€
+                          </div>
+                        </div>
+
+                        <div style={summaryBorderCard}>
+                          <div style={summaryCardLabel}>ΤΡΕΧΟΝ ΥΠΟΛΟΙΠΟ</div>
+                          <div style={summaryCardValue}>
+                            {currentBalance.toLocaleString('el-GR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}€
+                          </div>
+                        </div>
+                      </div>
+
+                      <div style={recentCard}>
+                        <div style={recentTitle}>5 ΤΕΛΕΥΤΑΙΕΣ ΚΙΝΗΣΕΙΣ</div>
+                        {recentTransactions.length === 0 ? (
+                          <p style={recentEmptyText}>Δεν υπάρχουν κινήσεις.</p>
+                        ) : (
+                          recentTransactions.map((tx: any, txIdx: number) => {
+                            const type = String(tx?.type || '').toLowerCase()
+                            const date = getTxDate(tx)
+                            const typeLabel =
+                              type === 'debt_payment' || type === 'payment'
+                                ? 'Εξόφληση'
+                                : type === 'expense'
+                                  ? 'Χρέωση'
+                                  : type === 'income'
+                                    ? 'Έσοδο'
+                                    : String(tx?.type || '-')
+
+                            return (
+                              <div key={`${item.id}-${txIdx}-${tx?.created_at || ''}`} style={recentRow}>
+                                <div style={recentMeta}>
+                                  <span>{date ? date.toLocaleDateString('el-GR') : '-'}</span>
+                                  <span>{typeLabel}</span>
+                                </div>
+                                <div style={recentAmount}>
+                                  {(Math.abs(Number(tx?.amount)) || 0).toLocaleString('el-GR', {
+                                    minimumFractionDigits: 2,
+                                    maximumFractionDigits: 2,
+                                  })}
+                                  €
+                                </div>
+                              </div>
+                            )
+                          })
+                        )}
+                      </div>
+
                       {renderExpandedMeta(item)}
 
                       <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
@@ -1464,6 +1570,64 @@ const editingPill: any = {
 }
 
 const actionPanel: any = { padding: '20px', backgroundColor: '#fcfcfc', borderTop: `1px dashed ${colors.border}` }
+const copyTopRow: any = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: 8,
+  marginBottom: 12,
+}
+const copyCodeText: any = {
+  fontSize: 12,
+  fontWeight: 800,
+  color: colors.primaryDark,
+  overflowWrap: 'anywhere',
+}
+const copyCodeBtn: any = {
+  minWidth: 34,
+  height: 34,
+  borderRadius: 10,
+  border: `1px solid ${colors.border}`,
+  backgroundColor: 'white',
+  color: colors.primaryDark,
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  cursor: 'pointer',
+}
+const summaryCardsGrid: any = { display: 'grid', gridTemplateColumns: '1fr', gap: 8, marginBottom: 12 }
+const summaryOrangeCard: any = {
+  backgroundColor: colors.warning,
+  border: `1px solid #fed7aa`,
+  borderRadius: 12,
+  padding: '10px 12px',
+}
+const summaryBorderCard: any = {
+  backgroundColor: 'white',
+  border: `1px solid ${colors.border}`,
+  borderRadius: 12,
+  padding: '10px 12px',
+}
+const summaryCardLabel: any = { fontSize: 10, fontWeight: 900, color: colors.secondaryText }
+const summaryCardValue: any = { fontSize: 16, fontWeight: 900, color: colors.primaryDark, marginTop: 4 }
+const recentCard: any = {
+  border: `1px solid ${colors.border}`,
+  borderRadius: 12,
+  padding: '10px 12px',
+  backgroundColor: 'white',
+  marginBottom: 12,
+}
+const recentTitle: any = { fontSize: 10, fontWeight: 900, color: colors.secondaryText, marginBottom: 8 }
+const recentEmptyText: any = { margin: 0, fontSize: 12, fontWeight: 700, color: colors.secondaryText }
+const recentRow: any = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  padding: '6px 0',
+  borderBottom: `1px dashed ${colors.border}`,
+}
+const recentMeta: any = { display: 'flex', gap: 10, fontSize: 12, fontWeight: 700, color: colors.primaryDark }
+const recentAmount: any = { fontSize: 12, fontWeight: 900, color: colors.primaryDark }
 const infoGrid: any = { display: 'grid', gap: '8px' }
 const infoText: any = { fontSize: '12px', margin: 0, color: colors.primaryDark }
 
