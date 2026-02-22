@@ -2,6 +2,7 @@
 
 import React from 'react'
 import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
 import { 
   ChevronLeft, 
   Landmark, 
@@ -35,11 +36,15 @@ const colors = {
 }
 
 export default function HelpPage() {
+  const searchParams = useSearchParams()
+  const storeId = searchParams.get('store')
+  const backHref = storeId ? `/?store=${storeId}` : '/'
+
   return (
     <div style={container}>
       {/* HEADER */}
       <div style={header}>
-        <Link href="/" style={backBtn}>
+        <Link href={backHref} style={backBtn}>
           <ChevronLeft size={24} />
         </Link>
         <h1 style={headerTitle}>Οδηγίες Χρήσης</h1>
