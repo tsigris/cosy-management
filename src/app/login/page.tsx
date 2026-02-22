@@ -2,9 +2,9 @@
 
 export const dynamic = 'force-dynamic'
 
-import { useState, Suspense, useEffect, useRef } from 'react'
-import { getSessionCached, setSessionCache, supabase } from '@/lib/supabase'
-import { useSearchParams } from 'next/navigation'
+import { useState, Suspense, useRef } from 'react'
+import { setSessionCache, supabase } from '@/lib/supabase'
+import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { toast, Toaster } from 'sonner'
 
@@ -23,6 +23,7 @@ const getEmailRedirectUrl = () => {
 }
 
 function LoginContent() {
+  const router = useRouter()
   const searchParams = useSearchParams()
   const nextParam = searchParams.get('next')
 
@@ -31,20 +32,7 @@ function LoginContent() {
   const [loading, setLoading] = useState(false)
   const [resendLoading, setResendLoading] = useState(false)
   const [emailConfirmationPending, setEmailConfirmationPending] = useState(false)
-  const [showDelayedAuthMessage, setShowDelayedAuthMessage] = useState(false)
   const googleLoadingToastRef = useRef<string | number | null>(null)
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-
-    const hasAccessTokenInHash = window.location.hash.includes('access_token')
-    const hasGoogleLoginFlag = localStorage.getItem('logging_in_google') === 'true'
-
-    if (hasAccessTokenInHash || hasGoogleLoginFlag) {
-      localStorage.removeItem('logging_in_google')
-      window.location.href = '/select-store'
-    }
-  }, [])
 
   const getSafeNextPath = (next: string | null) => {
     if (!next) return null
@@ -55,35 +43,6 @@ function LoginContent() {
 
   const safeNextPath = getSafeNextPath(nextParam)
   const registerHref = safeNextPath ? `/register?next=${encodeURIComponent(safeNextPath)}` : '/register'
-
-  // Καθαρισμός τυχόν παλιών σκουπιδιών κατά τη φόρτωση της σελίδας
-  useEffect(() => {
-    const checkSession = async () => {
-      const session = await getSessionCached()
-      if (session) {
-        window.location.href = '/select-store'
-      }
-    }
-    checkSession()
-  }, [])
-
-  useEffect(() => {
-    if (!loading) {
-      setShowDelayedAuthMessage(false)
-      return
-    }
-
-    const timeoutId = window.setTimeout(async () => {
-      const session = await getSessionCached()
-      if (!session) {
-        setShowDelayedAuthMessage(true)
-      }
-    }, 5000)
-
-    return () => {
-      window.clearTimeout(timeoutId)
-    }
-  }, [loading])
 
   const handleResendConfirmationEmail = async () => {
     if (!email) {
@@ -146,8 +105,7 @@ function LoginContent() {
       setSessionCache(data.session ?? null)
 
       if (data.user) {
-        localStorage.clear()
-        window.location.href = '/select-store'
+        router.push('/select-store')
         return
       }
     } catch (err: any) {
@@ -159,36 +117,20 @@ function LoginContent() {
 
   const signInWithGoogle = async () => {
     googleLoadingToastRef.current = toast.loading('Γίνεται ταυτοποίηση...')
-    setShowDelayedAuthMessage(false)
     setLoading(true)
 
     try {
-      localStorage.setItem('logging_in_google', 'true')
-
-      let activeStoreCleared = false
-      try {
-        localStorage.removeItem('active_store_id')
-        activeStoreCleared = localStorage.getItem('active_store_id') === null
-      } catch {
-        activeStoreCleared = false
-      }
-
-      if (!activeStoreCleared) {
-        throw new Error('Αποτυχία καθαρισμού active_store_id πριν το Google redirect.')
-      }
-
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: `${window.location.origin}/select-store`,
+          redirectTo: window.location.origin,
           queryParams: { prompt: 'select_account' }
         }
       })
 
       if (error) throw error
-      window.location.href = '/select-store'
+      router.push('/select-store')
     } catch (err: any) {
-      localStorage.removeItem('logging_in_google')
       if (googleLoadingToastRef.current !== null) {
         toast.dismiss(googleLoadingToastRef.current)
         googleLoadingToastRef.current = null
@@ -219,25 +161,6 @@ function LoginContent() {
               style={{ ...resendBtnStyle, opacity: resendLoading ? 0.7 : 1 }}
             >
               {resendLoading ? 'ΓΙΝΕΤΑΙ ΑΠΟΣΤΟΛΗ...' : 'ΕΠΑΝΑΠΟΣΤΟΛΗ EMAIL'}
-            </button>
-          </div>
-        )}
-        {showDelayedAuthMessage && (
-          <div style={confirmationWrapStyle}>
-            <p style={confirmationTextStyle}>Η σύνδεση καθυστερεί...</p>
-            <button
-              type="button"
-              onClick={() => {
-                if (googleLoadingToastRef.current !== null) {
-                  toast.dismiss(googleLoadingToastRef.current)
-                  googleLoadingToastRef.current = null
-                }
-                setShowDelayedAuthMessage(false)
-                setLoading(false)
-              }}
-              style={resendBtnStyle}
-            >
-              Επιστροφή
             </button>
           </div>
         )}
