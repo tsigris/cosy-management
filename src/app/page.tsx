@@ -51,6 +51,7 @@ interface Transaction {
   fixed_asset_id?: string | null
   supplier_id?: string | null
   payment_method?: string | null
+  created_by?: string | null
   notes?: string | null
   method?: string | null
   date?: string | null
@@ -59,6 +60,8 @@ interface Transaction {
   suppliers?: { name?: string | null } | null
   fixed_assets?: { name?: string | null } | null
   revenue_sources?: { name?: string | null } | null
+  profiles?: { username: string } | Array<{ username: string }> | null
+  created_by_name?: string
 }
 
 function getPaymentMethod(tx: any): string {
@@ -266,7 +269,12 @@ function DashboardContent() {
 
       const { data: tx, error: txError } = await supabase
         .from('transactions')
-        .select('id, created_at, amount, type, category, description, store_id, fixed_asset_id, supplier_id, payment_method')
+        .select(`
+          id, created_at, amount, type, category, description, store_id,
+          fixed_asset_id, supplier_id, payment_method,
+          created_by,
+          profiles:created_by (username)
+        `)
         .eq('store_id', storeIdFromUrl)
         .or(`date.eq.${selectedDate},and(created_at.gte.${windowStartIso},created_at.lte.${windowEndIso})`)
         .order('created_at', { ascending: false })
@@ -275,7 +283,18 @@ function DashboardContent() {
 
       // ✅ DEDUPE
       const map = new Map<string, Transaction>()
-      for (const row of tx || []) map.set(String(row.id), row)
+      for (const row of tx || []) {
+        const rowData = row as unknown as Transaction
+        const profileUsername = Array.isArray(rowData.profiles)
+          ? rowData.profiles[0]?.username
+          : rowData.profiles?.username
+
+        const normalizedRow = {
+          ...rowData,
+          created_by_name: profileUsername || 'Άγνωστος',
+        }
+        map.set(String(normalizedRow.id), normalizedRow)
+      }
       setTransactions(Array.from(map.values()))
 
       // RBAC
