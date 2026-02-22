@@ -448,13 +448,17 @@ function DashboardContent() {
       }
 
       if (!zInserted) {
+        const zProfileUsername = Array.isArray(zTx[0]?.profiles)
+          ? zTx[0]?.profiles[0]?.username
+          : zTx[0]?.profiles?.username
+
         rows.push({
           kind: 'z-master',
           id: Z_MASTER_ROW_ID,
           date: zTx[0]?.date || selectedDate,
           amount: zTotal,
           created_at: zTx[0]?.created_at || null,
-          created_by_name: zTx[0]?.created_by_name || null,
+          created_by_name: zProfileUsername || 'Άγνωστος',
           itemsCount: zTx.length,
           breakdown: zBreakdown,
         })
@@ -676,7 +680,8 @@ function DashboardContent() {
             const txMethod = isZMaster ? 'Συγκεντρωτική εγγραφή' : t?.method
             const txCreatedAt = isZMaster ? row.created_at : t?.created_at
 
-            const txCreatedBy = isZMaster ? row.created_by_name : t?.created_by_name || 'Χρήστης'
+            const txProfileUsername = Array.isArray(t?.profiles) ? t?.profiles[0]?.username : t?.profiles?.username
+            const txCreatedBy = isZMaster ? row.created_by_name : txProfileUsername || 'Άγνωστος'
             const txAmountValue = isZMaster ? row.amount : Number(t?.amount) || 0
 
             return (
