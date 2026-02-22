@@ -196,6 +196,19 @@ function SelectStorePage() {
     }
   }, [loading])
 
+  useEffect(() => {
+    if (!loading) return
+    if (Array.isArray(userStores) && userStores.length > 0) return
+
+    const timeoutId = window.setTimeout(() => {
+      setLoading(false)
+    }, 2000)
+
+    return () => {
+      window.clearTimeout(timeoutId)
+    }
+  }, [loading, userStores])
+
   // ✅ Global summary (all stores)
   const globalStats = useMemo(() => {
     const safeStores = Array.isArray(userStores) ? userStores : []

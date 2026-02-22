@@ -146,6 +146,7 @@ function LoginContent() {
       setSessionCache(data.session ?? null)
 
       if (data.user) {
+        localStorage.clear()
         window.location.href = '/select-store'
         return
       }
