@@ -122,7 +122,18 @@ export const refreshStoresCache = async (userId: string) => {
 export const prefetchStoresForUser = async (userId: string): Promise<StoresFetchResult | null> => {
   try {
     clearStoresCacheForUser(userId)
-    const result = await refreshStoresCache(userId)
+    const result = await fetchStoresWithStats(userId)
+    console.log('[prefetchStoresForUser] fetched stores:', {
+      userId,
+      storesCount: result.stores.length,
+      stores: result.stores,
+      accessWarning: result.accessWarning,
+    })
+    writeStoresCache(userId, result)
+    const cached = readStoresCache(userId)
+    if (!cached) {
+      throw new Error('Αποτυχία αποθήκευσης stores στο localStorage.')
+    }
     return result
   } catch (e) {
     console.error("Prefetch error:", e)

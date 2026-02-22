@@ -60,14 +60,38 @@ function LoginContent() {
   const safeNextPath = getSafeNextPath(nextParam)
   const registerHref = safeNextPath ? `/register?next=${encodeURIComponent(safeNextPath)}` : '/register'
 
+  const waitForStoresCacheWrite = async (userId: string, maxWaitMs = 3000) => {
+    const start = Date.now()
+
+    while (Date.now() - start < maxWaitMs) {
+      const cached = readStoresCache(userId)
+      if (cached) return cached
+      await new Promise((resolve) => window.setTimeout(resolve, 120))
+    }
+
+    return null
+  }
+
   // Καθαρισμός τυχόν παλιών σκουπιδιών κατά τη φόρτωση της σελίδας
   useEffect(() => {
     const checkSession = async () => {
       const session = await getSessionCached()
       if (session) {
          const prefetched = await prefetchStoresForUser(session.user.id)
+         const cached = await waitForStoresCacheWrite(session.user.id)
          router.refresh()
-         router.replace(prefetched && prefetched.stores.length > 0 ? '/' : '/select-store')
+
+         if ((cached && cached.stores.length > 0) || (prefetched && prefetched.stores.length > 0)) {
+           router.replace('/')
+           return
+         }
+
+         if (prefetched && prefetched.stores.length === 0) {
+           router.replace('/select-store')
+           return
+         }
+
+         router.replace('/')
       }
     }
     checkSession()
@@ -88,25 +112,18 @@ function LoginContent() {
         setShowDelayedAuthMessage(false)
 
         const userId = session.user.id
-        let timeoutNavigated = false
-        const timeoutId = window.setTimeout(() => {
-          const cached = readStoresCache(userId)
-          if (!cached || cached.stores.length === 0) {
-            timeoutNavigated = true
-            setLoading(false)
-            router.push('/select-store')
-            router.refresh()
-          }
-        }, 3000)
-
         const prefetched = await prefetchStoresForUser(userId)
-        window.clearTimeout(timeoutId)
-
-        if (timeoutNavigated) return
+        const cached = await waitForStoresCacheWrite(userId)
 
         setLoading(false)
 
-        if (!prefetched || prefetched.stores.length === 0) {
+        if ((cached && cached.stores.length > 0) || (prefetched && prefetched.stores.length > 0)) {
+          router.push('/')
+          router.refresh()
+          return
+        }
+
+        if (prefetched && prefetched.stores.length === 0) {
           router.push('/select-store')
           router.refresh()
           return
@@ -202,8 +219,20 @@ function LoginContent() {
 
       if (data.user) {
         const prefetchUserId = data.session?.user.id || data.user.id
-        void prefetchStoresForUser(prefetchUserId)
+        const prefetched = await prefetchStoresForUser(prefetchUserId)
+        const cached = await waitForStoresCacheWrite(prefetchUserId)
         const nextAfterLogin = getSafeNextPath(searchParams.get('next'))
+
+        if ((cached && cached.stores.length > 0) || (prefetched && prefetched.stores.length > 0)) {
+          router.push(nextAfterLogin || '/')
+          return
+        }
+
+        if (prefetched && prefetched.stores.length === 0) {
+          router.push('/select-store')
+          return
+        }
+
         router.push(nextAfterLogin || '/')
       }
     } catch (err: any) {
