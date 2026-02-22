@@ -7,6 +7,18 @@ import Link from 'next/link'
 import { toast, Toaster } from 'sonner'
 import { Mail } from 'lucide-react'
 
+function bytesToHex(bytes: Uint8Array) {
+  return Array.from(bytes)
+    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .join('')
+}
+
+async function sha256Hex(value: string) {
+  const inputBytes = new TextEncoder().encode(value)
+  const hashBuffer = await crypto.subtle.digest('SHA-256', inputBytes)
+  return bytesToHex(new Uint8Array(hashBuffer))
+}
+
 const getEmailRedirectUrl = () => {
   const envUrl = process.env.NEXT_PUBLIC_SITE_URL || process.env.NEXT_PUBLIC_APP_URL
 
@@ -156,6 +168,32 @@ function RegisterForm() {
         ]
         const { error: assetsError } = await supabase.from('fixed_assets').insert(defaultAssets)
         if (assetsError) throw assetsError
+      } else if (tokenParam) {
+        const tokenHash = await sha256Hex(tokenParam)
+        const { data: inviteData, error: inviteError } = await supabase.rpc('redeem_store_invite', {
+          p_token_hash: tokenHash
+        })
+
+        if (inviteError) {
+          const msg = (inviteError.message || '').toLowerCase()
+          const mappedMessage = msg.includes('expired')
+            ? 'Η πρόσκληση έχει λήξει.'
+            : msg.includes('already used') || msg.includes('used')
+              ? 'Η πρόσκληση έχει ήδη χρησιμοποιηθεί.'
+              : 'Το link είναι άκυρο ή έληξε ή έχει ήδη χρησιμοποιηθεί.'
+          throw new Error(mappedMessage)
+        }
+
+        finalStoreId =
+          typeof inviteData === 'string' || typeof inviteData === 'number'
+            ? String(inviteData)
+            : (inviteData as { storeId?: string; store_id?: string } | null)?.storeId ||
+              (inviteData as { storeId?: string; store_id?: string } | null)?.store_id ||
+              ''
+
+        if (!finalStoreId) {
+          throw new Error('Το link είναι άκυρο ή έληξε ή έχει ήδη χρησιμοποιηθεί.')
+        }
       }
 
       // 3. ΕΛΕΓΧΟΣ EMAIL CONFIRMATION
@@ -174,8 +212,11 @@ function RegisterForm() {
       // 4. ΟΛΟΚΛΗΡΩΣΗ & REDIRECT
       toast.success('Η εγγραφή ολοκληρώθηκε!')
 
-      if (isInviteRegistration && inviteNextPath) {
-        router.replace(inviteNextPath)
+      if (isInviteRegistration && finalStoreId) {
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('active_store_id', finalStoreId)
+        }
+        router.replace(`/?store=${finalStoreId}`)
         router.refresh()
         return
       }
