@@ -65,6 +65,22 @@ function FixedAssetsContent() {
     }
   }
 
+  const handleDelete = async (assetId: string) => {
+    const activeStoreId = searchParams.get('store')
+    if (!activeStoreId || activeStoreId === 'null') {
+      toast.error('Σφάλμα: Λείπει το ID καταστήματος.')
+      return
+    }
+
+    const { error } = await supabase.from('fixed_assets').delete().eq('id', assetId).eq('store_id', activeStoreId)
+    if (error) {
+      toast.error('Αποτυχία διαγραφής')
+      return
+    }
+
+    fetchData()
+  }
+
   return (
     <div style={{ maxWidth: '500px', margin: '0 auto', padding: '20px', minHeight: '100vh', backgroundColor: '#f8fafc' }}>
       <Toaster position="top-center" richColors />
@@ -110,7 +126,7 @@ function FixedAssetsContent() {
                  <Link href={`/fixed-assets/history?store=${storeId}&id=${asset.id}&name=${asset.name}`} style={{ color: '#6366f1' }}>
                     <History size={18} />
                  </Link>
-                 <button onClick={async () => { if(confirm('Διαγραφή;')) { await supabase.from('fixed_assets').delete().eq('id', asset.id); fetchData(); } }} style={delBtnStyle}>
+                 <button onClick={async () => { if(confirm('Διαγραφή;')) { await handleDelete(asset.id); } }} style={delBtnStyle}>
                    <Trash2 size={18} />
                  </button>
               </div>

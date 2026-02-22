@@ -8,6 +8,7 @@ import { Suspense } from 'react';
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
+const originTrialToken = process.env.NEXT_PUBLIC_ORIGIN_TRIAL_TOKEN;
 
 export const viewport: Viewport = {
   width: "device-width",
@@ -34,6 +35,7 @@ export default function RootLayout({
   return (
     <html lang="el">
       <head>
+        {originTrialToken ? <meta httpEquiv="origin-trial" content={originTrialToken} /> : null}
         <script
           dangerouslySetInnerHTML={{
             __html: `

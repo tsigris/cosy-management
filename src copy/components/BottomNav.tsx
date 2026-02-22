@@ -8,23 +8,23 @@ const colors = {
   primary: '#0f172a',    
   secondary: '#94a3b8',
   indigo: '#6366f1',
-  background: 'rgba(255, 255, 255, 0.85)',
+  background: 'rgba(255, 255, 255, 0.90)',
   border: '#f1f5f9'
 }
 
+// ✅ Επαναφορά των Emojis και προσθήκη του ⚙️ για τη Διαχείριση
 const navItems = [
   { label: 'Αρχική', icon: '🏠', path: '/' },
   { label: 'Ανάλυση', icon: '📊', path: '/analysis' },
   { label: 'Καρτέλες', icon: '🚩', path: '/suppliers-balance' },
   { label: 'Προσωπικό', icon: '👤', path: '/employees' },
-  { label: 'Προμηθευτές', icon: '🛒', path: '/suppliers' },
+  { label: 'Διαχείριση', icon: '⚙️', path: '/management' },
 ];
 
 function NavContent() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   
-  // State για ΟΛΑ τα δικαιώματα
   const [permissions, setPermissions] = useState({
     canViewAnalysis: false,
     canViewHistory: false,
@@ -43,7 +43,6 @@ function NavContent() {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) return;
 
-        // 1. Τραβάμε και τα 3 δικαιώματα από τη βάση
         const { data, error } = await supabase
           .from('store_access')
           .select('role, can_view_analysis, can_view_history, can_edit_transactions')
@@ -57,7 +56,6 @@ function NavContent() {
         }
 
         if (data) {
-          // 2. Αν είναι ADMIN -> Όλα TRUE
           if (data.role === 'admin') {
             setPermissions({
               canViewAnalysis: true,
@@ -65,7 +63,6 @@ function NavContent() {
               canEditTransactions: true
             });
           } else {
-            // 3. Αν είναι USER -> Ό,τι λέει η βάση
             setPermissions({
               canViewAnalysis: data.can_view_analysis === true,
               canViewHistory: data.can_view_history === true,
@@ -81,22 +78,16 @@ function NavContent() {
     checkPermissions();
   }, [storeId]);
 
-  // Σελίδες όπου το BottomNav κρύβεται
   const hideOnPaths = ['/login', '/register', '/signup', '/select-store'];
   const isFormPage = pathname.includes('/add-');
   
   if (hideOnPaths.includes(pathname) || isFormPage) return null;
 
-  // 4. ΦΙΛΤΡΑΡΙΣΜΑ ΜΕΝΟΥ
   const visibleNavItems = navItems.filter(item => {
-    // Κρύβουμε την Ανάλυση αν δεν έχει δικαίωμα
     if (item.label === 'Ανάλυση') {
       return permissions.canViewAnalysis;
     }
-    // Εδώ μπορείς να κρύψεις κι άλλα αν θέλεις μελλοντικά
-    // π.χ. αν το Ιστορικό ήταν tab, θα έβαζες: if (item.label === 'Ιστορικό') return permissions.canViewHistory;
-    
-    return true; // Τα υπόλοιπα εμφανίζονται κανονικά
+    return true;
   });
 
   return (
@@ -121,8 +112,9 @@ function NavContent() {
                 fontSize: '22px', 
                 filter: isActive ? 'grayscale(0)' : 'grayscale(1)',
                 opacity: isActive ? 1 : 0.5,
-                transform: isActive ? 'scale(1.1)' : 'scale(1)',
+                transform: isActive ? 'scale(1.15)' : 'scale(1)',
                 transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                display: 'block'
               }}>
                 {item.icon}
               </span>
@@ -132,7 +124,8 @@ function NavContent() {
               fontWeight: isActive ? '800' : '600', 
               color: isActive ? colors.primary : colors.secondary,
               fontFamily: "'Plus Jakarta Sans', sans-serif",
-              marginTop: '4px'
+              marginTop: '4px',
+              letterSpacing: '0.02em'
             }}>
               {item.label.toUpperCase()}
             </span>
@@ -183,13 +176,13 @@ const navLink: React.CSSProperties = {
 };
 
 const iconBox: React.CSSProperties = { 
-  width: '40px', 
+  width: '42px', 
   height: '32px', 
   borderRadius: '12px', 
   display: 'flex', 
   alignItems: 'center', 
   justifyContent: 'center', 
-  transition: 'background-color 0.3s ease' 
+  transition: 'all 0.3s ease' 
 };
 
 const activeIndicator: React.CSSProperties = { 

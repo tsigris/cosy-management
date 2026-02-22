@@ -306,8 +306,8 @@ function SettingsContent() {
       const [trans, sups, assets, emps] = await Promise.all([
         transQuery.order('date', { ascending: false }),
         supabase.from('suppliers').select('*').eq('store_id', storeId),
-        supabase.from('fixed_assets').select('*').eq('store_id', storeId),
-        supabase.from('employees').select('*').eq('store_id', storeId),
+        supabase.from('fixed_assets').select('*').eq('store_id', storeId).neq('sub_category', 'staff'),
+        supabase.from('fixed_assets').select('*').eq('store_id', storeId).eq('sub_category', 'staff'),
       ])
 
       const supplierMap = Object.fromEntries(sups.data?.map((s: any) => [s.id, s.name]) || [])

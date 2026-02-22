@@ -1,8 +1,9 @@
 'use client'
 export const dynamic = 'force-dynamic'
 
-import { useEffect, useState, Suspense, useCallback, useMemo } from 'react'
+import { useEffect, useState, Suspense, useCallback, useMemo, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
+import PermissionGuard from '@/components/PermissionGuard'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { toast, Toaster } from 'sonner'
@@ -22,6 +23,33 @@ const colors = {
 }
 
 type PayBasis = 'monthly' | 'daily'
+
+// ✅ BUSINESS DAY CUTOFF (07:00)
+const BUSINESS_CUTOFF_HOUR = 7
+
+// ✅ safest date parser (handles ISO/date-only/timestamp)
+const parseTxDate = (t: any): Date | null => {
+  if (!t) return null
+  const raw = t.created_at || t.date
+  if (!raw) return null
+  const d = new Date(raw)
+  return isNaN(d.getTime()) ? null : d
+}
+
+// ✅ converts a timestamp to "business day date" (07:00 -> previous date)
+const toBusinessDayDate = (d: Date) => {
+  const bd = new Date(d)
+  if (bd.getHours() < BUSINESS_CUTOFF_HOUR) bd.setDate(bd.getDate() - 1)
+  // normalize to avoid time artifacts
+  bd.setHours(12, 0, 0, 0)
+  return bd
+}
+
+const getBusinessYear = (d: Date) => toBusinessDayDate(d).getFullYear()
+const getBusinessMonth = (d: Date) => toBusinessDayDate(d).getMonth()
+
+// ✅ for UI display of "date" (business-day)
+const formatBusinessDateShort = (d: Date) => toBusinessDayDate(d).toLocaleDateString('el-GR')
 
 function EmployeesContent() {
   const router = useRouter()
@@ -62,6 +90,7 @@ function EmployeesContent() {
   })
   const [showTipsList, setShowTipsList] = useState(false)
   const [isAmountFocused, setIsAmountFocused] = useState(false)
+  const formRef = useRef<HTMLDivElement | null>(null)
 
   const availableYears: number[] = []
   for (let y = 2024; y <= new Date().getFullYear(); y++) availableYears.push(y)
@@ -92,14 +121,14 @@ function EmployeesContent() {
     }
   }, [storeId, router])
 
-  // ✅ Tips stats fetcher (CURRENT MONTH + last 5 of current month)
+  // ✅ Tips stats fetcher (CURRENT MONTH with BUSINESS MONTH logic + last 5)
   const getTipsStats = useCallback(async () => {
     try {
       if (!storeId || storeId === 'null') return
 
       const { data, error } = await supabase
         .from('transactions')
-        .select('id,date,notes,employee_id,amount,fixed_assets(name)')
+        .select('id,date,created_at,notes,employee_id,amount,fixed_assets(name),type')
         .eq('store_id', storeId)
         .ilike('notes', '%tips%')
         .order('date', { ascending: false })
@@ -111,15 +140,28 @@ function EmployeesContent() {
       }
 
       const now = new Date()
-      const currentYear = now.getFullYear()
-      const currentMonth = now.getMonth()
+      const currentBusinessYear = getBusinessYear(now)
+      const currentBusinessMonth = getBusinessMonth(now)
 
       let monthlyTips = 0
 
-      const tipsThisCurrentMonth = (data || [])
+      const tipsThisBusinessMonth = (data || [])
         .map((t: any) => {
           const note = String(t.notes || '')
-          const isTip = /tips/i.test(note)
+          const isTip = /tips/i.test(note) || String(t.type || '') === 'tip_entry'
+
+          const d = parseTxDate(t)
+          if (!d) {
+            return {
+              id: t.id,
+              name: t?.fixed_assets?.name || '—',
+              date: t.date,
+              amount: 0,
+              note,
+              _d: null as Date | null,
+              _isTip: isTip,
+            }
+          }
 
           // amount από DB (σωστό), fallback από notes για παλιές εγγραφές
           let amount = Number(t.amount) || 0
@@ -134,20 +176,25 @@ function EmployeesContent() {
             date: t.date,
             amount,
             note,
+            _d: d,
+            _isTip: isTip,
           }
         })
         .filter((t: any) => {
-          const d = new Date(t.date)
-          return d.getFullYear() === currentYear && d.getMonth() === currentMonth
+          if (!t._isTip) return false
+          if (!t._d) return false
+          return getBusinessYear(t._d) === currentBusinessYear && getBusinessMonth(t._d) === currentBusinessMonth
         })
+        // keep most recent by actual timestamp
+        .sort((a: any, b: any) => (b._d?.getTime() || 0) - (a._d?.getTime() || 0))
 
-      tipsThisCurrentMonth.forEach((t: any) => {
+      tipsThisBusinessMonth.forEach((t: any) => {
         monthlyTips += t.amount
       })
 
       setTipsStats({
         monthlyTips,
-        lastTips: tipsThisCurrentMonth.slice(0, 5).map((t: any) => ({
+        lastTips: tipsThisBusinessMonth.slice(0, 5).map((t: any) => ({
           id: t.id,
           name: t.name,
           date: t.date,
@@ -201,6 +248,14 @@ function EmployeesContent() {
     if (storeId && storeId !== 'null') getTipsStats()
   }, [storeId, getTipsStats])
 
+  const requireTenantStoreId = useCallback(() => {
+    if (!storeId || storeId === 'null') {
+      router.replace('/select-store')
+      throw new Error('Missing store_id. Tenant scope required.')
+    }
+    return storeId
+  }, [storeId, router])
+
   // Φιλτράρισμα λίστας βάσει showInactive
   // Hide employees with null store_id if not main store
   const mainStoreId = 'e50a8803-a262-4303-9e90-c116c965e683'
@@ -210,11 +265,11 @@ function EmployeesContent() {
     return true
   })
 
-  // ✅ HERO KPI: Σύνολο πληρωμών υπαλλήλων τρέχοντος μήνα (EXCLUDES tips)
+  // ✅ HERO KPI: Σύνολο πληρωμών υπαλλήλων τρέχοντος ΜΗΝΑ (BUSINESS MONTH) (EXCLUDES tips)
   const currentMonthPayrollTotal = useMemo(() => {
     const now = new Date()
-    const y = now.getFullYear()
-    const m = now.getMonth()
+    const y = getBusinessYear(now)
+    const m = getBusinessMonth(now)
 
     // μόνο υπάλληλοι που υπάρχουν στον πίνακα fixed_assets staff (για ασφάλεια)
     const staffIds = new Set(employees.map((e: any) => String(e.id)))
@@ -224,8 +279,10 @@ function EmployeesContent() {
         if (!t?.fixed_asset_id) return false
         if (!staffIds.has(String(t.fixed_asset_id))) return false
 
-        const d = new Date(t.date)
-        if (d.getFullYear() !== y || d.getMonth() !== m) return false
+        const d = parseTxDate(t)
+        if (!d) return false
+
+        if (getBusinessYear(d) !== y || getBusinessMonth(d) !== m) return false
 
         // exclude tips (και παλιές/νέες εγγραφές)
         const note = String(t.notes || '')
@@ -239,12 +296,25 @@ function EmployeesContent() {
 
   // ✅ Toggle Active/Inactive (Supabase)  (fixed_assets)
   async function toggleActive(empId: string, currentValue: boolean | null | undefined) {
+    let tenantStoreId: string
+    try {
+      tenantStoreId = requireTenantStoreId()
+    } catch (error) {
+      console.error(error)
+      toast.error('Αποτυχία ενημέρωσης κατάστασης υπαλλήλου.')
+      return
+    }
+
     const nextValue = currentValue === false ? true : false
 
     // optimistic UI
     setEmployees((prev) => prev.map((e) => (e.id === empId ? { ...e, is_active: nextValue } : e)))
 
-    const { error } = await supabase.from('fixed_assets').update({ is_active: nextValue }).eq('id', empId)
+    const { error } = await supabase
+      .from('fixed_assets')
+      .update({ is_active: nextValue })
+      .eq('id', empId)
+      .eq('store_id', tenantStoreId)
 
     if (error) {
       // rollback
@@ -259,9 +329,7 @@ function EmployeesContent() {
 
   // ✅ Υπολογισμός εκκρεμών ωρών (uses employee_id)
   const getPendingOtHours = (empId: string) => {
-    return overtimes
-      .filter((ot) => ot.employee_id === empId)
-      .reduce((acc, curr) => acc + Number(curr.hours), 0)
+    return overtimes.filter((ot) => ot.employee_id === empId).reduce((acc, curr) => acc + Number(curr.hours), 0)
   }
 
   const getDefaultOvertimeHourlyRate = (empId: string) => {
@@ -281,8 +349,12 @@ function EmployeesContent() {
   // ✅ Καταγραφή νέας υπερωρίας (store_id from URL) - uses employee_id
   async function handleQuickOvertime() {
     if (!otHours || !otModal) return
-    if (!storeId || storeId === 'null') {
-      router.replace('/select-store')
+
+    let tenantStoreId: string
+    try {
+      tenantStoreId = requireTenantStoreId()
+    } catch (error) {
+      console.error(error)
       return
     }
 
@@ -301,7 +373,7 @@ function EmployeesContent() {
 
       const payload = {
         employee_id: otModal.empId,
-        store_id: storeId,
+        store_id: tenantStoreId,
         hours: hoursNum,
         date: new Date().toISOString().split('T')[0],
         is_paid: false,
@@ -320,7 +392,6 @@ function EmployeesContent() {
       setOtHours('')
       fetchInitialData()
     } catch (error) {
-      console.log(error)
       console.error(error)
       toast.error('Αποτυχία καταγραφής υπερωρίας.')
     }
@@ -328,8 +399,12 @@ function EmployeesContent() {
 
   async function handleQuickOvertimeAndPayNow() {
     if (!otHours || !otModal) return
-    if (!storeId || storeId === 'null') {
-      router.replace('/select-store')
+
+    let tenantStoreId: string
+    try {
+      tenantStoreId = requireTenantStoreId()
+    } catch (error) {
+      console.error(error)
       return
     }
 
@@ -348,10 +423,7 @@ function EmployeesContent() {
     const defaultRate = getDefaultOvertimeHourlyRate(otModal.empId)
     const suggestedAmount = Number((hoursNum * defaultRate).toFixed(2))
 
-    const amountInput = prompt(
-      `Ποσό άμεσης πληρωμής για ${hoursNum} ώρες:`,
-      suggestedAmount > 0 ? String(suggestedAmount) : ''
-    )
+    const amountInput = prompt(`Ποσό άμεσης πληρωμής για ${hoursNum} ώρες:`, suggestedAmount > 0 ? String(suggestedAmount) : '')
     if (amountInput === null) return
 
     const amountNum = Number(String(amountInput).replace(',', '.'))
@@ -367,7 +439,7 @@ function EmployeesContent() {
         .insert([
           {
             employee_id: otModal.empId,
-            store_id: storeId,
+            store_id: tenantStoreId,
             hours: hoursNum,
             date: today,
             is_paid: true,
@@ -384,7 +456,7 @@ function EmployeesContent() {
 
       const { error: transactionError } = await supabase.from('transactions').insert([
         {
-          store_id: storeId,
+          store_id: tenantStoreId,
           fixed_asset_id: otModal.empId,
           amount: amountNum,
           type: 'expense',
@@ -398,7 +470,7 @@ function EmployeesContent() {
       if (transactionError) {
         console.error(transactionError)
         if (insertedOt?.id) {
-          await supabase.from('employee_overtimes').delete().eq('id', insertedOt.id)
+          await supabase.from('employee_overtimes').delete().eq('id', insertedOt.id).eq('store_id', tenantStoreId)
         }
         toast.error('Η υπερωρία καταγράφηκε, αλλά απέτυχε η συναλλαγή πληρωμής.')
         return
@@ -417,7 +489,15 @@ function EmployeesContent() {
   async function deleteOvertime(id: string) {
     if (!confirm('Διαγραφή αυτής της υπερωρίας;')) return
 
-    const { error } = await supabase.from('employee_overtimes').delete().eq('id', id)
+    let tenantStoreId: string
+    try {
+      tenantStoreId = requireTenantStoreId()
+    } catch (error) {
+      console.error(error)
+      return
+    }
+
+    const { error } = await supabase.from('employee_overtimes').delete().eq('id', id).eq('store_id', tenantStoreId)
     if (error) {
       console.error(error)
       toast.error('Αποτυχία διαγραφής υπερωρίας.')
@@ -428,11 +508,15 @@ function EmployeesContent() {
     fetchInitialData()
   }
 
-  // ✅ Καταγραφή νέων Tips σαν transaction (CURRENT MONTH hero uses this via getTipsStats)
+  // ✅ Καταγραφή νέων Tips σαν transaction
   async function handleQuickTip() {
     if (!tipAmount || !tipModal) return
-    if (!storeId || storeId === 'null') {
-      router.replace('/select-store')
+
+    let tenantStoreId: string
+    try {
+      tenantStoreId = requireTenantStoreId()
+    } catch (error) {
+      console.error(error)
       return
     }
 
@@ -446,7 +530,7 @@ function EmployeesContent() {
 
     const { error } = await supabase.from('transactions').insert([
       {
-        store_id: storeId,
+        store_id: tenantStoreId,
         fixed_asset_id: tipModal.empId,
         amount: amountNum,
         type: 'tip_entry', // ✅ tips as dedicated type
@@ -470,11 +554,15 @@ function EmployeesContent() {
     getTipsStats()
   }
 
-  // ✅ Επεξεργασία υπάρχοντος Tip (notes + amount)
+  // ✅ Επεξεργασία υπάρχοντος Tip
   async function handleEditTipSave() {
     if (!tipEditModal) return
-    if (!storeId || storeId === 'null') {
-      router.replace('/select-store')
+
+    let tenantStoreId: string
+    try {
+      tenantStoreId = requireTenantStoreId()
+    } catch (error) {
+      console.error(error)
       return
     }
 
@@ -490,9 +578,10 @@ function EmployeesContent() {
         amount: amountNum,
         type: 'tip_entry',
         notes: `Tips: ${amountNum}€ [${tipEditModal.name}]`,
-        store_id: storeId,
+        store_id: tenantStoreId,
       })
       .eq('id', tipEditModal.id)
+      .eq('store_id', tenantStoreId)
 
     if (error) {
       console.error(error)
@@ -511,7 +600,15 @@ function EmployeesContent() {
   async function deleteTipTransaction(id: string) {
     if (!confirm('Διαγραφή αυτής της καταγραφής Tips;')) return
 
-    const { error } = await supabase.from('transactions').delete().eq('id', id)
+    let tenantStoreId: string
+    try {
+      tenantStoreId = requireTenantStoreId()
+    } catch (error) {
+      console.error(error)
+      return
+    }
+
+    const { error } = await supabase.from('transactions').delete().eq('id', id).eq('store_id', tenantStoreId)
     if (error) {
       console.error(error)
       toast.error('Αποτυχία διαγραφής tips.')
@@ -536,11 +633,16 @@ function EmployeesContent() {
     return Math.ceil(diffTime / (1000 * 60 * 60 * 24))
   }
 
-  // ✅ UPDATED getYearlyStats:
+  // ✅ UPDATED getYearlyStats (BUSINESS YEAR)
   // - tips υπολογίζονται στο stats.tips
   // - tips ΔΕΝ υπολογίζονται στο stats.total (ΣΥΝΟΛΟ ΕΤΟΥΣ)
   const getYearlyStats = (id: string) => {
-    const yearTrans = transactions.filter((t) => t.fixed_asset_id === id && new Date(t.date).getFullYear() === viewYear)
+    const yearTrans = transactions.filter((t) => {
+      if (t.fixed_asset_id !== id) return false
+      const d = parseTxDate(t)
+      if (!d) return false
+      return getBusinessYear(d) === viewYear
+    })
 
     let stats = { base: 0, overtime: 0, bonus: 0, tips: 0, total: 0 }
     const processedDates = new Set<string>()
@@ -549,12 +651,13 @@ function EmployeesContent() {
       const note = String(t.notes || '')
       const isTip = /tips/i.test(note) || String(t.type || '') === 'tip_entry'
 
-      // ✅ ΣΥΝΟΛΟ ΕΤΟΥΣ: ΜΗΝ προσθέτεις tips
       if (!isTip) {
         stats.total += Number(t.amount) || 0
       }
 
-      if (!processedDates.has(t.date)) {
+      const d = parseTxDate(t)
+      const key = d ? getBusinessYear(d) + '-' + getBusinessMonth(d) + '-' + toBusinessDayDate(d).getDate() : String(t.date || '')
+      if (!processedDates.has(key)) {
         const extract = (label: string) => {
           const regex = new RegExp(`${label}:\\s*(\\d+(\\.\\d+)?)`, 'i')
           const match = note.match(regex)
@@ -565,7 +668,6 @@ function EmployeesContent() {
         stats.overtime += extract('Υπερ.')
         stats.bonus += extract('Bonus')
 
-        // ✅ Tips total (από amount, fallback από note για παλιά entries)
         if (isTip) {
           const amt = Number(t.amount) || 0
           if (amt > 0) {
@@ -576,7 +678,7 @@ function EmployeesContent() {
           }
         }
 
-        processedDates.add(t.date)
+        processedDates.add(key)
       }
     })
 
@@ -588,6 +690,7 @@ function EmployeesContent() {
     name: string
     sub_category: 'staff'
     store_id: string
+    start_date: string | null
     pay_basis: PayBasis
     monthly_salary: number | null
     daily_rate: number | null
@@ -598,8 +701,12 @@ function EmployeesContent() {
   async function handleSave() {
     const isSalaryMissing = payBasis === 'monthly' ? !formData.monthly_salary : !formData.daily_rate
     if (!formData.full_name.trim() || isSalaryMissing) return alert('Συμπληρώστε τα υποχρεωτικά πεδία!')
-    if (!storeId || storeId === 'null') {
-      router.replace('/select-store')
+
+    let tenantStoreId: string
+    try {
+      tenantStoreId = requireTenantStoreId()
+    } catch (error) {
+      console.error(error)
       return
     }
 
@@ -618,7 +725,8 @@ function EmployeesContent() {
     const payload: FixedAssetStaffPayload = {
       name: formData.full_name.trim(),
       sub_category: 'staff',
-      store_id: storeId,
+      store_id: tenantStoreId,
+      start_date: formData.start_date || null,
       pay_basis: payBasis,
       monthly_salary: payBasis === 'monthly' && Number.isFinite(monthlySalaryNum) ? monthlySalaryNum : null,
       daily_rate: payBasis === 'daily' && Number.isFinite(dailyRateNum) ? dailyRateNum : null,
@@ -627,12 +735,12 @@ function EmployeesContent() {
     }
 
     const { error } = editingId
-      ? await supabase.from('fixed_assets').update(payload).eq('id', editingId)
+      ? await supabase.from('fixed_assets').update(payload).eq('id', editingId).eq('store_id', tenantStoreId)
       : await supabase.from('fixed_assets').insert([payload])
 
     if (error) {
       console.error(error)
-      toast.error('Αποτυχία αποθήκευσης.')
+      toast.error(error.code === '42501' ? 'Δεν έχετε δικαιώματα διαχειριστή για αυτή την ενέργεια' : 'Αποτυχία αποθήκευσης.')
       setLoading(false)
       return
     }
@@ -648,14 +756,18 @@ function EmployeesContent() {
   // ✅ Delete staff: delete transactions by fixed_asset_id, then delete fixed_assets
   async function deleteEmployee(id: string, name: string) {
     if (!confirm(`Οριστική διαγραφή του/της ${name}; Θα σβηστεί και το ιστορικό.`)) return
-    if (!storeId || storeId === 'null') {
-      router.replace('/select-store')
+
+    let tenantStoreId: string
+    try {
+      tenantStoreId = requireTenantStoreId()
+    } catch (error) {
+      console.error(error)
       return
     }
 
     setLoading(true)
 
-    const { error: transErr } = await supabase.from('transactions').delete().eq('fixed_asset_id', id)
+    const { error: transErr } = await supabase.from('transactions').delete().eq('fixed_asset_id', id).eq('store_id', tenantStoreId)
     if (transErr) {
       console.error(transErr)
       toast.error('Αποτυχία διαγραφής συναλλαγών.')
@@ -663,7 +775,7 @@ function EmployeesContent() {
       return
     }
 
-    const { error: empErr } = await supabase.from('fixed_assets').delete().eq('id', id)
+    const { error: empErr } = await supabase.from('fixed_assets').delete().eq('id', id).eq('store_id', tenantStoreId)
     if (empErr) {
       console.error(empErr)
       toast.error('Αποτυχία διαγραφής υπαλλήλου.')
@@ -678,7 +790,16 @@ function EmployeesContent() {
 
   async function deleteTransaction(id: string) {
     if (!confirm('Διαγραφή αυτής της πληρωμής;')) return
-    const { error } = await supabase.from('transactions').delete().eq('id', id)
+
+    let tenantStoreId: string
+    try {
+      tenantStoreId = requireTenantStoreId()
+    } catch (error) {
+      console.error(error)
+      return
+    }
+
+    const { error } = await supabase.from('transactions').delete().eq('id', id).eq('store_id', tenantStoreId)
     if (!error) fetchInitialData()
     else {
       console.error(error)
@@ -702,604 +823,627 @@ function EmployeesContent() {
     setEditingId(null)
   }
 
-  // current month label (for hero)
+  // ✅ current month label (BUSINESS MONTH)
   const currentMonthLabel = useMemo(() => {
-    const d = new Date()
+    const d = toBusinessDayDate(new Date())
     return d.toLocaleString('el-GR', { month: 'long', year: 'numeric' }).toUpperCase()
   }, [])
 
   const isEditMode = Boolean(editingId)
 
   return (
-    <div style={iphoneWrapper}>
-      <Toaster position="top-center" richColors />
+    <PermissionGuard storeId={storeId}>
+      {({ isAdmin, isLoading: checkingPermission }) => (
+        <div style={iphoneWrapper}>
+          <Toaster position="top-center" richColors />
 
-      <div style={{ maxWidth: '500px', margin: '0 auto', paddingBottom: '100px' }}>
-        {/* HEADER */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-            <div style={logoBoxStyle}>👥</div>
-            <h1 style={{ fontWeight: '800', fontSize: '22px', margin: 0, color: colors.primaryDark }}>Υπάλληλοι</h1>
+          <div style={{ maxWidth: '500px', margin: '0 auto', paddingBottom: '100px' }}>
+            {/* HEADER */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+                <div style={logoBoxStyle}>👥</div>
+                <h1 style={{ fontWeight: '800', fontSize: '22px', margin: 0, color: colors.primaryDark }}>Υπάλληλοι</h1>
 
-            {/* ✅ Back link preserves SaaS context */}
-            <Link href={`/?store=${storeId}`} style={backBtnStyle}>
-              ✕
-            </Link>
-          </div>
-        </div>
-
-        {/* ✅ CREATE TIPS MODAL */}
-        {tipModal && (
-          <div style={modalOverlay}>
-            <div style={modalCard}>
-              <h3 style={{ margin: 0, fontSize: '16px' }}>Καταγραφή Tips</h3>
-              <p style={{ fontSize: '12px', color: colors.secondaryText }}>{tipModal.name}</p>
-              <input
-                type="number"
-                placeholder="Ποσό tips (π.χ. 10)"
-                value={tipAmount}
-                onFocus={(e) => {
-                  if (e.target.value === '0') setTipAmount('')
-                }}
-                onChange={(e) => setTipAmount(e.target.value)}
-                style={{ ...inputStyle, marginTop: '15px', textAlign: 'center', fontSize: '24px' }}
-                autoFocus
-              />
-              <div style={{ display: 'flex', gap: '10px', marginTop: '20px' }}>
-                <button
-                  onClick={() => {
-                    setTipModal(null)
-                    setTipAmount('')
-                  }}
-                  style={cancelBtnSmall}
-                >
-                  ΑΚΥΡΟ
-                </button>
-                <button onClick={handleQuickTip} style={saveBtnSmall}>
-                  ΠΡΟΣΘΗΚΗ
-                </button>
+                {/* ✅ Back link preserves SaaS context */}
+                <Link href={`/?store=${storeId}`} style={backBtnStyle}>
+                  ✕
+                </Link>
               </div>
             </div>
-          </div>
-        )}
 
-        {/* ✅ EDIT TIPS MODAL */}
-        {tipEditModal && (
-          <div style={modalOverlay}>
-            <div style={modalCard}>
-              <h3 style={{ margin: 0, fontSize: '16px' }}>Επεξεργασία Tips</h3>
-              <p style={{ fontSize: '12px', color: colors.secondaryText }}>{tipEditModal.name}</p>
-              <input
-                type="number"
-                placeholder="Νέο ποσό tips"
-                value={tipEditAmount}
-                onChange={(e) => setTipEditAmount(e.target.value)}
-                style={{ ...inputStyle, marginTop: '15px', textAlign: 'center', fontSize: '24px' }}
-                autoFocus
-              />
-              <div style={{ display: 'flex', gap: '10px', marginTop: '20px' }}>
-                <button
-                  onClick={() => {
-                    setTipEditModal(null)
-                    setTipEditAmount('')
-                  }}
-                  style={cancelBtnSmall}
-                >
-                  ΑΚΥΡΟ
-                </button>
-                <button onClick={handleEditTipSave} style={saveBtnSmall}>
-                  ΑΠΟΘΗΚΕΥΣΗ
-                </button>
+            {!checkingPermission && !isAdmin && <div style={readOnlyBannerStyle}>Read-only access</div>}
+
+            {/* ✅ CREATE TIPS MODAL */}
+            {tipModal && (
+              <div style={modalOverlay}>
+                <div style={modalCard}>
+                  <h3 style={{ margin: 0, fontSize: '16px' }}>Καταγραφή Tips</h3>
+                  <p style={{ fontSize: '12px', color: colors.secondaryText }}>{tipModal.name}</p>
+                  <input
+                    type="number"
+                    placeholder="Ποσό tips (π.χ. 10)"
+                    value={tipAmount}
+                    onFocus={(e) => {
+                      if (e.target.value === '0') setTipAmount('')
+                    }}
+                    onChange={(e) => setTipAmount(e.target.value)}
+                    style={{ ...inputStyle, marginTop: '15px', textAlign: 'center', fontSize: '24px' }}
+                    autoFocus
+                  />
+                  <div style={{ display: 'flex', gap: '10px', marginTop: '20px' }}>
+                    <button
+                      onClick={() => {
+                        setTipModal(null)
+                        setTipAmount('')
+                      }}
+                      style={cancelBtnSmall}
+                    >
+                      ΑΚΥΡΟ
+                    </button>
+                    <button onClick={handleQuickTip} style={saveBtnSmall}>
+                      ΠΡΟΣΘΗΚΗ
+                    </button>
+                  </div>
+                </div>
               </div>
-            </div>
-          </div>
-        )}
+            )}
 
-        {/* OT MODAL */}
-        {otModal && (
-          <div style={modalOverlay}>
-            <div style={modalCard}>
-              <h3 style={{ margin: 0, fontSize: '16px' }}>Καταγραφή Υπερωρίας</h3>
-              <p style={{ fontSize: '12px', color: colors.secondaryText }}>{otModal.name}</p>
-              <input
-                type="number"
-                placeholder="Ώρες (π.χ. 1.5)"
-                value={otHours}
-                onFocus={(e) => {
-                  if (e.target.value === '0') setOtHours('')
-                }}
-                onChange={(e) => setOtHours(e.target.value)}
-                style={{ ...inputStyle, marginTop: '15px', textAlign: 'center', fontSize: '24px' }}
-                autoFocus
-              />
-
-              <div style={{ display: 'flex', gap: '10px', marginTop: '20px' }}>
-                <button
-                  onClick={() => {
-                    setOtModal(null)
-                    setOtHours('')
-                  }}
-                  style={cancelBtnSmall}
-                >
-                  ΑΚΥΡΟ
-                </button>
-                <button onClick={handleQuickOvertime} style={saveBtnSmall}>
-                  ΚΑΤΑΧΩΡΗΣΗ
-                </button>
+            {/* ✅ EDIT TIPS MODAL */}
+            {tipEditModal && (
+              <div style={modalOverlay}>
+                <div style={modalCard}>
+                  <h3 style={{ margin: 0, fontSize: '16px' }}>Επεξεργασία Tips</h3>
+                  <p style={{ fontSize: '12px', color: colors.secondaryText }}>{tipEditModal.name}</p>
+                  <input
+                    type="number"
+                    placeholder="Νέο ποσό tips"
+                    value={tipEditAmount}
+                    onChange={(e) => setTipEditAmount(e.target.value)}
+                    style={{ ...inputStyle, marginTop: '15px', textAlign: 'center', fontSize: '24px' }}
+                    autoFocus
+                  />
+                  <div style={{ display: 'flex', gap: '10px', marginTop: '20px' }}>
+                    <button
+                      onClick={() => {
+                        setTipEditModal(null)
+                        setTipEditAmount('')
+                      }}
+                      style={cancelBtnSmall}
+                    >
+                      ΑΚΥΡΟ
+                    </button>
+                    <button onClick={handleEditTipSave} style={saveBtnSmall}>
+                      ΑΠΟΘΗΚΕΥΣΗ
+                    </button>
+                  </div>
+                </div>
               </div>
-              <button onClick={handleQuickOvertimeAndPayNow} style={payNowBtnSmall}>
-                ΚΑΤΑΧΩΡΗΣΗ & ΠΛΗΡΩΜΗ ΤΩΡΑ
+            )}
+
+            {/* OT MODAL */}
+            {otModal && (
+              <div style={modalOverlay}>
+                <div style={modalCard}>
+                  <h3 style={{ margin: 0, fontSize: '16px' }}>Καταγραφή Υπερωρίας</h3>
+                  <p style={{ fontSize: '12px', color: colors.secondaryText }}>{otModal.name}</p>
+                  <input
+                    type="number"
+                    placeholder="Ώρες (π.χ. 1.5)"
+                    value={otHours}
+                    onFocus={(e) => {
+                      if (e.target.value === '0') setOtHours('')
+                    }}
+                    onChange={(e) => setOtHours(e.target.value)}
+                    style={{ ...inputStyle, marginTop: '15px', textAlign: 'center', fontSize: '24px' }}
+                    autoFocus
+                  />
+
+                  <div style={{ display: 'flex', gap: '10px', marginTop: '20px' }}>
+                    <button
+                      onClick={() => {
+                        setOtModal(null)
+                        setOtHours('')
+                      }}
+                      style={cancelBtnSmall}
+                    >
+                      ΑΚΥΡΟ
+                    </button>
+                    <button onClick={handleQuickOvertime} style={saveBtnSmall}>
+                      ΚΑΤΑΧΩΡΗΣΗ
+                    </button>
+                  </div>
+                  <button onClick={handleQuickOvertimeAndPayNow} style={payNowBtnSmall}>
+                    ΚΑΤΑΧΩΡΗΣΗ & ΠΛΗΡΩΜΗ ΤΩΡΑ
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* ✅ HERO: Current month payroll + current month tips (BUSINESS MONTH) */}
+            <div style={payrollHeroCard}>
+              <div style={payrollHeroTopRow}>
+                <div style={payrollHeroPill}>ΣΥΝΟΛΟ ΥΠΑΛΛΗΛΩΝ • {currentMonthLabel}</div>
+              </div>
+
+              <div style={payrollHeroAmount}>{currentMonthPayrollTotal.toFixed(2)}€</div>
+              <div style={payrollHeroHint}>Σύνολο πληρωμών υπαλλήλων τρέχοντος μήνα (χωρίς tips)</div>
+
+              <div style={payrollHeroDivider} />
+
+              <div style={payrollHeroTipsRow}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Coins size={16} />
+                  <span style={payrollHeroTipsLabel}>ΣΥΝΟΛΟ TIPS • ΤΡΕΧΩΝ ΜΗΝΑΣ</span>
+                </div>
+                <span style={payrollHeroTipsValue}>{tipsStats.monthlyTips.toFixed(2)}€</span>
+              </div>
+
+              <button onClick={() => setShowTipsList((v) => !v)} style={payrollHeroTipsBtn}>
+                {showTipsList ? 'Απόκρυψη Λίστας Tips' : 'Προβολή Λίστας Tips'}
               </button>
             </div>
-          </div>
-        )}
 
-        {/* ✅ HERO: Current month payroll + current month tips */}
-        <div style={payrollHeroCard}>
-          <div style={payrollHeroTopRow}>
-            <div style={payrollHeroPill}>ΣΥΝΟΛΟ ΥΠΑΛΛΗΛΩΝ • {currentMonthLabel}</div>
-          </div>
+            {showTipsList && (
+              <div style={tipsListWrap}>
+                {tipsStats.lastTips.length === 0 ? (
+                  <p style={{ margin: 0, fontSize: '12px', color: colors.secondaryText, fontWeight: 700 }}>
+                    Δεν υπάρχουν tips καταγραφές για αυτόν τον μήνα.
+                  </p>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    {tipsStats.lastTips.map((t) => {
+                      const d = new Date(t.date)
+                      return (
+                        <div key={t.id} style={tipsListItem}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', alignItems: 'center' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column' }}>
+                              <span style={{ fontWeight: 900, color: colors.primaryDark, fontSize: '12px' }}>{t.name}</span>
+                              <span style={{ fontSize: '10px', color: colors.secondaryText, fontWeight: 800 }}>
+                                {/* ✅ display with business-day */}
+                                {isNaN(d.getTime()) ? '—' : formatBusinessDateShort(d)}
+                              </span>
+                              <span style={{ fontSize: '10px', color: '#b45309', fontWeight: 900 }}>Tips</span>
+                            </div>
 
-          <div style={payrollHeroAmount}>{currentMonthPayrollTotal.toFixed(2)}€</div>
-          <div style={payrollHeroHint}>Σύνολο πληρωμών υπαλλήλων τρέχοντος μήνα (χωρίς tips)</div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                              <span style={{ fontWeight: 900, color: '#b45309', fontSize: '12px' }}>{t.amount.toFixed(2)}€</span>
 
-          <div style={payrollHeroDivider} />
+                              {isAdmin && (
+                                <button
+                                  style={miniIconBtn}
+                                  title="Επεξεργασία"
+                                  onClick={() => {
+                                    setTipEditModal({ id: t.id, name: t.name, amount: t.amount })
+                                    setTipEditAmount(String(t.amount))
+                                  }}
+                                >
+                                  <Pencil size={16} />
+                                </button>
+                              )}
 
-          <div style={payrollHeroTipsRow}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Coins size={16} />
-              <span style={payrollHeroTipsLabel}>ΣΥΝΟΛΟ TIPS • ΤΡΕΧΩΝ ΜΗΝΑΣ</span>
+                              {isAdmin && (
+                                <button style={miniIconBtnDanger} title="Διαγραφή" onClick={() => deleteTipTransaction(t.id)}>
+                                  <Trash2 size={16} />
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ADD + SHOW INACTIVE */}
+            <div style={{ display: 'flex', gap: '10px', marginBottom: '14px' }}>
+              {isAdmin && (
+                <button
+                  onClick={() => {
+                    if (isAdding) resetForm()
+                    setIsAdding(!isAdding)
+                  }}
+                  style={{ ...(isAdding ? cancelBtn : addBtn), marginBottom: 0, flex: 1 }}
+                >
+                  {isAdding ? 'ΑΚΥΡΩΣΗ' : '+ ΝΕΟΣ ΥΠΑΛΛΗΛΟΣ'}
+                </button>
+              )}
+
+              <button
+                onClick={() => setShowInactive((v) => !v)}
+                style={iconToggleBtn}
+                title={showInactive ? 'Απόκρυψη ανενεργών' : 'Εμφάνιση ανενεργών'}
+              >
+                {showInactive ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
             </div>
-            <span style={payrollHeroTipsValue}>{tipsStats.monthlyTips.toFixed(2)}€</span>
-          </div>
 
-          <button onClick={() => setShowTipsList((v) => !v)} style={payrollHeroTipsBtn}>
-            {showTipsList ? 'Απόκρυψη Λίστας Tips' : 'Προβολή Λίστας Tips'}
-          </button>
-        </div>
+            {/* FORM */}
+            {isAdding && isAdmin && (
+              <div
+                ref={formRef}
+                style={{
+                  ...formCard,
+                  borderColor: isEditMode ? '#f59e0b' : colors.primaryDark,
+                  boxShadow: isEditMode ? '0 8px 18px rgba(245, 158, 11, 0.18)' : formCard.boxShadow,
+                }}
+              >
+                <label style={labelStyle}>Ονοματεπώνυμο *</label>
+                <input value={formData.full_name} onChange={(e) => setFormData({ ...formData, full_name: e.target.value })} style={inputStyle} />
 
-        {showTipsList && (
-          <div style={tipsListWrap}>
-            {tipsStats.lastTips.length === 0 ? (
-              <p style={{ margin: 0, fontSize: '12px', color: colors.secondaryText, fontWeight: 700 }}>
-                Δεν υπάρχουν tips καταγραφές για αυτόν τον μήνα.
-              </p>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                {tipsStats.lastTips.map((t) => (
-                  <div key={t.id} style={tipsListItem}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', alignItems: 'center' }}>
-                      <div style={{ display: 'flex', flexDirection: 'column' }}>
-                        <span style={{ fontWeight: 900, color: colors.primaryDark, fontSize: '12px' }}>
-                          {t.name}
-                        </span>
-                        <span style={{ fontSize: '10px', color: colors.secondaryText, fontWeight: 800 }}>
-                          {new Date(t.date).toLocaleDateString('el-GR')}
-                        </span>
-                        <span style={{ fontSize: '10px', color: '#b45309', fontWeight: 900 }}>Tips</span>
+                <label style={{ ...labelStyle, marginTop: '16px' }}>Τύπος Συμφωνίας</label>
+                <div style={{ display: 'flex', gap: '10px', marginBottom: '16px' }}>
+                  <button onClick={() => setPayBasis('monthly')} style={payBasis === 'monthly' ? activeToggle : inactiveToggle}>
+                    ΜΗΝΙΑΙΟΣ
+                  </button>
+                  <button onClick={() => setPayBasis('daily')} style={payBasis === 'daily' ? activeToggle : inactiveToggle}>
+                    ΗΜΕΡΟΜΙΣΘΙΟ
+                  </button>
+                </div>
+
+                <div style={{ display: 'flex', gap: '12px', marginTop: '16px' }}>
+                  {/* Salary/Daily + Monthly Days (if monthly) */}
+                  <div style={{ display: 'flex', gap: '12px', flex: 1 }}>
+                    <div style={{ flex: 1 }}>
+                      <label style={labelStyle}>{payBasis === 'monthly' ? 'Μισθός (€) *' : 'Ημερομίσθιο (€) *'}</label>
+                      <div style={amountInputWrap}>
+                        <input
+                          type="number"
+                          inputMode="decimal"
+                          value={payBasis === 'monthly' ? formData.monthly_salary : formData.daily_rate}
+                          onFocus={(e) => {
+                            setIsAmountFocused(true)
+                            if (e.target.value === '0')
+                              setFormData({ ...formData, [payBasis === 'monthly' ? 'monthly_salary' : 'daily_rate']: '' })
+                          }}
+                          onBlur={() => setIsAmountFocused(false)}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              [payBasis === 'monthly' ? 'monthly_salary' : 'daily_rate']: e.target.value,
+                            })
+                          }
+                          style={{ ...amountInputStyle, ...(isAmountFocused ? amountInputFocusedStyle : null) }}
+                          placeholder="0"
+                        />
+                        <span style={euroAdornmentStyle}>€</span>
+                      </div>
+                    </div>
+
+                    {payBasis === 'monthly' && (
+                      <div style={{ flex: 1 }}>
+                        <label style={labelStyle}>Μέρες Μήνα</label>
+                        <div style={daysSelectorRow}>
+                          {monthlyDayOptions.map((option) => (
+                            <button
+                              key={option.value}
+                              type="button"
+                              onClick={() => setFormData({ ...formData, monthly_days: option.value })}
+                              style={formData.monthly_days === option.value ? dayToggleActive : dayToggleInactive}
+                            >
+                              {option.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  <div style={{ flex: 1 }}>
+                    <label style={labelStyle}>Ημ. Πρόσληψης</label>
+                    <input
+                      type="date"
+                      value={formData.start_date}
+                      onChange={(e) => setFormData({ ...formData, start_date: e.target.value })}
+                      style={inputStyle}
+                    />
+                  </div>
+                </div>
+
+                <div style={{ marginTop: '16px' }}>
+                  <label style={labelStyle}>Τράπεζα Υπαλλήλου</label>
+                  <select value={formData.bank_name} onChange={(e) => setFormData({ ...formData, bank_name: e.target.value })} style={inputStyle}>
+                    <option value="Εθνική Τράπεζα">Εθνική Τράπεζα</option>
+                    <option value="Eurobank">Eurobank</option>
+                    <option value="Alpha Bank">Alpha Bank</option>
+                    <option value="Τράπεζα Πειραιώς">Τράπεζα Πειραιώς</option>
+                    <option value="Viva Wallet">Viva Wallet</option>
+                  </select>
+                </div>
+
+                <div style={{ marginTop: '16px' }}>
+                  <label style={labelStyle}>IBAN Υπαλλήλου</label>
+                  <input
+                    value={formData.iban}
+                    onChange={(e) => setFormData({ ...formData, iban: e.target.value.toUpperCase() })}
+                    placeholder="GR00 0000 0000..."
+                    style={inputStyle}
+                  />
+                </div>
+
+                <button onClick={handleSave} disabled={loading} style={{ ...saveBtnStyle, backgroundColor: isEditMode ? '#f59e0b' : colors.primaryDark }}>
+                  {loading ? 'ΓΙΝΕΤΑΙ ΑΠΟΘΗΚΕΥΣΗ...' : isEditMode ? 'ΕΝΗΜΕΡΩΣΗ ΣΤΟΙΧΕΙΩΝ' : 'ΑΠΟΘΗΚΕΥΣΗ'}
+                </button>
+              </div>
+            )}
+
+            {/* LIST */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '10px' }}>
+              {visibleEmployees.map((emp) => {
+                const yearlyStats = getYearlyStats(emp.id)
+                const isSelected = selectedEmpId === emp.id
+                const daysLeft = getDaysUntilPayment(emp.start_date)
+                const pendingOt = getPendingOtHours(emp.id)
+                const pendingOtItems = overtimes
+                  .filter((ot) => ot.employee_id === emp.id)
+                  .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+                const isInactive = emp.is_active === false
+
+                return (
+                  <div key={emp.id} style={{ ...employeeCard, opacity: isInactive ? 0.6 : 1 }}>
+                    <div
+                      onClick={() => setSelectedEmpId(isSelected ? null : emp.id)}
+                      style={{
+                        padding: '18px',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                      }}
+                    >
+                      <div style={{ flex: 1 }}>
+                        <p style={{ fontWeight: '700', color: colors.primaryDark, fontSize: '16px', margin: 0 }}>
+                          {String(emp.name || '').toUpperCase()}
+                        </p>
+
+                        <div style={{ marginTop: '6px', display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+                          <span
+                            style={{
+                              ...badgeStyle,
+                              backgroundColor: daysLeft === 0 || daysLeft === null ? '#fef2f2' : '#eff6ff',
+                              color: daysLeft === 0 || daysLeft === null ? colors.accentRed : colors.accentBlue,
+                            }}
+                          >
+                            {daysLeft === null ? 'ΟΡΙΣΕ ΗΜ. ΠΡΟΣΛΗΨΗΣ' : daysLeft === 0 ? 'ΣΗΜΕΡΑ 💰' : `ΣΕ ${daysLeft} ΗΜΕΡΕΣ 📅`}
+                          </span>
+
+                          {pendingOt > 0 && (
+                            <span style={{ ...badgeStyle, backgroundColor: '#fff7ed', color: '#c2410c' }}>⏱️ {pendingOt} ΩΡΕΣ</span>
+                          )}
+                          {isInactive && <span style={{ ...badgeStyle, backgroundColor: '#fef2f2', color: colors.accentRed }}>ΑΝΕΝΕΡΓΟΣ</span>}
+                        </div>
                       </div>
 
                       <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <span style={{ fontWeight: 900, color: '#b45309', fontSize: '12px' }}>
-                          {t.amount.toFixed(2)}€
-                        </span>
+                        {!isInactive && (
+                          <>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setOtModal({ empId: emp.id, name: emp.name })
+                              }}
+                              style={quickOtBtn}
+                            >
+                              + ⏱️
+                            </button>
 
-                        <button
-                          style={miniIconBtn}
-                          title="Επεξεργασία"
-                          onClick={() => {
-                            setTipEditModal({ id: t.id, name: t.name, amount: t.amount })
-                            setTipEditAmount(String(t.amount))
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setTipModal({ empId: emp.id, name: emp.name })
+                              }}
+                              style={quickTipBtn}
+                            >
+                              +💰 Tips
+                            </button>
+                          </>
+                        )}
+
+                        <Link
+                          href={`/pay-employee?id=${emp.id}&name=${encodeURIComponent(emp.name || '')}&store=${storeId}`}
+                          onClick={(e) => e.stopPropagation()}
+                          style={payBtnStyle}
+                        >
+                          ΠΛΗΡΩΜΗ
+                        </Link>
+                      </div>
+                    </div>
+
+                    {isSelected && (
+                      <div style={{ backgroundColor: '#ffffff', padding: '18px', borderTop: `1px solid ${colors.border}` }}>
+                        <div
+                          style={{
+                            marginBottom: '20px',
+                            padding: '12px',
+                            backgroundColor: colors.slate100,
+                            borderRadius: '12px',
+                            fontSize: '12px',
                           }}
                         >
-                          <Pencil size={16} />
-                        </button>
+                          <p style={{ margin: '0 0 5px 0', fontWeight: '800', color: colors.secondaryText }}>ΣΤΟΙΧΕΙΑ ΠΛΗΡΩΜΗΣ</p>
+                          <p style={{ margin: 0, fontWeight: '700' }}>🏦 {emp.bank_name || 'Δεν ορίστηκε'}</p>
+                          <p style={{ margin: '3px 0 0 0', fontWeight: '600', color: colors.accentBlue, fontSize: '11px' }}>
+                            {emp.iban || 'Δεν ορίστηκε IBAN'}
+                          </p>
+                          {pendingOt > 0 && (
+                            <p style={{ margin: '8px 0 0 0', fontWeight: '800', color: '#c2410c', fontSize: '11px' }}>
+                              ⚠️ ΕΚΚΡΕΜΟΥΝ: {pendingOt} ώρες υπερωρίας
+                            </p>
+                          )}
+                        </div>
 
-                        <button style={miniIconBtnDanger} title="Διαγραφή" onClick={() => deleteTipTransaction(t.id)}>
-                          <Trash2 size={16} />
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
+                        {pendingOtItems.length > 0 && (
+                          <div style={pendingOtListWrap}>
+                            <p style={{ margin: '0 0 8px 0', fontWeight: 900, fontSize: '10px', color: colors.secondaryText }}>ΕΚΚΡΕΜΕΙΣ ΥΠΕΡΩΡΙΕΣ</p>
+                            {pendingOtItems.map((ot) => (
+                              <div key={ot.id} style={pendingOtRow}>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                  <span style={{ fontWeight: 800, fontSize: '11px', color: '#c2410c' }}>{Number(ot.hours).toFixed(2)} ώρες</span>
+                                  <span style={{ fontSize: '10px', color: colors.secondaryText, fontWeight: 700 }}>
+                                    {new Date(ot.date).toLocaleDateString('el-GR')}
+                                  </span>
+                                </div>
 
-        {/* ADD + SHOW INACTIVE */}
-        <div style={{ display: 'flex', gap: '10px', marginBottom: '14px' }}>
-          <button
-            onClick={() => {
-              if (isAdding) resetForm()
-              setIsAdding(!isAdding)
-            }}
-            style={{ ...(isAdding ? cancelBtn : addBtn), marginBottom: 0, flex: 1 }}
-          >
-            {isAdding ? 'ΑΚΥΡΩΣΗ' : '+ ΝΕΟΣ ΥΠΑΛΛΗΛΟΣ'}
-          </button>
-
-          <button
-            onClick={() => setShowInactive((v) => !v)}
-            style={iconToggleBtn}
-            title={showInactive ? 'Απόκρυψη ανενεργών' : 'Εμφάνιση ανενεργών'}
-          >
-            {showInactive ? <EyeOff size={18} /> : <Eye size={18} />}
-          </button>
-        </div>
-
-        {/* FORM */}
-        {isAdding && (
-          <div
-            style={{
-              ...formCard,
-              borderColor: isEditMode ? '#f59e0b' : colors.primaryDark,
-              boxShadow: isEditMode ? '0 8px 18px rgba(245, 158, 11, 0.18)' : formCard.boxShadow,
-            }}
-          >
-            <label style={labelStyle}>Ονοματεπώνυμο *</label>
-            <input
-              value={formData.full_name}
-              onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
-              style={inputStyle}
-            />
-
-            <label style={{ ...labelStyle, marginTop: '16px' }}>Τύπος Συμφωνίας</label>
-            <div style={{ display: 'flex', gap: '10px', marginBottom: '16px' }}>
-              <button onClick={() => setPayBasis('monthly')} style={payBasis === 'monthly' ? activeToggle : inactiveToggle}>
-                ΜΗΝΙΑΙΟΣ
-              </button>
-              <button onClick={() => setPayBasis('daily')} style={payBasis === 'daily' ? activeToggle : inactiveToggle}>
-                ΗΜΕΡΟΜΙΣΘΙΟ
-              </button>
-            </div>
-
-            <div style={{ display: 'flex', gap: '12px', marginTop: '16px' }}>
-              {/* Salary/Daily + Monthly Days (if monthly) */}
-              <div style={{ display: 'flex', gap: '12px', flex: 1 }}>
-                <div style={{ flex: 1 }}>
-                  <label style={labelStyle}>{payBasis === 'monthly' ? 'Μισθός (€) *' : 'Ημερομίσθιο (€) *'}</label>
-                  <div style={amountInputWrap}>
-                    <input
-                      type="number"
-                      inputMode="decimal"
-                      value={payBasis === 'monthly' ? formData.monthly_salary : formData.daily_rate}
-                      onFocus={(e) => {
-                        setIsAmountFocused(true)
-                        if (e.target.value === '0')
-                          setFormData({ ...formData, [payBasis === 'monthly' ? 'monthly_salary' : 'daily_rate']: '' })
-                      }}
-                      onBlur={() => setIsAmountFocused(false)}
-                      onChange={(e) =>
-                        setFormData({
-                          ...formData,
-                          [payBasis === 'monthly' ? 'monthly_salary' : 'daily_rate']: e.target.value,
-                        })
-                      }
-                      style={{ ...amountInputStyle, ...(isAmountFocused ? amountInputFocusedStyle : null) }}
-                      placeholder="0"
-                    />
-                    <span style={euroAdornmentStyle}>€</span>
-                  </div>
-                </div>
-
-                {payBasis === 'monthly' && (
-                  <div style={{ flex: 1 }}>
-                    <label style={labelStyle}>Μέρες Μήνα</label>
-                    <div style={daysSelectorRow}>
-                      {monthlyDayOptions.map((option) => (
-                        <button
-                          key={option.value}
-                          type="button"
-                          onClick={() => setFormData({ ...formData, monthly_days: option.value })}
-                          style={formData.monthly_days === option.value ? dayToggleActive : dayToggleInactive}
-                        >
-                          {option.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <div style={{ flex: 1 }}>
-                <label style={labelStyle}>Ημ. Πρόσληψης</label>
-                <input
-                  type="date"
-                  value={formData.start_date}
-                  onChange={(e) => setFormData({ ...formData, start_date: e.target.value })}
-                  style={inputStyle}
-                />
-              </div>
-            </div>
-
-            <div style={{ marginTop: '16px' }}>
-              <label style={labelStyle}>Τράπεζα Υπαλλήλου</label>
-              <select
-                value={formData.bank_name}
-                onChange={(e) => setFormData({ ...formData, bank_name: e.target.value })}
-                style={inputStyle}
-              >
-                <option value="Εθνική Τράπεζα">Εθνική Τράπεζα</option>
-                <option value="Eurobank">Eurobank</option>
-                <option value="Alpha Bank">Alpha Bank</option>
-                <option value="Τράπεζα Πειραιώς">Τράπεζα Πειραιώς</option>
-                <option value="Viva Wallet">Viva Wallet</option>
-              </select>
-            </div>
-
-            <div style={{ marginTop: '16px' }}>
-              <label style={labelStyle}>IBAN Υπαλλήλου</label>
-              <input
-                value={formData.iban}
-                onChange={(e) => setFormData({ ...formData, iban: e.target.value.toUpperCase() })}
-                placeholder="GR00 0000 0000..."
-                style={inputStyle}
-              />
-            </div>
-
-            <button
-              onClick={handleSave}
-              disabled={loading}
-              style={{ ...saveBtnStyle, backgroundColor: isEditMode ? '#f59e0b' : colors.primaryDark }}
-            >
-              {loading ? 'ΓΙΝΕΤΑΙ ΑΠΟΘΗΚΕΥΣΗ...' : isEditMode ? 'ΕΝΗΜΕΡΩΣΗ ΣΤΟΙΧΕΙΩΝ' : 'ΑΠΟΘΗΚΕΥΣΗ'}
-            </button>
-          </div>
-        )}
-
-        {/* LIST */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '10px' }}>
-          {visibleEmployees.map((emp) => {
-            const yearlyStats = getYearlyStats(emp.id)
-            const isSelected = selectedEmpId === emp.id
-            const daysLeft = getDaysUntilPayment(emp.start_date)
-            const pendingOt = getPendingOtHours(emp.id)
-            const pendingOtItems = overtimes
-              .filter((ot) => ot.employee_id === emp.id)
-              .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-            const isInactive = emp.is_active === false
-
-            return (
-              <div key={emp.id} style={{ ...employeeCard, opacity: isInactive ? 0.6 : 1 }}>
-                <div
-                  onClick={() => setSelectedEmpId(isSelected ? null : emp.id)}
-                  style={{ padding: '18px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
-                >
-                  <div style={{ flex: 1 }}>
-                    <p style={{ fontWeight: '700', color: colors.primaryDark, fontSize: '16px', margin: 0 }}>
-                      {String(emp.name || '').toUpperCase()}
-                    </p>
-
-                    <div style={{ marginTop: '6px', display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
-                      <span
-                        style={{
-                          ...badgeStyle,
-                          backgroundColor: daysLeft === 0 || daysLeft === null ? '#fef2f2' : '#eff6ff',
-                          color: daysLeft === 0 || daysLeft === null ? colors.accentRed : colors.accentBlue,
-                        }}
-                      >
-                        {daysLeft === 0 ? 'ΣΗΜΕΡΑ 💰' : `ΣΕ ${daysLeft} ΗΜΕΡΕΣ 📅`}
-                      </span>
-
-                      {pendingOt > 0 && <span style={{ ...badgeStyle, backgroundColor: '#fff7ed', color: '#c2410c' }}>⏱️ {pendingOt} ΩΡΕΣ</span>}
-                      {isInactive && <span style={{ ...badgeStyle, backgroundColor: '#fef2f2', color: colors.accentRed }}>ΑΝΕΝΕΡΓΟΣ</span>}
-                    </div>
-                  </div>
-
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    {!isInactive && (
-                      <>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            setOtModal({ empId: emp.id, name: emp.name })
-                          }}
-                          style={quickOtBtn}
-                        >
-                          + ⏱️
-                        </button>
-
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            setTipModal({ empId: emp.id, name: emp.name })
-                          }}
-                          style={quickTipBtn}
-                        >
-                          +💰 Tips
-                        </button>
-                      </>
-                    )}
-
-                    <Link
-                      href={`/pay-employee?id=${emp.id}&name=${encodeURIComponent(emp.name || '')}&store=${storeId}`}
-                      onClick={(e) => e.stopPropagation()}
-                      style={payBtnStyle}
-                    >
-                      ΠΛΗΡΩΜΗ
-                    </Link>
-                  </div>
-                </div>
-
-                {isSelected && (
-                  <div style={{ backgroundColor: '#ffffff', padding: '18px', borderTop: `1px solid ${colors.border}` }}>
-                    <div style={{ marginBottom: '20px', padding: '12px', backgroundColor: colors.slate100, borderRadius: '12px', fontSize: '12px' }}>
-                      <p style={{ margin: '0 0 5px 0', fontWeight: '800', color: colors.secondaryText }}>ΣΤΟΙΧΕΙΑ ΠΛΗΡΩΜΗΣ</p>
-                      <p style={{ margin: 0, fontWeight: '700' }}>🏦 {emp.bank_name || 'Δεν ορίστηκε'}</p>
-                      <p style={{ margin: '3px 0 0 0', fontWeight: '600', color: colors.accentBlue, fontSize: '11px' }}>{emp.iban || 'Δεν ορίστηκε IBAN'}</p>
-                      {pendingOt > 0 && (
-                        <p style={{ margin: '8px 0 0 0', fontWeight: '800', color: '#c2410c', fontSize: '11px' }}>⚠️ ΕΚΚΡΕΜΟΥΝ: {pendingOt} ώρες υπερωρίας</p>
-                      )}
-                    </div>
-
-                    {pendingOtItems.length > 0 && (
-                      <div style={pendingOtListWrap}>
-                        <p style={{ margin: '0 0 8px 0', fontWeight: 900, fontSize: '10px', color: colors.secondaryText }}>
-                          ΕΚΚΡΕΜΕΙΣ ΥΠΕΡΩΡΙΕΣ
-                        </p>
-                        {pendingOtItems.map((ot) => (
-                          <div key={ot.id} style={pendingOtRow}>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                              <span style={{ fontWeight: 800, fontSize: '11px', color: '#c2410c' }}>{Number(ot.hours).toFixed(2)} ώρες</span>
-                              <span style={{ fontSize: '10px', color: colors.secondaryText, fontWeight: 700 }}>
-                                {new Date(ot.date).toLocaleDateString('el-GR')}
-                              </span>
-                            </div>
-
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                              <button
-                                style={miniIconBtnDanger}
-                                title="Διαγραφή υπερωρίας"
-                                onClick={() => deleteOvertime(ot.id)}
-                              >
-                                <Trash2 size={16} />
-                              </button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-
-                    <div style={filterContainer}>
-                      <label style={{ ...labelStyle, margin: 0, flex: 1, alignSelf: 'center' }}>ΕΤΗΣΙΑ ΑΝΑΛΥΣΗ</label>
-                      <select value={viewYear} onChange={(e) => setViewYear(parseInt(e.target.value))} style={filterSelect}>
-                        {availableYears.map((y) => (
-                          <option key={y} value={y}>
-                            {y}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div style={statsGrid}>
-                      <div style={statBox}>
-                        <p style={statLabel}>ΒΑΣΙΚΟΣ ({viewYear})</p>
-                        <p style={statValue}>{yearlyStats.base.toFixed(2)}€</p>
-                      </div>
-                      <div style={statBox}>
-                        <p style={statLabel}>BONUS ({viewYear})</p>
-                        <p style={statValue}>{yearlyStats.bonus.toFixed(2)}€</p>
-                      </div>
-                      <div style={statBox}>
-                        <p style={statLabel}>ΥΠΕΡΩΡΙΕΣ ({viewYear})</p>
-                        <p style={statValue}>{yearlyStats.overtime.toFixed(2)}€</p>
-                      </div>
-                      <div style={statBox}>
-                        <p style={statLabel}>TIPS ({viewYear})</p>
-                        <p style={statValue}>{yearlyStats.tips.toFixed(2)}€</p>
-                      </div>
-
-                      <div style={{ ...statBox, backgroundColor: colors.primaryDark }}>
-                        <p style={{ ...statLabel, color: '#94a3b8' }}>ΣΥΝΟΛΟ ΕΤΟΥΣ</p>
-                        <p style={{ ...statValue, color: colors.accentGreen }}>{yearlyStats.total.toFixed(2)}€</p>
-                      </div>
-                    </div>
-
-                    <p style={historyTitle}>ΙΣΤΟΡΙΚΟ ΠΛΗΡΩΜΩΝ {viewYear}</p>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '20px' }}>
-                      {transactions
-                        .filter((t) => t.fixed_asset_id === emp.id && new Date(t.date).getFullYear() === viewYear)
-                        .map((t) => {
-                          const note = String(t.notes || '')
-                          const isTip = /tips/i.test(note) || String(t.type || '') === 'tip_entry'
-                          const noteLabel = isTip ? note.split('[')[0]?.trim() || 'Tips' : note.split('[')[1]?.replace(']', '') || 'Πληρωμή'
-
-                          return (
-                            <div key={t.id} style={historyItemExtended}>
-                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <span style={{ color: colors.secondaryText, fontWeight: '700', fontSize: '11px' }}>
-                                  {new Date(t.date).toLocaleDateString('el-GR')}
-                                </span>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                  <span>{t.method === 'Τράπεζα' ? '🏦' : '💵'}</span>
-                                  <span style={{ fontWeight: '800', color: colors.primaryDark }}>{Number(t.amount).toFixed(2)}€</span>
-                                  <button onClick={() => deleteTransaction(t.id)} style={transDeleteBtn}>
-                                    🗑️
-                                  </button>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                  {isAdmin && (
+                                    <button style={miniIconBtnDanger} title="Διαγραφή υπερωρίας" onClick={() => deleteOvertime(ot.id)}>
+                                      <Trash2 size={16} />
+                                    </button>
+                                  )}
                                 </div>
                               </div>
+                            ))}
+                          </div>
+                        )}
 
-                              <p
-                                style={{
-                                  margin: '4px 0 0',
-                                  fontSize: '10px',
-                                  color: isTip ? '#b45309' : colors.secondaryText,
-                                  fontStyle: 'italic',
-                                  fontWeight: isTip ? 900 : 600,
-                                }}
-                              >
-                                {noteLabel}
-                              </p>
-                            </div>
-                          )
-                        })}
-                    </div>
+                        <div style={filterContainer}>
+                          <label style={{ ...labelStyle, margin: 0, flex: 1, alignSelf: 'center' }}>ΕΤΗΣΙΑ ΑΝΑΛΥΣΗ</label>
+                          <select value={viewYear} onChange={(e) => setViewYear(parseInt(e.target.value))} style={filterSelect}>
+                            {availableYears.map((y) => (
+                              <option key={y} value={y}>
+                                {y}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
 
-                    <div style={{ display: 'flex', gap: '10px' }}>
-                      <button
-                        onClick={() => {
-                          const nextPayBasis: PayBasis = (emp.pay_basis as PayBasis) || 'monthly'
-                          const monthlySalaryValue =
-                            nextPayBasis === 'monthly'
-                              ? emp.monthly_salary != null
-                                ? String(emp.monthly_salary)
-                                : ''
-                              : ''
-                          const dailyRateValue =
-                            nextPayBasis === 'daily'
-                              ? emp.daily_rate != null
-                                ? String(emp.daily_rate)
-                                : ''
-                              : ''
+                        <div style={statsGrid}>
+                          <div style={statBox}>
+                            <p style={statLabel}>ΒΑΣΙΚΟΣ ({viewYear})</p>
+                            <p style={statValue}>{yearlyStats.base.toFixed(2)}€</p>
+                          </div>
+                          <div style={statBox}>
+                            <p style={statLabel}>BONUS ({viewYear})</p>
+                            <p style={statValue}>{yearlyStats.bonus.toFixed(2)}€</p>
+                          </div>
+                          <div style={statBox}>
+                            <p style={statLabel}>ΥΠΕΡΩΡΙΕΣ ({viewYear})</p>
+                            <p style={statValue}>{yearlyStats.overtime.toFixed(2)}€</p>
+                          </div>
+                          <div style={statBox}>
+                            <p style={statLabel}>TIPS ({viewYear})</p>
+                            <p style={statValue}>{yearlyStats.tips.toFixed(2)}€</p>
+                          </div>
 
-                          setPayBasis(nextPayBasis)
-                          setFormData({
-                            full_name: emp.name || '',
-                            position: emp.position || '',
-                            amka: emp.amka || '',
-                            iban: emp.iban || '',
-                            bank_name: emp.bank_name || 'Εθνική Τράπεζα',
-                            monthly_salary: monthlySalaryValue,
-                            daily_rate: dailyRateValue,
-                            monthly_days: emp.monthly_days != null ? String(emp.monthly_days) : '25',
-                            start_date: emp.start_date || new Date().toISOString().split('T')[0],
-                          })
-                          setEditingId(emp.id)
-                          setIsAdding(true)
-                          window.scrollTo({ top: 0, behavior: 'smooth' })
-                        }}
-                        style={editBtn}
-                      >
-                        ΕΠΕΞΕΡΓΑΣΙΑ ✎
-                      </button>
+                          <div style={{ ...statBox, backgroundColor: colors.primaryDark }}>
+                            <p style={{ ...statLabel, color: '#94a3b8' }}>ΣΥΝΟΛΟ ΕΤΟΥΣ</p>
+                            <p style={{ ...statValue, color: colors.accentGreen }}>{yearlyStats.total.toFixed(2)}€</p>
+                          </div>
+                        </div>
 
-                      <button onClick={() => deleteEmployee(emp.id, emp.name)} style={deleteBtn}>
-                        ΔΙΑΓΡΑΦΗ 🗑️
-                      </button>
+                        <p style={historyTitle}>ΙΣΤΟΡΙΚΟ ΠΛΗΡΩΜΩΝ {viewYear}</p>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '20px' }}>
+                          {transactions
+                            .filter((t) => {
+                              if (t.fixed_asset_id !== emp.id) return false
+                              const d = parseTxDate(t)
+                              if (!d) return false
+                              return getBusinessYear(d) === viewYear
+                            })
+                            .map((t) => {
+                              const note = String(t.notes || '')
+                              const isTip = /tips/i.test(note) || String(t.type || '') === 'tip_entry'
+                              const noteLabel = isTip ? note.split('[')[0]?.trim() || 'Tips' : note.split('[')[1]?.replace(']', '') || 'Πληρωμή'
 
-                      <button
-                        onClick={() => toggleActive(emp.id, emp.is_active)}
-                        style={emp.is_active === false ? activateBtn : deactivateBtn}
-                        title={emp.is_active === false ? 'Ενεργοποίηση υπαλλήλου' : 'Απενεργοποίηση υπαλλήλου'}
-                      >
-                        {emp.is_active === false ? 'ΕΝΕΡΓΟΠΟΙΗΣΗ ✅' : 'ΑΠΕΝΕΡΓΟΠΙΗΣΗ 🚫'}
-                      </button>
-                    </div>
+                              const d = parseTxDate(t)
+                              const dateLabel = d ? formatBusinessDateShort(d) : new Date(t.date).toLocaleDateString('el-GR')
+
+                              return (
+                                <div key={t.id} style={historyItemExtended}>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <span style={{ color: colors.secondaryText, fontWeight: '700', fontSize: '11px' }}>{dateLabel}</span>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                      <span>{t.method === 'Τράπεζα' ? '🏦' : '💵'}</span>
+                                      <span style={{ fontWeight: '800', color: colors.primaryDark }}>{Number(t.amount).toFixed(2)}€</span>
+                                      {isAdmin && (
+                                        <button onClick={() => deleteTransaction(t.id)} style={transDeleteBtn}>
+                                          🗑️
+                                        </button>
+                                      )}
+                                    </div>
+                                  </div>
+
+                                  <p
+                                    style={{
+                                      margin: '4px 0 0',
+                                      fontSize: '10px',
+                                      color: isTip ? '#b45309' : colors.secondaryText,
+                                      fontStyle: 'italic',
+                                      fontWeight: isTip ? 900 : 600,
+                                    }}
+                                  >
+                                    {noteLabel}
+                                  </p>
+                                </div>
+                              )
+                            })}
+                        </div>
+
+                        <div style={{ display: 'flex', gap: '10px' }}>
+                          {isAdmin && (
+                            <button
+                              onClick={() => {
+                                const nextPayBasis: PayBasis = (emp.pay_basis as PayBasis) || 'monthly'
+                                const monthlySalaryValue =
+                                  nextPayBasis === 'monthly' ? (emp.monthly_salary != null ? String(emp.monthly_salary) : '') : ''
+                                const dailyRateValue =
+                                  nextPayBasis === 'daily' ? (emp.daily_rate != null ? String(emp.daily_rate) : '') : ''
+
+                                setPayBasis(nextPayBasis)
+                                setFormData({
+                                  full_name: emp.name || '',
+                                  position: emp.position || '',
+                                  amka: emp.amka || '',
+                                  iban: emp.iban || '',
+                                  bank_name: emp.bank_name || 'Εθνική Τράπεζα',
+                                  monthly_salary: monthlySalaryValue,
+                                  daily_rate: dailyRateValue,
+                                  monthly_days: emp.monthly_days != null ? String(emp.monthly_days) : '25',
+                                  start_date: emp.start_date || new Date().toISOString().split('T')[0],
+                                })
+                                setEditingId(emp.id)
+                                setIsAdding(true)
+                                setTimeout(() => formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50)
+                              }}
+                              style={editBtn}
+                            >
+                              ΕΠΕΞΕΡΓΑΣΙΑ ✎
+                            </button>
+                          )}
+
+                          {isAdmin && (
+                            <button onClick={() => deleteEmployee(emp.id, emp.name)} style={deleteBtn}>
+                              ΔΙΑΓΡΑΦΗ 🗑️
+                            </button>
+                          )}
+
+                          {isAdmin && (
+                            <button
+                              onClick={() => toggleActive(emp.id, emp.is_active)}
+                              style={emp.is_active === false ? activateBtn : deactivateBtn}
+                              title={emp.is_active === false ? 'Ενεργοποίηση υπαλλήλου' : 'Απενεργοποίηση υπαλλήλου'}
+                            >
+                              {emp.is_active === false ? 'ΕΝΕΡΓΟΠΟΙΗΣΗ ✅' : 'ΑΠΕΝΕΡΓΟΠΙΗΣΗ 🚫'}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
-            )
-          })}
-        </div>
+                )
+              })}
+            </div>
 
-        {loading && (
-          <p style={{ marginTop: '18px', fontSize: '12px', color: colors.secondaryText, fontWeight: 800, textAlign: 'center' }}>
-            Φόρτωση...
-          </p>
-        )}
-      </div>
-    </div>
+            {loading && (
+              <p style={{ marginTop: '18px', fontSize: '12px', color: colors.secondaryText, fontWeight: 800, textAlign: 'center' }}>
+                Φόρτωση...
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+    </PermissionGuard>
   )
 }
 
@@ -1497,22 +1641,118 @@ const statLabel: any = { margin: 0, fontSize: '8px', fontWeight: '800', color: c
 const statValue: any = { margin: '4px 0 0', fontSize: '16px', fontWeight: '900', color: colors.primaryDark }
 
 const historyTitle: any = { fontSize: '9px', fontWeight: '800', color: colors.secondaryText, marginBottom: '12px', textTransform: 'uppercase' }
-const historyItemExtended: any = { padding: '12px', borderRadius: '14px', border: `1px solid ${colors.border}`, backgroundColor: colors.bgLight, marginBottom: '8px' }
+const historyItemExtended: any = {
+  padding: '12px',
+  borderRadius: '14px',
+  border: `1px solid ${colors.border}`,
+  backgroundColor: colors.bgLight,
+  marginBottom: '8px',
+}
 const transDeleteBtn: any = { background: 'none', border: 'none', cursor: 'pointer', fontSize: '12px', opacity: 0.5 }
 
-const editBtn: any = { flex: 3, background: '#fffbeb', border: `1px solid #fef3c7`, padding: '12px', borderRadius: '10px', cursor: 'pointer', fontSize: '11px', fontWeight: '700', color: '#92400e' }
-const deleteBtn: any = { flex: 2, background: '#fef2f2', border: `1px solid #fee2e2`, padding: '12px', borderRadius: '10px', cursor: 'pointer', fontSize: '11px', fontWeight: '700', color: colors.accentRed }
+const editBtn: any = {
+  flex: 3,
+  background: '#fffbeb',
+  border: `1px solid #fef3c7`,
+  padding: '12px',
+  borderRadius: '10px',
+  cursor: 'pointer',
+  fontSize: '11px',
+  fontWeight: '700',
+  color: '#92400e',
+}
+const deleteBtn: any = {
+  flex: 2,
+  background: '#fef2f2',
+  border: `1px solid #fee2e2`,
+  padding: '12px',
+  borderRadius: '10px',
+  cursor: 'pointer',
+  fontSize: '11px',
+  fontWeight: '700',
+  color: colors.accentRed,
+}
 
-const deactivateBtn: any = { flex: 3, background: '#fef2f2', border: '1px solid #fecaca', padding: '12px', borderRadius: '10px', cursor: 'pointer', fontSize: '11px', fontWeight: '800', color: colors.accentRed }
-const activateBtn: any = { flex: 3, background: '#ecfdf5', border: '1px solid #bbf7d0', padding: '12px', borderRadius: '10px', cursor: 'pointer', fontSize: '11px', fontWeight: '800', color: colors.accentGreen }
+const deactivateBtn: any = {
+  flex: 3,
+  background: '#fef2f2',
+  border: '1px solid #fecaca',
+  padding: '12px',
+  borderRadius: '10px',
+  cursor: 'pointer',
+  fontSize: '11px',
+  fontWeight: '800',
+  color: colors.accentRed,
+}
+const activateBtn: any = {
+  flex: 3,
+  background: '#ecfdf5',
+  border: '1px solid #bbf7d0',
+  padding: '12px',
+  borderRadius: '10px',
+  cursor: 'pointer',
+  fontSize: '11px',
+  fontWeight: '800',
+  color: colors.accentGreen,
+}
 
-const activeToggle: any = { flex: 1, padding: '12px', backgroundColor: colors.primaryDark, color: 'white', border: 'none', borderRadius: '10px', fontWeight: 'bold', fontSize: '11px', cursor: 'pointer' }
-const inactiveToggle: any = { flex: 1, padding: '12px', backgroundColor: '#f1f5f9', color: colors.secondaryText, border: 'none', borderRadius: '10px', fontWeight: 'bold', fontSize: '11px', cursor: 'pointer' }
+const activeToggle: any = {
+  flex: 1,
+  padding: '12px',
+  backgroundColor: colors.primaryDark,
+  color: 'white',
+  border: 'none',
+  borderRadius: '10px',
+  fontWeight: 'bold',
+  fontSize: '11px',
+  cursor: 'pointer',
+}
+const inactiveToggle: any = {
+  flex: 1,
+  padding: '12px',
+  backgroundColor: '#f1f5f9',
+  color: colors.secondaryText,
+  border: 'none',
+  borderRadius: '10px',
+  fontWeight: 'bold',
+  fontSize: '11px',
+  cursor: 'pointer',
+}
 
-const quickOtBtn: any = { backgroundColor: '#fffbeb', color: '#92400e', border: '1px solid #fcd34d', padding: '10px 12px', borderRadius: '10px', fontSize: '11px', fontWeight: '800', cursor: 'pointer' }
-const quickTipBtn: any = { backgroundColor: '#ecfeff', color: '#0e7490', border: '1px solid #67e8f9', padding: '10px 12px', borderRadius: '10px', fontSize: '11px', fontWeight: '800', cursor: 'pointer' }
+const quickOtBtn: any = {
+  backgroundColor: '#fffbeb',
+  color: '#92400e',
+  border: '1px solid #fcd34d',
+  padding: '10px 12px',
+  borderRadius: '10px',
+  fontSize: '11px',
+  fontWeight: '800',
+  cursor: 'pointer',
+}
+const quickTipBtn: any = {
+  backgroundColor: '#ecfeff',
+  color: '#0e7490',
+  border: '1px solid #67e8f9',
+  padding: '10px 12px',
+  borderRadius: '10px',
+  fontSize: '11px',
+  fontWeight: '800',
+  cursor: 'pointer',
+}
 
-const modalOverlay: any = { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px' }
+const modalOverlay: any = {
+  position: 'fixed',
+  top: 0,
+  left: 0,
+  right: 0,
+  bottom: 0,
+  backgroundColor: 'rgba(0,0,0,0.6)',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  zIndex: 1000,
+  padding: '20px',
+}
 const modalCard: any = { backgroundColor: 'white', padding: '25px', borderRadius: '25px', width: '100%', maxWidth: '350px', textAlign: 'center' }
 const saveBtnSmall: any = { flex: 1, padding: '14px', backgroundColor: colors.primaryDark, color: 'white', border: 'none', borderRadius: '12px', fontWeight: '700' }
 const cancelBtnSmall: any = { flex: 1, padding: '14px', backgroundColor: 'white', color: colors.secondaryText, border: `1px solid ${colors.border}`, borderRadius: '12px', fontWeight: '700' }
@@ -1528,13 +1768,45 @@ const payNowBtnSmall: any = {
   cursor: 'pointer',
 }
 
-const iconToggleBtn: any = { width: '56px', borderRadius: '16px', border: `1px solid ${colors.border}`, backgroundColor: colors.white, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', boxShadow: '0 4px 12px rgba(0,0,0,0.04)' }
+const iconToggleBtn: any = {
+  width: '56px',
+  borderRadius: '16px',
+  border: `1px solid ${colors.border}`,
+  backgroundColor: colors.white,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  cursor: 'pointer',
+  boxShadow: '0 4px 12px rgba(0,0,0,0.04)',
+}
 
 const tipsListWrap: any = { backgroundColor: colors.white, border: `1px solid ${colors.border}`, borderRadius: '16px', padding: '14px', marginBottom: '18px' }
 const tipsListItem: any = { padding: '10px', borderRadius: '12px', border: `1px solid ${colors.border}`, backgroundColor: colors.bgLight }
 
-const miniIconBtn: any = { width: '34px', height: '34px', borderRadius: '10px', border: `1px solid ${colors.border}`, backgroundColor: '#ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: colors.primaryDark }
+const miniIconBtn: any = {
+  width: '34px',
+  height: '34px',
+  borderRadius: '10px',
+  border: `1px solid ${colors.border}`,
+  backgroundColor: '#ffffff',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  cursor: 'pointer',
+  color: colors.primaryDark,
+}
 const miniIconBtnDanger: any = { ...miniIconBtn, border: '1px solid #fecaca', backgroundColor: '#fef2f2', color: colors.accentRed }
+const readOnlyBannerStyle: any = {
+  marginBottom: '14px',
+  padding: '10px 12px',
+  borderRadius: '12px',
+  border: '1px solid #cbd5e1',
+  backgroundColor: '#f8fafc',
+  color: '#475569',
+  fontSize: '12px',
+  fontWeight: '800',
+  textAlign: 'center',
+}
 const pendingOtListWrap: any = { backgroundColor: '#fff7ed', border: '1px solid #fed7aa', borderRadius: '14px', padding: '12px', marginBottom: '16px' }
 const pendingOtRow: any = {
   display: 'flex',

@@ -10,6 +10,7 @@ import {
   ChevronLeft,
   Receipt,
   CreditCard,
+  Copy,
   Hash,
   Landmark,
   Calendar,
@@ -41,6 +42,21 @@ const isValidUUID = (id: any) => {
 
 const normalize = (v: any) => String(v ?? '').trim().toLowerCase()
 
+// ✅ BUSINESS DAY HELPERS (07:00 cutoff)
+const toBusinessDayDate = (d: Date) => {
+  const bd = new Date(d)
+  if (bd.getHours() < 7) bd.setDate(bd.getDate() - 1)
+  bd.setHours(12, 0, 0, 0)
+  return bd
+}
+
+const getBusinessDayKey = (d: Date) => {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
 function BalancesContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -53,6 +69,10 @@ function BalancesContent() {
 
   const [allTransactions, setAllTransactions] = useState<any[]>([])
   const [expandedId, setExpandedId] = useState<string | null>(null)
+
+  // ✅ YEAR SELECTOR (tab-aware)
+  const currentYear = new Date().getFullYear()
+  const [selectedYear, setSelectedYear] = useState<number>(currentYear)
 
   useEffect(() => {
     setSelectedEntityId('all')
@@ -75,26 +95,32 @@ function BalancesContent() {
       const isMaintenance = sub === 'maintenance' || cat === 'maintenance'
       const isUtility = sub === 'utility' || cat === 'utility'
 
-      if (isMaintenance) {
-        return { text: 'ΣΥΝΤΗΡΗΣΗ', bg: '#fef3c7', color: '#b45309' }
-      }
-      if (isUtility) {
-        return { text: 'ΛΟΓΑΡΙΑΣΜΟΣ', bg: '#f1f5f9', color: colors.secondaryText }
-      }
+      if (isMaintenance) return { text: 'ΣΥΝΤΗΡΗΣΗ', bg: '#fef3c7', color: '#b45309' }
+      if (isUtility) return { text: 'ΛΟΓΑΡΙΑΣΜΟΣ', bg: '#f1f5f9', color: colors.secondaryText }
 
       return { text: 'ΛΟΙΠΑ', bg: '#f1f5f9', color: colors.secondaryText }
     },
-    [viewMode]
+    [viewMode],
   )
 
   // -----------------------------
-  // DATE HELPERS
+  // DATE + YEAR HELPERS
   // -----------------------------
   const getTxDate = (t: any) => {
     if (!t) return null
     const raw = t.created_at || t.date
     const d = raw ? new Date(raw) : null
     return d && !isNaN(d.getTime()) ? d : null
+  }
+
+  const getTxYear = (t: any) => {
+    const d = getTxDate(t)
+    return d ? d.getFullYear() : null
+  }
+
+  const isTxInYear = (t: any, year: number) => {
+    const y = getTxYear(t)
+    return y === year
   }
 
   const formatTxDate = (d: Date | null) => {
@@ -108,19 +134,30 @@ function BalancesContent() {
     })
   }
 
+  // ✅ Uses BUSINESS DAY (07:00 cutoff)
   const daysAgoLabel = (d: Date | null) => {
     if (!d) return ''
     const now = new Date()
-    const diffMs = now.getTime() - d.getTime()
+
+    const bdNow = toBusinessDayDate(now)
+    const bdTx = toBusinessDayDate(d)
+
+    const nowKey = getBusinessDayKey(bdNow)
+    const txKey = getBusinessDayKey(bdTx)
+
+    if (txKey === nowKey) return 'Σήμερα'
+
+    const diffMs = bdNow.getTime() - bdTx.getTime()
     const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
-    if (diffDays <= 0) return 'Σήμερα'
+
     if (diffDays === 1) return 'Χθες'
+    if (diffDays < 0) return 'Μελλοντικό'
     return `${diffDays} μέρες πριν`
   }
 
-  const money = (n: any) => (Math.abs(Number(n) || 0)).toFixed(2)
+  const money = (n: any) => Math.abs(Number(n) || 0).toFixed(2)
 
-  // ✅ NEW: chip style by mode (income -> green, expenses -> blue)
+  // ✅ chip style by mode (income -> green, expenses -> blue)
   const amountChipStyle = (mode: ViewMode): any => {
     const isIncome = mode === 'income'
     return {
@@ -131,19 +168,67 @@ function BalancesContent() {
     }
   }
 
-  const getEntityTransactions = (entity: any, transactions: any[], mode: ViewMode) => {
+  // -----------------------------
+  // YEAR OPTIONS (TAB-AWARE)
+  // -----------------------------
+  const RECEIVED_TYPES = useMemo(() => ['debt_payment', 'debt_received', 'income_collection'], [])
+
+  const yearOptions = useMemo(() => {
+    const years = new Set<number>()
+
+    // Για UX: αν υπάρχει currentYear αλλά δεν υπάρχουν καθόλου κινήσεις, να φαίνεται μόνο το currentYear
+    // (αλλιώς θα βγει κενό dropdown)
+    let foundAny = false
+
+    for (const t of allTransactions) {
+      // Tab relevance:
+      const isIncome = viewMode === 'income'
+      const relevantForTab = isIncome ? !!t?.revenue_source_id : !!t?.supplier_id || !!t?.fixed_asset_id
+      if (!relevantForTab) continue
+
+      // Balances relevance (credit ή settlement):
+      const isCredit = t?.is_credit === true
+      const isSettlement = isIncome
+        ? RECEIVED_TYPES.includes(String(t?.type || ''))
+        : String(t?.type || '') === 'debt_payment'
+
+      if (!isCredit && !isSettlement) continue
+
+      const y = getTxYear(t)
+      if (y) {
+        years.add(y)
+        foundAny = true
+      }
+    }
+
+    if (!foundAny) years.add(currentYear)
+
+    return Array.from(years).sort((a, b) => b - a)
+  }, [allTransactions, viewMode, RECEIVED_TYPES, currentYear])
+
+  // ✅ Default selectedYear: currentYear if exists, else most recent
+  useEffect(() => {
+    if (!yearOptions.length) return
+    const next = yearOptions.includes(currentYear) ? currentYear : yearOptions[0]
+    setSelectedYear(next)
+  }, [viewMode, yearOptions, currentYear])
+
+  // -----------------------------
+  // ENTITY TRANSACTIONS (FILTERED BY YEAR)
+  // -----------------------------
+  const getEntityTransactions = (entity: any, transactions: any[], mode: ViewMode, year: number) => {
     const isIncome = mode === 'income'
 
-    const entityTrans = transactions.filter((t) => {
-      if (isIncome) return t.revenue_source_id === entity.id
-      return entity.entityType === 'supplier' ? t.supplier_id === entity.id : t.fixed_asset_id === entity.id
-    })
+    const entityTrans = transactions
+      .filter((t) => {
+        if (isIncome) return t.revenue_source_id === entity.id
+        return entity.entityType === 'supplier' ? t.supplier_id === entity.id : t.fixed_asset_id === entity.id
+      })
+      .filter((t) => isTxInYear(t, year)) // ✅ YEAR FILTER
 
     const creditTxs = entityTrans
       .filter((t) => t.is_credit === true)
       .sort((a, b) => (getTxDate(b)?.getTime() || 0) - (getTxDate(a)?.getTime() || 0))
-
-    const RECEIVED_TYPES = ['debt_payment', 'debt_received', 'income_collection']
 
     const settlementTxs = isIncome
       ? entityTrans
@@ -176,6 +261,9 @@ function BalancesContent() {
     }
   }
 
+  // -----------------------------
+  // FETCH + COMPUTE BALANCES (YEAR-AWARE)
+  // -----------------------------
   const fetchBalances = useCallback(async () => {
     if (!storeIdFromUrl || !isValidUUID(storeIdFromUrl)) {
       setLoading(false)
@@ -190,6 +278,8 @@ function BalancesContent() {
       const transactions = transRes.data || []
       setAllTransactions(transactions)
 
+      // NOTE: data calculation will happen below using selectedYear, so we compute again in an effect.
+      // We still load entities here for performance and stability.
       if (viewMode === 'expenses') {
         const [supsRes, assetsRes] = await Promise.all([
           supabase.from('suppliers').select('*').eq('store_id', storeIdFromUrl),
@@ -218,12 +308,15 @@ function BalancesContent() {
 
         const allEntities = [...suppliers, ...assets]
 
+        // compute balances with YEAR FILTER
+        const txYearFiltered = transactions.filter((t) => isTxInYear(t, selectedYear))
+
         const balanceList = allEntities
           .map((entity) => {
             const isSup = entity.entityType === 'supplier'
 
-            const entityTrans = transactions.filter((t) =>
-              isSup ? t.supplier_id === entity.id : t.fixed_asset_id === entity.id
+            const entityTrans = txYearFiltered.filter((t) =>
+              isSup ? t.supplier_id === entity.id : t.fixed_asset_id === entity.id,
             )
 
             const totalCredit = entityTrans
@@ -231,7 +324,7 @@ function BalancesContent() {
               .reduce((acc, t) => acc + Math.abs(Number(t.amount) || 0), 0)
 
             const totalPaid = entityTrans
-              .filter((t) => t.type === 'debt_payment')
+              .filter((t) => String(t.type || '') === 'debt_payment')
               .reduce((acc, t) => acc + Math.abs(Number(t.amount) || 0), 0)
 
             return { ...entity, balance: totalCredit - totalPaid }
@@ -248,11 +341,11 @@ function BalancesContent() {
 
       const revenueSources = (revRes.data || []).map((r) => ({ ...r, entityType: 'revenue' }))
 
-      const RECEIVED_TYPES = ['debt_payment', 'debt_received', 'income_collection']
+      const txYearFiltered = transactions.filter((t) => isTxInYear(t, selectedYear))
 
       const balanceList = revenueSources
         .map((src) => {
-          const srcTrans = transactions.filter((t) => t.revenue_source_id === src.id)
+          const srcTrans = txYearFiltered.filter((t) => t.revenue_source_id === src.id)
 
           const totalCredit = srcTrans
             .filter((t) => t.is_credit === true)
@@ -274,7 +367,7 @@ function BalancesContent() {
     } finally {
       setLoading(false)
     }
-  }, [storeIdFromUrl, viewMode])
+  }, [storeIdFromUrl, viewMode, selectedYear, RECEIVED_TYPES])
 
   useEffect(() => {
     if (!storeIdFromUrl || !isValidUUID(storeIdFromUrl)) {
@@ -284,6 +377,12 @@ function BalancesContent() {
     }
   }, [fetchBalances, storeIdFromUrl, router])
 
+  // όταν αλλάζει έτος, reset selection για να μην “κολλάει” σε entity που δεν έχει υπόλοιπο φέτος
+  useEffect(() => {
+    setSelectedEntityId('all')
+    setExpandedId(null)
+  }, [selectedYear])
+
   const filteredData = useMemo(() => {
     if (selectedEntityId === 'all') return data
     return data.filter((s) => s.id === selectedEntityId)
@@ -292,9 +391,7 @@ function BalancesContent() {
   const totalDisplay = filteredData.reduce((acc, s) => acc + (Number(s.balance) || 0), 0)
 
   const totalCardBg = viewMode === 'income' ? colors.accentGreen : colors.primaryDark
-  const totalLabel =
-    viewMode === 'income' ? 'ΣΥΝΟΛΙΚΟ ΑΝΟΙΧΤΟ ΥΠΟΛΟΙΠΟ ΕΣΟΔΩΝ' : 'ΣΥΝΟΛΙΚΟ ΑΝΟΙΧΤΟ ΥΠΟΛΟΙΠΟ ΕΞΟΔΩΝ'
-
+  const totalLabel = viewMode === 'income' ? 'ΣΥΝΟΛΙΚΟ ΑΝΟΙΧΤΟ ΥΠΟΛΟΙΠΟ ΕΣΟΔΩΝ' : 'ΣΥΝΟΛΙΚΟ ΑΝΟΙΧΤΟ ΥΠΟΛΟΙΠΟ ΕΞΟΔΩΝ'
   const selectTitle = viewMode === 'income' ? 'ΟΛΕΣ ΟΙ ΠΗΓΕΣ ΕΣΟΔΩΝ' : 'ΟΛΕΣ ΟΙ ΟΦΕΙΛΕΣ'
 
   return (
@@ -343,7 +440,19 @@ function BalancesContent() {
           </button>
         </div>
 
-        {/* SELECT FILTER (no Filter icon) */}
+        {/* ✅ YEAR SELECTOR (TAB-AWARE) */}
+        <div style={{ marginBottom: '18px' }}>
+          <label style={smallLabel}>ΕΤΟΣ</label>
+          <select value={String(selectedYear)} onChange={(e) => setSelectedYear(Number(e.target.value))} style={selectStyle}>
+            {yearOptions.map((y) => (
+              <option key={y} value={String(y)}>
+                {y}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* SELECT FILTER */}
         <div style={{ marginBottom: '18px' }}>
           <div style={{ position: 'relative' }}>
             <select value={selectedEntityId} onChange={(e) => setSelectedEntityId(e.target.value)} style={selectStyle}>
@@ -362,7 +471,7 @@ function BalancesContent() {
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, opacity: 0.95 }}>
             <Wallet size={14} color="#fff" />
             <p style={{ margin: 0, fontSize: '11px', fontWeight: '800', color: '#ffffff', letterSpacing: '1px' }}>
-              {totalLabel}
+              {totalLabel} ({selectedYear})
             </p>
           </div>
           <p style={{ margin: '8px 0 0 0', fontSize: '38px', fontWeight: '950', color: '#ffffff' }}>
@@ -388,7 +497,7 @@ function BalancesContent() {
               const actionBorder = isIncome ? `1px solid #a7f3d0` : `1px solid #dbeafe`
               const actionColor = isIncome ? '#065f46' : colors.accentBlue
 
-              const history = getEntityTransactions(s, allTransactions, viewMode)
+              const history = getEntityTransactions(s, allTransactions, viewMode, selectedYear)
 
               const summaryLine = history.latestCreditDate
                 ? `Τελευταία καταχώρηση: ${formatTxDate(history.latestCreditDate)} (${daysAgoLabel(history.latestCreditDate)})`
@@ -421,7 +530,30 @@ function BalancesContent() {
                         <div style={{ marginTop: '10px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
                           {s.rf_code && (
                             <div style={infoRow}>
-                              <Hash size={12} /> <span style={infoText}>RF: {s.rf_code}</span>
+                              <Hash size={12} />
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <span style={infoText}>RF: {s.rf_code}</span>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    navigator.clipboard.writeText(String(s.rf_code))
+                                    toast.success('Το RF αντιγράφηκε!')
+                                  }}
+                                  style={{
+                                    background: 'transparent',
+                                    border: 'none',
+                                    cursor: 'pointer',
+                                    color: '#64748b',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    padding: '4px',
+                                  }}
+                                  title="Αντιγραφή RF"
+                                >
+                                  <Copy size={14} />
+                                </button>
+                              </div>
                             </div>
                           )}
                           {s.bank_name && (
@@ -447,7 +579,7 @@ function BalancesContent() {
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                             <Calendar size={14} />
                             <span style={{ fontWeight: 950, fontSize: 12, letterSpacing: 0.2 }}>
-                              {viewMode === 'income' ? 'ΙΣΤΟΡΙΚΟ ΑΠΑΙΤΗΣΕΩΝ' : 'ΙΣΤΟΡΙΚΟ ΟΦΕΙΛΩΝ'}
+                              {viewMode === 'income' ? 'ΙΣΤΟΡΙΚΟ ΑΠΑΙΤΗΣΕΩΝ' : 'ΙΣΤΟΡΙΚΟ ΟΦΕΙΛΩΝ'} ({selectedYear})
                             </span>
                           </div>
 
@@ -459,23 +591,16 @@ function BalancesContent() {
                         <div style={miniSummaryRow}>
                           <div style={miniPill}>
                             <span style={miniPillLabel}>Πρώτη καταχώρηση</span>
-                            <span style={miniPillValue}>
-                              {history.oldestCreditDate ? formatTxDate(history.oldestCreditDate) : '—'}
-                            </span>
+                            <span style={miniPillValue}>{history.oldestCreditDate ? formatTxDate(history.oldestCreditDate) : '—'}</span>
                           </div>
 
                           <div style={miniPill}>
                             <span style={miniPillLabel}>Τελευταία καταχώρηση</span>
-                            <span style={miniPillValue}>
-                              {history.latestCreditDate ? formatTxDate(history.latestCreditDate) : '—'}
-                            </span>
+                            <span style={miniPillValue}>{history.latestCreditDate ? formatTxDate(history.latestCreditDate) : '—'}</span>
                           </div>
 
-                          {/* ✅ COLORED CHIP */}
                           <div style={miniPill}>
-                            <span style={miniPillLabel}>
-                              {viewMode === 'income' ? 'Τελευταία είσπραξη' : 'Τελευταία εξόφληση'}
-                            </span>
+                            <span style={miniPillLabel}>{viewMode === 'income' ? 'Τελευταία είσπραξη' : 'Τελευταία εξόφληση'}</span>
 
                             {history.latestSettlementDate ? (
                               <span style={{ ...miniPillValue, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
@@ -495,18 +620,13 @@ function BalancesContent() {
                           </div>
 
                           <div style={miniPill}>
-                            <span style={miniPillLabel}>
-                              {viewMode === 'income' ? 'Σύνολο εισπράξεων' : 'Σύνολο εξοφλήσεων'}
-                            </span>
+                            <span style={miniPillLabel}>{viewMode === 'income' ? 'Σύνολο εισπράξεων' : 'Σύνολο εξοφλήσεων'}</span>
                             <span style={miniPillValue}>{history.totalSettlementAmount.toFixed(2)}€</span>
                           </div>
                         </div>
 
-                        {/* υπόλοιπο αρχείο 그대로 */}
                         <div style={sectionTitle}>
-                          {viewMode === 'income'
-                            ? `Απαιτήσεις (${history.creditTxs.length})`
-                            : `Χρεώσεις (${history.creditTxs.length})`}
+                          {viewMode === 'income' ? `Απαιτήσεις (${history.creditTxs.length})` : `Χρεώσεις (${history.creditTxs.length})`}
                         </div>
 
                         {history.creditTxs.length === 0 ? (
@@ -536,16 +656,12 @@ function BalancesContent() {
                               )
                             })}
 
-                            {history.creditTxs.length > 12 && (
-                              <div style={rowMuted}>Δείχνω τις 12 πιο πρόσφατες καταχωρήσεις.</div>
-                            )}
+                            {history.creditTxs.length > 12 && <div style={rowMuted}>Δείχνω τις 12 πιο πρόσφατες καταχωρήσεις.</div>}
                           </div>
                         )}
 
                         <div style={{ ...sectionTitle, marginTop: 14 }}>
-                          {viewMode === 'income'
-                            ? `Εισπράξεις (${history.settlementTxs.length})`
-                            : `Εξοφλήσεις (${history.settlementTxs.length})`}
+                          {viewMode === 'income' ? `Εισπράξεις (${history.settlementTxs.length})` : `Εξοφλήσεις (${history.settlementTxs.length})`}
                         </div>
 
                         {history.settlementTxs.length === 0 ? (
@@ -577,9 +693,7 @@ function BalancesContent() {
                               )
                             })}
 
-                            {history.settlementTxs.length > 10 && (
-                              <div style={rowMuted}>Δείχνω τις 10 πιο πρόσφατες κινήσεις.</div>
-                            )}
+                            {history.settlementTxs.length > 10 && <div style={rowMuted}>Δείχνω τις 10 πιο πρόσφατες κινήσεις.</div>}
                           </div>
                         )}
                       </div>
@@ -598,7 +712,14 @@ function BalancesContent() {
                       minWidth: 120,
                     }}
                   >
-                    <p style={{ fontWeight: '950', fontSize: '18px', color: isIncome ? colors.accentGreen : colors.accentOrange, margin: 0 }}>
+                    <p
+                      style={{
+                        fontWeight: '950',
+                        fontSize: '18px',
+                        color: isIncome ? colors.accentGreen : colors.accentOrange,
+                        margin: 0,
+                      }}
+                    >
                       {(Number(s.balance) || 0).toFixed(2)}€
                     </p>
 
@@ -609,7 +730,7 @@ function BalancesContent() {
                           router.push(`/add-income?store=${storeIdFromUrl}&sourceId=${s.id}&mode=debt`)
                         } else {
                           router.push(
-                            `/add-expense?store=${storeIdFromUrl}&${s.entityType === 'supplier' ? 'supId' : 'assetId'}=${s.id}&mode=debt`
+                            `/add-expense?store=${storeIdFromUrl}&${s.entityType === 'supplier' ? 'supId' : 'assetId'}=${s.id}&mode=debt`,
                           )
                         }
                       }}
@@ -682,6 +803,14 @@ const switchBtn: any = {
   fontWeight: '950',
   fontSize: '12px',
   cursor: 'pointer',
+}
+
+const smallLabel: any = {
+  fontSize: 10,
+  fontWeight: 950,
+  color: colors.secondaryText,
+  marginBottom: 6,
+  letterSpacing: 0.8,
 }
 
 const totalCardStyle: any = {
@@ -812,7 +941,6 @@ const miniPillValue: any = {
   color: colors.primaryDark,
 }
 
-// base chip (overridden by amountChipStyle)
 const miniAmountChip: any = {
   fontSize: 10,
   fontWeight: 950,

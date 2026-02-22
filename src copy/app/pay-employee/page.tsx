@@ -83,6 +83,8 @@ function PayEmployeeContent() {
 
   async function handleFinalPayment() {
     if (totalPayable <= 0) return toast.error('Το ποσό πρέπει να είναι μεγαλύτερο από 0');
+    if (!storeId) return toast.error('Σφάλμα καταστήματος');
+    if (!empId) return toast.error('Σφάλμα υπαλλήλου');
     setLoading(true);
 
     try {

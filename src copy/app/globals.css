@@ -1,3 +1,15 @@
+/* Manage Lists search input: hide native browser search/cancel icons */
+.searchInputNoNativeIcons {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.searchInputNoNativeIcons::-webkit-search-decoration,
+.searchInputNoNativeIcons::-webkit-search-cancel-button,
+.searchInputNoNativeIcons::-webkit-search-results-button,
+.searchInputNoNativeIcons::-webkit-search-results-decoration {
+  display: none;
+}
 @import "tailwindcss";
 
 :root {

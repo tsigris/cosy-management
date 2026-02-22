@@ -14,10 +14,12 @@ import {
   Package,
   Trash2,
   Plus,
-  Search,
   Pencil,
+  Copy,
   XCircle,
   ChevronLeft,
+  ChevronDown,
+  ChevronUp,
   Building2,
   Hash,
   Phone,
@@ -25,30 +27,42 @@ import {
   Tag,
   TrendingUp,
   DollarSign,
+  Calendar,
+  X,
+  Clock3,
+  Landmark,
 } from 'lucide-react'
 
 const colors = {
-  primaryDark: '#0f172a',
+  primaryDark: '#1e293b',
   secondaryText: '#64748b',
-  accentGreen: '#10b981',
-  accentRed: '#f43f5e',
-  accentBlue: '#6366f1',
+  accentOrange: '#f97316',
   bgLight: '#f8fafc',
   border: '#e2e8f0',
   white: '#ffffff',
-  warning: '#fffbeb',
-  warningText: '#92400e',
+  accentBlue: '#2563eb',
+  accentRed: '#dc2626',
+  accentGreen: '#10b981',
 }
 
-const BANK_OPTIONS = [
-  'Εθνική Τράπεζα',
-  'Eurobank',
-  'Alpha Bank',
-  'Viva Wallet',
-  'Τράπεζα Πειραιώς',
-] as const
+const toBusinessDayDate = (d: Date) => {
+  const bd = new Date(d)
+  if (bd.getHours() < 7) bd.setDate(bd.getDate() - 1)
+  bd.setHours(12, 0, 0, 0)
+  return bd
+}
+
+const getBusinessDayKey = (d: Date) => {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+const BANK_OPTIONS = ['Εθνική Τράπεζα', 'Eurobank', 'Alpha Bank', 'Viva Wallet', 'Τράπεζα Πειραιώς'] as const
 
 type TabKey = 'suppliers' | 'utility' | 'staff' | 'maintenance' | 'other' | 'revenue'
+type PayBasis = 'monthly' | 'daily'
 
 const MENU: Array<{
   key: TabKey
@@ -64,8 +78,6 @@ const MENU: Array<{
   { key: 'maintenance', label: 'Συντήρηση', icon: Wrench, subCategory: 'Maintenance', addLabel: 'ΝΕΟΣ ΤΕΧΝΙΚΟΣ' },
   { key: 'other', label: 'Λοιπά', icon: Package, subCategory: 'other', addLabel: 'ΝΕΟ ΠΑΓΙΟ' },
 ]
-
-type PayBasis = 'monthly' | 'daily'
 
 function ManageListsContent() {
   const router = useRouter()
@@ -83,7 +95,9 @@ function ManageListsContent() {
   const [suppliers, setSuppliers] = useState<any[]>([])
   const [fixedAssets, setFixedAssets] = useState<any[]>([])
   const [revenueSources, setRevenueSources] = useState<any[]>([])
-  const [transactions, setTransactions] = useState<any[]>([]) // ✅ για τζίρους
+
+  // ✅ transactions για τζίρους (με type + date)
+  const [transactions, setTransactions] = useState<any[]>([])
 
   const [search, setSearch] = useState('')
 
@@ -109,11 +123,13 @@ function ManageListsContent() {
   // Utility
   const [rfCode, setRfCode] = useState<string>('')
 
-  const currentTab = useMemo(() => MENU.find(t => t.key === activeTab)!, [activeTab])
-
+  const currentTab = useMemo(() => MENU.find((t) => t.key === activeTab)!, [activeTab])
   const isRevenueTab = activeTab === 'revenue'
-  const saveColor = isRevenueTab ? colors.accentGreen : colors.accentGreen // (οι άλλες καρτέλες κρατάνε πράσινο ήδη)
-  const TrendingColor = isRevenueTab ? colors.accentGreen : colors.secondaryText
+
+  // ✅ Year selector (default: current year)
+  const currentYear = new Date().getFullYear()
+  const [selectedYear, setSelectedYear] = useState<number>(currentYear)
+  const RECEIVED_TYPES = useMemo(() => ['debt_payment', 'debt_received', 'income_collection'], [])
 
   const copyToClipboard = async (text: string) => {
     const value = String(text || '').trim()
@@ -157,39 +173,162 @@ function ManageListsContent() {
     setIsFormOpen(false)
   }, [])
 
-  // ✅ totals για ranking/ποσά
+  // -------------------- YEAR HELPERS --------------------
+  const getTxDate = (t: any) => {
+    if (!t) return null
+    // Προτεραιότητα στο ακριβές timestamp της βάσης
+    if (t.created_at) {
+      const d = new Date(t.created_at)
+      if (!isNaN(d.getTime())) return d
+    }
+    // Αν υπάρχει μόνο 'date' (π.χ. 2026-02-22), βάζουμε μεσημέρι για να μην πέσει στις 02:00 π.μ. λόγω UTC
+    if (t.date) {
+      const d = new Date(`${t.date}T12:00:00`)
+      if (!isNaN(d.getTime())) return d
+    }
+    return null
+  }
+
+  const getTxYear = (t: any) => {
+    const d = getTxDate(t)
+    return d ? d.getFullYear() : null
+  }
+
+  const isTxInYear = (t: any, year: number) => {
+    const y = getTxYear(t)
+    return y === year
+  }
+
+  const formatTxDate = (d: Date | null) => {
+    if (!d) return '—'
+    return d.toLocaleString('el-GR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    })
+  }
+
+  const daysAgoLabel = (d: Date | null) => {
+    if (!d) return ''
+    const now = new Date()
+
+    const bdNow = toBusinessDayDate(now)
+    const bdTx = toBusinessDayDate(d)
+
+    const nowKey = getBusinessDayKey(bdNow)
+    const txKey = getBusinessDayKey(bdTx)
+
+    if (txKey === nowKey) return 'Σήμερα'
+
+    const diffMs = bdNow.getTime() - bdTx.getTime()
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
+
+    if (diffDays === 1) return 'Χθες'
+    if (diffDays < 0) return 'Μελλοντικό'
+    return `${diffDays} μέρες πριν`
+  }
+
+  // ✅ Map fixed_asset_id -> sub_category (για να μη "λερώνει" τα totals άλλων tabs)
+  const fixedAssetSubMap = useMemo(() => {
+    const m = new Map<string, string>()
+    for (const a of fixedAssets) {
+      if (!a?.id) continue
+      m.set(String(a.id), String(a.sub_category || ''))
+    }
+    return m
+  }, [fixedAssets])
+
+  // -------------------- ✅ TURNOVER TX (filtered by TAB) --------------------
+  // ΠΡΟΜΗΘΕΥΤΕΣ: μετράμε ΜΟΝΟ type='expense' (πιάνει και επί πιστώσει τιμολόγια)
+  //             ΔΕΝ μετράει debt_payment γιατί ΔΕΝ είναι 'expense'
+  // FIXED ASSETS: μετράμε expense ΜΟΝΟ για το sub_category του ενεργού tab
+  // REVENUE: μετράμε ΜΟΝΟ income
+  const turnoverTx = useMemo(() => {
+    const tabSub = String(currentTab.subCategory || '')
+
+    return (transactions || []).filter((t: any) => {
+      const type = String(t?.type || '')
+
+      // suppliers
+      if (activeTab === 'suppliers') {
+        return !!t?.supplier_id && type === 'expense'
+      }
+
+      // revenue sources
+      if (activeTab === 'revenue') {
+        return !!t?.revenue_source_id && type === 'income'
+      }
+
+      // fixed assets tabs
+      if (!t?.fixed_asset_id) return false
+      if (type !== 'expense') return false
+
+      const sub = fixedAssetSubMap.get(String(t.fixed_asset_id)) || ''
+      // ✅ ΕΔΩ Η ΔΙΟΡΘΩΣΗ: μόνο το subCategory του tab
+      return sub === tabSub
+    })
+  }, [transactions, activeTab, currentTab.subCategory, fixedAssetSubMap])
+
+  // ✅ Year dropdown: μόνο έτη που υπάρχουν κινήσεις ΓΙΑ ΤΟ ΕΝΕΡΓΟ TAB
+  const yearOptions = useMemo(() => {
+    const years = new Set<number>()
+    for (const t of turnoverTx) {
+      const y = getTxYear(t)
+      if (y) years.add(y)
+    }
+    const arr = Array.from(years).sort((a, b) => b - a)
+
+    // αν δεν υπάρχει τίποτα, κρατάμε το τρέχον έτος για να μην σπάει το select
+    return arr.length ? arr : [currentYear]
+  }, [turnoverTx, currentYear])
+
+  // ✅ Default year: αν υπάρχει currentYear -> αυτό, αλλιώς το πιο πρόσφατο διαθέσιμο
+  useEffect(() => {
+    if (!yearOptions?.length) {
+      setSelectedYear(currentYear)
+      return
+    }
+    if (yearOptions.includes(currentYear)) setSelectedYear(currentYear)
+    else setSelectedYear(yearOptions[0])
+  }, [yearOptions, currentYear])
+
+  const turnoverTxYear = useMemo(() => turnoverTx.filter((t: any) => isTxInYear(t, selectedYear)), [turnoverTx, selectedYear])
+
+  // -------------------- TOTALS (based on turnoverTxYear ONLY) --------------------
   const supplierTotals = useMemo(() => {
     const totals: Record<string, number> = {}
-    transactions.forEach((t: any) => {
-      if (!t?.supplier_id) return
-      const amount = Math.abs(Number(t.amount)) || 0
+    for (const t of turnoverTxYear) {
+      if (!t?.supplier_id) continue
       const id = String(t.supplier_id)
+      const amount = Math.abs(Number(t.amount)) || 0
       totals[id] = (totals[id] || 0) + amount
-    })
+    }
     return totals
-  }, [transactions])
+  }, [turnoverTxYear])
 
   const fixedAssetTotals = useMemo(() => {
     const totals: Record<string, number> = {}
-    transactions.forEach((t: any) => {
-      if (!t?.fixed_asset_id) return
-      const amount = Math.abs(Number(t.amount)) || 0
+    for (const t of turnoverTxYear) {
+      if (!t?.fixed_asset_id) continue
       const id = String(t.fixed_asset_id)
+      const amount = Math.abs(Number(t.amount)) || 0
       totals[id] = (totals[id] || 0) + amount
-    })
+    }
     return totals
-  }, [transactions])
+  }, [turnoverTxYear])
 
   const revenueTotals = useMemo(() => {
     const totals: Record<string, number> = {}
-    transactions.forEach((t: any) => {
-      if (!t?.revenue_source_id) return
-      const amount = Math.abs(Number(t.amount)) || 0
+    for (const t of turnoverTxYear) {
+      if (!t?.revenue_source_id) continue
       const id = String(t.revenue_source_id)
+      const amount = Math.abs(Number(t.amount)) || 0
       totals[id] = (totals[id] || 0) + amount
-    })
+    }
     return totals
-  }, [transactions])
+  }, [turnoverTxYear])
 
   const getTurnover = useCallback(
     (id: string) => {
@@ -200,17 +339,40 @@ function ManageListsContent() {
     [activeTab, supplierTotals, fixedAssetTotals, revenueTotals],
   )
 
+  // ✅ HERO TOTAL (sum of totals for current tab)
+  const heroTotal = useMemo(() => {
+    const map =
+      activeTab === 'suppliers'
+        ? supplierTotals
+        : activeTab === 'revenue'
+          ? revenueTotals
+          : fixedAssetTotals
+
+    return Object.values(map).reduce((acc, n) => acc + (Number(n) || 0), 0)
+  }, [activeTab, supplierTotals, revenueTotals, fixedAssetTotals])
+
+  const heroTitle = useMemo(() => {
+    if (activeTab === 'suppliers') return 'ΣΥΝΟΛΟ ΤΖΙΡΟΥ ΠΡΟΜΗΘΕΥΤΩΝ'
+    if (activeTab === 'revenue') return 'ΣΥΝΟΛΟ ΤΖΙΡΟΥ ΠΗΓΩΝ ΕΣΟΔΩΝ'
+    if (activeTab === 'utility') return 'ΣΥΝΟΛΟ ΤΖΙΡΟΥ ΛΟΓΑΡΙΑΣΜΩΝ'
+    if (activeTab === 'staff') return 'ΣΥΝΟΛΟ ΤΖΙΡΟΥ ΠΡΟΣΩΠΙΚΟΥ'
+    if (activeTab === 'maintenance') return 'ΣΥΝΟΛΟ ΤΖΙΡΟΥ ΣΥΝΤΗΡΗΣΗΣ'
+    return 'ΣΥΝΟΛΟ ΤΖΙΡΟΥ ΛΟΙΠΩΝ'
+  }, [activeTab])
+
+  const heroHint = useMemo(() => {
+    if (activeTab === 'revenue') return 'Μετράει μόνο έσοδα (income).'
+    return 'Μετράει μόνο αγορές/έξοδα (expense). Δεν μετράει πληρωμές χρέους (debt_payment).'
+  }, [activeTab])
+
+  // -------------------- LIST --------------------
   const visibleItems = useMemo(() => {
     const q = search.trim().toLowerCase()
 
     let base: any[] = []
-    if (activeTab === 'suppliers') {
-      base = suppliers
-    } else if (activeTab === 'revenue') {
-      base = revenueSources
-    } else {
-      base = fixedAssets.filter((x: any) => (x.sub_category || '') === currentTab.subCategory)
-    }
+    if (activeTab === 'suppliers') base = suppliers
+    else if (activeTab === 'revenue') base = revenueSources
+    else base = fixedAssets.filter((x: any) => (x.sub_category || '') === currentTab.subCategory)
 
     const filtered = !q
       ? base
@@ -225,13 +387,10 @@ function ManageListsContent() {
         })
 
     // ✅ SORT by turnover desc
-    return [...filtered].sort((a: any, b: any) => {
-      const ta = getTurnover(String(a.id))
-      const tb = getTurnover(String(b.id))
-      return tb - ta
-    })
+    return [...filtered].sort((a: any, b: any) => getTurnover(String(b.id)) - getTurnover(String(a.id)))
   }, [activeTab, suppliers, revenueSources, fixedAssets, search, currentTab.subCategory, getTurnover])
 
+  // -------------------- LOAD DATA --------------------
   const loadData = useCallback(async () => {
     try {
       setLoading(true)
@@ -239,14 +398,13 @@ function ManageListsContent() {
       const {
         data: { session },
       } = await supabase.auth.getSession()
+
       if (!session) {
         setLoading(false)
         return router.push('/login')
       }
 
-      const activeStoreId =
-        urlStoreId || (typeof window !== 'undefined' ? localStorage.getItem('active_store_id') : null)
-
+      const activeStoreId = urlStoreId || (typeof window !== 'undefined' ? localStorage.getItem('active_store_id') : null)
       if (!activeStoreId) {
         setLoading(false)
         return toast.error('Δεν βρέθηκε κατάστημα (store)')
@@ -273,10 +431,11 @@ function ManageListsContent() {
           .select('id, name, phone, vat_number, bank_name, iban, is_active, created_at')
           .eq('store_id', activeStoreId)
           .order('name'),
-        // ✅ transactions για τζίρους (και revenue_source_id)
+
+        // ✅ IMPORTANT: include type + date/created_at for year filter + credit logic
         supabase
           .from('transactions')
-          .select('amount, supplier_id, fixed_asset_id, revenue_source_id')
+          .select('id, amount, supplier_id, fixed_asset_id, revenue_source_id, type, date, created_at, notes, is_credit')
           .eq('store_id', activeStoreId),
       ])
 
@@ -312,7 +471,6 @@ function ManageListsContent() {
     setExpandedId(String(item.id))
     setIsFormOpen(true)
 
-    // suppliers + revenue share same fields
     if (activeTab === 'suppliers' || activeTab === 'revenue') {
       setName(String(item.name || ''))
       setPhone(String(item.phone || ''))
@@ -344,7 +502,6 @@ function ManageListsContent() {
       setRfCode(String(item.rf_code || ''))
 
       if (sub === 'utility') {
-        setName(String(item.name || ''))
         setRfCode(String(item.rf_code || ''))
         setBankName(String(item.bank_name || ''))
       }
@@ -355,10 +512,7 @@ function ManageListsContent() {
 
   const handleSave = async () => {
     const activeStoreId =
-      urlStoreId ||
-      (typeof window !== 'undefined' ? localStorage.getItem('active_store_id') : null) ||
-      storeId
-
+      urlStoreId || (typeof window !== 'undefined' ? localStorage.getItem('active_store_id') : null) || storeId
     if (!activeStoreId) return toast.error('Δεν βρέθηκε κατάστημα (store)')
 
     try {
@@ -385,12 +539,11 @@ function ManageListsContent() {
             .eq('store_id', activeStoreId)
             .select('id, name, phone, vat_number, bank_name, iban, is_active, created_at')
             .single()
-
           if (error) throw error
 
-          setRevenueSources(prev =>
+          setRevenueSources((prev) =>
             prev
-              .map(x => (String(x.id) === String(editingId) ? data : x))
+              .map((x) => (String(x.id) === String(editingId) ? data : x))
               .sort((a, b) => String(a.name).localeCompare(String(b.name))),
           )
           toast.success('Ενημερώθηκε!')
@@ -400,10 +553,9 @@ function ManageListsContent() {
             .insert([{ ...payload, store_id: activeStoreId }])
             .select('id, name, phone, vat_number, bank_name, iban, is_active, created_at')
             .single()
-
           if (error) throw error
 
-          setRevenueSources(prev => [...prev, data].sort((a, b) => String(a.name).localeCompare(String(b.name))))
+          setRevenueSources((prev) => [...prev, data].sort((a, b) => String(a.name).localeCompare(String(b.name))))
           toast.success('Προστέθηκε!')
         }
 
@@ -433,12 +585,11 @@ function ManageListsContent() {
             .eq('store_id', activeStoreId)
             .select('id, name, phone, vat_number, bank_name, iban, is_active, created_at')
             .single()
-
           if (error) throw error
 
-          setSuppliers(prev =>
+          setSuppliers((prev) =>
             prev
-              .map(x => (String(x.id) === String(editingId) ? data : x))
+              .map((x) => (String(x.id) === String(editingId) ? data : x))
               .sort((a, b) => String(a.name).localeCompare(String(b.name))),
           )
           toast.success('Ενημερώθηκε!')
@@ -448,10 +599,9 @@ function ManageListsContent() {
             .insert([{ ...payload, store_id: activeStoreId }])
             .select('id, name, phone, vat_number, bank_name, iban, is_active, created_at')
             .single()
-
           if (error) throw error
 
-          setSuppliers(prev => [...prev, data].sort((a, b) => String(a.name).localeCompare(String(b.name))))
+          setSuppliers((prev) => [...prev, data].sort((a, b) => String(a.name).localeCompare(String(b.name))))
           toast.success('Προστέθηκε!')
         }
 
@@ -463,7 +613,7 @@ function ManageListsContent() {
       // -------------------- FIXED_ASSETS --------------------
       const subCategoryToSave = activeTab === 'maintenance' ? 'Maintenance' : currentTab.subCategory
 
-      // -------------------- UTILITY --------------------
+      // UTILITY
       if (activeTab === 'utility') {
         const trimmedName = name.trim()
         const trimmedRf = rfCode.trim()
@@ -495,12 +645,11 @@ function ManageListsContent() {
               'id, name, sub_category, phone, vat_number, bank_name, iban, monthly_days, monthly_salary, daily_rate, start_date, rf_code, pay_basis, created_at',
             )
             .single()
-
           if (error) throw error
 
-          setFixedAssets(prev =>
+          setFixedAssets((prev) =>
             prev
-              .map(x => (String(x.id) === String(editingId) ? data : x))
+              .map((x) => (String(x.id) === String(editingId) ? data : x))
               .sort((a, b) => String(a.name).localeCompare(String(b.name))),
           )
           toast.success('Ενημερώθηκε!')
@@ -512,10 +661,9 @@ function ManageListsContent() {
               'id, name, sub_category, phone, vat_number, bank_name, iban, monthly_days, monthly_salary, daily_rate, start_date, rf_code, pay_basis, created_at',
             )
             .single()
-
           if (error) throw error
 
-          setFixedAssets(prev => [...prev, data].sort((a, b) => String(a.name).localeCompare(String(b.name))))
+          setFixedAssets((prev) => [...prev, data].sort((a, b) => String(a.name).localeCompare(String(b.name))))
           toast.success('Προστέθηκε!')
         }
 
@@ -524,24 +672,19 @@ function ManageListsContent() {
         return
       }
 
-      // -------------------- STAFF --------------------
+      // STAFF
       if (activeTab === 'staff') {
         const trimmed = name.trim()
         if (!trimmed) return toast.error('Γράψε Ονοματεπώνυμο')
-
-        const md = monthlyDays.trim()
-        const sd = startDate.trim()
-        const mSalary = monthlySalary.trim()
-        const dRate = dailyRate.trim()
 
         const payload: any = {
           name: trimmed,
           bank_name: bankName || null,
           iban: iban.trim() || null,
-          monthly_days: md ? Number(md) : null,
-          monthly_salary: payBasis === 'monthly' && mSalary ? Number(mSalary) : null,
-          daily_rate: payBasis === 'daily' && dRate ? Number(dRate) : null,
-          start_date: sd || null,
+          monthly_days: monthlyDays.trim() ? Number(monthlyDays.trim()) : null,
+          monthly_salary: payBasis === 'monthly' && monthlySalary.trim() ? Number(monthlySalary.trim()) : null,
+          daily_rate: payBasis === 'daily' && dailyRate.trim() ? Number(dailyRate.trim()) : null,
+          start_date: startDate.trim() || null,
           pay_basis: payBasis,
 
           rf_code: null,
@@ -559,12 +702,11 @@ function ManageListsContent() {
               'id, name, sub_category, phone, vat_number, bank_name, iban, monthly_days, monthly_salary, daily_rate, start_date, rf_code, pay_basis, created_at',
             )
             .single()
-
           if (error) throw error
 
-          setFixedAssets(prev =>
+          setFixedAssets((prev) =>
             prev
-              .map(x => (String(x.id) === String(editingId) ? data : x))
+              .map((x) => (String(x.id) === String(editingId) ? data : x))
               .sort((a, b) => String(a.name).localeCompare(String(b.name))),
           )
           toast.success('Ενημερώθηκε!')
@@ -576,10 +718,9 @@ function ManageListsContent() {
               'id, name, sub_category, phone, vat_number, bank_name, iban, monthly_days, monthly_salary, daily_rate, start_date, rf_code, pay_basis, created_at',
             )
             .single()
-
           if (error) throw error
 
-          setFixedAssets(prev => [...prev, data].sort((a, b) => String(a.name).localeCompare(String(b.name))))
+          setFixedAssets((prev) => [...prev, data].sort((a, b) => String(a.name).localeCompare(String(b.name))))
           toast.success('Προστέθηκε!')
         }
 
@@ -588,7 +729,7 @@ function ManageListsContent() {
         return
       }
 
-      // -------------------- MAINTENANCE + OTHER --------------------
+      // MAINTENANCE + OTHER
       if (activeTab === 'maintenance' || activeTab === 'other') {
         const trimmed = name.trim()
         if (!trimmed) return toast.error('Γράψε όνομα')
@@ -618,12 +759,11 @@ function ManageListsContent() {
               'id, name, sub_category, phone, vat_number, bank_name, iban, monthly_days, monthly_salary, daily_rate, start_date, rf_code, pay_basis, created_at',
             )
             .single()
-
           if (error) throw error
 
-          setFixedAssets(prev =>
+          setFixedAssets((prev) =>
             prev
-              .map(x => (String(x.id) === String(editingId) ? data : x))
+              .map((x) => (String(x.id) === String(editingId) ? data : x))
               .sort((a, b) => String(a.name).localeCompare(String(b.name))),
           )
           toast.success('Ενημερώθηκε!')
@@ -635,10 +775,9 @@ function ManageListsContent() {
               'id, name, sub_category, phone, vat_number, bank_name, iban, monthly_days, monthly_salary, daily_rate, start_date, rf_code, pay_basis, created_at',
             )
             .single()
-
           if (error) throw error
 
-          setFixedAssets(prev => [...prev, data].sort((a, b) => String(a.name).localeCompare(String(b.name))))
+          setFixedAssets((prev) => [...prev, data].sort((a, b) => String(a.name).localeCompare(String(b.name))))
           toast.success('Προστέθηκε!')
         }
 
@@ -660,10 +799,7 @@ function ManageListsContent() {
     if (!ok) return
 
     const activeStoreId =
-      urlStoreId ||
-      (typeof window !== 'undefined' ? localStorage.getItem('active_store_id') : null) ||
-      storeId
-
+      urlStoreId || (typeof window !== 'undefined' ? localStorage.getItem('active_store_id') : null) || storeId
     if (!activeStoreId) return toast.error('Δεν βρέθηκε κατάστημα (store)')
 
     try {
@@ -672,15 +808,15 @@ function ManageListsContent() {
       if (activeTab === 'suppliers') {
         const { error } = await supabase.from('suppliers').delete().eq('id', id).eq('store_id', activeStoreId)
         if (error) throw error
-        setSuppliers(prev => prev.filter(x => String(x.id) !== String(id)))
+        setSuppliers((prev) => prev.filter((x) => String(x.id) !== String(id)))
       } else if (activeTab === 'revenue') {
         const { error } = await supabase.from('revenue_sources').delete().eq('id', id).eq('store_id', activeStoreId)
         if (error) throw error
-        setRevenueSources(prev => prev.filter(x => String(x.id) !== String(id)))
+        setRevenueSources((prev) => prev.filter((x) => String(x.id) !== String(id)))
       } else {
         const { error } = await supabase.from('fixed_assets').delete().eq('id', id).eq('store_id', activeStoreId)
         if (error) throw error
-        setFixedAssets(prev => prev.filter(x => String(x.id) !== String(id)))
+        setFixedAssets((prev) => prev.filter((x) => String(x.id) !== String(id)))
       }
 
       if (editingId && String(id) === String(editingId)) resetForm()
@@ -700,14 +836,72 @@ function ManageListsContent() {
     resetForm()
   }
 
-  // ---------------------- UI ----------------------
+  const getEntityTransactions = useCallback(
+    (item: any, txs: any[], year: number) => {
+      const isIncome = activeTab === 'revenue'
+
+      const entityTrans = txs
+        .filter((t: any) => {
+          if (activeTab === 'suppliers') return t.supplier_id === item.id
+          if (activeTab === 'revenue') return t.revenue_source_id === item.id
+          return t.fixed_asset_id === item.id
+        })
+        .filter((t: any) => isTxInYear(t, year))
+
+      const creditTxs = isIncome
+        ? entityTrans
+            .filter((t: any) => t.is_credit === true)
+            .sort((a: any, b: any) => (getTxDate(b)?.getTime() || 0) - (getTxDate(a)?.getTime() || 0))
+        : entityTrans
+            .filter((t: any) => String(t.type || '') === 'expense')
+            .sort((a: any, b: any) => (getTxDate(b)?.getTime() || 0) - (getTxDate(a)?.getTime() || 0))
+
+      const debtBaseCreditTxs = isIncome
+        ? creditTxs
+        : entityTrans
+            .filter((t: any) => String(t.type || '') === 'expense' && t.is_credit === true)
+            .sort((a: any, b: any) => (getTxDate(b)?.getTime() || 0) - (getTxDate(a)?.getTime() || 0))
+
+      const settlementTxs = isIncome
+        ? entityTrans
+            .filter((t: any) => RECEIVED_TYPES.includes(String(t.type || '')))
+            .sort((a: any, b: any) => (getTxDate(b)?.getTime() || 0) - (getTxDate(a)?.getTime() || 0))
+        : entityTrans
+            .filter((t: any) => String(t.type || '') === 'debt_payment')
+            .sort((a: any, b: any) => (getTxDate(b)?.getTime() || 0) - (getTxDate(a)?.getTime() || 0))
+
+      const latestCreditDate = creditTxs.length ? getTxDate(creditTxs[0]) : null
+      const oldestCreditDate = creditTxs.length ? getTxDate(creditTxs[creditTxs.length - 1]) : null
+
+      const totalCreditAmount = creditTxs.reduce((acc: number, t: any) => acc + Math.abs(Number(t.amount) || 0), 0)
+      const totalDebtBaseAmount = debtBaseCreditTxs.reduce((acc: number, t: any) => acc + Math.abs(Number(t.amount) || 0), 0)
+      const totalSettlementAmount = settlementTxs.reduce((acc: number, t: any) => acc + Math.abs(Number(t.amount) || 0), 0)
+      const latestSettlementDate = settlementTxs.length ? getTxDate(settlementTxs[0]) : null
+      const latestSettlementAmount = settlementTxs.length ? Math.abs(Number(settlementTxs[0]?.amount) || 0) : null
+
+      return {
+        creditTxs,
+        settlementTxs,
+        latestCreditDate,
+        oldestCreditDate,
+        latestSettlementDate,
+        latestSettlementAmount,
+        totalCreditAmount,
+        totalSettlementAmount,
+        balance: totalDebtBaseAmount - totalSettlementAmount,
+      }
+    },
+    [activeTab, RECEIVED_TYPES],
+  )
+
+  // ---------------------- UI FORMS ----------------------
   const renderSupplierLikeForm = () => (
     <div style={formCard}>
       <div style={inputGroup}>
         <label style={labelStyle}>
           <Hash size={12} /> ΕΠΩΝΥΜΙΑ
         </label>
-        <input value={name} onChange={e => setName(e.target.value)} style={inputStyle} placeholder="π.χ. COCA COLA" />
+        <input value={name} onChange={(e) => setName(e.target.value)} style={inputStyle} placeholder="π.χ. COCA COLA" />
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
@@ -715,13 +909,13 @@ function ManageListsContent() {
           <label style={labelStyle}>
             <Phone size={12} /> ΤΗΛΕΦΩΝΟ
           </label>
-          <input value={phone} onChange={e => setPhone(e.target.value)} style={inputStyle} />
+          <input value={phone} onChange={(e) => setPhone(e.target.value)} style={inputStyle} />
         </div>
         <div style={inputGroup}>
           <label style={labelStyle}>
             <Tag size={12} /> ΑΦΜ
           </label>
-          <input value={vatNumber} onChange={e => setVatNumber(e.target.value)} style={inputStyle} />
+          <input value={vatNumber} onChange={(e) => setVatNumber(e.target.value)} style={inputStyle} />
         </div>
       </div>
 
@@ -729,9 +923,9 @@ function ManageListsContent() {
         <label style={labelStyle}>
           <Building2 size={12} /> ΤΡΑΠΕΖΑ
         </label>
-        <select value={bankName} onChange={e => setBankName(e.target.value)} style={inputStyle}>
+        <select value={bankName} onChange={(e) => setBankName(e.target.value)} style={inputStyle}>
           <option value="">Επιλέξτε Τράπεζα...</option>
-          {BANK_OPTIONS.map(b => (
+          {BANK_OPTIONS.map((b) => (
             <option key={b} value={b}>
               {b}
             </option>
@@ -743,14 +937,10 @@ function ManageListsContent() {
         <label style={labelStyle}>
           <CreditCard size={12} /> IBAN
         </label>
-        <input value={iban} onChange={e => setIban(e.target.value)} style={inputStyle} placeholder="GR..." />
+        <input value={iban} onChange={(e) => setIban(e.target.value)} style={inputStyle} placeholder="GR..." />
       </div>
 
-      <button
-        onClick={handleSave}
-        disabled={saving || loading}
-        style={{ ...saveBtn, backgroundColor: isRevenueTab ? '#10b981' : colors.accentGreen }}
-      >
+      <button onClick={handleSave} disabled={saving || loading} style={{ ...saveBtn, backgroundColor: colors.accentGreen }}>
         {saving ? 'ΑΠΟΘΗΚΕΥΣΗ...' : editingId ? 'ΕΝΗΜΕΡΩΣΗ' : 'ΚΑΤΑΧΩΡΗΣΗ'}
       </button>
     </div>
@@ -758,7 +948,6 @@ function ManageListsContent() {
 
   const renderForm = () => {
     if (activeTab === 'suppliers') return renderSupplierLikeForm()
-
     if (activeTab === 'revenue') return renderSupplierLikeForm()
 
     if (activeTab === 'utility') {
@@ -768,23 +957,23 @@ function ManageListsContent() {
             <label style={labelStyle}>
               <Hash size={12} /> ΟΝΟΜΑ
             </label>
-            <input value={name} onChange={e => setName(e.target.value)} style={inputStyle} placeholder="π.χ. Ενοίκιο" />
+            <input value={name} onChange={(e) => setName(e.target.value)} style={inputStyle} placeholder="π.χ. Ενοίκιο" />
           </div>
 
           <div style={inputGroup}>
             <label style={labelStyle}>
               <Tag size={12} /> ΚΩΔΙΚΟΣ RF
             </label>
-            <input value={rfCode} onChange={e => setRfCode(e.target.value)} style={inputStyle} placeholder="RF..." />
+            <input value={rfCode} onChange={(e) => setRfCode(e.target.value)} style={inputStyle} placeholder="RF..." />
           </div>
 
           <div style={inputGroup}>
             <label style={labelStyle}>
               <Building2 size={12} /> ΤΡΑΠΕΖΑ
             </label>
-            <select value={bankName} onChange={e => setBankName(e.target.value)} style={inputStyle}>
+            <select value={bankName} onChange={(e) => setBankName(e.target.value)} style={inputStyle}>
               <option value="">Επιλέξτε Τράπεζα...</option>
-              {BANK_OPTIONS.map(b => (
+              {BANK_OPTIONS.map((b) => (
                 <option key={b} value={b}>
                   {b}
                 </option>
@@ -810,7 +999,12 @@ function ManageListsContent() {
             <label style={labelStyle}>
               <Hash size={12} /> ΟΝΟΜΑΤΕΠΩΝΥΜΟ
             </label>
-            <input value={name} onChange={e => setName(e.target.value)} style={inputStyle} placeholder="π.χ. Γιάννης Παπαδόπουλος" />
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              style={inputStyle}
+              placeholder="π.χ. Γιάννης Παπαδόπουλος"
+            />
           </div>
 
           <div style={inputGroup}>
@@ -846,21 +1040,15 @@ function ManageListsContent() {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
             <div style={inputGroup}>
               <label style={labelStyle}>{salaryLabel}</label>
-              <input
-                value={salaryValue}
-                onChange={e => setSalaryValue(e.target.value)}
-                style={inputStyle}
-                placeholder={payBasis === 'monthly' ? 'π.χ. 1200' : 'π.χ. 50'}
-                inputMode="decimal"
-              />
+              <input value={salaryValue} onChange={(e) => setSalaryValue(e.target.value)} style={inputStyle} inputMode="decimal" />
             </div>
             <div style={inputGroup}>
               <label style={labelStyle}>ΜΕΡΕΣ ΜΗΝΑ</label>
-              <input value={monthlyDays} onChange={e => setMonthlyDays(e.target.value)} style={inputStyle} placeholder="π.χ. 26" inputMode="numeric" />
+              <input value={monthlyDays} onChange={(e) => setMonthlyDays(e.target.value)} style={inputStyle} inputMode="numeric" />
             </div>
             <div style={inputGroup}>
               <label style={labelStyle}>ΗΜ. ΠΡΟΣΛΗΨΗΣ</label>
-              <input value={startDate} onChange={e => setStartDate(e.target.value)} style={inputStyle} type="date" />
+              <input value={startDate} onChange={(e) => setStartDate(e.target.value)} style={inputStyle} type="date" />
             </div>
           </div>
 
@@ -868,9 +1056,9 @@ function ManageListsContent() {
             <label style={labelStyle}>
               <Building2 size={12} /> ΤΡΑΠΕΖΑ
             </label>
-            <select value={bankName} onChange={e => setBankName(e.target.value)} style={inputStyle}>
+            <select value={bankName} onChange={(e) => setBankName(e.target.value)} style={inputStyle}>
               <option value="">Επιλέξτε Τράπεζα...</option>
-              {BANK_OPTIONS.map(b => (
+              {BANK_OPTIONS.map((b) => (
                 <option key={b} value={b}>
                   {b}
                 </option>
@@ -882,7 +1070,7 @@ function ManageListsContent() {
             <label style={labelStyle}>
               <CreditCard size={12} /> IBAN
             </label>
-            <input value={iban} onChange={e => setIban(e.target.value)} style={inputStyle} placeholder="GR..." />
+            <input value={iban} onChange={(e) => setIban(e.target.value)} style={inputStyle} placeholder="GR..." />
           </div>
 
           <button onClick={handleSave} disabled={saving || loading} style={saveBtn}>
@@ -892,14 +1080,14 @@ function ManageListsContent() {
       )
     }
 
-    // maintenance & other share same form
+    // maintenance & other
     return (
       <div style={formCard}>
         <div style={inputGroup}>
           <label style={labelStyle}>
             <Hash size={12} /> ΟΝΟΜΑ
           </label>
-          <input value={name} onChange={e => setName(e.target.value)} style={inputStyle} placeholder="π.χ. ΤΖΗΛΙΟΣ" />
+          <input value={name} onChange={(e) => setName(e.target.value)} style={inputStyle} placeholder="π.χ. ΤΖΗΛΙΟΣ" />
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
@@ -907,13 +1095,13 @@ function ManageListsContent() {
             <label style={labelStyle}>
               <Phone size={12} /> ΤΗΛΕΦΩΝΟ
             </label>
-            <input value={phone} onChange={e => setPhone(e.target.value)} style={inputStyle} />
+            <input value={phone} onChange={(e) => setPhone(e.target.value)} style={inputStyle} />
           </div>
           <div style={inputGroup}>
             <label style={labelStyle}>
               <Tag size={12} /> ΑΦΜ
             </label>
-            <input value={vatNumber} onChange={e => setVatNumber(e.target.value)} style={inputStyle} />
+            <input value={vatNumber} onChange={(e) => setVatNumber(e.target.value)} style={inputStyle} />
           </div>
         </div>
 
@@ -921,9 +1109,9 @@ function ManageListsContent() {
           <label style={labelStyle}>
             <Building2 size={12} /> ΤΡΑΠΕΖΑ
           </label>
-          <select value={bankName} onChange={e => setBankName(e.target.value)} style={inputStyle}>
+          <select value={bankName} onChange={(e) => setBankName(e.target.value)} style={inputStyle}>
             <option value="">Επιλέξτε Τράπεζα...</option>
-            {BANK_OPTIONS.map(b => (
+            {BANK_OPTIONS.map((b) => (
               <option key={b} value={b}>
                 {b}
               </option>
@@ -935,110 +1123,12 @@ function ManageListsContent() {
           <label style={labelStyle}>
             <CreditCard size={12} /> IBAN
           </label>
-          <input value={iban} onChange={e => setIban(e.target.value)} style={inputStyle} placeholder="GR..." />
+          <input value={iban} onChange={(e) => setIban(e.target.value)} style={inputStyle} placeholder="GR..." />
         </div>
 
         <button onClick={handleSave} disabled={saving || loading} style={saveBtn}>
           {saving ? 'ΑΠΟΘΗΚΕΥΣΗ...' : editingId ? 'ΕΝΗΜΕΡΩΣΗ' : 'ΚΑΤΑΧΩΡΗΣΗ'}
         </button>
-      </div>
-    )
-  }
-
-  const renderExpandedMeta = (item: any) => {
-    const ibanValue = String(item?.iban || '').trim()
-
-    const IbanLine = () => (
-      <p style={infoText}>
-        <strong>IBAN:</strong>{' '}
-        {ibanValue ? (
-          <span
-            onClick={() => copyToClipboard(ibanValue)}
-            style={{ fontWeight: 800, textDecoration: 'underline', cursor: 'pointer' }}
-            title="Πάτα για αντιγραφή"
-          >
-            {ibanValue}
-          </span>
-        ) : (
-          '-'
-        )}
-      </p>
-    )
-
-    if (activeTab === 'suppliers' || activeTab === 'revenue') {
-      return (
-        <div style={infoGrid}>
-          <p style={infoText}>
-            <strong>Τηλ:</strong> {item.phone || '-'}
-          </p>
-          <p style={infoText}>
-            <strong>ΑΦΜ:</strong> {item.vat_number || '-'}
-          </p>
-          <p style={infoText}>
-            <strong>Τράπεζα:</strong> {item.bank_name || '-'}
-          </p>
-          <IbanLine />
-        </div>
-      )
-    }
-
-    const sub = String(item.sub_category || '')
-    if (sub === 'utility') {
-      return (
-        <div style={infoGrid}>
-          <p style={infoText}>
-            <strong>RF:</strong> {item.rf_code || '-'}
-          </p>
-          <p style={infoText}>
-            <strong>Τράπεζα:</strong> {item.bank_name || '-'}
-          </p>
-          <p style={infoText}>
-            <strong>Κατηγορία:</strong> Λογαριασμοί
-          </p>
-        </div>
-      )
-    }
-
-    if (sub === 'staff') {
-      const pb = item.pay_basis === 'daily' ? 'ΗΜΕΡΟΜΙΣΘΙΟ' : 'ΜΗΝΙΑΙΟΣ'
-      const amount = item.pay_basis === 'daily' ? item.daily_rate ?? '-' : item.monthly_salary ?? '-'
-      return (
-        <div style={infoGrid}>
-          <p style={infoText}>
-            <strong>Συμφωνία:</strong> {pb}
-          </p>
-          <p style={infoText}>
-            <strong>Ποσό:</strong> {String(amount)}
-          </p>
-          <p style={infoText}>
-            <strong>Μέρες:</strong> {String(item.monthly_days ?? '-')}
-          </p>
-          <p style={infoText}>
-            <strong>Ημ. πρόσληψης:</strong> {item.start_date ? String(item.start_date).slice(0, 10) : '-'}
-          </p>
-          <p style={infoText}>
-            <strong>Τράπεζα:</strong> {item.bank_name || '-'}
-          </p>
-          <IbanLine />
-        </div>
-      )
-    }
-
-    return (
-      <div style={infoGrid}>
-        <p style={infoText}>
-          <strong>Τηλ:</strong> {item.phone || '-'}
-        </p>
-        <p style={infoText}>
-          <strong>ΑΦΜ:</strong> {item.vat_number || '-'}
-        </p>
-        <p style={infoText}>
-          <strong>Τράπεζα:</strong> {item.bank_name || '-'}
-        </p>
-        <IbanLine />
-        <p style={infoText}>
-          <strong>Κατηγορία:</strong> {sub === 'Maintenance' ? 'Συντήρηση' : sub || '-'}
-        </p>
       </div>
     )
   }
@@ -1049,7 +1139,7 @@ function ManageListsContent() {
       <div style={contentWrapper}>
         <header style={headerStyle}>
           <div>
-            <h1 style={titleStyle}>Manage Lists</h1>
+            <h1 style={titleStyle}>Μητρώο & Συνεργάτες</h1>
             <p style={subtitleStyle}>
               ΚΑΤΑΣΤΗΜΑ: <span style={{ color: colors.accentBlue }}>{currentStoreName.toUpperCase()}</span>
             </p>
@@ -1059,11 +1149,35 @@ function ManageListsContent() {
           </Link>
         </header>
 
+        {/* ✅ HERO CARD */}
+        <div style={heroCard}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <div style={heroKicker}>{heroTitle}</div>
+              <div style={heroValue}>
+                {heroTotal.toLocaleString('el-GR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}€
+              </div>
+              <div style={heroHintStyle}>{heroHint}</div>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'flex-end' }}>
+              <div style={heroYearLabel}>ΕΤΟΣ</div>
+              <select value={String(selectedYear)} onChange={(e) => setSelectedYear(Number(e.target.value))} style={heroSelect}>
+                {yearOptions.map((y) => (
+                  <option key={y} value={String(y)}>
+                    {y}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        </div>
+
         {/* ✅ DROPDOWN MENU */}
         <div style={{ marginBottom: 14 }}>
           <label style={labelStyle}>ΚΑΤΗΓΟΡΙΑ</label>
-          <select value={activeTab} onChange={e => onChangeCategory(e.target.value as TabKey)} style={inputStyle}>
-            {MENU.map(m => (
+          <select value={activeTab} onChange={(e) => onChangeCategory(e.target.value as TabKey)} style={inputStyle}>
+            {MENU.map((m) => (
               <option key={m.key} value={m.key}>
                 {m.label}
               </option>
@@ -1099,40 +1213,26 @@ function ManageListsContent() {
           </>
         )}
 
-        {/* ✅ SEARCH (fixed icon overlap) */}
+        {/* ✅ SEARCH */}
         <div style={{ marginBottom: 14 }}>
           <label style={labelStyle}>ΑΝΑΖΗΤΗΣΗ</label>
           <div style={{ position: 'relative' }}>
-            <Search
-              size={16}
-              style={{
-                position: 'absolute',
-                left: 16,
-                top: '50%',
-                transform: 'translateY(-50%)',
-                color: colors.secondaryText,
-                pointerEvents: 'none',
-                opacity: 0.85,
-              }}
-            />
             <input
+              type="text"
+              className="searchInputNoNativeIcons"
               value={search}
-              onChange={e => setSearch(e.target.value)}
-              placeholder={
-                activeTab === 'suppliers' || activeTab === 'revenue'
-                  ? 'Όνομα / ΑΦΜ / Τηλέφωνο...'
-                  : 'Γράψτε για αναζήτηση...'
-              }
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder={activeTab === 'suppliers' || activeTab === 'revenue' ? 'Όνομα / ΑΦΜ / Τηλέφωνο...' : 'Γράψτε για αναζήτηση...'}
               style={{ ...inputStyle, paddingLeft: 52 }}
             />
           </div>
         </div>
 
-        {/* ✅ LIST (ranking by turnover + amount shown) */}
+        {/* ✅ LIST */}
         <div style={listArea}>
           <div style={rankingHeader}>
-            <TrendingUp size={14} style={{ color: TrendingColor }} />
-            ΚΑΤΑΤΑΞΗ ΒΑΣΕΙ ΤΖΙΡΟΥ: {currentTab.label.toUpperCase()}
+            <TrendingUp size={14} style={{ color: colors.secondaryText }} />
+            ΚΑΤΑΤΑΞΗ ΒΑΣΕΙ ΤΖΙΡΟΥ ({selectedYear}): {currentTab.label.toUpperCase()}
           </div>
 
           {loading ? (
@@ -1142,33 +1242,80 @@ function ManageListsContent() {
           ) : (
             visibleItems.map((item: any, idx: number) => {
               const isEditingThis = editingId && String(editingId) === String(item.id)
-              const turnover = getTurnover(String(item.id))
+              const isExpanded = expandedId === String(item.id)
+              const history = getEntityTransactions(item, transactions, selectedYear)
+              const isIncome = activeTab === 'revenue'
+              const storeForActions = urlStoreId || storeId || ''
+              const debtHref = isIncome
+                ? `/add-income?store=${storeForActions}&sourceId=${item.id}&mode=debt`
+                : `/add-expense?store=${storeForActions}&${activeTab === 'suppliers' ? 'supId' : 'assetId'}=${item.id}&mode=debt`
+              const showDebtAction = history.balance > 0.1 && !!storeForActions
+              const debtActionLabel = isIncome ? 'ΕΙΣΠΡΑΞΗ' : 'ΕΞΟΦΛΗΣΗ'
+              const cardMainAmount = isIncome ? history.balance : history.totalCreditAmount
+
+              const rfValue = String(item?.rf_code || '').trim()
+              const ibanValue = String(item?.iban || '').trim()
+
+              const summaryLine = history.latestCreditDate
+                ? `Τελευταία καταχώρηση: ${formatTxDate(history.latestCreditDate)} (${daysAgoLabel(history.latestCreditDate)})`
+                : '—'
 
               return (
-                <div key={item.id} style={{ borderBottom: `1px solid ${colors.border}` }}>
-                  <div
-                    style={rowWrapper}
-                    onClick={() => setExpandedId(expandedId === String(item.id) ? null : String(item.id))}
-                  >
+                <div
+                  key={item.id}
+                  style={{
+                    ...supplierCardStyle,
+                    border: isExpanded ? `1px solid ${colors.accentBlue}` : `1px solid ${colors.border}`,
+                    boxShadow: isExpanded ? '0 14px 40px rgba(15, 23, 42, 0.10)' : '0 6px 18px rgba(15, 23, 42, 0.06)',
+                    margin: '10px',
+                    cursor: 'pointer',
+                  }}
+                  onClick={() => setExpandedId(isExpanded ? null : String(item.id))}
+                >
+                  <div style={rowWrapper}>
                     <div style={rankNumber}>{idx + 1}</div>
 
-                    <div style={{ flex: 1 }}>
-                      <p style={rowName}>{String(item.name || '').toUpperCase()}</p>
-                      <p style={categoryBadge}>
-                        {activeTab === 'suppliers' || activeTab === 'revenue'
-                          ? item.bank_name
-                            ? `ΤΡΑΠΕΖΑ: ${item.bank_name}`
-                            : '—'
-                          : String(item.sub_category || '') === 'Maintenance'
-                            ? 'ΣΥΝΤΗΡΗΣΗ'
-                            : String(item.sub_category || '').toUpperCase() || '—'}
-                      </p>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                        <p style={rowName}>{String(item.name || '').toUpperCase()}</p>
+                        <span style={categoryBadge}>
+                          {activeTab === 'revenue'
+                            ? 'ΑΠΑΙΤΗΣΗ'
+                            : activeTab === 'suppliers'
+                              ? 'ΕΜΠΟΡΕΥΜΑΤΑ'
+                              : String(item.sub_category || '') === 'Maintenance'
+                                ? 'ΣΥΝΤΗΡΗΣΗ'
+                                : activeTab === 'utility'
+                                  ? 'ΛΟΓΑΡΙΑΣΜΟΣ'
+                                  : 'ΛΟΙΠΑ'}
+                        </span>
+                      </div>
+                      <div style={{ ...infoRow, marginTop: 6 }}>
+                        <Clock3 size={12} />
+                        <span style={infoText}>{summaryLine}</span>
+                      </div>
                     </div>
 
-                    <div style={{ textAlign: 'right' }}>
-                      <p style={{ ...turnoverText, color: isRevenueTab ? '#10b981' : colors.accentGreen }}>
-                        {turnover.toFixed(2)}€
-                      </p>
+                    <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <p style={{ ...turnoverText, color: colors.accentOrange }}>{cardMainAmount.toFixed(2)}€</p>
+                        {isExpanded ? <ChevronUp size={18} color={colors.secondaryText} /> : <ChevronDown size={18} color={colors.secondaryText} />}
+                      </div>
+
+                      {showDebtAction && (
+                        <Link
+                          href={debtHref}
+                          onClick={(e) => e.stopPropagation()}
+                          style={{
+                            ...debtActionCompactBtn,
+                            backgroundColor: isIncome ? '#ecfdf5' : '#eff6ff',
+                            color: isIncome ? colors.accentGreen : colors.accentBlue,
+                            borderColor: isIncome ? '#bbf7d0' : '#bfdbfe',
+                          }}
+                        >
+                          <CreditCard size={13} /> {debtActionLabel}
+                        </Link>
+                      )}
                     </div>
 
                     {isEditingThis && (
@@ -1178,15 +1325,162 @@ function ManageListsContent() {
                     )}
                   </div>
 
-                  {expandedId === String(item.id) && (
-                    <div style={actionPanel}>
-                      {renderExpandedMeta(item)}
+                  {isExpanded && (
+                    <div style={detailsWrap} onClick={(e) => e.stopPropagation()}>
+                      <div style={detailsHeader}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <Calendar size={14} />
+                          <span style={{ fontWeight: 950, fontSize: 12, letterSpacing: 0.2 }}>ΙΣΤΟΡΙΚΟ ΟΦΕΙΛΩΝ ({selectedYear})</span>
+                        </div>
+                        <button style={closeMiniBtn} onClick={() => setExpandedId(null)} title="Κλείσιμο">
+                          <X size={14} />
+                        </button>
+                      </div>
+
+                      <div style={miniSummaryRow}>
+                        <div style={rfIbanRow}>
+                          <span style={rfIbanLabel}>RF:</span>
+                          <span style={rfIbanValue}>{rfValue || '—'}</span>
+                          {rfValue ? (
+                            <button type="button" style={copyCodeBtn} onClick={() => copyToClipboard(rfValue)}>
+                              <Copy size={14} />
+                            </button>
+                          ) : null}
+                        </div>
+
+                        <div style={rfIbanRow}>
+                          <span style={rfIbanLabel}>IBAN:</span>
+                          <span style={rfIbanValue}>{ibanValue || '—'}</span>
+                          {ibanValue ? (
+                            <button type="button" style={copyCodeBtn} onClick={() => copyToClipboard(ibanValue)}>
+                              <Copy size={14} />
+                            </button>
+                          ) : null}
+                        </div>
+                      </div>
+
+                      <div style={miniSummaryRow}>
+                        <div style={miniPill}>
+                          <span style={miniPillLabel}>Πρώτη καταχώρηση</span>
+                          <span style={miniPillValue}>{history.oldestCreditDate ? formatTxDate(history.oldestCreditDate) : '—'}</span>
+                        </div>
+
+                        <div style={miniPill}>
+                          <span style={miniPillLabel}>Τελευταία καταχώρηση</span>
+                          <span style={miniPillValue}>{history.latestCreditDate ? formatTxDate(history.latestCreditDate) : '—'}</span>
+                        </div>
+
+                        <div style={miniPill}>
+                          <span style={miniPillLabel}>{isIncome ? 'Τελευταία είσπραξη' : 'Τελευταία εξόφληση'}</span>
+                          {history.latestSettlementDate ? (
+                            <span style={{ ...miniPillValue, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                              <span>
+                                {formatTxDate(history.latestSettlementDate)} ({daysAgoLabel(history.latestSettlementDate)})
+                              </span>
+                              <span style={miniAmountChip}>{(Number(history.latestSettlementAmount) || 0).toFixed(2)}€</span>
+                            </span>
+                          ) : (
+                            <span style={miniPillValue}>—</span>
+                          )}
+                        </div>
+
+                        <div style={miniPill}>
+                          <span style={miniPillLabel}>{isIncome ? 'Σύνολο απαιτήσεων' : 'Σύνολο χρεώσεων'}</span>
+                          <span style={miniPillValue}>{history.totalCreditAmount.toFixed(2)}€</span>
+                        </div>
+
+                        <div style={miniPill}>
+                          <span style={miniPillLabel}>Τρέχον υπόλοιπο</span>
+                          <span style={miniPillValue}>{history.balance.toFixed(2)}€</span>
+                        </div>
+                      </div>
+
+                      <div style={rfIbanWrap}>
+                        {item.bank_name && (
+                          <div style={{ ...rfIbanRow, justifyContent: 'flex-start', gap: 8 }}>
+                            <Landmark size={12} color={colors.secondaryText} />
+                            <span style={{ ...infoText, fontWeight: 900 }}>{String(item.bank_name).toUpperCase()}</span>
+                          </div>
+                        )}
+                      </div>
+
+                      <div style={sectionTitle}>{isIncome ? `Απαιτήσεις (${history.creditTxs.length})` : `Χρεώσεις (${history.creditTxs.length})`}</div>
+                      {history.creditTxs.length === 0 ? (
+                        <div style={rowMuted}>Δεν βρέθηκαν καταχωρήσεις.</div>
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                          {history.creditTxs.slice(0, 12).map((tx: any) => {
+                            const d = getTxDate(tx)
+                            const note = String(tx.notes || tx.type || '').trim() || 'Κίνηση'
+
+                            return (
+                              <div key={tx.id} style={txRow}>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                                    <div style={txDate}>{formatTxDate(d)}</div>
+                                    <span style={tinyChip}>{daysAgoLabel(d)}</span>
+                                  </div>
+                                  <div style={txNote} title={note}>
+                                    {note}
+                                  </div>
+                                </div>
+                                <div style={txAmount}>{Math.abs(Number(tx.amount) || 0).toFixed(2)}€</div>
+                              </div>
+                            )
+                          })}
+
+                          {history.creditTxs.length > 12 && <div style={rowMuted}>Δείχνω τις 12 πιο πρόσφατες καταχωρήσεις.</div>}
+                        </div>
+                      )}
+
+                      <div style={{ ...sectionTitle, marginTop: 14 }}>
+                        {isIncome ? `Εισπράξεις (${history.settlementTxs.length})` : `Εξοφλήσεις (${history.settlementTxs.length})`}
+                      </div>
+                      {history.settlementTxs.length === 0 ? (
+                        <div style={rowMuted}>Δεν βρέθηκαν κινήσεις εξόφλησης/είσπραξης.</div>
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                          {history.settlementTxs.slice(0, 10).map((tx: any) => {
+                            const d = getTxDate(tx)
+                            const note = String(tx.notes || tx.type || '').trim() || 'Κίνηση'
+
+                            return (
+                              <div key={tx.id} style={txRow}>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                                    <div style={txDate}>{formatTxDate(d)}</div>
+                                    <span style={tinyChip}>{daysAgoLabel(d)}</span>
+                                  </div>
+                                  <div style={txNote} title={note}>
+                                    {note}
+                                  </div>
+                                </div>
+                                <div style={{ ...txAmount, color: colors.accentGreen }}>{Math.abs(Number(tx.amount) || 0).toFixed(2)}€</div>
+                              </div>
+                            )
+                          })}
+
+                          {history.settlementTxs.length > 10 && <div style={rowMuted}>Δείχνω τις 10 πιο πρόσφατες κινήσεις.</div>}
+                        </div>
+                      )}
 
                       <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
-                        <button onClick={() => handleEdit(item)} style={editBtn}>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleEdit(item)
+                          }}
+                          style={editBtn}
+                        >
                           <Pencil size={14} /> Διόρθωση
                         </button>
-                        <button onClick={() => handleDelete(String(item.id))} style={delBtn}>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleDelete(String(item.id))
+                          }}
+                          style={delBtn}
+                        >
                           <Trash2 size={14} /> Διαγραφή
                         </button>
                       </div>
@@ -1199,14 +1493,14 @@ function ManageListsContent() {
         </div>
 
         <p style={{ marginTop: 14, fontSize: 12, fontWeight: 700, color: colors.secondaryText }}>
-          * Για ασφάλεια, η διαγραφή ζητά επιβεβαίωση.
+          * Ο τζίρος εμφανίζεται στο list, ενώ το expanded ιστορικό δείχνει χρεώσεις/εξοφλήσεις από τις κινήσεις πίστωσης.
         </p>
       </div>
     </div>
   )
 }
 
-/* ---------------- STYLES (Suppliers-like) ---------------- */
+/* ---------------- STYLES ---------------- */
 
 const containerStyle: any = {
   backgroundColor: colors.bgLight,
@@ -1230,6 +1524,31 @@ const closeBtn: any = {
   color: colors.primaryDark,
   textDecoration: 'none',
   display: 'flex',
+}
+
+/* ✅ HERO */
+const heroCard: any = {
+  background: colors.primaryDark,
+  color: 'white',
+  padding: '18px',
+  borderRadius: '22px',
+  border: `1px solid rgba(255,255,255,0.08)`,
+  boxShadow: '0 18px 50px rgba(15,23,42,0.18)',
+  marginBottom: '14px',
+}
+
+const heroKicker: any = { fontSize: 10, fontWeight: 900, letterSpacing: '1px', opacity: 0.9 }
+const heroValue: any = { fontSize: 28, fontWeight: 950, lineHeight: 1.1 }
+const heroHintStyle: any = { fontSize: 10, fontWeight: 800, opacity: 0.75, marginTop: 4 }
+const heroYearLabel: any = { fontSize: 10, fontWeight: 900, opacity: 0.9, letterSpacing: '1px' }
+const heroSelect: any = {
+  padding: '10px 12px',
+  borderRadius: 14,
+  border: '1px solid rgba(255,255,255,0.18)',
+  background: 'rgba(255,255,255,0.08)',
+  color: 'white',
+  fontWeight: 900,
+  outline: 'none',
 }
 
 const addBtn: any = {
@@ -1331,15 +1650,30 @@ const rankingHeader: any = {
   gap: '8px',
 }
 
-const rowWrapper: any = { display: 'flex', padding: '18px 20px', alignItems: 'center', cursor: 'pointer', gap: 10 }
+const supplierCardStyle: any = {
+  backgroundColor: colors.white,
+  borderRadius: '20px',
+  display: 'flex',
+  flexDirection: 'column',
+  border: `1px solid ${colors.border}`,
+}
 
+const rowWrapper: any = { display: 'flex', padding: '16px', alignItems: 'center', cursor: 'pointer', gap: 10 }
 const rankNumber: any = { width: '30px', fontWeight: '800', color: colors.secondaryText, fontSize: '14px' }
-
 const rowName: any = { fontSize: '15px', fontWeight: '800', margin: 0, color: colors.primaryDark }
-
-const categoryBadge: any = { fontSize: '10px', fontWeight: '700', color: colors.secondaryText, margin: 0 }
-
+const categoryBadge: any = {
+  fontSize: '9px',
+  fontWeight: '950',
+  padding: '4px 8px',
+  borderRadius: '8px',
+  display: 'inline-block',
+  textTransform: 'uppercase',
+  backgroundColor: '#fff7ed',
+  color: colors.accentOrange,
+}
 const turnoverText: any = { fontSize: '16px', fontWeight: '800', color: colors.accentGreen, margin: 0 }
+const infoRow: any = { display: 'flex', alignItems: 'center', gap: '6px', color: colors.secondaryText }
+const infoText: any = { fontSize: '11px', fontWeight: '800', margin: 0 }
 
 const editingPill: any = {
   marginLeft: 10,
@@ -1356,17 +1690,186 @@ const editingPill: any = {
   whiteSpace: 'nowrap',
 }
 
-const actionPanel: any = { padding: '20px', backgroundColor: '#fcfcfc', borderTop: `1px dashed ${colors.border}` }
+const copyCodeBtn: any = {
+  minWidth: 34,
+  height: 34,
+  borderRadius: 10,
+  border: `1px solid ${colors.border}`,
+  backgroundColor: 'white',
+  color: colors.primaryDark,
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  cursor: 'pointer',
+}
 
-const infoGrid: any = { display: 'grid', gap: '8px' }
+const detailsWrap: any = {
+  margin: '0 16px 16px 16px',
+  padding: '14px',
+  borderRadius: '18px',
+  background: '#f8fafc',
+  border: `1px solid ${colors.border}`,
+  width: 'auto',
+}
 
-const infoText: any = { fontSize: '12px', margin: 0, color: colors.primaryDark }
+const detailsHeader: any = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  marginBottom: '10px',
+  color: colors.primaryDark,
+}
+
+const closeMiniBtn: any = {
+  border: `1px solid ${colors.border}`,
+  background: colors.white,
+  borderRadius: '12px',
+  width: '36px',
+  height: '36px',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  cursor: 'pointer',
+  color: colors.secondaryText,
+}
+
+const miniSummaryRow: any = {
+  display: 'flex',
+  gap: 8,
+  flexWrap: 'wrap',
+  marginBottom: 12,
+}
+
+const miniPill: any = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 8,
+  background: colors.white,
+  border: `1px solid ${colors.border}`,
+  borderRadius: 14,
+  padding: '8px 10px',
+}
+
+const miniPillLabel: any = {
+  fontSize: 10,
+  fontWeight: 950,
+  color: colors.secondaryText,
+  textTransform: 'uppercase',
+  letterSpacing: 0.4,
+}
+
+const miniPillValue: any = {
+  fontSize: 10,
+  fontWeight: 950,
+  color: colors.primaryDark,
+}
+
+const miniAmountChip: any = {
+  fontSize: 10,
+  fontWeight: 950,
+  padding: '4px 10px',
+  borderRadius: 999,
+  border: `1px solid ${colors.border}`,
+  background: '#f1f5f9',
+  color: colors.primaryDark,
+  letterSpacing: 0.2,
+}
+
+const rfIbanWrap: any = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 8,
+  marginBottom: 12,
+}
+
+const rfIbanRow: any = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: 8,
+  background: colors.white,
+  border: `1px solid ${colors.border}`,
+  borderRadius: 12,
+  padding: '8px 10px',
+}
+
+const rfIbanLabel: any = { fontSize: 10, fontWeight: 950, color: colors.secondaryText, minWidth: 34 }
+const rfIbanValue: any = {
+  fontSize: 12,
+  fontWeight: 900,
+  color: colors.primaryDark,
+  fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+  overflowWrap: 'anywhere',
+  flex: 1,
+}
+
+const sectionTitle: any = {
+  fontSize: '11px',
+  fontWeight: '950',
+  color: colors.primaryDark,
+  letterSpacing: '0.4px',
+  marginBottom: '8px',
+  textTransform: 'uppercase',
+}
+
+const txRow: any = {
+  display: 'flex',
+  justifyContent: 'space-between',
+  alignItems: 'flex-start',
+  gap: '12px',
+  padding: '10px',
+  background: colors.white,
+  border: `1px solid ${colors.border}`,
+  borderRadius: '16px',
+}
+
+const txDate: any = {
+  fontSize: '11px',
+  fontWeight: '950',
+  color: colors.primaryDark,
+}
+
+const txNote: any = {
+  fontSize: '11px',
+  fontWeight: '800',
+  color: colors.secondaryText,
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+  maxWidth: '100%',
+}
+
+const txAmount: any = {
+  fontSize: '12px',
+  fontWeight: '950',
+  color: colors.accentOrange,
+  whiteSpace: 'nowrap',
+}
+
+const rowMuted: any = {
+  fontSize: '11px',
+  fontWeight: '800',
+  color: colors.secondaryText,
+  padding: '6px 2px',
+}
+
+const tinyChip: any = {
+  fontSize: 9,
+  fontWeight: 950,
+  padding: '3px 8px',
+  borderRadius: 999,
+  border: `1px solid ${colors.border}`,
+  background: '#f1f5f9',
+  color: colors.secondaryText,
+  textTransform: 'uppercase',
+  letterSpacing: 0.2,
+}
 
 const editBtn: any = {
   flex: 1,
   padding: '10px',
-  background: colors.warning,
-  color: colors.warningText,
+  background: '#fff7ed',
+  color: '#9a3412',
   border: 'none',
   borderRadius: '10px',
   fontWeight: '700',
@@ -1392,6 +1895,22 @@ const delBtn: any = {
   justifyContent: 'center',
   gap: '5px',
   cursor: 'pointer',
+}
+
+const debtActionCompactBtn: any = {
+  minWidth: 98,
+  height: 30,
+  padding: '0 10px',
+  borderRadius: 10,
+  border: '1px solid',
+  fontWeight: 800,
+  fontSize: 11,
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: 6,
+  cursor: 'pointer',
+  textDecoration: 'none',
 }
 
 const emptyText: any = { padding: '40px', textAlign: 'center', color: colors.secondaryText, fontSize: '13px', fontWeight: '600' }

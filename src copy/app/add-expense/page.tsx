@@ -1,7 +1,7 @@
 'use client'
 export const dynamic = 'force-dynamic'
 
-import { useEffect, useState, Suspense, useCallback, useMemo, useRef } from 'react'
+import React, { useEffect, useState, Suspense, useCallback, useMemo, useRef } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
@@ -19,13 +19,11 @@ const colors = {
   modalBackdrop: 'rgba(2,6,23,0.6)',
 }
 
-const BANK_OPTIONS = [
-  'Εθνική Τράπεζα',
-  'Eurobank',
-  'Alpha Bank',
-  'Viva Wallet',
-  'Τράπεζα Πειραιώς',
-] as const
+const BANK_OPTIONS = ['Εθνική Τράπεζα', 'Eurobank', 'Alpha Bank', 'Viva Wallet', 'Τράπεζα Πειραιώς'] as const
+
+// ✅ Canonical payment methods (keep consistent across the app)
+const METHOD_VALUES = ['Μετρητά', 'Τράπεζα', 'Κάρτα', 'Πίστωση'] as const
+type PaymentMethod = (typeof METHOD_VALUES)[number]
 
 type SmartKind = 'supplier' | 'asset'
 type AssetGroup = 'staff' | 'maintenance' | 'utility' | 'other'
@@ -50,7 +48,6 @@ type SmartItem = {
 }
 
 type SelectedEntity = { kind: SmartKind; id: string } | null
-
 type CreateTab = 'suppliers' | 'utility' | 'staff' | 'maintenance' | 'other'
 
 function stripDiacritics(str: string) {
@@ -184,6 +181,25 @@ function createTabLabel(t: CreateTab) {
   return 'Λοιπά'
 }
 
+// ✅ Harden helpers
+const clampText = (v: any, max = 300) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, max)
+const upper = (v: any) => String(v ?? '').trim().toUpperCase()
+
+// ✅ Amount parsing: accepts "10,50" and "10.50"
+function parseAmount(input: string) {
+  const s = String(input || '').trim().replace(/\s+/g, '').replace(',', '.')
+  const n = Number(s)
+  return n
+}
+
+function ymFromDate(dateStr: string) {
+  // dateStr expected: YYYY-MM-DD
+  const [y, m] = String(dateStr || '').split('-')
+  const year = (y || '0000').padStart(4, '0')
+  const month = (m || '01').padStart(2, '0')
+  return { year, month }
+}
+
 function AddExpenseForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -196,7 +212,7 @@ function AddExpenseForm() {
   const urlAssetId = searchParams.get('assetId')
 
   const [amount, setAmount] = useState('')
-  const [method, setMethod] = useState<'Μετρητά' | 'Τράπεζα'>('Μετρητά')
+  const [method, setMethod] = useState<PaymentMethod>('Μετρητά')
   const [notes, setNotes] = useState('')
   const [isCredit, setIsCredit] = useState(false)
   const [isAgainstDebt, setIsAgainstDebt] = useState(searchParams.get('mode') === 'debt')
@@ -268,6 +284,14 @@ function AddExpenseForm() {
     return () => document.removeEventListener('pointerdown', handler, true)
   }, [])
 
+  // ✅ Safer active store resolver (URL -> localStorage -> state)
+  const resolveActiveStoreId = useCallback(() => {
+    const ls = typeof window !== 'undefined' ? localStorage.getItem('active_store_id') : null
+    // If both exist and mismatch, prefer localStorage to avoid URL swap
+    if (ls && urlStoreId && ls !== urlStoreId) return ls
+    return urlStoreId || ls || storeId
+  }, [urlStoreId, storeId])
+
   const loadFormData = useCallback(async () => {
     try {
       const {
@@ -275,31 +299,23 @@ function AddExpenseForm() {
       } = await supabase.auth.getSession()
       if (!session) return router.push('/login')
 
-      const activeStoreId =
-        urlStoreId || (typeof window !== 'undefined' ? localStorage.getItem('active_store_id') : null)
-
+      const activeStoreId = resolveActiveStoreId()
       if (!activeStoreId) {
         setLoading(false)
+        toast.error('Δεν βρέθηκε κατάστημα (store)')
         return
       }
 
       setStoreId(activeStoreId)
 
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('username')
-        .eq('id', session.user.id)
-        .maybeSingle()
-
+      const { data: profile } = await supabase.from('profiles').select('username').eq('id', session.user.id).maybeSingle()
       if (profile) setCurrentUsername(profile.username || 'Admin')
 
       const [sRes, fRes, tRes] = await Promise.all([
         supabase.from('suppliers').select('id, name, phone, vat_number, bank_name, iban').eq('store_id', activeStoreId).order('name'),
         supabase
           .from('fixed_assets')
-          .select(
-            'id, name, sub_category, phone, vat_number, bank_name, iban, monthly_days, monthly_salary, daily_rate, start_date, rf_code, pay_basis',
-          )
+          .select('id, name, sub_category, phone, vat_number, bank_name, iban, monthly_days, monthly_salary, daily_rate, start_date, rf_code, pay_basis')
           .eq('store_id', activeStoreId)
           .order('name'),
         supabase.from('transactions').select('amount, type').eq('store_id', activeStoreId).eq('date', selectedDate),
@@ -328,21 +344,29 @@ function AddExpenseForm() {
         setDayStats({ income: inc, expenses: exp })
       }
 
+      // ✅ edit mode
       if (editId) {
-        const { data: tx } = await supabase
+        const { data: tx, error } = await supabase
           .from('transactions')
           .select('*')
           .eq('id', editId)
           .eq('store_id', activeStoreId)
           .single()
 
+        if (error) throw error
+
         if (tx) {
           setAmount(Math.abs(tx.amount).toString())
-          setMethod(tx.method === 'Τράπεζα' ? 'Τράπεζα' : 'Μετρητά')
-          setNotes(tx.notes || '')
-          setIsCredit(!!tx.is_credit)
+
+          // ✅ Canonical method loading
+          const m = String(tx.method || '').trim()
+          const safeMethod: PaymentMethod = (METHOD_VALUES as readonly string[]).includes(m) ? (m as PaymentMethod) : 'Μετρητά'
+          setMethod(safeMethod === 'Πίστωση' ? 'Μετρητά' : safeMethod) // UI keeps credit via checkbox
+
+          setNotes(String(tx.notes || ''))
+          setIsCredit(!!tx.is_credit || m === 'Πίστωση')
           setIsAgainstDebt(tx.type === 'debt_payment')
-          setNoInvoice((tx.notes || '').includes('ΧΩΡΙΣ ΤΙΜΟΛΟΓΙΟ'))
+          setNoInvoice(String(tx.notes || '').includes('ΧΩΡΙΣ ΤΙΜΟΛΟΓΙΟ'))
 
           if (tx.supplier_id) {
             const id = String(tx.supplier_id)
@@ -360,6 +384,7 @@ function AddExpenseForm() {
           }
         }
       } else {
+        // ✅ new mode pre-select
         if (urlSupId) {
           const id = String(urlSupId)
           setSelectedEntity({ kind: 'supplier', id })
@@ -374,14 +399,22 @@ function AddExpenseForm() {
           setSelectedEntity(null)
           setSmartQuery('')
         }
+
+        // ✅ AUTO-NOTES για πληρωμή παλαιού χρέους (μόνο σε νέο, όχι edit)
+        const isDebtMode = searchParams.get('mode') === 'debt'
+        if (isDebtMode) {
+          setIsAgainstDebt(true)
+          setIsCredit(false)
+          setNotes((prev) => (prev?.trim() ? prev : 'ΕΞΟΦΛΗΣΗ ΥΠΟΛΟΙΠΟΥ ΚΑΡΤΕΛΑΣ'))
+        }
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error(error)
-      toast.error('Σφάλμα φόρτωσης')
+      toast.error(error?.message || 'Σφάλμα φόρτωσης')
     } finally {
       setLoading(false)
     }
-  }, [editId, router, selectedDate, urlStoreId, urlSupId, urlAssetId])
+  }, [editId, router, selectedDate, urlSupId, urlAssetId, searchParams, resolveActiveStoreId])
 
   useEffect(() => {
     loadFormData()
@@ -435,32 +468,13 @@ function AddExpenseForm() {
   const filtered = useMemo(() => {
     const q = smartQuery.trim()
     if (!q) return []
-    return smartItems.filter(i => smartMatch(i.name, q)).slice(0, 80)
+    return smartItems.filter((i) => smartMatch(i.name, q)).slice(0, 80)
   }, [smartQuery, smartItems])
-
-  const groupedResults = useMemo(() => {
-    const groups: Record<string, SmartItem[]> = {}
-    for (const it of filtered) {
-      const key = it.kind === 'supplier' ? 'suppliers' : (it.group || 'other')
-      const title = groupTitle(key as any)
-      if (!groups[title]) groups[title] = []
-      groups[title].push(it)
-    }
-    for (const g of Object.keys(groups)) {
-      groups[g] = groups[g].sort((a, b) => String(a.name).localeCompare(String(b.name)))
-    }
-    return groups
-  }, [filtered])
-
-  // fix sort typo safely
-  useEffect(() => {
-    // no-op: kept to avoid TS unused warnings in some configs
-  }, [])
 
   const groupedResultsSafe = useMemo(() => {
     const groups: Record<string, SmartItem[]> = {}
     for (const it of filtered) {
-      const key = it.kind === 'supplier' ? 'suppliers' : (it.group || 'other')
+      const key = it.kind === 'supplier' ? 'suppliers' : it.group || 'other'
       const title = groupTitle(key as any)
       if (!groups[title]) groups[title] = []
       groups[title].push(it)
@@ -486,13 +500,17 @@ function AddExpenseForm() {
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0]
+      // ✅ basic size guard (5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        toast.error('Η φωτογραφία είναι πολύ μεγάλη (max 5MB)')
+        return
+      }
       setImageFile(file)
       setImagePreview(URL.createObjectURL(file))
     }
   }
 
   const openCreateModal = () => {
-    // default suggestion based on query hints
     const q = normalizeGreek(smartQuery)
     const suggest: CreateTab =
       q.includes('δεη') || q.includes('deh') || q.includes('dei') || q.includes('ενοικ') || q.includes('rf')
@@ -506,19 +524,14 @@ function AddExpenseForm() {
   }
 
   const doCreate = async () => {
-    const activeStoreId =
-      urlStoreId ||
-      (typeof window !== 'undefined' ? localStorage.getItem('active_store_id') : null) ||
-      storeId
-
+    const activeStoreId = resolveActiveStoreId()
     if (!activeStoreId) return toast.error('Δεν βρέθηκε κατάστημα (store)')
 
-    const nm = cName.trim()
+    const nm = clampText(cName, 80)
     if (!nm) return toast.error('Γράψε όνομα')
 
-    // field checks
     if (createTab === 'utility') {
-      const rf = cRf.trim()
+      const rf = clampText(cRf, 60)
       if (!rf) return toast.error('Γράψε κωδικό RF')
       if (!cBank) return toast.error('Επίλεξε τράπεζα')
     }
@@ -533,21 +546,20 @@ function AddExpenseForm() {
     try {
       setCreateSaving(true)
 
-      // ---------------- create SUPPLIER ----------------
       if (createTab === 'suppliers') {
         const payload: any = {
           name: nm,
-          phone: cPhone.trim() || null,
-          vat_number: cVat.trim() || null,
+          phone: clampText(cPhone, 30) || null,
+          vat_number: clampText(cVat, 30) || null,
           bank_name: cBank || null,
-          iban: cIban.trim() || null,
+          iban: upper(cIban) || null, // ✅ uppercase
           store_id: activeStoreId,
         }
 
         const { data, error } = await supabase.from('suppliers').insert([payload]).select('id, name, phone, vat_number, bank_name, iban').single()
         if (error) throw error
 
-        setSuppliers(prev => [...prev, data].sort((a, b) => String(a.name).localeCompare(String(b.name))))
+        setSuppliers((prev) => [...prev, data].sort((a, b) => String(a.name).localeCompare(String(b.name))))
         setSelectedEntity({ kind: 'supplier', id: String(data.id) })
         setSmartQuery(String(data.name || nm))
         toast.success('Προστέθηκε στους Προμηθευτές')
@@ -555,16 +567,21 @@ function AddExpenseForm() {
         return
       }
 
-      // ---------------- create FIXED_ASSET ----------------
       const sub_category =
-        createTab === 'maintenance' ? 'Maintenance' : createTab === 'utility' ? 'utility' : createTab === 'staff' ? 'staff' : 'other'
+        createTab === 'maintenance'
+          ? 'Maintenance'
+          : createTab === 'utility'
+            ? 'utility'
+            : createTab === 'staff'
+              ? 'staff'
+              : 'other'
 
       let payload: any = { store_id: activeStoreId, sub_category, name: nm }
 
       if (createTab === 'utility') {
         payload = {
           ...payload,
-          rf_code: cRf.trim(),
+          rf_code: upper(cRf), // ✅ uppercase
           bank_name: cBank,
           phone: null,
           vat_number: null,
@@ -579,7 +596,7 @@ function AddExpenseForm() {
         payload = {
           ...payload,
           bank_name: cBank || null,
-          iban: cIban.trim() || null,
+          iban: upper(cIban) || null, // ✅ uppercase
           pay_basis: cPayBasis,
           monthly_days: cMonthlyDays.trim() ? Number(cMonthlyDays.trim()) : null,
           monthly_salary: cPayBasis === 'monthly' && cMonthlySalary.trim() ? Number(cMonthlySalary.trim()) : null,
@@ -590,14 +607,12 @@ function AddExpenseForm() {
           vat_number: null,
         }
       } else {
-        // maintenance / other
         payload = {
           ...payload,
-          phone: cPhone.trim() || null,
-          vat_number: cVat.trim() || null,
+          phone: clampText(cPhone, 30) || null,
+          vat_number: clampText(cVat, 30) || null,
           bank_name: cBank || null,
-          iban: cIban.trim() || null,
-
+          iban: upper(cIban) || null, // ✅ uppercase
           rf_code: null,
           pay_basis: null,
           monthly_days: null,
@@ -615,7 +630,7 @@ function AddExpenseForm() {
 
       if (error) throw error
 
-      setFixedAssets(prev => [...prev, data].sort((a, b) => String(a.name).localeCompare(String(b.name))))
+      setFixedAssets((prev) => [...prev, data].sort((a, b) => String(a.name).localeCompare(String(b.name))))
       setSelectedEntity({ kind: 'asset', id: String(data.id) })
       setSmartQuery(String(data.name || nm))
       toast.success(`Προστέθηκε σε: ${createTabLabel(createTab)}`)
@@ -627,8 +642,52 @@ function AddExpenseForm() {
     }
   }
 
+  // ✅ Balance lock: block entries before last Z date (assumes type='z_report')
+  const checkBalanceLock = async (activeStoreId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('transactions')
+        .select('date')
+        .eq('store_id', activeStoreId)
+        .eq('type', 'z_report')
+        .order('date', { ascending: false })
+        .limit(1)
+
+      if (error) return null
+      const last = data?.[0]?.date ? String(data[0].date) : null
+      return last
+    } catch {
+      return null
+    }
+  }
+
+  // ✅ Duplicate detection: same day + same amount + same receiver (+ same txType)
+  const checkPossibleDuplicate = async (activeStoreId: string, txType: 'expense' | 'debt_payment', amtAbs: number) => {
+    try {
+      let q = supabase
+        .from('transactions')
+        .select('id, amount, date, supplier_id, fixed_asset_id, created_at')
+        .eq('store_id', activeStoreId)
+        .eq('date', selectedDate)
+        .in('type', [txType])
+        .eq(selectedEntity?.kind === 'supplier' ? 'supplier_id' : 'fixed_asset_id', selectedEntity?.id || '')
+        .eq('amount', -Math.abs(amtAbs)) // same signed amount (expenses negative)
+
+      if (editId) q = q.neq('id', editId)
+
+      const { data, error } = await q.limit(3)
+      if (error) return null
+      return data && data.length > 0 ? data : null
+    } catch {
+      return null
+    }
+  }
+
   const handleSave = async () => {
-    if (!amount || Number(amount) <= 0) return toast.error('Συμπλήρωσε το ποσό')
+    // ✅ comma-safe parsing
+    const amt = parseAmount(amount)
+    if (!amount || !Number.isFinite(amt) || amt <= 0) return toast.error('Συμπλήρωσε σωστό ποσό')
+    if (amt > 1_000_000) return toast.error('Το ποσό είναι υπερβολικά μεγάλο')
     if (!selectedEntity) return toast.error('Επίλεξε δικαιούχο από την αναζήτηση')
 
     setLoading(true)
@@ -637,46 +696,107 @@ function AddExpenseForm() {
       const {
         data: { session },
       } = await supabase.auth.getSession()
+
       if (!session) {
         setLoading(false)
         return router.push('/login')
       }
 
-      const activeStoreId =
-        urlStoreId ||
-        (typeof window !== 'undefined' ? localStorage.getItem('active_store_id') : null) ||
-        storeId
-
+      const activeStoreId = resolveActiveStoreId()
       if (!activeStoreId) {
         setLoading(false)
         return toast.error('Δεν βρέθηκε κατάστημα (store)')
       }
 
+      setStoreId(activeStoreId)
+
+      // ✅ Balance lock check
+      const lastZ = await checkBalanceLock(activeStoreId)
+      if (lastZ && selectedDate < lastZ) {
+        setLoading(false)
+        toast.error(`Η ημερομηνία είναι κλειδωμένη λόγω Z Report (τελευταίο κλείσιμο: ${lastZ})`)
+        return
+      }
+
       const category = categoryFromSelection(selectedEntity, smartItemMap)
 
+      // ✅ Canonical type
+      const txType: 'expense' | 'debt_payment' = isAgainstDebt ? 'debt_payment' : 'expense'
+
+      // ✅ HARD RULES:
+      // 1) debt_payment cannot be credit
+      // 2) if credit -> method stored as "Πίστωση"
+      // 3) method must be one of METHOD_VALUES
+      const finalIsCredit = txType === 'debt_payment' ? false : !!isCredit
+      const chosenMethod: PaymentMethod = method === 'Πίστωση' ? 'Μετρητά' : method
+      const finalMethod: PaymentMethod = finalIsCredit ? 'Πίστωση' : chosenMethod
+
+      if (!(METHOD_VALUES as readonly string[]).includes(finalMethod)) {
+        setLoading(false)
+        return toast.error('Μη αποδεκτή μέθοδος πληρωμής')
+      }
+
+      // ✅ Duplicate detection confirm (only for new saves OR edits too—kept for both)
+      const dup = await checkPossibleDuplicate(activeStoreId, txType, amt)
+      if (dup && dup.length > 0) {
+        const label = smartQuery || 'Δικαιούχο'
+        const ok = window.confirm(
+          `⚠️ Πιθανό διπλό έξοδο!\n\nΒρέθηκε άλλη κίνηση την ίδια μέρα για ${amt.toFixed(2)}€ προς "${label}".\n\nΘες σίγουρα να συνεχίσεις;`,
+        )
+        if (!ok) {
+          setLoading(false)
+          return
+        }
+      }
+
+      // ✅ notes hardening
+      const baseNotes = clampText(notes, 500)
+      const mustDebtNote = txType === 'debt_payment' ? 'ΕΞΟΦΛΗΣΗ ΥΠΟΛΟΙΠΟΥ ΚΑΡΤΕΛΑΣ' : ''
+      const debtNote =
+        txType === 'debt_payment'
+          ? baseNotes
+            ? baseNotes.toUpperCase().includes('ΕΞΟΦΛΗΣΗ')
+              ? baseNotes
+              : `${baseNotes} | ${mustDebtNote}`
+            : mustDebtNote
+          : baseNotes
+
+      const finalNotes = noInvoice
+        ? debtNote
+          ? `${debtNote} (ΧΩΡΙΣ ΤΙΜΟΛΟΓΙΟ)`
+          : 'ΧΩΡΙΣ ΤΙΜΟΛΟΓΙΟ'
+        : debtNote
+
       const payload: any = {
-        amount: -Math.abs(Number(amount)),
-        method: isCredit ? 'Πίστωση' : method,
-        is_credit: isCredit,
-        type: isAgainstDebt ? 'debt_payment' : 'expense',
+        amount: -Math.abs(amt), // ✅ expenses negative
+        method: finalMethod, // ✅ method column (exists in Supabase)
+        is_credit: finalIsCredit,
+        type: txType,
         date: selectedDate,
         user_id: session.user.id,
         store_id: activeStoreId,
-
         supplier_id: selectedEntity.kind === 'supplier' ? selectedEntity.id : null,
         fixed_asset_id: selectedEntity.kind === 'asset' ? selectedEntity.id : null,
-
         category,
-        created_by_name: currentUsername,
-        notes: noInvoice ? (notes ? `${notes} (ΧΩΡΙΣ ΤΙΜΟΛΟΓΙΟ)` : 'ΧΩΡΙΣ ΤΙΜΟΛΟΓΙΟ') : notes,
+        created_by_name: clampText(currentUsername, 60),
+        notes: finalNotes,
       }
 
+      // ✅ invoice upload (only for new tx, only if not noInvoice)
       if (imageFile && !noInvoice && !editId) {
-        const fileExt = imageFile.name.split('.').pop() || 'jpg'
-        const fileName = `${Date.now()}.${fileExt}`
-        const filePath = `${activeStoreId}/${fileName}`
+        const safeExt = (imageFile.name.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '')
+        const fileExt = safeExt || 'jpg'
+        const fileName = `${session.user.id}-${Date.now()}.${fileExt}`
 
-        const { data: uploadData, error: uploadError } = await supabase.storage.from('invoices').upload(filePath, imageFile)
+        // ✅ storage path: store/YYYY/MM/file
+        const { year, month } = ymFromDate(selectedDate)
+        const filePath = `${activeStoreId}/${year}/${month}/${fileName}`
+
+        const { data: uploadData, error: uploadError } = await supabase.storage.from('invoices').upload(filePath, imageFile, {
+          cacheControl: '3600',
+          upsert: false,
+          contentType: imageFile.type || undefined,
+        })
         if (uploadError) throw uploadError
 
         payload.invoice_image = uploadData?.path || null
@@ -684,7 +804,7 @@ function AddExpenseForm() {
 
       let error: any = null
       if (editId) {
-        const res = await supabase.from('transactions').update(payload).eq('id', editId)
+        const res = await supabase.from('transactions').update(payload).eq('id', editId).eq('store_id', activeStoreId)
         error = res.error
       } else {
         const res = await supabase.from('transactions').insert([payload])
@@ -697,6 +817,7 @@ function AddExpenseForm() {
       router.push(`/?date=${selectedDate}&store=${activeStoreId}`)
       router.refresh()
     } catch (error: any) {
+      console.error(error)
       toast.error(error?.message || 'Κάτι πήγε στραβά')
       setLoading(false)
     }
@@ -730,7 +851,9 @@ function AddExpenseForm() {
 
   return (
     <div style={iphoneWrapper}>
-      <Toaster position="top-center" richColors />
+      {/* ✅ Toasts above modal */}
+      <Toaster position="top-center" richColors toastOptions={{ style: { zIndex: 3000 } }} />
+
       <div style={{ maxWidth: '500px', margin: '0 auto', paddingBottom: '120px' }}>
         <div style={headerStyle}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
@@ -743,7 +866,7 @@ function AddExpenseForm() {
             </div>
           </div>
 
-          <Link href={`/?store=${urlStoreId || storeId || ''}`} style={backBtnStyle}>
+          <Link href={`/?store=${resolveActiveStoreId() || ''}`} style={backBtnStyle}>
             ✕
           </Link>
         </div>
@@ -754,7 +877,7 @@ function AddExpenseForm() {
           <div ref={smartBoxRef} style={{ position: 'relative' }}>
             <input
               value={smartQuery}
-              onChange={e => {
+              onChange={(e) => {
                 setSmartQuery(e.target.value)
                 setSelectedEntity(null)
                 setSmartOpen(true)
@@ -765,6 +888,7 @@ function AddExpenseForm() {
               autoCapitalize="none"
               autoCorrect="off"
               spellCheck={false}
+              maxLength={80}
             />
 
             {!!smartQuery && (
@@ -778,7 +902,7 @@ function AddExpenseForm() {
                 {showCreateInline && (
                   <button
                     type="button"
-                    onPointerDown={e => {
+                    onPointerDown={(e) => {
                       e.preventDefault()
                       e.stopPropagation()
                       openCreateModal()
@@ -810,16 +934,16 @@ function AddExpenseForm() {
                     <div key={group}>
                       <div style={groupHeader}>{group}</div>
 
-                      {items.map(item => (
+                      {items.map((item) => (
                         <button
                           key={`${item.kind}-${item.id}`}
                           type="button"
-                          onPointerDown={e => {
+                          onPointerDown={(e) => {
                             e.preventDefault()
                             e.stopPropagation()
                             pickSmartItem(item)
                           }}
-                          onTouchStart={e => {
+                          onTouchStart={(e) => {
                             e.preventDefault()
                             e.stopPropagation()
                             pickSmartItem(item)
@@ -859,7 +983,17 @@ function AddExpenseForm() {
           )}
 
           <label style={{ ...labelStyle, marginTop: 20 }}>Ποσό (€)</label>
-          <input type="number" inputMode="decimal" value={amount} onChange={e => setAmount(e.target.value)} style={inputStyle} placeholder="0.00" />
+          <input
+            type="text"
+            inputMode="decimal"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            style={inputStyle}
+            placeholder="0.00"
+          />
+          <div style={{ marginTop: 6, fontSize: 12, fontWeight: 800, color: colors.secondaryText }}>
+            Tip: δέχεται και <b>10,50</b>.
+          </div>
 
           <div
             onClick={() => setNoInvoice(!noInvoice)}
@@ -900,6 +1034,7 @@ function AddExpenseForm() {
             >
               💵 Μετρητά
             </button>
+
             <button
               type="button"
               onClick={() => {
@@ -914,6 +1049,21 @@ function AddExpenseForm() {
             >
               🏛️ Τράπεζα
             </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setMethod('Κάρτα')
+                setIsCredit(false)
+              }}
+              style={{
+                ...methodBtn,
+                backgroundColor: method === 'Κάρτα' && !isCredit ? colors.primaryDark : colors.white,
+                color: method === 'Κάρτα' && !isCredit ? 'white' : colors.secondaryText,
+              }}
+            >
+              💳 Κάρτα
+            </button>
           </div>
 
           <div style={creditPanel}>
@@ -921,9 +1071,10 @@ function AddExpenseForm() {
               <input
                 type="checkbox"
                 checked={isCredit}
-                onChange={e => {
-                  setIsCredit(e.target.checked)
-                  if (e.target.checked) setIsAgainstDebt(false)
+                onChange={(e) => {
+                  const checked = e.target.checked
+                  setIsCredit(checked)
+                  if (checked) setIsAgainstDebt(false) // ✅ cannot both
                 }}
                 id="credit"
                 style={checkboxStyle}
@@ -937,9 +1088,10 @@ function AddExpenseForm() {
               <input
                 type="checkbox"
                 checked={isAgainstDebt}
-                onChange={e => {
-                  setIsAgainstDebt(e.target.checked)
-                  if (e.target.checked) setIsCredit(false)
+                onChange={(e) => {
+                  const checked = e.target.checked
+                  setIsAgainstDebt(checked)
+                  if (checked) setIsCredit(false) // ✅ cannot both
                 }}
                 id="against"
                 style={checkboxStyle}
@@ -951,7 +1103,13 @@ function AddExpenseForm() {
           </div>
 
           <label style={{ ...labelStyle, marginTop: 20 }}>Σημειώσεις</label>
-          <textarea value={notes} onChange={e => setNotes(e.target.value)} style={{ ...inputStyle, height: 80 }} />
+          <textarea
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            style={{ ...inputStyle, height: 80 }}
+            maxLength={500}
+            placeholder="π.χ. Απόδειξη, περιγραφή, αριθμός..."
+          />
 
           {!editId && !noInvoice && (
             <div style={{ marginTop: 20 }}>
@@ -978,6 +1136,9 @@ function AddExpenseForm() {
                   </label>
                 )}
               </div>
+              <div style={{ marginTop: 8, fontSize: 12, fontWeight: 800, color: colors.secondaryText }}>
+                * Max 5MB. Δεν ανεβάζουμε αν έχεις “Χωρίς τιμολόγιο”. (Path: store/YYYY/MM)
+              </div>
             </div>
           )}
 
@@ -993,10 +1154,18 @@ function AddExpenseForm() {
               }}
             >
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                <span style={{ fontSize: 14, fontWeight: 900 }}>{loading ? 'Αποθήκευση...' : editId ? 'Ενημέρωση' : 'Καταχώρηση'}</span>
-                <span style={{ fontSize: 14, opacity: 0.85, fontWeight: 800, marginTop: 6 }}>Καθαρό ταμείο: {currentBalance.toFixed(2)}€</span>
+                <span style={{ fontSize: 14, fontWeight: 900 }}>
+                  {loading ? 'Αποθήκευση...' : editId ? 'Ενημέρωση' : 'Καταχώρηση'}
+                </span>
+                <span style={{ fontSize: 14, opacity: 0.85, fontWeight: 800, marginTop: 6 }}>
+                  Καθαρό ταμείο: {currentBalance.toFixed(2)}€
+                </span>
               </div>
             </button>
+          </div>
+
+          <div style={{ marginTop: 10, fontSize: 12, fontWeight: 800, color: colors.secondaryText }}>
+            * Αποθηκεύουμε στη στήλη <b>method</b>. Για Πίστωση: <b>method="Πίστωση"</b> + <b>is_credit=true</b>.
           </div>
         </div>
       </div>
@@ -1004,15 +1173,10 @@ function AddExpenseForm() {
       {/* ✅ CREATE MODAL */}
       {createOpen && (
         <div style={modalOverlay} onMouseDown={() => !createSaving && setCreateOpen(false)}>
-          <div style={modalCard} onMouseDown={e => e.stopPropagation()}>
+          <div style={modalCard} onMouseDown={(e) => e.stopPropagation()}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
               <h2 style={{ margin: 0, fontSize: 16, fontWeight: 900, color: colors.primaryDark }}>Νέα καταχώρηση</h2>
-              <button
-                type="button"
-                onClick={() => !createSaving && setCreateOpen(false)}
-                style={modalCloseBtn}
-                aria-label="Κλείσιμο"
-              >
+              <button type="button" onClick={() => !createSaving && setCreateOpen(false)} style={modalCloseBtn} aria-label="Κλείσιμο">
                 ✕
               </button>
             </div>
@@ -1021,11 +1185,10 @@ function AddExpenseForm() {
               Δεν βρέθηκε <strong>{smartQuery.trim()}</strong>. Διάλεξε κατηγορία και συμπλήρωσε τα πεδία.
             </p>
 
-            {/* category picker */}
             <label style={modalLabel}>Κατηγορία</label>
             <select
               value={createTab}
-              onChange={e => {
+              onChange={(e) => {
                 setCreateTab(e.target.value as CreateTab)
                 resetCreateForm()
               }}
@@ -1039,10 +1202,9 @@ function AddExpenseForm() {
               <option value="other">Λοιπά</option>
             </select>
 
-            {/* forms */}
             <div style={{ marginTop: 12 }}>
               <label style={modalLabel}>{createTab === 'staff' ? 'Ονοματεπώνυμο' : 'Όνομα'}</label>
-              <input value={cName} onChange={e => setCName(e.target.value)} style={modalInput} placeholder="π.χ. Τζήλιος" disabled={createSaving} />
+              <input value={cName} onChange={(e) => setCName(e.target.value)} style={modalInput} placeholder="π.χ. Τζήλιος" disabled={createSaving} maxLength={80} />
             </div>
 
             {(createTab === 'suppliers' || createTab === 'maintenance' || createTab === 'other') && (
@@ -1050,19 +1212,19 @@ function AddExpenseForm() {
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 10 }}>
                   <div>
                     <label style={modalLabel}>Τηλέφωνο</label>
-                    <input value={cPhone} onChange={e => setCPhone(e.target.value)} style={modalInput} disabled={createSaving} />
+                    <input value={cPhone} onChange={(e) => setCPhone(e.target.value)} style={modalInput} disabled={createSaving} maxLength={30} />
                   </div>
                   <div>
                     <label style={modalLabel}>ΑΦΜ</label>
-                    <input value={cVat} onChange={e => setCVat(e.target.value)} style={modalInput} disabled={createSaving} />
+                    <input value={cVat} onChange={(e) => setCVat(e.target.value)} style={modalInput} disabled={createSaving} maxLength={30} />
                   </div>
                 </div>
 
                 <div style={{ marginTop: 10 }}>
                   <label style={modalLabel}>Τράπεζα</label>
-                  <select value={cBank} onChange={e => setCBank(e.target.value)} style={modalSelect} disabled={createSaving}>
+                  <select value={cBank} onChange={(e) => setCBank(e.target.value)} style={modalSelect} disabled={createSaving}>
                     <option value="">Επιλέξτε...</option>
-                    {BANK_OPTIONS.map(b => (
+                    {BANK_OPTIONS.map((b) => (
                       <option key={b} value={b}>
                         {b}
                       </option>
@@ -1072,7 +1234,10 @@ function AddExpenseForm() {
 
                 <div style={{ marginTop: 10 }}>
                   <label style={modalLabel}>IBAN</label>
-                  <input value={cIban} onChange={e => setCIban(e.target.value)} style={modalInput} placeholder="GR..." disabled={createSaving} />
+                  <input value={cIban} onChange={(e) => setCIban(e.target.value)} style={modalInput} placeholder="GR..." disabled={createSaving} maxLength={40} />
+                </div>
+                <div style={{ marginTop: 8, fontSize: 12, fontWeight: 800, color: colors.secondaryText }}>
+                  * IBAN αποθηκεύεται με ΚΕΦΑΛΑΙΑ.
                 </div>
               </>
             )}
@@ -1081,19 +1246,23 @@ function AddExpenseForm() {
               <>
                 <div style={{ marginTop: 10 }}>
                   <label style={modalLabel}>Κωδικός RF</label>
-                  <input value={cRf} onChange={e => setCRf(e.target.value)} style={modalInput} placeholder="RF..." disabled={createSaving} />
+                  <input value={cRf} onChange={(e) => setCRf(e.target.value)} style={modalInput} placeholder="RF..." disabled={createSaving} maxLength={60} />
                 </div>
 
                 <div style={{ marginTop: 10 }}>
                   <label style={modalLabel}>Τράπεζα</label>
-                  <select value={cBank} onChange={e => setCBank(e.target.value)} style={modalSelect} disabled={createSaving}>
+                  <select value={cBank} onChange={(e) => setCBank(e.target.value)} style={modalSelect} disabled={createSaving}>
                     <option value="">Επιλέξτε...</option>
-                    {BANK_OPTIONS.map(b => (
+                    {BANK_OPTIONS.map((b) => (
                       <option key={b} value={b}>
                         {b}
                       </option>
                     ))}
                   </select>
+                </div>
+
+                <div style={{ marginTop: 8, fontSize: 12, fontWeight: 800, color: colors.secondaryText }}>
+                  * RF αποθηκεύεται με ΚΕΦΑΛΑΙΑ.
                 </div>
               </>
             )}
@@ -1137,7 +1306,7 @@ function AddExpenseForm() {
                     <label style={modalLabel}>{cPayBasis === 'monthly' ? 'Μισθός' : 'Ημερομίσθιο'}</label>
                     <input
                       value={cPayBasis === 'monthly' ? cMonthlySalary : cDailyRate}
-                      onChange={e => (cPayBasis === 'monthly' ? setCMonthlySalary(e.target.value) : setCDailyRate(e.target.value))}
+                      onChange={(e) => (cPayBasis === 'monthly' ? setCMonthlySalary(e.target.value) : setCDailyRate(e.target.value))}
                       style={modalInput}
                       inputMode="decimal"
                       disabled={createSaving}
@@ -1145,19 +1314,19 @@ function AddExpenseForm() {
                   </div>
                   <div>
                     <label style={modalLabel}>Μέρες μήνα</label>
-                    <input value={cMonthlyDays} onChange={e => setCMonthlyDays(e.target.value)} style={modalInput} inputMode="numeric" disabled={createSaving} />
+                    <input value={cMonthlyDays} onChange={(e) => setCMonthlyDays(e.target.value)} style={modalInput} inputMode="numeric" disabled={createSaving} />
                   </div>
                   <div>
                     <label style={modalLabel}>Ημ. πρόσληψης</label>
-                    <input value={cStartDate} onChange={e => setCStartDate(e.target.value)} style={modalInput} type="date" disabled={createSaving} />
+                    <input value={cStartDate} onChange={(e) => setCStartDate(e.target.value)} style={modalInput} type="date" disabled={createSaving} />
                   </div>
                 </div>
 
                 <div style={{ marginTop: 10 }}>
                   <label style={modalLabel}>Τράπεζα</label>
-                  <select value={cBank} onChange={e => setCBank(e.target.value)} style={modalSelect} disabled={createSaving}>
+                  <select value={cBank} onChange={(e) => setCBank(e.target.value)} style={modalSelect} disabled={createSaving}>
                     <option value="">Επιλέξτε...</option>
-                    {BANK_OPTIONS.map(b => (
+                    {BANK_OPTIONS.map((b) => (
                       <option key={b} value={b}>
                         {b}
                       </option>
@@ -1167,7 +1336,7 @@ function AddExpenseForm() {
 
                 <div style={{ marginTop: 10 }}>
                   <label style={modalLabel}>IBAN</label>
-                  <input value={cIban} onChange={e => setCIban(e.target.value)} style={modalInput} placeholder="GR..." disabled={createSaving} />
+                  <input value={cIban} onChange={(e) => setCIban(e.target.value)} style={modalInput} placeholder="GR..." disabled={createSaving} maxLength={40} />
                 </div>
               </>
             )}
@@ -1279,7 +1448,13 @@ const smartSaveBtn: any = {
   fontSize: 16,
 }
 
-const imageUploadContainer: any = { width: '100%', backgroundColor: colors.bgLight, borderRadius: 14, border: `2px dashed ${colors.border}`, overflow: 'hidden' }
+const imageUploadContainer: any = {
+  width: '100%',
+  backgroundColor: colors.bgLight,
+  borderRadius: 14,
+  border: `2px dashed ${colors.border}`,
+  overflow: 'hidden',
+}
 const uploadPlaceholder: any = { display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, cursor: 'pointer' }
 const imagePreviewStyle: any = { width: '100%', height: 140, objectFit: 'cover' as const }
 const removeImageBtn: any = {

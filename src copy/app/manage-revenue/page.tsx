@@ -99,6 +99,7 @@ function ManageListsInner() {
   const handleSave = async () => {
     if (!formData.name.trim()) return toast.error('Το όνομα είναι υποχρεωτικό')
     const activeStoreId = urlStoreId || localStorage.getItem('active_store_id')
+    if (!activeStoreId) return toast.error('Δεν βρέθηκε κατάστημα (store)')
     
     try {
       const isRevenue = activeTab === 'revenue'
@@ -120,7 +121,7 @@ function ManageListsInner() {
       }
 
       const { error } = editingId 
-        ? await supabase.from(table).update(payload).eq('id', editingId)
+        ? await supabase.from(table).update(payload).eq('id', editingId).eq('store_id', activeStoreId)
         : await supabase.from(table).insert([payload])
 
       if (error) throw error
