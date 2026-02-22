@@ -1120,7 +1120,7 @@ function ManageListsContent() {
       <div style={contentWrapper}>
         <header style={headerStyle}>
           <div>
-            <h1 style={titleStyle}>Manage Lists</h1>
+            <h1 style={titleStyle}>Μητρώο & Συνεργάτες</h1>
             <p style={subtitleStyle}>
               ΚΑΤΑΣΤΗΜΑ: <span style={{ color: colors.accentBlue }}>{currentStoreName.toUpperCase()}</span>
             </p>
