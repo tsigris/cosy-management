@@ -10,11 +10,14 @@ import {
   Landmark, 
   Target, 
   ChevronRight, 
-  BookOpen, 
+  ListTree, 
   ShieldCheck,
   Store,
-  Wallet
+  Wallet,
+  Info
 } from 'lucide-react'
+
+/* ---------------- CONFIG ---------------- */
 
 const colors = {
   primary: '#0f172a',
@@ -25,43 +28,99 @@ const colors = {
   surface: '#ffffff'
 }
 
+/* ---------------- CONTENT ---------------- */
+
 function ManagementContent() {
   const searchParams = useSearchParams()
   const storeId = searchParams.get('store')
 
+  // ✅ Ευθυγράμμιση με τα σωστά URL (manage-lists, settlements, goals)
   const menuItems = [
     {
-      title: 'Βασική Διαχείριση',
+      title: 'Οργάνωση Επιχείρησης',
       items: [
-        { label: 'Προμηθευτές', icon: <ShoppingCart size={20} />, path: '/suppliers', color: '#0ea5e9' },
-        { label: 'Προσωπικό', icon: <Users size={20} />, path: '/employees', color: '#6366f1' },
-        { label: 'Κατάλογοι & Μενού', icon: <BookOpen size={20} />, path: '/categories', color: '#10b981' },
+        { 
+          label: 'Διαχείριση Λιστών', 
+          subLabel: 'Προμηθευτές, Πηγές Εσόδων, Λογαριασμοί, κ.α.',
+          icon: <ListTree size={20} />, 
+          path: '/manage-lists', 
+          color: '#10b981' 
+        },
+        { 
+          label: 'Προσωπικό', 
+          subLabel: 'Διαχείριση ομάδας και πληρωμών',
+          icon: <Users size={20} />, 
+          path: '/employees', 
+          color: '#6366f1' 
+        },
+        { 
+          label: 'Αρχείο Προμηθευτών', 
+          subLabel: 'Πλήρης κατάλογος συνεργατών',
+          icon: <ShoppingCart size={20} />, 
+          path: '/suppliers', 
+          color: '#0ea5e9' 
+        },
       ]
     },
     {
-      title: 'Οικονομικός Προγραμματισμός',
+      title: 'Οικονομικός Έλεγχος',
       items: [
-        { label: 'Δάνεια & Ρυθμίσεις', icon: <Landmark size={20} />, path: '/loans', color: '#f59e0b' },
-        { label: 'Στόχοι & Κουμπαράδες', icon: <Target size={20} />, path: '/savings', color: '#7c3aed' },
-        { label: 'Καρτέλες Πιστώσεων', icon: <Wallet size={20} />, path: '/suppliers-balance', color: '#f43f5e' },
+        { 
+          label: 'Δάνεια & Ρυθμίσεις', 
+          subLabel: 'Παρακολούθηση δόσεων και διακανονισμών',
+          icon: <Landmark size={20} />, 
+          path: '/settlements', 
+          color: '#f59e0b' 
+        },
+        { 
+          label: 'Στόχοι & Κουμπαράδες', 
+          subLabel: 'Αποταμίευση για εξοπλισμό και ανάγκες',
+          icon: <Target size={20} />, 
+          path: '/goals', 
+          color: '#7c3aed' 
+        },
+        { 
+          label: 'Καρτέλες Πιστώσεων', 
+          subLabel: 'Ανάλυση οφειλών ανά προμηθευτή',
+          icon: <Wallet size={20} />, 
+          path: '/suppliers-balance', 
+          color: '#f43f5e' 
+        },
       ]
     },
     {
-      title: 'Σύστημα & Υποστήριξη',
+      title: 'Σύστημα & Βοήθεια',
       items: [
-        { label: 'Δικαιώματα Χρηστών', icon: <ShieldCheck size={20} />, path: '/permissions', color: '#64748b' },
-        { label: 'Οδηγίες Χρήσης', icon: <Settings size={20} />, path: '/help', color: '#475569' },
-        { label: 'Αλλαγή Καταστήματος', icon: <Store size={20} />, path: '/select-store', color: colors.primary },
+        { 
+          label: 'Δικαιώματα Πρόσβασης', 
+          subLabel: 'Διαχείριση ρόλων Admin & User',
+          icon: <ShieldCheck size={20} />, 
+          path: '/permissions', 
+          color: '#64748b' 
+        },
+        { 
+          label: 'Οδηγίες Χρήσης', 
+          subLabel: 'Αναλυτικό manual εφαρμογής',
+          icon: <Info size={20} />, 
+          path: '/help', 
+          color: '#475569' 
+        },
+        { 
+          label: 'Αλλαγή Καταστήματος', 
+          subLabel: 'Επιλογή διαφορετικού business unit',
+          icon: <Store size={20} />, 
+          path: '/select-store', 
+          color: colors.primary 
+        },
       ]
     }
   ]
 
   return (
     <div style={container}>
-      {/* HEADER */}
       <div style={header}>
         <h1 style={headerTitle}>Διαχείριση</h1>
-        <p style={headerSub}>Ρυθμίσεις και έλεγχος επιχείρησης</p>
+        <p style={headerSub}>Κεντρικός έλεγχος καταστήματος</p>
       </div>
 
       <div style={content}>
@@ -72,14 +131,17 @@ function ManagementContent() {
               {group.items.map((item) => (
                 <Link 
                   key={item.label} 
-                  href={`${item.path}?store=${storeId}`}
+                  href={storeId ? `${item.path}?store=${storeId}` : item.path}
                   style={card}
                 >
                   <div style={{ ...iconBox, backgroundColor: `${item.color}15`, color: item.color }}>
                     {item.icon}
                   </div>
                   <div style={labelWrap}>
-                    <span style={label}>{item.label}</span>
+                    <div style={{ display: 'flex', flexDirection: 'column' }}>
+                      <span style={label}>{item.label}</span>
+                      <span style={subLabelStyle}>{item.subLabel}</span>
+                    </div>
                     <ChevronRight size={16} color={colors.secondary} />
                   </div>
                 </Link>
@@ -102,89 +164,16 @@ export default function ManagementPage() {
 
 /* ---------------- STYLES ---------------- */
 
-const container: React.CSSProperties = {
-  background: colors.background,
-  minHeight: '100vh',
-  paddingBottom: '100px', // Χώρος για το BottomNav
-}
-
-const header: React.CSSProperties = {
-  padding: '40px 20px 20px 20px',
-  background: colors.surface,
-  borderBottom: `1px solid ${colors.border}`,
-}
-
-const headerTitle: React.CSSProperties = {
-  fontSize: '28px',
-  fontWeight: 900,
-  color: colors.primary,
-  margin: 0
-}
-
-const headerSub: React.CSSProperties = {
-  fontSize: '14px',
-  color: colors.secondary,
-  marginTop: '4px',
-  fontWeight: 600
-}
-
-const content: React.CSSProperties = {
-  padding: '20px 16px',
-  maxWidth: '600px',
-  margin: '0 auto'
-}
-
-const section: React.CSSProperties = {
-  marginBottom: '28px'
-}
-
-const sectionTitle: React.CSSProperties = {
-  fontSize: '13px',
-  fontWeight: 800,
-  color: colors.secondary,
-  textTransform: 'uppercase',
-  letterSpacing: '0.05em',
-  marginBottom: '12px',
-  marginLeft: '4px'
-}
-
-const grid: React.CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
-  gap: '8px'
-}
-
-const card: React.CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  padding: '16px',
-  background: colors.surface,
-  borderRadius: '18px',
-  textDecoration: 'none',
-  border: `1px solid ${colors.border}`,
-  transition: 'transform 0.1s ease',
-}
-
-const iconBox: React.CSSProperties = {
-  width: '42px',
-  height: '42px',
-  borderRadius: '12px',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  marginRight: '16px',
-  flexShrink: 0
-}
-
-const labelWrap: React.CSSProperties = {
-  display: 'flex',
-  justifyContent: 'space-between',
-  alignItems: 'center',
-  flex: 1
-}
-
-const label: React.CSSProperties = {
-  fontSize: '16px',
-  fontWeight: 700,
-  color: colors.primary
-}
+const container: React.CSSProperties = { background: colors.background, minHeight: '100vh', paddingBottom: '110px' }
+const header: React.CSSProperties = { padding: '40px 20px 24px 20px', background: colors.surface, borderBottom: `1px solid ${colors.border}` }
+const headerTitle: React.CSSProperties = { fontSize: '32px', fontWeight: 900, color: colors.primary, margin: 0, letterSpacing: '-0.02em' }
+const headerSub: React.CSSProperties = { fontSize: '15px', color: colors.secondary, marginTop: '4px', fontWeight: 600 }
+const content: React.CSSProperties = { padding: '24px 16px', maxWidth: '600px', margin: '0 auto' }
+const section: React.CSSProperties = { marginBottom: '32px' }
+const sectionTitle: React.CSSProperties = { fontSize: '13px', fontWeight: 800, color: colors.secondary, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '14px', marginLeft: '4px' }
+const grid: React.CSSProperties = { display: 'flex', flexDirection: 'column', gap: '10px' }
+const card: React.CSSProperties = { display: 'flex', alignItems: 'center', padding: '18px', background: colors.surface, borderRadius: '20px', textDecoration: 'none', border: `1px solid ${colors.border}`, transition: 'all 0.2s ease', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }
+const iconBox: React.CSSProperties = { width: '46px', height: '46px', borderRadius: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', marginRight: '16px', flexShrink: 0 }
+const labelWrap: React.CSSProperties = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', flex: 1 }
+const label: React.CSSProperties = { fontSize: '16px', fontWeight: 800, color: colors.primary, lineHeight: 1.2 }
+const subLabelStyle: React.CSSProperties = { fontSize: '12px', color: colors.secondary, fontWeight: 500, marginTop: '2px' }
