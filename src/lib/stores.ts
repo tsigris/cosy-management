@@ -132,13 +132,6 @@ export const refreshStoresCache = async (userId: string) => {
 export const prefetchStoresForUser = async (userId: string): Promise<StoresFetchResult | null> => {
   try {
     const result = await fetchStoresWithStats(userId)
-    console.log('[prefetchStoresForUser] fetched stores:', {
-      userId,
-      storesCount: result.stores.length,
-      stores: result.stores,
-      accessWarning: result.accessWarning,
-    })
-    // Overwrite cache only after successful fetch, ώστε να μείνει διαθέσιμο το παλιό cache αν αργήσει/αποτύχει το fetch.
     writeStoresCache(userId, result)
     const cached = readStoresCache(userId)
     if (!cached) {

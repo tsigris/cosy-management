@@ -2,8 +2,8 @@
 
 export const dynamic = 'force-dynamic'
 
-import { useState, Suspense, useRef } from 'react'
-import { setSessionCache, supabase } from '@/lib/supabase'
+import { useState, Suspense } from 'react'
+import { supabase } from '@/lib/supabase'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { toast, Toaster } from 'sonner'
@@ -32,7 +32,6 @@ function LoginContent() {
   const [loading, setLoading] = useState(false)
   const [resendLoading, setResendLoading] = useState(false)
   const [emailConfirmationPending, setEmailConfirmationPending] = useState(false)
-  const googleLoadingToastRef = useRef<string | number | null>(null)
 
   const getSafeNextPath = (next: string | null) => {
     if (!next) return null
@@ -102,11 +101,8 @@ function LoginContent() {
       }
 
       setEmailConfirmationPending(false)
-      setSessionCache(data.session ?? null)
-
       if (data.user) {
-        router.push('/select-store')
-        return
+        window.location.assign('/select-store')
       }
     } catch (err: any) {
       toast.error(err.message || 'Παρουσιάστηκε πρόβλημα κατά τη σύνδεση.')
@@ -116,7 +112,6 @@ function LoginContent() {
   }
 
   const signInWithGoogle = async () => {
-    googleLoadingToastRef.current = toast.loading('Γίνεται ταυτοποίηση...')
     setLoading(true)
 
     try {
@@ -129,12 +124,8 @@ function LoginContent() {
       })
 
       if (error) throw error
-      router.push('/select-store')
+      window.location.assign('/select-store')
     } catch (err: any) {
-      if (googleLoadingToastRef.current !== null) {
-        toast.dismiss(googleLoadingToastRef.current)
-        googleLoadingToastRef.current = null
-      }
       toast.error(err.message || 'Αποτυχία σύνδεσης με Google.')
       setLoading(false)
     }

@@ -1,6 +1,6 @@
 'use client'
 import { useEffect, useState, useMemo, useRef, useCallback } from 'react'
-import { clearSessionCache, getSessionCached, supabase } from '@/lib/supabase'
+import { clearSessionCache, supabase } from '@/lib/supabase'
 import { refreshStoresCache, type StoreCard } from '@/lib/stores'
 import { useRouter } from 'next/navigation'
 import { LogOut, Plus, ArrowRight, TrendingUp, TrendingDown, Wallet, Store } from 'lucide-react'
@@ -91,38 +91,37 @@ function SelectStorePage() {
       setLoading(true)
       setAccessWarning('')
 
-      const session = await getSessionCached()
+      try {
+        const {
+          data: { session }
+        } = await supabase.auth.getSession()
 
-      if (!session) {
+        if (!session) {
+          if (isMounted) {
+            router.replace('/login')
+          }
+          return
+        }
+
+        const fresh = await refreshStoresCache(session.user.id)
+        if (!isMounted) return
+
+        const safeStores = Array.isArray(fresh?.stores) ? fresh.stores : []
+        setUserStores(safeStores)
+        setAccessWarning(fresh.accessWarning)
+        setShowRetryButton(false)
+        maybeAutoRedirectSingleStore(safeStores)
+      } catch (err: unknown) {
+        console.error('Fetch error:', err)
+        if (isMounted) {
+          toast.error('Πρόβλημα κατά την ανάκτηση των καταστημάτων')
+          setShowRetryButton(true)
+        }
+      } finally {
         if (isMounted) {
           setLoading(false)
-          router.replace('/login')
         }
-        return
       }
-
-      const userId = session.user.id
-      refreshStoresCache(userId)
-        .then((fresh) => {
-          if (!isMounted) return
-          const safeStores = Array.isArray(fresh?.stores) ? fresh.stores : []
-          setUserStores(safeStores)
-          setAccessWarning(fresh.accessWarning)
-          setShowRetryButton(false)
-          maybeAutoRedirectSingleStore(safeStores)
-        })
-        .catch((err: unknown) => {
-          console.error('Fetch error:', err)
-          if (isMounted) {
-            toast.error('Πρόβλημα κατά την ανάκτηση των καταστημάτων')
-            setShowRetryButton(true)
-          }
-        })
-        .finally(() => {
-          if (isMounted) {
-            setLoading(false)
-          }
-        })
     }
 
     void loadStores()
