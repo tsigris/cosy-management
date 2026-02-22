@@ -470,6 +470,47 @@ function GoalsContent() {
     await loadHistory(selectedGoal.id, 0, historyPageSize, historyFrom, historyTo)
   }
 
+  const onDeleteTransaction = async (tx: Tx) => {
+    if (!storeId || !selectedGoal) return
+    if (!confirm('Θέλεις σίγουρα να διαγράψεις αυτή την κίνηση;')) return
+
+    try {
+      const { data, error } = await supabase.rpc('delete_savings_transaction', {
+        p_transaction_id: tx.id,
+        p_goal_id: selectedGoal.id,
+        p_store_id: storeId,
+        p_amount: tx.amount,
+      })
+      if (error) throw error
+
+      const newAmountRaw =
+        typeof data === 'number'
+          ? data
+          : typeof data === 'string'
+            ? Number(data)
+            : Number((data as any)?.current_amount ?? (data as any)?.new_amount)
+
+      const newAmount = Number.isFinite(newAmountRaw) ? Number(newAmountRaw) : Number(selectedGoal.current_amount || 0)
+
+      setHistoryRows((prev) => prev.filter((row) => row.id !== tx.id))
+
+      setGoals((prev) =>
+        prev.map((g) => {
+          if (g.id !== selectedGoal.id) return g
+          const finalStatus =
+            g.status === 'completed' && newAmount < Number(g.target_amount)
+              ? 'completed'
+              : newAmount >= Number(g.target_amount)
+                ? 'completed'
+                : 'active'
+          return { ...g, current_amount: newAmount, status: finalStatus }
+        })
+      )
+    } catch (e: any) {
+      toast.error(e.message || 'Αποτυχία διαγραφής κίνησης')
+    }
+  }
+
   // UI Stats
   const totalSaved = useMemo(() => goals.reduce((acc, g) => acc + Number(g.current_amount || 0), 0), [goals])
 
@@ -937,16 +978,21 @@ function GoalsContent() {
                       <div key={t.id} style={historyRow}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
                           <div style={{ fontSize: 13, fontWeight: 950, color: colors.primaryDark }}>{t.date}</div>
-                          <div
-                            style={{
-                              ...historyPill,
-                              background: isDeposit ? '#fff1f2' : '#ecfdf5',
-                              borderColor: isDeposit ? '#ffe4e6' : '#d1fae5',
-                              color: isDeposit ? colors.accentRed : colors.accentGreen,
-                            }}
-                          >
-                            {isDeposit ? '-' : '+'}
-                            {abs.toLocaleString('el-GR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}€
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <div
+                              style={{
+                                ...historyPill,
+                                background: isDeposit ? '#fff1f2' : '#ecfdf5',
+                                borderColor: isDeposit ? '#ffe4e6' : '#d1fae5',
+                                color: isDeposit ? colors.accentRed : colors.accentGreen,
+                              }}
+                            >
+                              {isDeposit ? '-' : '+'}
+                              {abs.toLocaleString('el-GR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}€
+                            </div>
+                            <button type="button" onClick={() => onDeleteTransaction(t)} style={actionIconBtn} aria-label="delete transaction" title="Διαγραφή κίνησης">
+                              <Trash2 size={16} color={colors.accentRed} />
+                            </button>
                           </div>
                         </div>
 
