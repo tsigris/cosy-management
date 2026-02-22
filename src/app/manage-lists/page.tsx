@@ -840,9 +840,19 @@ function ManageListsContent() {
         })
         .filter((t: any) => isTxInYear(t, year))
 
-      const creditTxs = entityTrans
-        .filter((t: any) => t.is_credit === true)
-        .sort((a: any, b: any) => (getTxDate(b)?.getTime() || 0) - (getTxDate(a)?.getTime() || 0))
+      const creditTxs = isIncome
+        ? entityTrans
+            .filter((t: any) => t.is_credit === true)
+            .sort((a: any, b: any) => (getTxDate(b)?.getTime() || 0) - (getTxDate(a)?.getTime() || 0))
+        : entityTrans
+            .filter((t: any) => String(t.type || '') === 'expense')
+            .sort((a: any, b: any) => (getTxDate(b)?.getTime() || 0) - (getTxDate(a)?.getTime() || 0))
+
+      const debtBaseCreditTxs = isIncome
+        ? creditTxs
+        : entityTrans
+            .filter((t: any) => String(t.type || '') === 'expense' && t.is_credit === true)
+            .sort((a: any, b: any) => (getTxDate(b)?.getTime() || 0) - (getTxDate(a)?.getTime() || 0))
 
       const settlementTxs = isIncome
         ? entityTrans
@@ -856,6 +866,7 @@ function ManageListsContent() {
       const oldestCreditDate = creditTxs.length ? getTxDate(creditTxs[creditTxs.length - 1]) : null
 
       const totalCreditAmount = creditTxs.reduce((acc: number, t: any) => acc + Math.abs(Number(t.amount) || 0), 0)
+      const totalDebtBaseAmount = debtBaseCreditTxs.reduce((acc: number, t: any) => acc + Math.abs(Number(t.amount) || 0), 0)
       const totalSettlementAmount = settlementTxs.reduce((acc: number, t: any) => acc + Math.abs(Number(t.amount) || 0), 0)
       const latestSettlementDate = settlementTxs.length ? getTxDate(settlementTxs[0]) : null
       const latestSettlementAmount = settlementTxs.length ? Math.abs(Number(settlementTxs[0]?.amount) || 0) : null
@@ -869,7 +880,7 @@ function ManageListsContent() {
         latestSettlementAmount,
         totalCreditAmount,
         totalSettlementAmount,
-        balance: totalCreditAmount - totalSettlementAmount,
+        balance: totalDebtBaseAmount - totalSettlementAmount,
       }
     },
     [activeTab, RECEIVED_TYPES],
@@ -1232,6 +1243,7 @@ function ManageListsContent() {
                 : `/add-expense?store=${storeForActions}&${activeTab === 'suppliers' ? 'supId' : 'assetId'}=${item.id}&mode=debt`
               const showDebtAction = history.balance > 0.1 && !!storeForActions
               const debtActionLabel = isIncome ? 'ΕΙΣΠΡΑΞΗ' : 'ΕΞΟΦΛΗΣΗ'
+              const cardMainAmount = isIncome ? history.balance : history.totalCreditAmount
 
               const rfValue = String(item?.rf_code || '').trim()
               const ibanValue = String(item?.iban || '').trim()
@@ -1278,7 +1290,7 @@ function ManageListsContent() {
 
                     <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <p style={{ ...turnoverText, color: colors.accentOrange }}>{history.balance.toFixed(2)}€</p>
+                        <p style={{ ...turnoverText, color: colors.accentOrange }}>{cardMainAmount.toFixed(2)}€</p>
                         {isExpanded ? <ChevronUp size={18} color={colors.secondaryText} /> : <ChevronDown size={18} color={colors.secondaryText} />}
                       </div>
 
