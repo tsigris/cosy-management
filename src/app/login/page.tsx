@@ -22,14 +22,6 @@ const getEmailRedirectUrl = () => {
   return '/login'
 }
 
-const getOAuthRedirectUrl = () => {
-  if (typeof window !== 'undefined') {
-    return window.location.origin
-  }
-
-  return '/'
-}
-
 function LoginContent() {
   const searchParams = useSearchParams()
   const nextParam = searchParams.get('next')
@@ -41,6 +33,18 @@ function LoginContent() {
   const [emailConfirmationPending, setEmailConfirmationPending] = useState(false)
   const [showDelayedAuthMessage, setShowDelayedAuthMessage] = useState(false)
   const googleLoadingToastRef = useRef<string | number | null>(null)
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    const hasAccessTokenInHash = window.location.hash.includes('access_token')
+    const hasGoogleLoginFlag = localStorage.getItem('logging_in_google') === 'true'
+
+    if (hasAccessTokenInHash || hasGoogleLoginFlag) {
+      localStorage.removeItem('logging_in_google')
+      window.location.href = '/select-store'
+    }
+  }, [])
 
   const getSafeNextPath = (next: string | null) => {
     if (!next) return null
@@ -158,6 +162,8 @@ function LoginContent() {
     setLoading(true)
 
     try {
+      localStorage.setItem('logging_in_google', 'true')
+
       let activeStoreCleared = false
       try {
         localStorage.removeItem('active_store_id')
@@ -173,7 +179,7 @@ function LoginContent() {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: typeof window !== 'undefined' ? window.location.origin : getOAuthRedirectUrl(),
+          redirectTo: `${window.location.origin}/select-store`,
           queryParams: { prompt: 'select_account' }
         }
       })
@@ -181,6 +187,7 @@ function LoginContent() {
       if (error) throw error
       window.location.href = '/select-store'
     } catch (err: any) {
+      localStorage.removeItem('logging_in_google')
       if (googleLoadingToastRef.current !== null) {
         toast.dismiss(googleLoadingToastRef.current)
         googleLoadingToastRef.current = null

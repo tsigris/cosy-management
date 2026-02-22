@@ -97,7 +97,19 @@ function SelectStorePage() {
         setSessionCache(sessionData.session)
       }
 
-      const session = sessionData.session ?? await getSessionCached()
+      let session = sessionData.session ?? await getSessionCached()
+
+      if (!session) {
+        await new Promise((resolve) => setTimeout(resolve, 1000))
+        const { data: retrySessionData } = await supabase.auth.getSession()
+        if (retrySessionData.session) {
+          setSessionCache(retrySessionData.session)
+          session = retrySessionData.session
+        } else {
+          session = await getSessionCached()
+        }
+      }
+
       if (!session) {
         if (isMounted) {
           await new Promise((resolve) => setTimeout(resolve, 500))
