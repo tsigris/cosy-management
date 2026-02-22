@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
-const FALLBACK_SUPABASE_URL = 'https://eytpewhenrnoueipjmuk.supabase.co'
-
 export const runtime = 'nodejs'
 
 export async function POST(request: NextRequest) {
@@ -14,8 +12,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ valid: false, error: 'Missing invite id.' }, { status: 400 })
     }
 
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || FALLBACK_SUPABASE_URL
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+    if (!uuidRegex.test(inviteId)) {
+      return NextResponse.json({ valid: false, error: 'Invalid invite format.' }, { status: 400 })
+    }
+
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL
     const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+
+    if (!supabaseUrl) {
+      return NextResponse.json({ valid: false, error: 'Server configuration missing.' }, { status: 500 })
+    }
 
     if (!serviceRoleKey) {
       return NextResponse.json(
@@ -35,7 +42,7 @@ export async function POST(request: NextRequest) {
 
     if (error) {
       console.error('Invite validation failed:', error)
-      return NextResponse.json({ valid: false, error: 'Invite validation failed.' }, { status: 500 })
+      return NextResponse.json({ valid: false, error: 'Validation failed.' }, { status: 500 })
     }
 
     return NextResponse.json({ valid: Boolean(data?.id), storeId: data?.id ?? null })
