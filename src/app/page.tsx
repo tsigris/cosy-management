@@ -60,7 +60,7 @@ interface Transaction {
   suppliers?: { name?: string | null } | null
   fixed_assets?: { name?: string | null } | null
   revenue_sources?: { name?: string | null } | null
-  profiles?: { username: string } | Array<{ username: string }> | null
+  profiles?: { username: string } | null
   created_by_name?: string
 }
 
@@ -284,15 +284,9 @@ function DashboardContent() {
       // ✅ DEDUPE
       const map = new Map<string, Transaction>()
       for (const row of tx || []) {
-        const rowData = row as unknown as Transaction
-        const profileUsername = Array.isArray(rowData.profiles)
-          ? rowData.profiles[0]?.username
-          : rowData.profiles?.username
-
-        const normalizedRow = {
-          ...rowData,
-          created_by_name: profileUsername || 'Άγνωστος',
-        }
+        const rowData = row as any
+        const profileUsername = rowData.profiles?.username || 'Άγνωστος'
+        const normalizedRow = { ...rowData, created_by_name: profileUsername }
         map.set(String(normalizedRow.id), normalizedRow)
       }
       setTransactions(Array.from(map.values()))
