@@ -40,6 +40,12 @@ type YtdInfo = {
   loanInstallmentsTotal?: number
 }
 
+interface Transaction {
+  [key: string]: any
+  profiles?: any | null
+  created_by_name?: string
+}
+
 function getPaymentMethod(tx: any): string {
   return String(tx?.payment_method ?? tx?.method ?? '').trim()
 }
@@ -62,7 +68,7 @@ function DashboardContent() {
   const [isStoreAdmin, setIsStoreAdmin] = useState(false)
   const [canViewAnalysis, setCanViewAnalysis] = useState(false)
   const [storeName, setStoreName] = useState('Φορτώνει...')
-  const [transactions, setTransactions] = useState<any[]>([])
+  const [transactions, setTransactions] = useState<Transaction[]>([])
   const [loading, setLoading] = useState(true)
   const [expandedTx, setExpandedTx] = useState<string | null>(null)
 
@@ -245,7 +251,7 @@ function DashboardContent() {
 
       const { data: tx, error: txError } = await supabase
         .from('transactions')
-        .select('*, suppliers(name), fixed_assets(name), revenue_sources(name)')
+        .select('*, suppliers(name), fixed_assets(name), revenue_sources(name), profiles:created_by(username)')
         .eq('store_id', storeIdFromUrl)
         .or(`date.eq.${selectedDate},and(created_at.gte.${windowStartIso},created_at.lte.${windowEndIso})`)
         .order('created_at', { ascending: false })
@@ -253,8 +259,19 @@ function DashboardContent() {
       if (txError) throw txError
 
       // ✅ DEDUPE
-      const map = new Map<string, any>()
-      for (const row of tx || []) map.set(String(row.id), row)
+      const map = new Map<string, Transaction>()
+      for (const row of tx || []) {
+        const rowData = row as any
+        const profileUsername = Array.isArray(rowData.profiles)
+          ? rowData.profiles[0]?.username
+          : rowData.profiles?.username
+
+        const normalizedRow = {
+          ...rowData,
+          created_by_name: profileUsername || rowData.created_by_name || 'Άγνωστος',
+        }
+        map.set(String(normalizedRow.id), normalizedRow)
+      }
       setTransactions(Array.from(map.values()))
 
       // RBAC
