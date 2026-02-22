@@ -303,16 +303,18 @@ function SettingsContent() {
       let transQuery = supabase.from('transactions').select('*').eq('store_id', storeId)
       if (!exportAllData) transQuery = transQuery.gte('date', startDate).lte('date', endDate)
 
-      const [trans, sups, assets, emps] = await Promise.all([
+      const [trans, sups, assets, emps, fixedAssetsLookup] = await Promise.all([
         transQuery.order('date', { ascending: false }),
         supabase.from('suppliers').select('*').eq('store_id', storeId),
         supabase.from('fixed_assets').select('*').eq('store_id', storeId),
         supabase.from('employees').select('*').eq('store_id', storeId),
+        supabase.from('fixed_assets').select('id, name').eq('store_id', storeId),
       ])
 
       const supplierMap = Object.fromEntries(sups.data?.map((s: any) => [s.id, s.name]) || [])
       const assetMap = Object.fromEntries(assets.data?.map((a: any) => [a.id, a.name]) || [])
       const employeeMap = Object.fromEntries(emps.data?.map((e: any) => [e.id, e.name]) || [])
+      const fixedAssetEmployeeMap = Object.fromEntries(fixedAssetsLookup.data?.map((a: any) => [a.id, a.name]) || [])
 
       const formattedTransactions =
         trans.data?.map((t: any) => ({
@@ -323,7 +325,9 @@ function SettingsContent() {
           Μέθοδος: t.method,
           Προμηθευτής: supplierMap[t.supplier_id] || '-',
           Πάγιο: assetMap[t.fixed_asset_id] || '-',
-          Υπάλληλος: employeeMap[t.employee_id] || '-',
+          Υπάλληλος: t.fixed_asset_id
+            ? fixedAssetEmployeeMap[t.fixed_asset_id] || '-'
+            : employeeMap[t.employee_id] || '-',
           Σημειώσεις: t.notes,
         })) || []
 
