@@ -527,7 +527,7 @@ function DashboardContent() {
                 <NextLink href={`/settings?store=${storeIdFromUrl}`} style={menuItem} onClick={() => setIsMenuOpen(false)}>
                   ⚙️ Ρυθμίσεις
                 </NextLink>
-                <NextLink href={`/instructions?store=${storeIdFromUrl}`} style={menuItem} onClick={() => setIsMenuOpen(false)}>
+                <NextLink href={`/help?store=${storeIdFromUrl}`} style={menuItem} onClick={() => setIsMenuOpen(false)}>
                   📖 Οδηγίες Χρήσης
                 </NextLink>
                 <NextLink href={`/permissions?store=${storeIdFromUrl}`} style={menuItem} onClick={() => setIsMenuOpen(false)}>
