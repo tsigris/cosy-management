@@ -484,17 +484,15 @@ function GoalsContent() {
     if (!confirm('Θέλεις σίγουρα να διαγράψεις αυτή την κίνηση;')) return
 
     try {
-      const { error } = await supabase.rpc('delete_savings_transaction', {
+      const { error } = await supabase.rpc('professional_delete_goal_transaction', {
         p_transaction_id: tx.id,
         p_goal_id: selectedGoal.id,
         p_store_id: storeId,
-        p_amount: tx.amount,
       })
       if (error) throw error
-    } catch (e: any) {
-      toast.error(e?.message || e?.details || 'Αποτυχία διαγραφής κίνησης')
-    } finally {
       await loadGoals()
+    } catch (e: any) {
+      toast.error('Αποτυχία: Η κίνηση ανήκει σε κλεισμένη ημέρα και δεν μπορεί να διαγραφεί')
     }
   }
 
