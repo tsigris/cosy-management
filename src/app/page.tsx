@@ -40,30 +40,6 @@ type YtdInfo = {
   loanInstallmentsTotal?: number
 }
 
-interface Transaction {
-  id: string
-  created_at?: string | null
-  amount?: number | null
-  type?: string | null
-  category?: string | null
-  description?: string | null
-  store_id?: string | null
-  fixed_asset_id?: string | null
-  supplier_id?: string | null
-  payment_method?: string | null
-  created_by?: string | null
-  notes?: string | null
-  method?: string | null
-  date?: string | null
-  is_credit?: boolean | null
-  revenue_source_id?: string | null
-  suppliers?: { name?: string | null } | null
-  fixed_assets?: { name?: string | null } | null
-  revenue_sources?: { name?: string | null } | null
-  profiles?: any | null
-  created_by_name?: string
-}
-
 function getPaymentMethod(tx: any): string {
   return String(tx?.payment_method ?? tx?.method ?? '').trim()
 }
@@ -86,7 +62,7 @@ function DashboardContent() {
   const [isStoreAdmin, setIsStoreAdmin] = useState(false)
   const [canViewAnalysis, setCanViewAnalysis] = useState(false)
   const [storeName, setStoreName] = useState('Φορτώνει...')
-  const [transactions, setTransactions] = useState<Transaction[]>([])
+  const [transactions, setTransactions] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [expandedTx, setExpandedTx] = useState<string | null>(null)
 
@@ -269,37 +245,16 @@ function DashboardContent() {
 
       const { data: tx, error: txError } = await supabase
         .from('transactions')
-        .select(`
-          id, created_at, amount, type, category, description, store_id,
-          fixed_asset_id, supplier_id, payment_method,
-          created_by,
-          profiles:created_by (username)
-        `)
+        .select('*, suppliers(name), fixed_assets(name), revenue_sources(name)')
         .eq('store_id', storeIdFromUrl)
         .or(`date.eq.${selectedDate},and(created_at.gte.${windowStartIso},created_at.lte.${windowEndIso})`)
         .order('created_at', { ascending: false })
 
       if (txError) throw txError
 
-      // ✅ Ρητή εξομάλυνση (Normalizing data)
-      const map = new Map<string, Transaction>()
-      for (const row of (tx || [])) {
-        const rowData = row as any
-        
-        // Χειρισμός του username είτε επιστρέφει object είτε array
-        let profileUsername = 'Άγνωστος'
-        if (rowData.profiles) {
-          profileUsername = Array.isArray(rowData.profiles) 
-            ? rowData.profiles[0]?.username 
-            : rowData.profiles?.username
-        }
-
-        const normalizedRow: Transaction = {
-          ...rowData,
-          created_by_name: profileUsername || 'Άγνωστος'
-        }
-        map.set(String(normalizedRow.id), normalizedRow)
-      }
+      // ✅ DEDUPE
+      const map = new Map<string, any>()
+      for (const row of tx || []) map.set(String(row.id), row)
       setTransactions(Array.from(map.values()))
 
       // RBAC
@@ -453,17 +408,13 @@ function DashboardContent() {
       }
 
       if (!zInserted) {
-        const zProfileUsername = Array.isArray(zTx[0]?.profiles)
-          ? zTx[0]?.profiles[0]?.username
-          : zTx[0]?.profiles?.username
-
         rows.push({
           kind: 'z-master',
           id: Z_MASTER_ROW_ID,
           date: zTx[0]?.date || selectedDate,
           amount: zTotal,
           created_at: zTx[0]?.created_at || null,
-          created_by_name: zProfileUsername || 'Άγνωστος',
+          created_by_name: zTx[0]?.created_by_name || null,
           itemsCount: zTx.length,
           breakdown: zBreakdown,
         })
@@ -579,7 +530,7 @@ function DashboardContent() {
                 <NextLink href={`/help?store=${storeIdFromUrl}`} style={menuItem} onClick={() => setIsMenuOpen(false)}>
                   📖 Οδηγίες Χρήσης
                 </NextLink>
-                <NextLink href={`/admin/permissions?store=${storeIdFromUrl}`} style={menuItem} onClick={() => setIsMenuOpen(false)}>
+                <NextLink href={`/permissions?store=${storeIdFromUrl}`} style={menuItem} onClick={() => setIsMenuOpen(false)}>
                   🔐 Δικαιώματα
                 </NextLink>
 
@@ -685,8 +636,7 @@ function DashboardContent() {
             const txMethod = isZMaster ? 'Συγκεντρωτική εγγραφή' : t?.method
             const txCreatedAt = isZMaster ? row.created_at : t?.created_at
 
-            const txProfileUsername = Array.isArray(t?.profiles) ? t?.profiles[0]?.username : t?.profiles?.username
-            const txCreatedBy = isZMaster ? row.created_by_name : txProfileUsername || 'Άγνωστος'
+            const txCreatedBy = isZMaster ? row.created_by_name : t?.created_by_name || 'Χρήστης'
             const txAmountValue = isZMaster ? row.amount : Number(t?.amount) || 0
 
             return (
