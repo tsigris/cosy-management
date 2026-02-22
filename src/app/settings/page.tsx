@@ -32,15 +32,16 @@ type NamedEntity = {
 }
 
 type ExportTransactionRow = {
-  date: string
+  id: string
+  created_at: string
+  date: string | Date
   amount: number
-  type: string
+  type: 'expense' | 'income'
   category: string | null
   method: string | null
   supplier_id: string | null
   fixed_asset_id: string | null
-  employee_id: string | null
-  notes: string | null
+  description: string | null
 }
 
 function SectionCard({
@@ -342,17 +343,20 @@ function SettingsContent() {
       const fixedAssetEmployeeMap = Object.fromEntries(fixedAssetsData.map((a) => [a.id, a.name]))
 
       const formattedTransactions =
-        ((trans.data ?? []) as ExportTransactionRow[]).map((t) => ({
-          Ημερομηνία: t.date,
+        (trans.data ?? []).map((t) => {
+          const row = t as ExportTransactionRow
+          return {
+          Ημερομηνία: typeof row.date === 'string' ? row.date : new Date(row.date).toISOString().split('T')[0],
           'Ποσό (€)': t.amount,
-          Τύπος: t.type === 'expense' ? 'Έξοδο' : 'Έσοδο',
-          Κατηγορία: t.category,
-          Μέθοδος: t.method,
-          Προμηθευτής: t.supplier_id ? (supplierMap[t.supplier_id] || '-') : '-',
-          Πάγιο: t.fixed_asset_id ? (assetMap[t.fixed_asset_id] || '-') : '-',
-          Υπάλληλος: t.fixed_asset_id ? (fixedAssetEmployeeMap[t.fixed_asset_id] || '-') : '-',
-          Σημειώσεις: (t as any).description || '',
-        }))
+          Τύπος: row.type === 'expense' ? 'Έξοδο' : 'Έσοδο',
+          Κατηγορία: row.category,
+          Μέθοδος: row.method,
+          Προμηθευτής: row.supplier_id ? (supplierMap[row.supplier_id] || '-') : '-',
+          Πάγιο: row.fixed_asset_id ? (assetMap[row.fixed_asset_id] || '-') : '-',
+          Υπάλληλος: row.fixed_asset_id ? (fixedAssetEmployeeMap[row.fixed_asset_id] || '-') : '-',
+          Σημειώσεις: row.description || '',
+        }
+      })
 
       const wb = XLSX.utils.book_new()
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(formattedTransactions), 'Συναλλαγές')
