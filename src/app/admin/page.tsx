@@ -8,33 +8,16 @@ function InviteContent() {
   const searchParams = useSearchParams()
   // Παίρνουμε τον ρόλο από το URL (π.χ. ?role=admin), αλλιώς default 'user'
   const targetRole = searchParams.get('role') || 'user'
+  const urlStoreId = searchParams.get('store');
   
-  const [storeId, setStoreId] = useState('')
-  const [loading, setLoading] = useState(true)
+  const [storeId, setStoreId] = useState(urlStoreId || '');
+  const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false)
+  const [inviteLink, setInviteLink] = useState('');
 
   useEffect(() => {
-    async function getAdminData() {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (user) {
-        // Τραβάμε το store_id του τρέχοντος Admin
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('store_id')
-          .eq('id', user.id)
-          .single()
-        
-        setStoreId(profile?.store_id || user.id)
-      }
-      setLoading(false)
-    }
-    getAdminData()
-  }, [])
-
-  // Δημιουργία του URL πρόσκλησης με role και store_id
-  const inviteLink = typeof window !== 'undefined' 
-    ? `${window.location.origin}/register?invite=${storeId}&role=${targetRole}` 
-    : ''
+    if (typeof window !== 'undefined' && storeId) setInviteLink(`${window.location.origin}/register?invite=${storeId}&role=${targetRole}`);
+  }, [storeId, targetRole]);
 
   const copyToClipboard = () => {
     navigator.clipboard.writeText(inviteLink)
@@ -49,7 +32,7 @@ function InviteContent() {
       <div style={cardStyle}>
         
         <div style={{ display: 'flex', alignItems: 'center', gap: '15px', marginBottom: '20px' }}>
-          <Link href="/admin/permissions" style={backBtnStyle}>←</Link>
+          <Link href={`/permissions?store=${storeId}`} style={backBtnStyle}>←</Link>
           <h2 style={{ fontSize: '18px', fontWeight: '900', color: '#1e293b', margin: 0 }}>
              Πρόσκληση {targetRole === 'admin' ? 'Διαχειριστή' : 'Υπαλλήλου'}
           </h2>

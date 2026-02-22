@@ -107,6 +107,18 @@ function PermissionsContent() {
       return;
     }
 
+    const { data: adminCheck } = await supabase
+      .from('store_access')
+      .select('store_id')
+      .eq('user_id', myId)
+      .in('role', ['admin', 'owner'])
+      .in('store_id', selectedStores);
+
+    if (!adminCheck || adminCheck.length !== selectedStores.length) {
+      toast.error("Μη εξουσιοδοτημένη ενέργεια σε ορισμένα καταστήματα.");
+      return;
+    }
+
     setMassUpdateLoading(true);
     try {
       const { error } = await supabase
@@ -137,6 +149,18 @@ function PermissionsContent() {
       return;
     }
 
+    const { data: adminCheck } = await supabase
+      .from('store_access')
+      .select('role')
+      .eq('user_id', myId)
+      .eq('store_id', storeId)
+      .single();
+
+    if (adminCheck?.role !== 'admin') {
+      toast.error('Μη εξουσιοδοτημένη ενέργεια. Απαιτούνται δικαιώματα Admin.');
+      return;
+    }
+
     try {
       const { error } = await supabase
         .from('store_access')
@@ -159,6 +183,18 @@ function PermissionsContent() {
     }
     if (userId === myId) return;
     if (!confirm('Οριστική αφαίρεση πρόσβασης;')) return;
+
+    const { data: adminCheck } = await supabase
+      .from('store_access')
+      .select('role')
+      .eq('user_id', myId)
+      .eq('store_id', storeId)
+      .single();
+
+    if (adminCheck?.role !== 'admin') {
+      toast.error('Μη εξουσιοδοτημένη ενέργεια. Απαιτούνται δικαιώματα Admin.');
+      return;
+    }
 
     try {
       const { error } = await supabase
