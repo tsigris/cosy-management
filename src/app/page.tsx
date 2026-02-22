@@ -40,6 +40,27 @@ type YtdInfo = {
   loanInstallmentsTotal?: number
 }
 
+interface Transaction {
+  id: string
+  created_at?: string | null
+  amount?: number | null
+  type?: string | null
+  category?: string | null
+  description?: string | null
+  store_id?: string | null
+  fixed_asset_id?: string | null
+  supplier_id?: string | null
+  payment_method?: string | null
+  notes?: string | null
+  method?: string | null
+  date?: string | null
+  is_credit?: boolean | null
+  revenue_source_id?: string | null
+  suppliers?: { name?: string | null } | null
+  fixed_assets?: { name?: string | null } | null
+  revenue_sources?: { name?: string | null } | null
+}
+
 function getPaymentMethod(tx: any): string {
   return String(tx?.payment_method ?? tx?.method ?? '').trim()
 }
@@ -62,7 +83,7 @@ function DashboardContent() {
   const [isStoreAdmin, setIsStoreAdmin] = useState(false)
   const [canViewAnalysis, setCanViewAnalysis] = useState(false)
   const [storeName, setStoreName] = useState('Φορτώνει...')
-  const [transactions, setTransactions] = useState<any[]>([])
+  const [transactions, setTransactions] = useState<Transaction[]>([])
   const [loading, setLoading] = useState(true)
   const [expandedTx, setExpandedTx] = useState<string | null>(null)
 
@@ -245,7 +266,7 @@ function DashboardContent() {
 
       const { data: tx, error: txError } = await supabase
         .from('transactions')
-        .select('id, created_at, amount, type, category, description, store_id, fixed_asset_id')
+        .select('id, created_at, amount, type, category, description, store_id, fixed_asset_id, supplier_id, payment_method')
         .eq('store_id', storeIdFromUrl)
         .or(`date.eq.${selectedDate},and(created_at.gte.${windowStartIso},created_at.lte.${windowEndIso})`)
         .order('created_at', { ascending: false })
@@ -253,7 +274,7 @@ function DashboardContent() {
       if (txError) throw txError
 
       // ✅ DEDUPE
-      const map = new Map<string, any>()
+      const map = new Map<string, Transaction>()
       for (const row of tx || []) map.set(String(row.id), row)
       setTransactions(Array.from(map.values()))
 
