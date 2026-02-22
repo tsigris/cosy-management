@@ -27,14 +27,14 @@ const getOAuthRedirectUrl = () => {
   const envUrl = process.env.NEXT_PUBLIC_SITE_URL || process.env.NEXT_PUBLIC_APP_URL
 
   if (typeof window !== 'undefined') {
-    return `${window.location.origin}/login`
+    return window.location.origin
   }
 
   if (envUrl) {
-    return `${envUrl.replace(/\/$/, '')}/login`
+    return envUrl.replace(/\/$/, '')
   }
 
-  return '/login'
+  return '/'
 }
 
 function LoginContent() {
@@ -101,6 +101,7 @@ function LoginContent() {
     const {
       data: { subscription }
     } = supabase.auth.onAuthStateChange((event, session) => {
+      console.log('Auth event:', event)
       if (event !== 'SIGNED_IN' || !session?.user?.id) return
 
       void (async () => {
@@ -267,7 +268,17 @@ function LoginContent() {
     setLoading(true)
 
     try {
-      localStorage.removeItem('active_store_id')
+      let activeStoreCleared = false
+      try {
+        localStorage.removeItem('active_store_id')
+        activeStoreCleared = localStorage.getItem('active_store_id') === null
+      } catch {
+        activeStoreCleared = false
+      }
+
+      if (!activeStoreCleared) {
+        throw new Error('Αποτυχία καθαρισμού active_store_id πριν το Google redirect.')
+      }
 
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
