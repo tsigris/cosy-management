@@ -18,7 +18,8 @@ import {
   RefreshCw,
   Coins,
   History,
-  Info
+  Info,
+  Sparkles
 } from 'lucide-react'
 
 const colors = {
