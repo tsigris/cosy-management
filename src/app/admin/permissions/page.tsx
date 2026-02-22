@@ -34,7 +34,7 @@ function PermissionsContent() {
 
       const { data: accessData, error: accErr } = await supabase
         .from('store_access')
-        .select('*')
+        .select('user_id, role, can_view_analysis, can_view_history, can_edit_transactions, store_id')
         .eq('store_id', storeId);
 
       if (accErr) throw accErr;

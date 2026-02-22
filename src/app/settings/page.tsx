@@ -123,7 +123,12 @@ function AnimatedBody({ open, children }: { open: boolean; children: ReactNode }
     if (!open) return
     const el = innerRef.current
     if (!el) return
-    setMaxH(el.scrollHeight || 0)
+
+    const raf = window.requestAnimationFrame(() => {
+      setMaxH(el.scrollHeight || 0)
+    })
+
+    return () => window.cancelAnimationFrame(raf)
   }, [open])
 
   return (

@@ -245,7 +245,7 @@ function DashboardContent() {
 
       const { data: tx, error: txError } = await supabase
         .from('transactions')
-        .select('*, suppliers(name), fixed_assets(name), revenue_sources(name)')
+        .select('id, created_at, amount, type, category, description, store_id, fixed_asset_id')
         .eq('store_id', storeIdFromUrl)
         .or(`date.eq.${selectedDate},and(created_at.gte.${windowStartIso},created_at.lte.${windowEndIso})`)
         .order('created_at', { ascending: false })
