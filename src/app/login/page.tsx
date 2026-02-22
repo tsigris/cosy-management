@@ -4,8 +4,7 @@ export const dynamic = 'force-dynamic'
 
 import { useState, Suspense, useEffect, useRef } from 'react'
 import { getSessionCached, setSessionCache, supabase } from '@/lib/supabase'
-import { prefetchStoresForUser, readStoresCache } from '@/lib/stores'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { toast, Toaster } from 'sonner'
 
@@ -32,7 +31,6 @@ const getOAuthRedirectUrl = () => {
 }
 
 function LoginContent() {
-  const router = useRouter()
   const searchParams = useSearchParams()
   const nextParam = searchParams.get('next')
 
@@ -54,95 +52,16 @@ function LoginContent() {
   const safeNextPath = getSafeNextPath(nextParam)
   const registerHref = safeNextPath ? `/register?next=${encodeURIComponent(safeNextPath)}` : '/register'
 
-  const waitForStoresCacheWrite = async (userId: string, maxWaitMs = 6000) => {
-    const start = Date.now()
-
-    while (Date.now() - start < maxWaitMs) {
-      const cached = readStoresCache(userId)
-      if (cached) return cached
-      await new Promise((resolve) => window.setTimeout(resolve, 120))
-    }
-
-    return null
-  }
-
   // Καθαρισμός τυχόν παλιών σκουπιδιών κατά τη φόρτωση της σελίδας
   useEffect(() => {
     const checkSession = async () => {
       const session = await getSessionCached()
       if (session) {
-         const prefetched = await prefetchStoresForUser(session.user.id)
-         const cached = prefetched ? await waitForStoresCacheWrite(session.user.id) : readStoresCache(session.user.id)
-         router.refresh()
-
-         if ((cached && cached.stores.length > 0) || (prefetched && prefetched.stores.length > 0)) {
-           router.replace('/')
-           return
-         }
-
-         if (prefetched && prefetched.stores.length === 0) {
-           router.replace('/select-store')
-           return
-         }
-
-         router.replace('/')
+        window.location.href = '/select-store'
       }
     }
     checkSession()
-  }, [router])
-
-  useEffect(() => {
-    const {
-      data: { subscription }
-    } = supabase.auth.onAuthStateChange((event, session) => {
-      console.log('Auth event:', event)
-      if (event !== 'SIGNED_IN' || !session?.user?.id) return
-
-      void (async () => {
-        if (googleLoadingToastRef.current !== null) {
-          toast.dismiss(googleLoadingToastRef.current)
-          googleLoadingToastRef.current = null
-        }
-
-        setShowDelayedAuthMessage(false)
-
-        const userId = session.user.id
-        const prefetched = await prefetchStoresForUser(userId)
-        const cached = prefetched ? await waitForStoresCacheWrite(userId) : readStoresCache(userId)
-
-        setLoading(false)
-
-        if ((cached && cached.stores.length > 0) || (prefetched && prefetched.stores.length > 0)) {
-          await new Promise((resolve) => setTimeout(resolve, 500))
-          router.push('/')
-          await router.refresh()
-          return
-        }
-
-        if (!prefetched) {
-          await new Promise((resolve) => setTimeout(resolve, 500))
-          router.push('/')
-          await router.refresh()
-          return
-        }
-
-        if (prefetched && prefetched.stores.length === 0) {
-          await new Promise((resolve) => setTimeout(resolve, 500))
-          router.push('/select-store')
-          router.refresh()
-          return
-        }
-
-        await new Promise((resolve) => setTimeout(resolve, 500))
-        router.push('/')
-        router.refresh()
-      })()
-    })
-
-    return () => {
-      subscription.unsubscribe()
-    }
-  }, [router])
+  }, [])
 
   useEffect(() => {
     if (!loading) {
@@ -223,31 +142,8 @@ function LoginContent() {
       setSessionCache(data.session ?? null)
 
       if (data.user) {
-        const prefetchUserId = data.session?.user.id || data.user.id
-        const prefetched = await prefetchStoresForUser(prefetchUserId)
-        const cached = prefetched ? await waitForStoresCacheWrite(prefetchUserId) : readStoresCache(prefetchUserId)
-        const nextAfterLogin = getSafeNextPath(searchParams.get('next'))
-
-        if ((cached && cached.stores.length > 0) || (prefetched && prefetched.stores.length > 0)) {
-          await new Promise((resolve) => setTimeout(resolve, 500))
-          router.push(nextAfterLogin || '/')
-          return
-        }
-
-        if (!prefetched) {
-          await new Promise((resolve) => setTimeout(resolve, 500))
-          router.push('/')
-          return
-        }
-
-        if (prefetched && prefetched.stores.length === 0) {
-          await new Promise((resolve) => setTimeout(resolve, 500))
-          router.push('/select-store')
-          return
-        }
-
-        await new Promise((resolve) => setTimeout(resolve, 500))
-        router.push(nextAfterLogin || '/')
+        window.location.href = '/select-store'
+        return
       }
     } catch (err: any) {
       toast.error(err.message || 'Παρουσιάστηκε πρόβλημα κατά τη σύνδεση.')
@@ -283,6 +179,7 @@ function LoginContent() {
       })
 
       if (error) throw error
+      window.location.href = '/select-store'
     } catch (err: any) {
       if (googleLoadingToastRef.current !== null) {
         toast.dismiss(googleLoadingToastRef.current)

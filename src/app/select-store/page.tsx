@@ -112,34 +112,49 @@ function SelectStorePage() {
       const cachedStores = cached && Array.isArray(cached.stores) ? cached.stores : []
       const hasCachedStores = cachedStores.length > 0
 
-      if (cached && isMounted) {
+      if (hasCachedStores && cached && isMounted) {
         setUserStores(cachedStores)
         setAccessWarning(cached.accessWarning)
         setShowRetryButton(false)
+        setLoading(false)
         if (maybeAutoRedirectSingleStore(cachedStores)) {
           return
         }
+
+        void refreshStoresCache(userId)
+          .then((fresh) => {
+            if (!isMounted) return
+            const safeStores = Array.isArray(fresh?.stores) ? fresh.stores : []
+            setUserStores(safeStores)
+            setAccessWarning(fresh.accessWarning)
+            setShowRetryButton(false)
+            maybeAutoRedirectSingleStore(safeStores)
+          })
+          .catch((err: unknown) => {
+            console.error('Fetch error:', err)
+          })
+
+        return
       }
 
-      void refreshStoresCache(userId)
+      refreshStoresCache(userId)
         .then((fresh) => {
           if (!isMounted) return
           const safeStores = Array.isArray(fresh?.stores) ? fresh.stores : []
           setUserStores(safeStores)
           setAccessWarning(fresh.accessWarning)
           setShowRetryButton(false)
-          setLoading(false)
           maybeAutoRedirectSingleStore(safeStores)
         })
         .catch((err: unknown) => {
           console.error('Fetch error:', err)
-          if (!hasCachedStores) {
-            toast.error('Πρόβλημα κατά την ανάκτηση των καταστημάτων')
-          }
           if (isMounted) {
-            if (!hasCachedStores) {
-              setShowRetryButton(true)
-            }
+            toast.error('Πρόβλημα κατά την ανάκτηση των καταστημάτων')
+            setShowRetryButton(true)
+          }
+        })
+        .finally(() => {
+          if (isMounted) {
             setLoading(false)
           }
         })
