@@ -2,7 +2,7 @@
 
 export const dynamic = 'force-dynamic'
 
-import { useState, Suspense, useEffect } from 'react'
+import { useState, Suspense, useEffect, useRef } from 'react'
 import { getSessionCached, setSessionCache, supabase } from '@/lib/supabase'
 import { prefetchStoresForUser } from '@/lib/stores'
 import { useRouter, useSearchParams } from 'next/navigation'
@@ -26,15 +26,15 @@ const getEmailRedirectUrl = () => {
 const getOAuthRedirectUrl = () => {
   const envUrl = process.env.NEXT_PUBLIC_SITE_URL || process.env.NEXT_PUBLIC_APP_URL
 
-  if (envUrl) {
-    return envUrl.replace(/\/$/, '')
-  }
-
   if (typeof window !== 'undefined') {
-    return window.location.origin
+    return `${window.location.origin}/login`
   }
 
-  return '/'
+  if (envUrl) {
+    return `${envUrl.replace(/\/$/, '')}/login`
+  }
+
+  return '/login'
 }
 
 function LoginContent() {
@@ -47,6 +47,8 @@ function LoginContent() {
   const [loading, setLoading] = useState(false)
   const [resendLoading, setResendLoading] = useState(false)
   const [emailConfirmationPending, setEmailConfirmationPending] = useState(false)
+  const [showDelayedAuthMessage, setShowDelayedAuthMessage] = useState(false)
+  const googleLoadingToastRef = useRef<string | number | null>(null)
 
   const getSafeNextPath = (next: string | null) => {
     if (!next) return null
@@ -69,6 +71,45 @@ function LoginContent() {
     }
     checkSession()
   }, [router, safeNextPath])
+
+  useEffect(() => {
+    const {
+      data: { subscription }
+    } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'SIGNED_IN') {
+        if (googleLoadingToastRef.current !== null) {
+          toast.dismiss(googleLoadingToastRef.current)
+          googleLoadingToastRef.current = null
+        }
+        setShowDelayedAuthMessage(false)
+        setLoading(false)
+        router.push(safeNextPath || '/')
+        router.refresh()
+      }
+    })
+
+    return () => {
+      subscription.unsubscribe()
+    }
+  }, [router, safeNextPath])
+
+  useEffect(() => {
+    if (!loading) {
+      setShowDelayedAuthMessage(false)
+      return
+    }
+
+    const timeoutId = window.setTimeout(async () => {
+      const session = await getSessionCached()
+      if (!session) {
+        setShowDelayedAuthMessage(true)
+      }
+    }, 5000)
+
+    return () => {
+      window.clearTimeout(timeoutId)
+    }
+  }, [loading])
 
   const handleResendConfirmationEmail = async () => {
     if (!email) {
@@ -144,7 +185,8 @@ function LoginContent() {
   }
 
   const signInWithGoogle = async () => {
-    const loadingToastId = toast.loading('Γίνεται ταυτοποίηση...')
+    googleLoadingToastRef.current = toast.loading('Γίνεται ταυτοποίηση...')
+    setShowDelayedAuthMessage(false)
     setLoading(true)
 
     try {
@@ -159,7 +201,10 @@ function LoginContent() {
 
       if (error) throw error
     } catch (err: any) {
-      toast.dismiss(loadingToastId)
+      if (googleLoadingToastRef.current !== null) {
+        toast.dismiss(googleLoadingToastRef.current)
+        googleLoadingToastRef.current = null
+      }
       toast.error(err.message || 'Αποτυχία σύνδεσης με Google.')
       setLoading(false)
     }
@@ -186,6 +231,25 @@ function LoginContent() {
               style={{ ...resendBtnStyle, opacity: resendLoading ? 0.7 : 1 }}
             >
               {resendLoading ? 'ΓΙΝΕΤΑΙ ΑΠΟΣΤΟΛΗ...' : 'ΕΠΑΝΑΠΟΣΤΟΛΗ EMAIL'}
+            </button>
+          </div>
+        )}
+        {showDelayedAuthMessage && (
+          <div style={confirmationWrapStyle}>
+            <p style={confirmationTextStyle}>Η σύνδεση καθυστερεί...</p>
+            <button
+              type="button"
+              onClick={() => {
+                if (googleLoadingToastRef.current !== null) {
+                  toast.dismiss(googleLoadingToastRef.current)
+                  googleLoadingToastRef.current = null
+                }
+                setShowDelayedAuthMessage(false)
+                setLoading(false)
+              }}
+              style={resendBtnStyle}
+            >
+              Επιστροφή
             </button>
           </div>
         )}
