@@ -104,6 +104,9 @@ function LoginContent() {
           access_token: session.access_token,
           refresh_token: session.refresh_token,
         })
+        await new Promise(resolve => setTimeout(resolve, 200))
+        window.location.href = '/select-store'
+        return
       }
 
       if (data.user) {

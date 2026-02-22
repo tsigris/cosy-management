@@ -90,8 +90,15 @@ function SelectStorePage() {
     const loadStores = async () => {
       try {
         const {
-          data: { session }
+          data: { session: firstSession }
         } = await supabase.auth.getSession()
+
+        let session = firstSession
+        if (!session) {
+          await new Promise((resolve) => setTimeout(resolve, 600))
+          const retry = await supabase.auth.getSession()
+          session = retry.data.session
+        }
 
         setLoading(true)
         setAccessWarning('')
