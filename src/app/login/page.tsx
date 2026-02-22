@@ -118,17 +118,27 @@ function LoginContent() {
         setLoading(false)
 
         if ((cached && cached.stores.length > 0) || (prefetched && prefetched.stores.length > 0)) {
+          await new Promise((resolve) => setTimeout(resolve, 500))
+          router.push('/')
+          await router.refresh()
+          return
+        }
+
+        if (!prefetched) {
+          await new Promise((resolve) => setTimeout(resolve, 500))
           router.push('/')
           await router.refresh()
           return
         }
 
         if (prefetched && prefetched.stores.length === 0) {
+          await new Promise((resolve) => setTimeout(resolve, 500))
           router.push('/select-store')
           router.refresh()
           return
         }
 
+        await new Promise((resolve) => setTimeout(resolve, 500))
         router.push('/')
         router.refresh()
       })()
@@ -224,15 +234,24 @@ function LoginContent() {
         const nextAfterLogin = getSafeNextPath(searchParams.get('next'))
 
         if ((cached && cached.stores.length > 0) || (prefetched && prefetched.stores.length > 0)) {
+          await new Promise((resolve) => setTimeout(resolve, 500))
           router.push(nextAfterLogin || '/')
           return
         }
 
+        if (!prefetched) {
+          await new Promise((resolve) => setTimeout(resolve, 500))
+          router.push('/')
+          return
+        }
+
         if (prefetched && prefetched.stores.length === 0) {
+          await new Promise((resolve) => setTimeout(resolve, 500))
           router.push('/select-store')
           return
         }
 
+        await new Promise((resolve) => setTimeout(resolve, 500))
         router.push(nextAfterLogin || '/')
       }
     } catch (err: any) {

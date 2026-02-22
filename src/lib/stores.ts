@@ -68,43 +68,58 @@ export const fetchStoresWithStats = async (userId: string): Promise<StoresFetchR
     last_updated: string | null
   }
 
-  const { data, error } = await supabase.rpc('get_user_stores_with_monthly_stats')
+  try {
+    const { data, error } = await supabase.rpc('get_user_stores_with_monthly_stats')
 
-  if (error) {
-    throw new Error(
-      'Αποτυχία φόρτωσης stores/stats από RPC get_user_stores_with_monthly_stats. Εκτέλεσε το stores_with_monthly_stats_rpc.sql.'
-    )
-  }
+    if (error) {
+      throw error
+    }
 
-  const rows = (data ?? []) as StoresStatsRpcRow[]
+    const rows = (data ?? []) as StoresStatsRpcRow[]
 
-  if (rows.length === 0) {
+    if (rows.length === 0) {
+      return {
+        stores: [],
+        accessWarning: ''
+      }
+    }
+
+    const stores: StoreCard[] = rows
+      .filter((row) => row.store_id)
+      .map((row) => {
+        const income = Number(row.income) || 0
+        const expenses = Number(row.expenses) || 0
+        const profit = Number(row.profit)
+
+        return {
+          id: String(row.store_id),
+          name: String(row.store_name || 'Κατάστημα'),
+          income,
+          expenses,
+          profit: Number.isFinite(profit) ? profit : income - expenses,
+          lastUpdated: row.last_updated || null,
+        }
+      })
+
+    return {
+      stores,
+      accessWarning: ''
+    }
+  } catch (error) {
+    console.error('fetchStoresWithStats fallback to cache:', error)
+    const cached = readStoresCache(userId)
+
+    if (cached) {
+      return {
+        stores: cached.stores,
+        accessWarning: cached.accessWarning,
+      }
+    }
+
     return {
       stores: [],
-      accessWarning: 'Δεν έχετε δικαιώματα πρόσβασης.'
+      accessWarning: ''
     }
-  }
-
-  const stores: StoreCard[] = rows
-    .filter((row) => row.store_id)
-    .map((row) => {
-      const income = Number(row.income) || 0
-      const expenses = Number(row.expenses) || 0
-      const profit = Number(row.profit)
-
-      return {
-        id: String(row.store_id),
-        name: String(row.store_name || 'Κατάστημα'),
-        income,
-        expenses,
-        profit: Number.isFinite(profit) ? profit : income - expenses,
-        lastUpdated: row.last_updated || null,
-      }
-    })
-
-  return {
-    stores,
-    accessWarning: ''
   }
 }
 
