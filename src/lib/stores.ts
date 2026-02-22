@@ -24,6 +24,11 @@ type StoresCachePayload = {
 
 const getStoresCacheKey = (userId: string) => `${STORES_CACHE_PREFIX}${userId}`
 
+const clearStoresCacheForUser = (userId: string) => {
+  if (typeof window === 'undefined') return
+  localStorage.removeItem(getStoresCacheKey(userId))
+}
+
 export const readStoresCache = (userId: string): StoresCachePayload | null => {
   if (typeof window === 'undefined') return null
 
@@ -114,10 +119,13 @@ export const refreshStoresCache = async (userId: string) => {
   return result
 }
 
-export const prefetchStoresForUser = async (userId: string) => {
+export const prefetchStoresForUser = async (userId: string): Promise<StoresFetchResult | null> => {
   try {
-    await refreshStoresCache(userId)
+    clearStoresCacheForUser(userId)
+    const result = await refreshStoresCache(userId)
+    return result
   } catch (e) {
     console.error("Prefetch error:", e)
+    return null
   }
 }
