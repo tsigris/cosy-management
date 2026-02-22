@@ -14,7 +14,6 @@ import {
   Package,
   Trash2,
   Plus,
-  Search,
   Pencil,
   Copy,
   XCircle,
@@ -1199,19 +1198,8 @@ function ManageListsContent() {
         <div style={{ marginBottom: 14 }}>
           <label style={labelStyle}>ΑΝΑΖΗΤΗΣΗ</label>
           <div style={{ position: 'relative' }}>
-            <Search
-              size={16}
-              style={{
-                position: 'absolute',
-                left: 16,
-                top: '50%',
-                transform: 'translateY(-50%)',
-                color: colors.secondaryText,
-                pointerEvents: 'none',
-                opacity: 0.85,
-              }}
-            />
             <input
+              type="text"
               className="searchInputNoNativeIcons"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
