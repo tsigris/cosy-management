@@ -1,7 +1,7 @@
 'use client'
 import { useEffect, useState, useMemo, useRef, useCallback } from 'react'
-import { clearSessionCache, getSessionCached, setSessionCache, supabase } from '@/lib/supabase'
-import { readStoresCache, refreshStoresCache, type StoreCard } from '@/lib/stores'
+import { clearSessionCache, getSessionCached, supabase } from '@/lib/supabase'
+import { refreshStoresCache, type StoreCard } from '@/lib/stores'
 import { useRouter } from 'next/navigation'
 import { LogOut, Plus, ArrowRight, TrendingUp, TrendingDown, Wallet, Store } from 'lucide-react'
 import { toast, Toaster } from 'sonner'
@@ -14,7 +14,6 @@ function SelectStorePage() {
   const [showRetryButton, setShowRetryButton] = useState(false)
   const [retryNonce, setRetryNonce] = useState(0)
   const hasAutoRedirected = useRef(false)
-  const hasReloadedForStuckLoading = useRef(false)
   const router = useRouter()
 
   // ✅ Stripe-like "LIVE" datetime label (auto updates)
@@ -92,27 +91,10 @@ function SelectStorePage() {
       setLoading(true)
       setAccessWarning('')
 
-      const { data: sessionData } = await supabase.auth.getSession()
-      if (sessionData.session) {
-        setSessionCache(sessionData.session)
-      }
-
-      let session = sessionData.session ?? await getSessionCached()
-
-      if (!session) {
-        await new Promise((resolve) => setTimeout(resolve, 1000))
-        const { data: retrySessionData } = await supabase.auth.getSession()
-        if (retrySessionData.session) {
-          setSessionCache(retrySessionData.session)
-          session = retrySessionData.session
-        } else {
-          session = await getSessionCached()
-        }
-      }
+      const session = await getSessionCached()
 
       if (!session) {
         if (isMounted) {
-          await new Promise((resolve) => setTimeout(resolve, 500))
           setLoading(false)
           router.replace('/login')
         }
@@ -120,35 +102,6 @@ function SelectStorePage() {
       }
 
       const userId = session.user.id
-      const cached = readStoresCache(userId)
-      const cachedStores = cached && Array.isArray(cached.stores) ? cached.stores : []
-      const hasCachedStores = cachedStores.length > 0
-
-      if (hasCachedStores && cached && isMounted) {
-        setUserStores(cachedStores)
-        setAccessWarning(cached.accessWarning)
-        setShowRetryButton(false)
-        setLoading(false)
-        if (maybeAutoRedirectSingleStore(cachedStores)) {
-          return
-        }
-
-        void refreshStoresCache(userId)
-          .then((fresh) => {
-            if (!isMounted) return
-            const safeStores = Array.isArray(fresh?.stores) ? fresh.stores : []
-            setUserStores(safeStores)
-            setAccessWarning(fresh.accessWarning)
-            setShowRetryButton(false)
-            maybeAutoRedirectSingleStore(safeStores)
-          })
-          .catch((err: unknown) => {
-            console.error('Fetch error:', err)
-          })
-
-        return
-      }
-
       refreshStoresCache(userId)
         .then((fresh) => {
           if (!isMounted) return
@@ -177,37 +130,6 @@ function SelectStorePage() {
       isMounted = false
     }
   }, [router, maybeAutoRedirectSingleStore, retryNonce])
-
-  useEffect(() => {
-    if (!loading) {
-      hasReloadedForStuckLoading.current = false
-      return
-    }
-
-    if (hasReloadedForStuckLoading.current) return
-
-    const timeoutId = window.setTimeout(() => {
-      hasReloadedForStuckLoading.current = true
-      window.location.reload()
-    }, 8000)
-
-    return () => {
-      window.clearTimeout(timeoutId)
-    }
-  }, [loading])
-
-  useEffect(() => {
-    if (!loading) return
-    if (Array.isArray(userStores) && userStores.length > 0) return
-
-    const timeoutId = window.setTimeout(() => {
-      setLoading(false)
-    }, 2000)
-
-    return () => {
-      window.clearTimeout(timeoutId)
-    }
-  }, [loading, userStores])
 
   // ✅ Global summary (all stores)
   const globalStats = useMemo(() => {
