@@ -11,6 +11,8 @@ function SelectStorePage() {
   const [userStores, setUserStores] = useState<StoreCard[]>([])
   const [loading, setLoading] = useState(true)
   const [accessWarning, setAccessWarning] = useState('')
+  const [showRetryButton, setShowRetryButton] = useState(false)
+  const [retryNonce, setRetryNonce] = useState(0)
   const hasAutoRedirected = useRef(false)
   const router = useRouter()
 
@@ -92,6 +94,7 @@ function SelectStorePage() {
       const session = await getSessionCached()
       if (!session) {
         if (isMounted) {
+          await new Promise((resolve) => setTimeout(resolve, 500))
           setLoading(false)
           router.replace('/login')
         }
@@ -100,13 +103,17 @@ function SelectStorePage() {
 
       const userId = session.user.id
       const cached = readStoresCache(userId)
-      const hasCachedStores = Boolean(cached)
+      const cachedStores = cached && Array.isArray(cached.stores) ? cached.stores : []
+      const hasCachedStores = cachedStores.length > 0
 
       if (cached && isMounted) {
-        setUserStores(Array.isArray(cached.stores) ? cached.stores : [])
+        setUserStores(cachedStores)
         setAccessWarning(cached.accessWarning)
-        setLoading(false)
-        if (maybeAutoRedirectSingleStore(Array.isArray(cached.stores) ? cached.stores : [])) {
+        setShowRetryButton(false)
+        if (cachedStores.length > 0) {
+          setLoading(false)
+        }
+        if (maybeAutoRedirectSingleStore(cachedStores)) {
           return
         }
       }
@@ -117,6 +124,7 @@ function SelectStorePage() {
           const safeStores = Array.isArray(fresh?.stores) ? fresh.stores : []
           setUserStores(safeStores)
           setAccessWarning(fresh.accessWarning)
+          setShowRetryButton(false)
           if (!hasCachedStores) {
             setLoading(false)
           }
@@ -128,6 +136,7 @@ function SelectStorePage() {
             toast.error('Πρόβλημα κατά την ανάκτηση των καταστημάτων')
           }
           if (isMounted && !hasCachedStores) {
+            setShowRetryButton(true)
             setLoading(false)
           }
         })
@@ -137,7 +146,7 @@ function SelectStorePage() {
     return () => {
       isMounted = false
     }
-  }, [router, maybeAutoRedirectSingleStore])
+  }, [router, maybeAutoRedirectSingleStore, retryNonce])
 
   // ✅ Global summary (all stores)
   const globalStats = useMemo(() => {
@@ -223,11 +232,29 @@ function SelectStorePage() {
             </div>
           )}
 
-          <div style={emptyStateStyle}>
-            <Store size={40} color="#cbd5e1" style={{ margin: '0 auto 15px' }} />
-            <p style={{ fontWeight: '700', color: '#64748b' }}>Δεν βρέθηκαν καταστήματα.</p>
-            <p style={{ fontSize: '12px', color: '#94a3b8' }}>Δημιουργήστε το πρώτο σας κατάστημα για να ξεκινήσετε.</p>
-          </div>
+          {showRetryButton ? (
+            <div style={emptyStateStyle}>
+              <Store size={40} color="#cbd5e1" style={{ margin: '0 auto 15px' }} />
+              <p style={{ fontWeight: '700', color: '#64748b' }}>Πρόβλημα δικτύου κατά την ανάκτηση.</p>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowRetryButton(false)
+                  setLoading(true)
+                  setRetryNonce((prev) => prev + 1)
+                }}
+                style={retryBtnStyle}
+              >
+                Δοκιμάστε ξανά
+              </button>
+            </div>
+          ) : (
+            <div style={emptyStateStyle}>
+              <Store size={40} color="#cbd5e1" style={{ margin: '0 auto 15px' }} />
+              <p style={{ fontWeight: '700', color: '#64748b' }}>Δεν βρέθηκαν καταστήματα.</p>
+              <p style={{ fontSize: '12px', color: '#94a3b8' }}>Δημιουργήστε το πρώτο σας κατάστημα για να ξεκινήσετε.</p>
+            </div>
+          )}
         </>
       ) : (
         <div style={{ display: 'grid', gap: '15px' }}>
@@ -400,6 +427,17 @@ const warningTextStyle: any = {
   color: '#c2410c',
   fontSize: '12px',
   fontWeight: '700',
+}
+const retryBtnStyle: any = {
+  marginTop: '14px',
+  padding: '10px 14px',
+  borderRadius: '12px',
+  border: '1px solid #cbd5e1',
+  backgroundColor: '#ffffff',
+  color: '#0f172a',
+  fontWeight: '800',
+  fontSize: '12px',
+  cursor: 'pointer',
 }
 
 export function SelectStorePageWithBoundary() {
