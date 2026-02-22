@@ -18,23 +18,26 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
 	},
 })
 
-let sessionCache:
-	| Awaited<ReturnType<typeof supabase.auth.getSession>>['data']['session']
-	| null
-	| undefined
+// Απλοποιημένο cache χωρίς Promises που "κολλάνε"
+let sessionCache: any = undefined
 
 export const getSessionCached = async () => {
-	if (sessionCache === undefined || sessionCache === null) {
-		const { data } = await supabase.auth.getSession()
-		sessionCache = data.session
+	// Αν υπάρχει ήδη session στη μνήμη, δώσε το ακαριαία
+	if (sessionCache) return sessionCache
+
+	// Αν δεν υπάρχει, ρώτα ΤΩΡΑ τη Supabase (απαραίτητο για Safari/Mobile)
+	const { data, error } = await supabase.auth.getSession()
+	
+	if (error || !data.session) {
+		sessionCache = null
+		return null
 	}
 
-	return sessionCache
+	sessionCache = data.session
+	return data.session
 }
 
-export const setSessionCache = (
-	session: Awaited<ReturnType<typeof supabase.auth.getSession>>['data']['session'] | null
-) => {
+export const setSessionCache = (session: any) => {
 	sessionCache = session
 }
 
