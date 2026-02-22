@@ -34,7 +34,7 @@ function PermissionsContent() {
 
       const { data: accessData, error: accErr } = await supabase
         .from('store_access')
-        .select('*')
+        .select('user_id, role, can_view_analysis, can_view_history, can_edit_transactions, store_id')
         .eq('store_id', storeId);
 
       if (accErr) throw accErr;
@@ -66,9 +66,21 @@ function PermissionsContent() {
   }, [fetchPermissionsData])
 
   // 2. ΕΝΗΜΕΡΩΣΗ ΔΙΚΑΙΩΜΑΤΩΝ
-  const togglePermission = async (field: string) => {
+  const updatePermission = async (field: string) => {
     if (!selectedUser || !storeId) return;
     const newValue = !selectedUser[field];
+
+    const { data: adminCheck } = await supabase
+      .from('store_access')
+      .select('role')
+      .eq('user_id', myId)
+      .eq('store_id', storeId)
+      .single();
+
+    if (adminCheck?.role !== 'admin') {
+      toast.error('Μη εξουσιοδοτημένη ενέργεια. Απαιτούνται δικαιώματα Admin.');
+      return;
+    }
     
     // Optimistic UI update
     const updatedUser = { ...selectedUser, [field]: newValue };
@@ -90,10 +102,22 @@ function PermissionsContent() {
   };
 
   // 3. ΔΙΑΓΡΑΦΗ ΧΡΗΣΤΗ
-  const removeAccess = async (userId: string) => {
+  const removeUser = async (userId: string) => {
     if (!storeId) return toast.error('Σφάλμα καταστήματος')
     if (userId === myId) return toast.error("Δεν μπορείτε να αφαιρέσετε τον εαυτό σας");
     if (!confirm('Οριστική αφαίρεση πρόσβασης;')) return;
+
+    const { data: adminCheck } = await supabase
+      .from('store_access')
+      .select('role')
+      .eq('user_id', myId)
+      .eq('store_id', storeId)
+      .single();
+
+    if (adminCheck?.role !== 'admin') {
+      toast.error('Μη εξουσιοδοτημένη ενέργεια. Απαιτούνται δικαιώματα Admin.');
+      return;
+    }
 
     const { error } = await supabase
       .from('store_access')
@@ -156,7 +180,7 @@ function PermissionsContent() {
                 </div>
                 <div style={{display:'flex', gap:'10px'}}>
                     <button onClick={() => setSelectedUser(u)} style={editBtnStyle}><Settings size={18} /></button>
-                    <button onClick={() => removeAccess(u.user_id)} style={delBtnStyle}><Trash2 size={18} /></button>
+                    <button onClick={() => removeUser(u.user_id)} style={delBtnStyle}><Trash2 size={18} /></button>
                 </div>
               </div>
             ))}
@@ -175,9 +199,9 @@ function PermissionsContent() {
             <h3 style={{margin:0, fontWeight:'900'}}>Δικαιώματα</h3>
             <p style={{fontSize:'12px', color:'#64748b', marginBottom:'20px'}}>{selectedUser.username}</p>
             
-            <PermissionToggle label="📊 Ανάλυση" active={selectedUser.can_view_analysis} onClick={() => togglePermission('can_view_analysis')} />
-            <PermissionToggle label="🏠 Ιστορικό" active={selectedUser.can_view_history} onClick={() => togglePermission('can_view_history')} />
-            <PermissionToggle label="✏️ Επεξεργασία" active={selectedUser.can_edit_transactions} onClick={() => togglePermission('can_edit_transactions')} />
+            <PermissionToggle label="📊 Ανάλυση" active={selectedUser.can_view_analysis} onClick={() => updatePermission('can_view_analysis')} />
+            <PermissionToggle label="🏠 Ιστορικό" active={selectedUser.can_view_history} onClick={() => updatePermission('can_view_history')} />
+            <PermissionToggle label="✏️ Επεξεργασία" active={selectedUser.can_edit_transactions} onClick={() => updatePermission('can_edit_transactions')} />
 
             <button onClick={() => setSelectedUser(null)} style={closeModalBtn}>ΚΛΕΙΣΙΜΟ</button>
           </div>

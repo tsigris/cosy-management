@@ -1,7 +1,7 @@
 'use client'
 export const dynamic = 'force-dynamic'
 
-import { useEffect, useState, Suspense, useCallback, useRef, type Dispatch, type SetStateAction, type ReactNode } from 'react'
+import { useEffect, useState, Suspense, useCallback, useRef, type Dispatch, type SetStateAction, type ReactNode, type CSSProperties } from 'react'
 import { supabase } from '@/lib/supabase'
 import PermissionGuard from '@/components/PermissionGuard'
 import { useSearchParams } from 'next/navigation'
@@ -26,6 +26,23 @@ import {
 
 type SectionId = 'profile' | 'business' | 'appearance' | 'backup' | 'support'
 
+type NamedEntity = {
+  id: string
+  name: string
+}
+
+type ExportTransactionRow = {
+  date: string
+  amount: number
+  type: string
+  category: string | null
+  method: string | null
+  supplier_id: string | null
+  fixed_asset_id: string | null
+  employee_id: string | null
+  notes: string | null
+}
+
 function SectionCard({
   id,
   icon,
@@ -37,10 +54,10 @@ function SectionCard({
   chipRight,
 }: {
   id: SectionId
-  icon: any
+  icon: ReactNode
   title: string
   subtitle: string
-  children: any
+  children: ReactNode
   openSection: SectionId | null
   setOpenSection: Dispatch<SetStateAction<SectionId | null>>
   chipRight?: ReactNode
@@ -84,7 +101,7 @@ function SectionCard({
   )
 }
 
-function AnimatedBody({ open, children }: { open: boolean; children: any }) {
+function AnimatedBody({ open, children }: { open: boolean; children: ReactNode }) {
   const innerRef = useRef<HTMLDivElement | null>(null)
   const [maxH, setMaxH] = useState<number>(0)
 
@@ -103,13 +120,15 @@ function AnimatedBody({ open, children }: { open: boolean; children: any }) {
   }, [children])
 
   useEffect(() => {
-    if (!open) {
-      setMaxH(0)
-      return
-    }
+    if (!open) return
     const el = innerRef.current
     if (!el) return
-    setMaxH(el.scrollHeight || 0)
+
+    const raf = window.requestAnimationFrame(() => {
+      setMaxH(el.scrollHeight || 0)
+    })
+
+    return () => window.cancelAnimationFrame(raf)
   }, [open])
 
   return (
@@ -195,7 +214,7 @@ function SettingsContent() {
 
         if (profileError) throw profileError
         setProfileName(profile?.username || '')
-      } catch (err) {
+      } catch {
         setProfileError('Σφάλμα φόρτωσης προφίλ')
       } finally {
         setProfileLoading(false)
@@ -213,7 +232,7 @@ function SettingsContent() {
       if (error) throw error
       setProfileSuccess('Το όνομα ενημερώθηκε!')
       toast.success('Το προφίλ αποθηκεύτηκε ✅')
-    } catch (err) {
+    } catch {
       setProfileError('Σφάλμα αποθήκευσης')
       toast.error('Σφάλμα αποθήκευσης')
     } finally {
@@ -242,7 +261,7 @@ function SettingsContent() {
       })
 
       setZEnabled(store?.z_enabled === false ? false : true)
-    } catch (err) {
+    } catch {
       toast.error('Αποτυχία φόρτωσης ρυθμίσεων')
     } finally {
       setLoading(false)
@@ -264,7 +283,7 @@ function SettingsContent() {
       const { error } = await supabase.from('stores').update({ z_enabled: next }).eq('id', storeId)
       if (error) throw error
       toast.success(next ? 'Το Ζ θα εμφανίζεται στην αρχική ✅' : 'Το Ζ αφαιρέθηκε από την αρχική ✅')
-    } catch (e) {
+    } catch {
       setZEnabled(!next)
       toast.error('Σφάλμα: δεν αποθηκεύτηκε η ρύθμιση Ζ')
     } finally {
@@ -289,7 +308,7 @@ function SettingsContent() {
 
       if (error) throw error
       toast.success('Οι αλλαγές αποθηκεύτηκαν στο κατάστημα ✅')
-    } catch (error) {
+    } catch {
       toast.error('Σφάλμα κατά την αποθήκευση')
     } finally {
       setLoading(false)
@@ -303,29 +322,34 @@ function SettingsContent() {
       let transQuery = supabase.from('transactions').select('*').eq('store_id', storeId)
       if (!exportAllData) transQuery = transQuery.gte('date', startDate).lte('date', endDate)
 
-      const [trans, sups, assets, emps] = await Promise.all([
+      const [trans, sups, assets, emps, fixedAssetsLookup] = await Promise.all([
         transQuery.order('date', { ascending: false }),
         supabase.from('suppliers').select('*').eq('store_id', storeId),
         supabase.from('fixed_assets').select('*').eq('store_id', storeId),
         supabase.from('employees').select('*').eq('store_id', storeId),
+        supabase.from('fixed_assets').select('id, name').eq('store_id', storeId),
       ])
 
-      const supplierMap = Object.fromEntries(sups.data?.map((s: any) => [s.id, s.name]) || [])
-      const assetMap = Object.fromEntries(assets.data?.map((a: any) => [a.id, a.name]) || [])
-      const employeeMap = Object.fromEntries(emps.data?.map((e: any) => [e.id, e.name]) || [])
+      const suppliersData = (sups.data ?? []) as NamedEntity[]
+      const assetsData = (assets.data ?? []) as NamedEntity[]
+      const fixedAssetsData = (fixedAssetsLookup.data ?? []) as NamedEntity[]
+
+      const supplierMap = Object.fromEntries(suppliersData.map((s) => [s.id, s.name]))
+      const assetMap = Object.fromEntries(assetsData.map((a) => [a.id, a.name]))
+      const fixedAssetEmployeeMap = Object.fromEntries(fixedAssetsData.map((a) => [a.id, a.name]))
 
       const formattedTransactions =
-        trans.data?.map((t: any) => ({
+        ((trans.data ?? []) as ExportTransactionRow[]).map((t) => ({
           Ημερομηνία: t.date,
           'Ποσό (€)': t.amount,
           Τύπος: t.type === 'expense' ? 'Έξοδο' : 'Έσοδο',
           Κατηγορία: t.category,
           Μέθοδος: t.method,
-          Προμηθευτής: supplierMap[t.supplier_id] || '-',
-          Πάγιο: assetMap[t.fixed_asset_id] || '-',
-          Υπάλληλος: employeeMap[t.employee_id] || '-',
+          Προμηθευτής: t.supplier_id ? (supplierMap[t.supplier_id] || '-') : '-',
+          Πάγιο: t.fixed_asset_id ? (assetMap[t.fixed_asset_id] || '-') : '-',
+          Υπάλληλος: t.fixed_asset_id ? (fixedAssetEmployeeMap[t.fixed_asset_id] || '-') : '-',
           Σημειώσεις: t.notes,
-        })) || []
+        }))
 
       const wb = XLSX.utils.book_new()
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(formattedTransactions), 'Συναλλαγές')
@@ -338,7 +362,7 @@ function SettingsContent() {
 
       XLSX.writeFile(wb, `Backup_${formData.name}_${new Date().toISOString().split('T')[0]}.xlsx`)
       toast.success('Η εξαγωγή ολοκληρώθηκε ✅')
-    } catch (error) {
+    } catch {
       toast.error('Σφάλμα εξαγωγής')
     } finally {
       setIsExporting(false)
@@ -418,7 +442,7 @@ function SettingsContent() {
                       style={{ ...iosSwitch(zEnabled), opacity: zSaving || loading ? 0.7 : 1 }}
                       aria-label="toggle z"
                     >
-                      <div style={iosKnob(zEnabled)} />
+                      <div style={iosKnob()} />
                     </button>
                   )}
                 </div>
@@ -599,16 +623,16 @@ function SettingsContent() {
 }
 
 /* ---------------- STYLES ---------------- */
-const pageWrap: any = {
+const pageWrap: CSSProperties = {
   minHeight: '100dvh',
   background:
     'radial-gradient(1200px 600px at 20% -10%, #eef2ff 0%, rgba(238,242,255,0) 55%), radial-gradient(1200px 600px at 90% 0%, #ecfdf5 0%, rgba(236,253,245,0) 55%), #f8fafc',
   padding: 18,
 }
 
-const container: any = { maxWidth: 540, margin: '0 auto', paddingBottom: 140 }
+const container: CSSProperties = { maxWidth: 540, margin: '0 auto', paddingBottom: 140 }
 
-const topBar: any = {
+const topBar: CSSProperties = {
   display: 'flex',
   justifyContent: 'space-between',
   alignItems: 'center',
@@ -624,7 +648,7 @@ const topBar: any = {
   marginBottom: 12,
 }
 
-const appIcon: any = {
+const appIcon: CSSProperties = {
   width: 44,
   height: 44,
   borderRadius: 16,
@@ -636,9 +660,9 @@ const appIcon: any = {
   color: '#0f172a',
 }
 
-const topTitle: any = { fontSize: 16, fontWeight: 900, color: '#0f172a', margin: 0 }
-const topSubtitle: any = { fontSize: 10, fontWeight: 900, color: '#6366f1', letterSpacing: 0.6 }
-const readOnlyBannerStyle: any = {
+const topTitle: CSSProperties = { fontSize: 16, fontWeight: 900, color: '#0f172a', margin: 0 }
+const topSubtitle: CSSProperties = { fontSize: 10, fontWeight: 900, color: '#6366f1', letterSpacing: 0.6 }
+const readOnlyBannerStyle: CSSProperties = {
   marginBottom: 12,
   padding: '10px 12px',
   borderRadius: 12,
@@ -650,7 +674,7 @@ const readOnlyBannerStyle: any = {
   textAlign: 'center',
 }
 
-const closeBtn: any = {
+const closeBtn: CSSProperties = {
   width: 44,
   height: 44,
   borderRadius: 16,
@@ -663,7 +687,7 @@ const closeBtn: any = {
   textDecoration: 'none',
 }
 
-const sectionCard: any = {
+const sectionCard: CSSProperties = {
   marginTop: 12,
   borderRadius: 22,
   border: '1px solid #e2e8f0',
@@ -672,7 +696,7 @@ const sectionCard: any = {
   overflow: 'hidden',
 }
 
-const sectionHeaderBtn: any = {
+const sectionHeaderBtn: CSSProperties = {
   width: '100%',
   padding: '12px 14px',
   border: 'none',
@@ -685,7 +709,7 @@ const sectionHeaderBtn: any = {
   transition: 'all 0.15s ease',
 }
 
-const sectionIconWrap: any = {
+const sectionIconWrap: CSSProperties = {
   width: 44,
   height: 44,
   borderRadius: 16,
@@ -696,37 +720,37 @@ const sectionIconWrap: any = {
   justifyContent: 'center',
 }
 
-const sectionTitle: any = { fontSize: 14, fontWeight: 900 }
-const sectionSub: any = { fontSize: 11, fontWeight: 700, color: '#64748b', marginTop: 2 }
-const chip: any = { padding: '6px 10px', borderRadius: 999, border: '1px solid #e2e8f0', background: '#fff', fontSize: 10, fontWeight: 900, color: '#0f172a' }
+const sectionTitle: CSSProperties = { fontSize: 14, fontWeight: 900 }
+const sectionSub: CSSProperties = { fontSize: 11, fontWeight: 700, color: '#64748b', marginTop: 2 }
+const chip: CSSProperties = { padding: '6px 10px', borderRadius: 999, border: '1px solid #e2e8f0', background: '#fff', fontSize: 10, fontWeight: 900, color: '#0f172a' }
 
-const label: any = { fontSize: 10, fontWeight: 900, color: '#94a3b8', letterSpacing: 0.6, marginBottom: 6, display: 'block' }
-const input: any = { width: '100%', padding: 12, borderRadius: 12, border: '1px solid #e2e8f0', background: '#f8fafc', fontWeight: 800, fontSize: 14, outline: 'none' }
-const textarea: any = { ...input, height: 72, resize: 'none' }
-const field: any = { marginBottom: 12 }
-const grid2: any = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }
+const label: CSSProperties = { fontSize: 10, fontWeight: 900, color: '#94a3b8', letterSpacing: 0.6, marginBottom: 6, display: 'block' }
+const input: CSSProperties = { width: '100%', padding: 12, borderRadius: 12, border: '1px solid #e2e8f0', background: '#f8fafc', fontWeight: 800, fontSize: 14, outline: 'none' }
+const textarea: CSSProperties = { ...input, height: 72, resize: 'none' }
+const field: CSSProperties = { marginBottom: 12 }
+const grid2: CSSProperties = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }
 
-const primaryBtn: any = { width: '100%', background: '#0f172a', color: '#fff', border: 'none', padding: 16, borderRadius: 14, fontWeight: 900, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, cursor: 'pointer', boxShadow: '0 12px 18px rgba(15,23,42,0.18)' }
-const successBtn: any = { ...primaryBtn, background: '#059669', boxShadow: '0 12px 18px rgba(5,150,105,0.18)' }
+const primaryBtn: CSSProperties = { width: '100%', background: '#0f172a', color: '#fff', border: 'none', padding: 16, borderRadius: 14, fontWeight: 900, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, cursor: 'pointer', boxShadow: '0 12px 18px rgba(15,23,42,0.18)' }
+const successBtn: CSSProperties = { ...primaryBtn, background: '#059669', boxShadow: '0 12px 18px rgba(5,150,105,0.18)' }
 
-const msgError: any = { marginTop: 10, color: '#dc2626', fontSize: 13, fontWeight: 900 }
-const msgSuccess: any = { marginTop: 10, color: '#059669', fontSize: 13, fontWeight: 900 }
+const msgError: CSSProperties = { marginTop: 10, color: '#dc2626', fontSize: 13, fontWeight: 900 }
+const msgSuccess: CSSProperties = { marginTop: 10, color: '#059669', fontSize: 13, fontWeight: 900 }
 
-const featureCard: any = { borderRadius: 24, border: '1px solid #e2e8f0', background: '#fff', overflow: 'hidden' }
-const featureHeaderRow: any = { padding: 14, display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #eef2f7' }
-const featureHeaderLeft: any = { display: 'flex', alignItems: 'center', gap: 12 }
-const featureIconOuter: any = { width: 58, height: 58, borderRadius: 22, background: '#fff7ed', border: '1px solid #fde68a', display: 'flex', alignItems: 'center', justifyContent: 'center' }
-const featureKicker: any = { fontSize: 12, fontWeight: 900, color: '#64748b', letterSpacing: 0.6 }
-const featureTitle: any = { fontSize: 22, fontWeight: 900, color: '#0f172a', marginTop: 2, lineHeight: 1.1 }
-const featureChip: any = { padding: '9px 16px', borderRadius: 999, border: '1px solid #e2e8f0', fontWeight: 900, background: '#fff' }
+const featureCard: CSSProperties = { borderRadius: 24, border: '1px solid #e2e8f0', background: '#fff', overflow: 'hidden' }
+const featureHeaderRow: CSSProperties = { padding: 14, display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #eef2f7' }
+const featureHeaderLeft: CSSProperties = { display: 'flex', alignItems: 'center', gap: 12 }
+const featureIconOuter: CSSProperties = { width: 58, height: 58, borderRadius: 22, background: '#fff7ed', border: '1px solid #fde68a', display: 'flex', alignItems: 'center', justifyContent: 'center' }
+const featureKicker: CSSProperties = { fontSize: 12, fontWeight: 900, color: '#64748b', letterSpacing: 0.6 }
+const featureTitle: CSSProperties = { fontSize: 22, fontWeight: 900, color: '#0f172a', marginTop: 2, lineHeight: 1.1 }
+const featureChip: CSSProperties = { padding: '9px 16px', borderRadius: 999, border: '1px solid #e2e8f0', fontWeight: 900, background: '#fff' }
 
-const featureInnerCard: any = { margin: 14, padding: 16, borderRadius: 22, border: '1px solid #e2e8f0', background: '#fff' }
-const shieldPill: any = { width: 56, height: 56, borderRadius: 18, background: '#ecfdf5', border: '1px solid #bbf7d0', display: 'flex', alignItems: 'center', justifyContent: 'center' }
-const featureMainTitle: any = { fontSize: 20, fontWeight: 900, color: '#0f172a' }
-const featureMainSub: any = { fontSize: 14, fontWeight: 800, color: '#64748b', marginTop: 6 }
-const featureFootNote: any = { padding: '0 16px 14px', fontSize: 13, fontWeight: 800, color: '#94a3b8' }
+const featureInnerCard: CSSProperties = { margin: 14, padding: 16, borderRadius: 22, border: '1px solid #e2e8f0', background: '#fff' }
+const shieldPill: CSSProperties = { width: 56, height: 56, borderRadius: 18, background: '#ecfdf5', border: '1px solid #bbf7d0', display: 'flex', alignItems: 'center', justifyContent: 'center' }
+const featureMainTitle: CSSProperties = { fontSize: 20, fontWeight: 900, color: '#0f172a' }
+const featureMainSub: CSSProperties = { fontSize: 14, fontWeight: 800, color: '#64748b', marginTop: 6 }
+const featureFootNote: CSSProperties = { padding: '0 16px 14px', fontSize: 13, fontWeight: 800, color: '#94a3b8' }
 
-const onPill = (on: boolean): any => ({
+const onPill = (on: boolean): CSSProperties => ({
   padding: '9px 14px',
   borderRadius: 999,
   border: `2px solid ${on ? '#86efac' : '#e2e8f0'}`,
@@ -738,7 +762,7 @@ const onPill = (on: boolean): any => ({
   fontSize: 14,
 })
 
-const iosSwitch = (on: boolean): any => ({
+const iosSwitch = (on: boolean): CSSProperties => ({
   width: 66,
   height: 36,
   borderRadius: 999,
@@ -752,7 +776,7 @@ const iosSwitch = (on: boolean): any => ({
   boxShadow: on ? '0 14px 24px rgba(22,163,74,0.28)' : 'none',
 })
 
-const iosKnob = (on: boolean): any => ({
+const iosKnob = (): CSSProperties => ({
   width: 28,
   height: 28,
   borderRadius: 999,
@@ -760,23 +784,23 @@ const iosKnob = (on: boolean): any => ({
   boxShadow: '0 10px 18px rgba(15,23,42,0.22)',
 })
 
-const backupCard: any = { border: '1px solid #e2e8f0', background: '#fff', borderRadius: 18, padding: 14 }
-const backupRow: any = { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 12 }
-const backupTitle: any = { fontSize: 14, fontWeight: 900, color: '#0f172a' }
-const backupSub: any = { fontSize: 12, fontWeight: 700, color: '#64748b', marginTop: 4 }
-const backupToggleBox: any = { display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 14, border: '1px solid #e2e8f0', background: '#f8fafc' }
-const backupToggleLabel: any = { fontSize: 12, fontWeight: 900, color: '#0f172a' }
+const backupCard: CSSProperties = { border: '1px solid #e2e8f0', background: '#fff', borderRadius: 18, padding: 14 }
+const backupRow: CSSProperties = { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 12 }
+const backupTitle: CSSProperties = { fontSize: 14, fontWeight: 900, color: '#0f172a' }
+const backupSub: CSSProperties = { fontSize: 12, fontWeight: 700, color: '#64748b', marginTop: 4 }
+const backupToggleBox: CSSProperties = { display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 14, border: '1px solid #e2e8f0', background: '#f8fafc' }
+const backupToggleLabel: CSSProperties = { fontSize: 12, fontWeight: 900, color: '#0f172a' }
 
-const supportToggle: any = { width: '100%', border: '1px solid #e2e8f0', background: '#fff', borderRadius: 18, padding: 14, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }
+const supportToggle: CSSProperties = { width: '100%', border: '1px solid #e2e8f0', background: '#fff', borderRadius: 18, padding: 14, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }
 
-const supportIcon: any = { width: 36, height: 36, borderRadius: 14, background: '#f1f5f9', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#0f172a' }
-const supportTitle: any = { fontSize: 13, fontWeight: 900, color: '#0f172a' }
-const supportSub: any = { fontSize: 11, fontWeight: 800, color: '#64748b', marginTop: 4 }
+const supportIcon: CSSProperties = { width: 36, height: 36, borderRadius: 14, background: '#f1f5f9', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#0f172a' }
+const supportTitle: CSSProperties = { fontSize: 13, fontWeight: 900, color: '#0f172a' }
+const supportSub: CSSProperties = { fontSize: 11, fontWeight: 800, color: '#64748b', marginTop: 4 }
 
-const supportCard: any = { marginTop: 12, padding: 16, borderRadius: 18, border: '1px solid #fee2e2', background: '#fff', textAlign: 'center' }
-const supportText: any = { fontSize: 13, fontWeight: 800, color: '#64748b', marginBottom: 14 }
+const supportCard: CSSProperties = { marginTop: 12, padding: 16, borderRadius: 18, border: '1px solid #fee2e2', background: '#fff', textAlign: 'center' }
+const supportText: CSSProperties = { fontSize: 13, fontWeight: 800, color: '#64748b', marginBottom: 14 }
 
-const waBtnStyle: any = { width: '100%', backgroundColor: '#25d366', color: 'white', padding: '14px', borderRadius: '14px', border: 'none', fontWeight: '900', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', boxShadow: '0 12px 18px rgba(37,211,102,0.18)' }
+const waBtnStyle: CSSProperties = { width: '100%', backgroundColor: '#25d366', color: 'white', padding: '14px', borderRadius: '14px', border: 'none', fontWeight: '900', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', boxShadow: '0 12px 18px rgba(37,211,102,0.18)' }
 
 export default function SettingsPage() {
   return (

@@ -57,97 +57,54 @@ export const writeStoresCache = (userId: string, payload: StoresFetchResult) => 
 }
 
 export const fetchStoresWithStats = async (userId: string): Promise<StoresFetchResult> => {
-  let accessWarning = ''
+  void userId
 
-  const [ownedStoresRes, accessBeforeRepairRes] = await Promise.all([
-    supabase
-      .from('stores')
-      .select('id, name')
-      .eq('owner_id', userId),
-    supabase
-      .from('store_access')
-      .select('store_id')
-      .eq('user_id', userId)
-  ])
-
-  const { data: ownedStores, error: ownedStoresError } = ownedStoresRes
-  const { data: myAccessBeforeRepair, error: beforeRepairError } = accessBeforeRepairRes
-
-  if (ownedStoresError) throw ownedStoresError
-
-  if (beforeRepairError) throw beforeRepairError
-
-  const existingAccessStoreIds = new Set((myAccessBeforeRepair || []).map((row: any) => String(row.store_id)))
-  const missingOwnedStores = (ownedStores || []).filter((store: any) => !existingAccessStoreIds.has(String(store.id)))
-
-  if (missingOwnedStores.length > 0) {
-    const repairRows = missingOwnedStores.map((store: any) => ({
-      store_id: store.id,
-      user_id: userId,
-      role: 'admin'
-    }))
-
-    const { error: repairError } = await supabase.from('store_access').upsert(repairRows, { onConflict: 'store_id,user_id' })
-
-    if (repairError) {
-      accessWarning = 'Δεν έγινε αυτόματη επιδιόρθωση δικαιωμάτων.'
-    }
+  type StoresStatsRpcRow = {
+    store_id: string | null
+    store_name: string | null
+    income: number | string | null
+    expenses: number | string | null
+    profit: number | string | null
+    last_updated: string | null
   }
 
-  // Διορθωμένο query για να παίρνει τα stores
-  const { data: access, error } = await supabase
-    .from('store_access')
-    .select('store_id, stores:stores(id, name)')
-    .eq('user_id', userId)
+  const { data, error } = await supabase.rpc('get_user_stores_with_monthly_stats')
 
-  if (error) throw error
+  if (error) {
+    throw new Error(
+      'Αποτυχία φόρτωσης stores/stats από RPC get_user_stores_with_monthly_stats. Εκτέλεσε το stores_with_monthly_stats_rpc.sql.'
+    )
+  }
 
-  if (!access || access.length === 0) {
+  const rows = (data ?? []) as StoresStatsRpcRow[]
+
+  if (rows.length === 0) {
     return {
       stores: [],
-      accessWarning: accessWarning || 'Δεν έχετε δικαιώματα πρόσβασης.'
+      accessWarning: 'Δεν έχετε δικαιώματα πρόσβασης.'
     }
   }
 
-  const now = new Date()
-  const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10)
+  const stores: StoreCard[] = rows
+    .filter((row) => row.store_id)
+    .map((row) => {
+      const income = Number(row.income) || 0
+      const expenses = Number(row.expenses) || 0
+      const profit = Number(row.profit)
 
-  const storesWithStats = await Promise.all(
-    access.map(async (item: any) => {
-      // H Supabase μπορεί να επιστρέψει το joined object ως αντικείμενο ή πίνακα
-      const store = Array.isArray(item.stores) ? item.stores[0] : item.stores
-      if (!store) return null
-
-      const { data: trans } = await supabase
-        .from('transactions')
-        .select('amount, type, date')
-        .eq('store_id', store.id)
-        .gte('date', firstDay)
-        .order('date', { ascending: false })
-
-      const income = trans?.filter((t: any) => t.type === 'income')
-        .reduce((acc: number, curr: any) => acc + (Number(curr.amount) || 0), 0) || 0
-
-      const expenses = trans?.filter((t: any) => t.type === 'expense' || t.type === 'debt_payment')
-        .reduce((acc: number, curr: any) => acc + Math.abs(Number(curr.amount) || 0), 0) || 0
-
-      const lastUpdated = trans?.[0]?.date || null
-
-      const result: StoreCard = {
-        id: store.id,
-        name: store.name,
+      return {
+        id: String(row.store_id),
+        name: String(row.store_name || 'Κατάστημα'),
         income,
         expenses,
-        profit: income - expenses,
-        lastUpdated: String(lastUpdated)
+        profit: Number.isFinite(profit) ? profit : income - expenses,
+        lastUpdated: row.last_updated || null,
       }
-      return result
     })
-  )
 
   return {
-    stores: storesWithStats.filter((s): s is StoreCard => s !== null),
-    accessWarning
+    stores,
+    accessWarning: ''
   }
 }
 

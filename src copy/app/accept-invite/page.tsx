@@ -23,7 +23,7 @@ export default function AcceptInvitePage() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const token = useMemo(() => searchParams.get('token') || '', [searchParams])
-  const [screenMessage, setScreenMessage] = useState('Ενεργοποίηση πρόσκλησης...')
+  const [screenMessage, setScreenMessage] = useState('Επαλήθευση πρόσκλησης... Παρακαλώ περιμένετε')
 
   useEffect(() => {
     let isCancelled = false
@@ -41,8 +41,7 @@ export default function AcceptInvitePage() {
         } = await supabase.auth.getUser()
 
         if (!user) {
-          const next = encodeURIComponent(`/accept-invite?token=${token || ''}`)
-          router.push(`/login?next=${next}`)
+          router.push(`/signup?token=${token}`)
           return
         }
 
