@@ -490,6 +490,7 @@ function GoalsContent() {
         p_store_id: storeId,
       })
       if (error) throw error
+      setHistoryRows((prev) => prev.filter((row) => row.id !== tx.id))
       await loadGoals()
     } catch (e: any) {
       toast.error(e?.message || 'Αποτυχία διαγραφής κίνησης')
