@@ -24,14 +24,8 @@ const getEmailRedirectUrl = () => {
 }
 
 const getOAuthRedirectUrl = () => {
-  const envUrl = process.env.NEXT_PUBLIC_SITE_URL || process.env.NEXT_PUBLIC_APP_URL
-
   if (typeof window !== 'undefined') {
     return window.location.origin
-  }
-
-  if (envUrl) {
-    return envUrl.replace(/\/$/, '')
   }
 
   return '/'

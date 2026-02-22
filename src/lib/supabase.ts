@@ -7,7 +7,11 @@ if (!supabaseUrl || !supabaseAnonKey) {
 	throw new Error('Missing Supabase environment variables')
 }
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey)
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+	auth: {
+		persistSession: true,
+	},
+})
 
 let sessionCache:
 	| Awaited<ReturnType<typeof supabase.auth.getSession>>['data']['session']
