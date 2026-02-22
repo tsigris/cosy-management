@@ -491,6 +491,7 @@ function GoalsContent() {
         p_amount: tx.amount,
       })
       if (error) throw error
+      await loadGoals()
       void data
 
       const txAmount = Number(tx.amount) || 0
