@@ -24,11 +24,6 @@ type StoresCachePayload = {
 
 const getStoresCacheKey = (userId: string) => `${STORES_CACHE_PREFIX}${userId}`
 
-const clearStoresCacheForUser = (userId: string) => {
-  if (typeof window === 'undefined') return
-  localStorage.removeItem(getStoresCacheKey(userId))
-}
-
 export const readStoresCache = (userId: string): StoresCachePayload | null => {
   if (typeof window === 'undefined') return null
 
@@ -121,7 +116,6 @@ export const refreshStoresCache = async (userId: string) => {
 
 export const prefetchStoresForUser = async (userId: string): Promise<StoresFetchResult | null> => {
   try {
-    clearStoresCacheForUser(userId)
     const result = await fetchStoresWithStats(userId)
     console.log('[prefetchStoresForUser] fetched stores:', {
       userId,
@@ -129,6 +123,7 @@ export const prefetchStoresForUser = async (userId: string): Promise<StoresFetch
       stores: result.stores,
       accessWarning: result.accessWarning,
     })
+    // Overwrite cache only after successful fetch, ώστε να μείνει διαθέσιμο το παλιό cache αν αργήσει/αποτύχει το fetch.
     writeStoresCache(userId, result)
     const cached = readStoresCache(userId)
     if (!cached) {

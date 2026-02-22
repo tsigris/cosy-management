@@ -60,7 +60,7 @@ function LoginContent() {
   const safeNextPath = getSafeNextPath(nextParam)
   const registerHref = safeNextPath ? `/register?next=${encodeURIComponent(safeNextPath)}` : '/register'
 
-  const waitForStoresCacheWrite = async (userId: string, maxWaitMs = 3000) => {
+  const waitForStoresCacheWrite = async (userId: string, maxWaitMs = 6000) => {
     const start = Date.now()
 
     while (Date.now() - start < maxWaitMs) {
@@ -78,7 +78,7 @@ function LoginContent() {
       const session = await getSessionCached()
       if (session) {
          const prefetched = await prefetchStoresForUser(session.user.id)
-         const cached = await waitForStoresCacheWrite(session.user.id)
+         const cached = prefetched ? await waitForStoresCacheWrite(session.user.id) : readStoresCache(session.user.id)
          router.refresh()
 
          if ((cached && cached.stores.length > 0) || (prefetched && prefetched.stores.length > 0)) {
@@ -113,13 +113,13 @@ function LoginContent() {
 
         const userId = session.user.id
         const prefetched = await prefetchStoresForUser(userId)
-        const cached = await waitForStoresCacheWrite(userId)
+        const cached = prefetched ? await waitForStoresCacheWrite(userId) : readStoresCache(userId)
 
         setLoading(false)
 
         if ((cached && cached.stores.length > 0) || (prefetched && prefetched.stores.length > 0)) {
           router.push('/')
-          router.refresh()
+          await router.refresh()
           return
         }
 
@@ -220,7 +220,7 @@ function LoginContent() {
       if (data.user) {
         const prefetchUserId = data.session?.user.id || data.user.id
         const prefetched = await prefetchStoresForUser(prefetchUserId)
-        const cached = await waitForStoresCacheWrite(prefetchUserId)
+        const cached = prefetched ? await waitForStoresCacheWrite(prefetchUserId) : readStoresCache(prefetchUserId)
         const nextAfterLogin = getSafeNextPath(searchParams.get('next'))
 
         if ((cached && cached.stores.length > 0) || (prefetched && prefetched.stores.length > 0)) {
