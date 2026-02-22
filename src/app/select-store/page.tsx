@@ -14,6 +14,7 @@ function SelectStorePage() {
   const [showRetryButton, setShowRetryButton] = useState(false)
   const [retryNonce, setRetryNonce] = useState(0)
   const hasAutoRedirected = useRef(false)
+  const hasReloadedForStuckLoading = useRef(false)
   const router = useRouter()
 
   // ✅ Stripe-like "LIVE" datetime label (auto updates)
@@ -144,6 +145,24 @@ function SelectStorePage() {
       isMounted = false
     }
   }, [router, maybeAutoRedirectSingleStore, retryNonce])
+
+  useEffect(() => {
+    if (!loading) {
+      hasReloadedForStuckLoading.current = false
+      return
+    }
+
+    if (hasReloadedForStuckLoading.current) return
+
+    const timeoutId = window.setTimeout(() => {
+      hasReloadedForStuckLoading.current = true
+      window.location.reload()
+    }, 8000)
+
+    return () => {
+      window.clearTimeout(timeoutId)
+    }
+  }, [loading])
 
   // ✅ Global summary (all stores)
   const globalStats = useMemo(() => {
