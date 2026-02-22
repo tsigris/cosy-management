@@ -57,130 +57,54 @@ export const writeStoresCache = (userId: string, payload: StoresFetchResult) => 
 }
 
 export const fetchStoresWithStats = async (userId: string): Promise<StoresFetchResult> => {
-  let accessWarning = ''
+  void userId
 
-  const [ownedStoresRes, accessBeforeRepairRes] = await Promise.all([
-    supabase
-      .from('stores')
-      .select('id, name')
-      .eq('owner_id', userId),
-    supabase
-      .from('store_access')
-      .select('store_id')
-      .eq('user_id', userId)
-  ])
-
-  const { data: ownedStores, error: ownedStoresError } = ownedStoresRes
-  const { data: myAccessBeforeRepair, error: beforeRepairError } = accessBeforeRepairRes
-
-  if (ownedStoresError) throw ownedStoresError
-
-  if (beforeRepairError) throw beforeRepairError
-
-  const existingAccessStoreIds = new Set((myAccessBeforeRepair || []).map((row: any) => String(row.store_id)))
-  const missingOwnedStores = (ownedStores || []).filter((store: any) => !existingAccessStoreIds.has(String(store.id)))
-
-  if (missingOwnedStores.length > 0) {
-    const repairRows = missingOwnedStores.map((store: any) => ({
-      store_id: store.id,
-      user_id: userId,
-      role: 'admin'
-    }))
-
-    const { error: repairError } = await supabase.from('store_access').upsert(repairRows, { onConflict: 'store_id,user_id' })
-
-    if (repairError) {
-      accessWarning = 'Δεν έγινε αυτόματη επιδιόρθωση δικαιωμάτων.'
-    }
+  type StoresStatsRpcRow = {
+    store_id: string | null
+    store_name: string | null
+    income: number | string | null
+    expenses: number | string | null
+    profit: number | string | null
+    last_updated: string | null
   }
 
-  // Διορθωμένο query για να παίρνει τα stores
-  const { data: access, error } = await supabase
-    .from('store_access')
-    .select('store_id, stores:stores(id, name)')
-    .eq('user_id', userId)
+  const { data, error } = await supabase.rpc('get_user_stores_with_monthly_stats')
 
-  if (error) throw error
+  if (error) {
+    throw new Error(
+      'Αποτυχία φόρτωσης stores/stats από RPC get_user_stores_with_monthly_stats. Εκτέλεσε το stores_with_monthly_stats_rpc.sql.'
+    )
+  }
 
-  if (!access || access.length === 0) {
+  const rows = (data ?? []) as StoresStatsRpcRow[]
+
+  if (rows.length === 0) {
     return {
       stores: [],
-      accessWarning: accessWarning || 'Δεν έχετε δικαιώματα πρόσβασης.'
+      accessWarning: 'Δεν έχετε δικαιώματα πρόσβασης.'
     }
   }
 
-  const now = new Date()
-  const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10)
+  const stores: StoreCard[] = rows
+    .filter((row) => row.store_id)
+    .map((row) => {
+      const income = Number(row.income) || 0
+      const expenses = Number(row.expenses) || 0
+      const profit = Number(row.profit)
 
-  const stores = access
-    .map((item: any) => {
-      const store = Array.isArray(item.stores) ? item.stores[0] : item.stores
-      if (!store) return null
       return {
-        id: String(store.id),
-        name: String(store.name || 'Κατάστημα')
+        id: String(row.store_id),
+        name: String(row.store_name || 'Κατάστημα'),
+        income,
+        expenses,
+        profit: Number.isFinite(profit) ? profit : income - expenses,
+        lastUpdated: row.last_updated || null,
       }
     })
-    .filter((store): store is { id: string; name: string } => store !== null)
-
-  const uniqueStores = Array.from(new Map(stores.map((store) => [store.id, store])).values())
-  const storeIds = uniqueStores.map((store) => store.id)
-
-  const statsByStoreId = new Map<string, { income: number; expenses: number; lastUpdated: string | null }>()
-  uniqueStores.forEach((store) => {
-    statsByStoreId.set(store.id, { income: 0, expenses: 0, lastUpdated: null })
-  })
-
-  if (storeIds.length > 0) {
-    const { data: trans, error: transError } = await supabase
-      .from('transactions')
-      .select('store_id, amount, type, date')
-      .in('store_id', storeIds)
-      .gte('date', firstDay)
-      .order('date', { ascending: false })
-
-    if (transError) throw transError
-
-    for (const tx of trans || []) {
-      const storeId = String((tx as { store_id?: string }).store_id || '')
-      if (!storeId) continue
-
-      const current = statsByStoreId.get(storeId)
-      if (!current) continue
-
-      const amount = Number((tx as { amount?: number | string }).amount) || 0
-      const type = String((tx as { type?: string }).type || '')
-      const date = String((tx as { date?: string }).date || '') || null
-
-      if (type === 'income') {
-        current.income += amount
-      }
-
-      if (type === 'expense' || type === 'debt_payment') {
-        current.expenses += Math.abs(amount)
-      }
-
-      if (!current.lastUpdated && date) {
-        current.lastUpdated = date
-      }
-    }
-  }
-
-  const storesWithStats: StoreCard[] = uniqueStores.map((store) => {
-    const stats = statsByStoreId.get(store.id) || { income: 0, expenses: 0, lastUpdated: null }
-    return {
-      id: store.id,
-      name: store.name,
-      income: stats.income,
-      expenses: stats.expenses,
-      profit: stats.income - stats.expenses,
-      lastUpdated: stats.lastUpdated
-    }
-  })
 
   return {
-    stores: storesWithStats,
-    accessWarning
+    stores,
+    accessWarning: ''
   }
 }
 
