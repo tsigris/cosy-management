@@ -1212,6 +1212,7 @@ function ManageListsContent() {
               }}
             />
             <input
+              className="searchInputNoNativeIcons"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder={activeTab === 'suppliers' || activeTab === 'revenue' ? 'Όνομα / ΑΦΜ / Τηλέφωνο...' : 'Γράψτε για αναζήτηση...'}
