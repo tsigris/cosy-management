@@ -88,13 +88,13 @@ function SelectStorePage() {
     let isMounted = true
 
     const loadStores = async () => {
-      setLoading(true)
-      setAccessWarning('')
-
       try {
         const {
           data: { session }
         } = await supabase.auth.getSession()
+
+        setLoading(true)
+        setAccessWarning('')
 
         if (!session) {
           if (isMounted) {

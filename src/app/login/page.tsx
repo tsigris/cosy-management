@@ -75,9 +75,6 @@ function LoginContent() {
     setLoading(true)
     
     try {
-      // Καθαρίζουμε το παλιό ID καταστήματος πριν το νέο login για να αποφύγουμε το "μπέρδεμα"
-      localStorage.removeItem('active_store_id')
-
       const { data, error } = await supabase.auth.signInWithPassword({ 
         email: email.trim(), 
         password: password.trim() 
@@ -101,8 +98,16 @@ function LoginContent() {
       }
 
       setEmailConfirmationPending(false)
+      const { session } = data
+      if (session) {
+        await supabase.auth.setSession({
+          access_token: session.access_token,
+          refresh_token: session.refresh_token,
+        })
+      }
+
       if (data.user) {
-        window.location.assign('/select-store')
+        window.location.href = '/select-store'
       }
     } catch (err: any) {
       toast.error(err.message || 'Παρουσιάστηκε πρόβλημα κατά τη σύνδεση.')
@@ -124,7 +129,7 @@ function LoginContent() {
       })
 
       if (error) throw error
-      window.location.assign('/select-store')
+      window.location.href = '/select-store'
     } catch (err: any) {
       toast.error(err.message || 'Αποτυχία σύνδεσης με Google.')
       setLoading(false)
