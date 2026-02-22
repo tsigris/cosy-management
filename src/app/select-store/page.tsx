@@ -1,6 +1,6 @@
 'use client'
 import { useEffect, useState, useMemo, useRef, useCallback } from 'react'
-import { clearSessionCache, getSessionCached, supabase } from '@/lib/supabase'
+import { clearSessionCache, getSessionCached, setSessionCache, supabase } from '@/lib/supabase'
 import { readStoresCache, refreshStoresCache, type StoreCard } from '@/lib/stores'
 import { useRouter } from 'next/navigation'
 import { LogOut, Plus, ArrowRight, TrendingUp, TrendingDown, Wallet, Store } from 'lucide-react'
@@ -92,7 +92,12 @@ function SelectStorePage() {
       setLoading(true)
       setAccessWarning('')
 
-      const session = await getSessionCached()
+      const { data: sessionData } = await supabase.auth.getSession()
+      if (sessionData.session) {
+        setSessionCache(sessionData.session)
+      }
+
+      const session = sessionData.session ?? await getSessionCached()
       if (!session) {
         if (isMounted) {
           await new Promise((resolve) => setTimeout(resolve, 500))
