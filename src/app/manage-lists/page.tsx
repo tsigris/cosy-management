@@ -428,7 +428,7 @@ function ManageListsContent() {
         // ✅ IMPORTANT: include type + date/created_at for year filter + credit logic
         supabase
           .from('transactions')
-          .select('id, amount, supplier_id, fixed_asset_id, revenue_source_id, type, date, created_at, notes, description, is_credit')
+          .select('id, amount, supplier_id, fixed_asset_id, revenue_source_id, type, date, created_at, notes, is_credit')
           .eq('store_id', activeStoreId),
       ])
 
@@ -858,12 +858,16 @@ function ManageListsContent() {
 
       const totalCreditAmount = creditTxs.reduce((acc: number, t: any) => acc + Math.abs(Number(t.amount) || 0), 0)
       const totalSettlementAmount = settlementTxs.reduce((acc: number, t: any) => acc + Math.abs(Number(t.amount) || 0), 0)
+      const latestSettlementDate = settlementTxs.length ? getTxDate(settlementTxs[0]) : null
+      const latestSettlementAmount = settlementTxs.length ? Math.abs(Number(settlementTxs[0]?.amount) || 0) : null
 
       return {
         creditTxs,
         settlementTxs,
         latestCreditDate,
         oldestCreditDate,
+        latestSettlementDate,
+        latestSettlementAmount,
         totalCreditAmount,
         totalSettlementAmount,
         balance: totalCreditAmount - totalSettlementAmount,
@@ -1232,9 +1236,7 @@ function ManageListsContent() {
               const isEditingThis = editingId && String(editingId) === String(item.id)
               const isExpanded = expandedId === String(item.id)
               const history = getEntityTransactions(item, transactions, selectedYear)
-              const movementTxs = [...history.creditTxs, ...history.settlementTxs]
-                .sort((a: any, b: any) => (getTxDate(b)?.getTime() || 0) - (getTxDate(a)?.getTime() || 0))
-                .slice(0, 12)
+              const isIncome = activeTab === 'revenue'
 
               const rfValue = String(item?.rf_code || '').trim()
               const ibanValue = String(item?.iban || '').trim()
@@ -1304,30 +1306,88 @@ function ManageListsContent() {
                       </div>
 
                       <div style={miniSummaryRow}>
+                        <div
+                          style={{
+                            ...summaryTotalCard,
+                            background: '#fff7ed',
+                            border: '1px solid #fed7aa',
+                          }}
+                        >
+                          <span style={summaryTotalLabel}>{isIncome ? 'ΑΠΑΙΤΗΣΕΙΣ' : 'ΧΡΕΩΣΕΙΣ'}</span>
+                          <span style={{ ...summaryTotalValue, color: colors.accentOrange }}>{history.totalCreditAmount.toFixed(2)}€</span>
+                        </div>
+
+                        <div
+                          style={{
+                            ...summaryTotalCard,
+                            background: '#ecfdf5',
+                            border: '1px solid #a7f3d0',
+                          }}
+                        >
+                          <span style={summaryTotalLabel}>{isIncome ? 'ΕΙΣΠΡΑΞΕΙΣ' : 'ΕΞΟΦΛΗΣΕΙΣ'}</span>
+                          <span style={{ ...summaryTotalValue, color: colors.accentGreen }}>{history.totalSettlementAmount.toFixed(2)}€</span>
+                        </div>
+
+                        <div
+                          style={{
+                            ...summaryTotalCard,
+                            background: colors.white,
+                            border: `1px solid ${colors.border}`,
+                          }}
+                        >
+                          <span style={summaryTotalLabel}>ΥΠΟΛΟΙΠΟ</span>
+                          <span style={{ ...summaryTotalValue, color: colors.primaryDark }}>{history.balance.toFixed(2)}€</span>
+                        </div>
+                      </div>
+
+                      <div style={miniSummaryRow}>
                         <div style={miniPill}>
-                          <span style={miniPillLabel}>Χρεώσεις</span>
+                          <span style={miniPillLabel}>Πρώτη καταχώρηση</span>
+                          <span style={miniPillValue}>{history.oldestCreditDate ? formatTxDate(history.oldestCreditDate) : '—'}</span>
+                        </div>
+
+                        <div style={miniPill}>
+                          <span style={miniPillLabel}>Τελευταία καταχώρηση</span>
+                          <span style={miniPillValue}>{history.latestCreditDate ? formatTxDate(history.latestCreditDate) : '—'}</span>
+                        </div>
+
+                        <div style={miniPill}>
+                          <span style={miniPillLabel}>{isIncome ? 'Τελευταία είσπραξη' : 'Τελευταία εξόφληση'}</span>
+                          {history.latestSettlementDate ? (
+                            <span style={{ ...miniPillValue, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                              <span>
+                                {formatTxDate(history.latestSettlementDate)} ({daysAgoLabel(history.latestSettlementDate)})
+                              </span>
+                              <span style={miniAmountChip}>{(Number(history.latestSettlementAmount) || 0).toFixed(2)}€</span>
+                            </span>
+                          ) : (
+                            <span style={miniPillValue}>—</span>
+                          )}
+                        </div>
+
+                        <div style={miniPill}>
+                          <span style={miniPillLabel}>{isIncome ? 'Σύνολο απαιτήσεων' : 'Σύνολο χρεώσεων'}</span>
                           <span style={miniPillValue}>{history.totalCreditAmount.toFixed(2)}€</span>
                         </div>
+
                         <div style={miniPill}>
-                          <span style={miniPillLabel}>Εξοφλήσεις</span>
+                          <span style={miniPillLabel}>{isIncome ? 'Σύνολο εισπράξεων' : 'Σύνολο εξοφλήσεων'}</span>
                           <span style={miniPillValue}>{history.totalSettlementAmount.toFixed(2)}€</span>
-                        </div>
-                        <div style={miniPill}>
-                          <span style={miniPillLabel}>Υπόλοιπο</span>
-                          <span style={miniPillValue}>{history.balance.toFixed(2)}€</span>
                         </div>
                       </div>
 
                       <div style={rfIbanWrap}>
-                        <div style={rfIbanRow}>
-                          <span style={rfIbanLabel}>RF</span>
-                          <span style={rfIbanValue}>{rfValue || '—'}</span>
-                          {rfValue ? (
-                            <button type="button" style={copyCodeBtn} onClick={() => copyToClipboard(rfValue)}>
-                              <Copy size={14} />
-                            </button>
-                          ) : null}
-                        </div>
+                        {activeTab !== 'suppliers' && (
+                          <div style={rfIbanRow}>
+                            <span style={rfIbanLabel}>RF</span>
+                            <span style={rfIbanValue}>{rfValue || '—'}</span>
+                            {rfValue ? (
+                              <button type="button" style={copyCodeBtn} onClick={() => copyToClipboard(rfValue)}>
+                                <Copy size={14} />
+                              </button>
+                            ) : null}
+                          </div>
+                        )}
 
                         <div style={rfIbanRow}>
                           <span style={rfIbanLabel}>IBAN</span>
@@ -1347,17 +1407,14 @@ function ManageListsContent() {
                         )}
                       </div>
 
-                      <div style={sectionTitle}>ΤΕΛΕΥΤΑΙΕΣ ΚΙΝΗΣΕΙΣ ({movementTxs.length})</div>
-                      {movementTxs.length === 0 ? (
-                        <div style={rowMuted}>Δεν βρέθηκαν κινήσεις.</div>
+                      <div style={sectionTitle}>{isIncome ? `Απαιτήσεις (${history.creditTxs.length})` : `Χρεώσεις (${history.creditTxs.length})`}</div>
+                      {history.creditTxs.length === 0 ? (
+                        <div style={rowMuted}>Δεν βρέθηκαν καταχωρήσεις.</div>
                       ) : (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                          {movementTxs.map((tx: any) => {
+                          {history.creditTxs.slice(0, 12).map((tx: any) => {
                             const d = getTxDate(tx)
-                            const note =
-                              String(tx.notes || tx.description || '').trim() ||
-                              String(tx.type || '').trim() ||
-                              (activeTab === 'revenue' ? 'Είσπραξη' : 'Χρέωση')
+                            const note = String(tx.notes || tx.type || '').trim() || 'Κίνηση'
 
                             return (
                               <div key={tx.id} style={txRow}>
@@ -1374,6 +1431,39 @@ function ManageListsContent() {
                               </div>
                             )
                           })}
+
+                          {history.creditTxs.length > 12 && <div style={rowMuted}>Δείχνω τις 12 πιο πρόσφατες καταχωρήσεις.</div>}
+                        </div>
+                      )}
+
+                      <div style={{ ...sectionTitle, marginTop: 14 }}>
+                        {isIncome ? `Εισπράξεις (${history.settlementTxs.length})` : `Εξοφλήσεις (${history.settlementTxs.length})`}
+                      </div>
+                      {history.settlementTxs.length === 0 ? (
+                        <div style={rowMuted}>Δεν βρέθηκαν κινήσεις εξόφλησης/είσπραξης.</div>
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                          {history.settlementTxs.slice(0, 10).map((tx: any) => {
+                            const d = getTxDate(tx)
+                            const note = String(tx.notes || tx.type || '').trim() || 'Κίνηση'
+
+                            return (
+                              <div key={tx.id} style={txRow}>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                                    <div style={txDate}>{formatTxDate(d)}</div>
+                                    <span style={tinyChip}>{daysAgoLabel(d)}</span>
+                                  </div>
+                                  <div style={txNote} title={note}>
+                                    {note}
+                                  </div>
+                                </div>
+                                <div style={{ ...txAmount, color: colors.accentGreen }}>{Math.abs(Number(tx.amount) || 0).toFixed(2)}€</div>
+                              </div>
+                            )
+                          })}
+
+                          {history.settlementTxs.length > 10 && <div style={rowMuted}>Δείχνω τις 10 πιο πρόσφατες κινήσεις.</div>}
                         </div>
                       )}
 
@@ -1653,6 +1743,30 @@ const miniSummaryRow: any = {
   marginBottom: 12,
 }
 
+const summaryTotalCard: any = {
+  flex: '1 1 0',
+  minWidth: 130,
+  borderRadius: 14,
+  padding: '10px 12px',
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 4,
+}
+
+const summaryTotalLabel: any = {
+  fontSize: 10,
+  fontWeight: 950,
+  color: colors.secondaryText,
+  textTransform: 'uppercase',
+  letterSpacing: 0.4,
+}
+
+const summaryTotalValue: any = {
+  fontSize: 14,
+  fontWeight: 950,
+  lineHeight: 1.1,
+}
+
 const miniPill: any = {
   display: 'flex',
   alignItems: 'center',
@@ -1675,6 +1789,17 @@ const miniPillValue: any = {
   fontSize: 10,
   fontWeight: 950,
   color: colors.primaryDark,
+}
+
+const miniAmountChip: any = {
+  fontSize: 10,
+  fontWeight: 950,
+  padding: '4px 10px',
+  borderRadius: 999,
+  border: `1px solid ${colors.border}`,
+  background: '#f1f5f9',
+  color: colors.primaryDark,
+  letterSpacing: 0.2,
 }
 
 const rfIbanWrap: any = {
