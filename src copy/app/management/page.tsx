@@ -89,7 +89,7 @@ function ManagementContent() {
           label: 'Δικαιώματα Πρόσβασης', 
           subLabel: 'Διαχείριση ρόλων Admin & User',
           icon: <ShieldCheck size={20} />, 
-          path: '/admin/permissions', 
+          path: '/permissions', 
           color: '#64748b' 
         },
         { 

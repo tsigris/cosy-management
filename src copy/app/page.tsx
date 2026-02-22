@@ -530,7 +530,7 @@ function DashboardContent() {
                 <NextLink href={`/help?store=${storeIdFromUrl}`} style={menuItem} onClick={() => setIsMenuOpen(false)}>
                   📖 Οδηγίες Χρήσης
                 </NextLink>
-                <NextLink href={`/admin/permissions?store=${storeIdFromUrl}`} style={menuItem} onClick={() => setIsMenuOpen(false)}>
+                <NextLink href={`/permissions?store=${storeIdFromUrl}`} style={menuItem} onClick={() => setIsMenuOpen(false)}>
                   🔐 Δικαιώματα
                 </NextLink>
 
