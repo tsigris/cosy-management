@@ -60,7 +60,7 @@ interface Transaction {
   suppliers?: { name?: string | null } | null
   fixed_assets?: { name?: string | null } | null
   revenue_sources?: { name?: string | null } | null
-  profiles?: { username: string } | null
+  profiles?: any | null
   created_by_name?: string
 }
 
@@ -281,12 +281,23 @@ function DashboardContent() {
 
       if (txError) throw txError
 
-      // ✅ DEDUPE
+      // ✅ Ρητή εξομάλυνση (Normalizing data)
       const map = new Map<string, Transaction>()
-      for (const row of tx || []) {
+      for (const row of (tx || [])) {
         const rowData = row as any
-        const profileUsername = rowData.profiles?.username || 'Άγνωστος'
-        const normalizedRow = { ...rowData, created_by_name: profileUsername }
+        
+        // Χειρισμός του username είτε επιστρέφει object είτε array
+        let profileUsername = 'Άγνωστος'
+        if (rowData.profiles) {
+          profileUsername = Array.isArray(rowData.profiles) 
+            ? rowData.profiles[0]?.username 
+            : rowData.profiles?.username
+        }
+
+        const normalizedRow: Transaction = {
+          ...rowData,
+          created_by_name: profileUsername || 'Άγνωστος'
+        }
         map.set(String(normalizedRow.id), normalizedRow)
       }
       setTransactions(Array.from(map.values()))
