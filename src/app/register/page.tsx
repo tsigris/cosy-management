@@ -7,18 +7,6 @@ import Link from 'next/link'
 import { toast, Toaster } from 'sonner'
 import { Mail } from 'lucide-react'
 
-function bytesToHex(bytes: Uint8Array) {
-  return Array.from(bytes)
-    .map((byte) => byte.toString(16).padStart(2, '0'))
-    .join('')
-}
-
-async function sha256Hex(value: string) {
-  const inputBytes = new TextEncoder().encode(value)
-  const hashBuffer = await crypto.subtle.digest('SHA-256', inputBytes)
-  return bytesToHex(new Uint8Array(hashBuffer))
-}
-
 const getEmailRedirectUrl = () => {
   const envUrl = process.env.NEXT_PUBLIC_SITE_URL || process.env.NEXT_PUBLIC_APP_URL
 
@@ -169,9 +157,8 @@ function RegisterForm() {
         const { error: assetsError } = await supabase.from('fixed_assets').insert(defaultAssets)
         if (assetsError) throw assetsError
       } else if (tokenParam) {
-        const tokenHash = await sha256Hex(tokenParam)
-        const { data: inviteData, error: inviteError } = await supabase.rpc('redeem_store_invite', {
-          p_token_hash: tokenHash
+        const { data: inviteData, error: inviteError } = await supabase.rpc('accept_store_invite', {
+          p_token: tokenParam
         })
 
         if (inviteError) {

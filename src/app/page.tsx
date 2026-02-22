@@ -84,7 +84,8 @@ function DashboardContent() {
   const yearStartStr = `${businessYear}-01-01`
 
   const getEntityKeyFromTx = (t: any) => {
-    if (t?.notes && t.notes.startsWith('Πληρωμή Δόσης')) return `loan:${t.id}`
+    const description = String(t?.description || t?.notes || '')
+    if (description.startsWith('Πληρωμή Δόσης')) return `loan:${t.id}`
     if (t?.revenue_source_id) return `rev:${t.revenue_source_id}`
     if (t?.supplier_id) return `sup:${t.supplier_id}`
     if (t?.fixed_asset_id) return `asset:${t.fixed_asset_id}`
@@ -100,8 +101,9 @@ function DashboardContent() {
     if (t?.revenue_sources?.name) return t.revenue_sources.name
     if (t?.suppliers?.name) return t.suppliers.name
     if (t?.fixed_assets?.name) return t.fixed_assets.name
-    if (t?.notes && t.notes.startsWith('Πληρωμή Δόσης')) {
-      const parts = t.notes.split(':')
+    const description = String(t?.description || t?.notes || '')
+    if (description.startsWith('Πληρωμή Δόσης')) {
+      const parts = description.split(':')
       if (parts.length > 1) return parts[1].split('(')[0].trim()
       return 'Πληρωμή Δόσης'
     }
@@ -252,7 +254,7 @@ function DashboardContent() {
 
       const { data: tx, error: txError } = await supabase
         .from('transactions')
-        .select('*, suppliers(name), fixed_assets(name), revenue_sources(name)')
+        .select('id, created_at, amount, type, category, description:notes, method, date, is_credit, supplier_id, fixed_asset_id, revenue_source_id, created_by_name')
         .eq('store_id', storeIdFromUrl)
         .or(`date.eq.${selectedDate},and(created_at.gte.${windowStartIso},created_at.lte.${windowEndIso})`)
         .order('created_at', { ascending: false })
@@ -712,9 +714,9 @@ function DashboardContent() {
                       {isZMaster && <span style={creditBadgeStyle}>{row.itemsCount} ΚΙΝΗΣΕΙΣ</span>}
                     </p>
 
-                    {!isZMaster && t?.notes && (
+                    {!isZMaster && t?.description && (
                       <p style={{ fontSize: '11px', fontWeight: 800, color: '#64748b', margin: '4px 0 2px 0' }}>
-                        {t.notes}
+                        {t.description}
                       </p>
                     )}
 

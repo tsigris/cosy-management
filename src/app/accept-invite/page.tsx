@@ -7,18 +7,6 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { toast, Toaster } from 'sonner'
 
-function bytesToHex(bytes: Uint8Array) {
-  return Array.from(bytes)
-    .map((byte) => byte.toString(16).padStart(2, '0'))
-    .join('')
-}
-
-async function sha256Hex(value: string) {
-  const inputBytes = new TextEncoder().encode(value)
-  const hashBuffer = await crypto.subtle.digest('SHA-256', inputBytes)
-  return bytesToHex(new Uint8Array(hashBuffer))
-}
-
 export default function AcceptInvitePage() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -28,7 +16,7 @@ export default function AcceptInvitePage() {
   useEffect(() => {
     let isCancelled = false
 
-    async function redeemInvite() {
+    async function acceptInvite() {
       if (!token) {
         toast.error('Λείπει το token πρόσκλησης')
         if (!isCancelled) setScreenMessage('Λείπει το token πρόσκλησης')
@@ -45,8 +33,7 @@ export default function AcceptInvitePage() {
           return
         }
 
-        const tokenHash = await sha256Hex(token)
-        const { data, error } = await supabase.rpc('redeem_store_invite', { p_token_hash: tokenHash })
+        const { data, error } = await supabase.rpc('accept_store_invite', { p_token: token })
 
         if (error) {
           console.error(error)
@@ -84,7 +71,7 @@ export default function AcceptInvitePage() {
       }
     }
 
-    redeemInvite()
+    acceptInvite()
 
     return () => {
       isCancelled = true

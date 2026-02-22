@@ -319,7 +319,10 @@ function SettingsContent() {
     if (!storeId) return toast.error('Δεν βρέθηκε ID καταστήματος')
     setIsExporting(true)
     try {
-      let transQuery = supabase.from('transactions').select('*').eq('store_id', storeId)
+      let transQuery = supabase
+        .from('transactions')
+        .select('id, created_at, amount, type, category, description:notes, method, date, supplier_id, fixed_asset_id')
+        .eq('store_id', storeId)
       if (!exportAllData) transQuery = transQuery.gte('date', startDate).lte('date', endDate)
 
       const [trans, sups, assets, emps, fixedAssetsLookup] = await Promise.all([
@@ -348,7 +351,7 @@ function SettingsContent() {
           Προμηθευτής: t.supplier_id ? (supplierMap[t.supplier_id] || '-') : '-',
           Πάγιο: t.fixed_asset_id ? (assetMap[t.fixed_asset_id] || '-') : '-',
           Υπάλληλος: t.fixed_asset_id ? (fixedAssetEmployeeMap[t.fixed_asset_id] || '-') : '-',
-          Σημειώσεις: t.notes,
+          Σημειώσεις: (t as any).description || '',
         }))
 
       const wb = XLSX.utils.book_new()
