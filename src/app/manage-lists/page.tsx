@@ -1287,9 +1287,26 @@ function ManageListsContent() {
                       </div>
                     </div>
 
-                    <div style={{ textAlign: 'right', display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <p style={{ ...turnoverText, color: colors.accentOrange }}>{history.balance.toFixed(2)}€</p>
-                      {isExpanded ? <ChevronUp size={18} color={colors.secondaryText} /> : <ChevronDown size={18} color={colors.secondaryText} />}
+                    <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <p style={{ ...turnoverText, color: colors.accentOrange }}>{history.balance.toFixed(2)}€</p>
+                        {isExpanded ? <ChevronUp size={18} color={colors.secondaryText} /> : <ChevronDown size={18} color={colors.secondaryText} />}
+                      </div>
+
+                      {showDebtAction && (
+                        <Link
+                          href={debtHref}
+                          onClick={(e) => e.stopPropagation()}
+                          style={{
+                            ...debtActionCompactBtn,
+                            backgroundColor: isIncome ? '#ecfdf5' : '#eff6ff',
+                            color: isIncome ? colors.accentGreen : colors.accentBlue,
+                            borderColor: isIncome ? '#bbf7d0' : '#bfdbfe',
+                          }}
+                        >
+                          <CreditCard size={13} /> {debtActionLabel}
+                        </Link>
+                      )}
                     </div>
 
                     {isEditingThis && (
@@ -1361,11 +1378,6 @@ function ManageListsContent() {
                         <div style={miniPill}>
                           <span style={miniPillLabel}>{isIncome ? 'Σύνολο απαιτήσεων' : 'Σύνολο χρεώσεων'}</span>
                           <span style={miniPillValue}>{history.totalCreditAmount.toFixed(2)}€</span>
-                        </div>
-
-                        <div style={miniPill}>
-                          <span style={miniPillLabel}>{isIncome ? 'Σύνολο εισπράξεων' : 'Σύνολο εξοφλήσεων'}</span>
-                          <span style={miniPillValue}>{history.totalSettlementAmount.toFixed(2)}€</span>
                         </div>
 
                         <div style={miniPill}>
@@ -1444,20 +1456,6 @@ function ManageListsContent() {
                       )}
 
                       <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
-                        {showDebtAction && (
-                          <Link
-                            href={debtHref}
-                            onClick={(e) => e.stopPropagation()}
-                            style={{
-                              ...debtActionBtn,
-                              backgroundColor: isIncome ? '#ecfdf5' : '#fff7ed',
-                              color: isIncome ? colors.accentGreen : colors.accentOrange,
-                              borderColor: isIncome ? '#bbf7d0' : '#fed7aa',
-                            }}
-                          >
-                            <CreditCard size={14} /> {debtActionLabel}
-                          </Link>
-                        )}
                         <button
                           onClick={(e) => {
                             e.stopPropagation()
@@ -1890,17 +1888,18 @@ const delBtn: any = {
   cursor: 'pointer',
 }
 
-const debtActionBtn: any = {
-  flex: 1,
-  padding: '10px',
-  borderRadius: '10px',
+const debtActionCompactBtn: any = {
+  minWidth: 98,
+  height: 30,
+  padding: '0 10px',
+  borderRadius: 10,
   border: '1px solid',
-  fontWeight: '700',
-  fontSize: '12px',
-  display: 'flex',
+  fontWeight: 800,
+  fontSize: 11,
+  display: 'inline-flex',
   alignItems: 'center',
   justifyContent: 'center',
-  gap: '5px',
+  gap: 6,
   cursor: 'pointer',
   textDecoration: 'none',
 }
