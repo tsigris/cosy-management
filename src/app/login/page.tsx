@@ -4,7 +4,7 @@ export const dynamic = 'force-dynamic'
 
 import { useState, Suspense, useEffect, useRef } from 'react'
 import { getSessionCached, setSessionCache, supabase } from '@/lib/supabase'
-import { prefetchStoresForUser } from '@/lib/stores'
+import { prefetchStoresForUser, readStoresCache } from '@/lib/stores'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { toast, Toaster } from 'sonner'
@@ -65,33 +65,62 @@ function LoginContent() {
     const checkSession = async () => {
       const session = await getSessionCached()
       if (session) {
+         const prefetched = await prefetchStoresForUser(session.user.id)
          router.refresh()
-         router.replace(safeNextPath || '/')
+         router.replace(prefetched && prefetched.stores.length > 0 ? '/' : '/select-store')
       }
     }
     checkSession()
-  }, [router, safeNextPath])
+  }, [router])
 
   useEffect(() => {
     const {
       data: { subscription }
-    } = supabase.auth.onAuthStateChange((event) => {
-      if (event === 'SIGNED_IN') {
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event !== 'SIGNED_IN' || !session?.user?.id) return
+
+      void (async () => {
         if (googleLoadingToastRef.current !== null) {
           toast.dismiss(googleLoadingToastRef.current)
           googleLoadingToastRef.current = null
         }
+
         setShowDelayedAuthMessage(false)
+
+        const userId = session.user.id
+        let timeoutNavigated = false
+        const timeoutId = window.setTimeout(() => {
+          const cached = readStoresCache(userId)
+          if (!cached || cached.stores.length === 0) {
+            timeoutNavigated = true
+            setLoading(false)
+            router.push('/select-store')
+            router.refresh()
+          }
+        }, 3000)
+
+        const prefetched = await prefetchStoresForUser(userId)
+        window.clearTimeout(timeoutId)
+
+        if (timeoutNavigated) return
+
         setLoading(false)
-        router.push(safeNextPath || '/')
+
+        if (!prefetched || prefetched.stores.length === 0) {
+          router.push('/select-store')
+          router.refresh()
+          return
+        }
+
+        router.push('/')
         router.refresh()
-      }
+      })()
     })
 
     return () => {
       subscription.unsubscribe()
     }
-  }, [router, safeNextPath])
+  }, [router])
 
   useEffect(() => {
     if (!loading) {
