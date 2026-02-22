@@ -10,6 +10,7 @@ import {
   ChevronLeft,
   Receipt,
   CreditCard,
+  Copy,
   Hash,
   Landmark,
   Calendar,
@@ -529,7 +530,30 @@ function BalancesContent() {
                         <div style={{ marginTop: '10px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
                           {s.rf_code && (
                             <div style={infoRow}>
-                              <Hash size={12} /> <span style={infoText}>RF: {s.rf_code}</span>
+                              <Hash size={12} />
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <span style={infoText}>RF: {s.rf_code}</span>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    navigator.clipboard.writeText(String(s.rf_code))
+                                    toast.success('Το RF αντιγράφηκε!')
+                                  }}
+                                  style={{
+                                    background: 'transparent',
+                                    border: 'none',
+                                    cursor: 'pointer',
+                                    color: '#64748b',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    padding: '4px',
+                                  }}
+                                  title="Αντιγραφή RF"
+                                >
+                                  <Copy size={14} />
+                                </button>
+                              </div>
                             </div>
                           )}
                           {s.bank_name && (
