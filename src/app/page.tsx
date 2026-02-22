@@ -10,6 +10,7 @@ import { format, addDays, subDays, parseISO } from 'date-fns'
 import { el } from 'date-fns/locale'
 import { Toaster, toast } from 'sonner'
 import { TrendingUp, TrendingDown, Menu, X, ChevronLeft, ChevronRight, CreditCard } from 'lucide-react'
+import ErrorBoundary from '@/components/ErrorBoundary'
 
 // --- MODERN PREMIUM PALETTE ---
 const colors = {
@@ -412,13 +413,15 @@ function DashboardContent() {
     return categoryLooksZ || (t?.type === 'income' && looksLikeDayClose)
   }, [])
 
-  const zTransactions = useMemo(() => transactions.filter((t) => isZTransaction(t)), [transactions, isZTransaction])
+  const zTransactions = useMemo(() => (Array.isArray(transactions) ? transactions.filter((t) => isZTransaction(t)) : []), [transactions, isZTransaction])
 
   const displayTransactions = useMemo(() => {
     const zTx = zTransactions
 
+    const safeTransactions = Array.isArray(transactions) ? transactions : []
+
     if (zTx.length <= 1) {
-      return transactions.map((t) => ({ kind: 'normal' as const, id: String(t.id), tx: t }))
+      return safeTransactions.map((t) => ({ kind: 'normal' as const, id: String(t?.id), tx: t }))
     }
 
     const zTotal = zTx.reduce((acc, t) => acc + (Number(t.amount) || 0), 0)
@@ -448,7 +451,7 @@ function DashboardContent() {
 
     let zInserted = false
 
-    for (const t of transactions) {
+    for (const t of safeTransactions) {
       if (!isZTransaction(t)) {
         rows.push({ kind: 'normal', id: String(t.id), tx: t })
         continue
@@ -658,13 +661,13 @@ function DashboardContent() {
       </div>
 
       <div style={listContainer}>
-        <p style={listHeader}>ΚΙΝΗΣΕΙΣ ΗΜΕΡΑΣ ({displayTransactions.length})</p>
+        <p style={listHeader}>ΚΙΝΗΣΕΙΣ ΗΜΕΡΑΣ ({Array.isArray(displayTransactions) ? displayTransactions.length : 0})</p>
 
         {loading ? (
           <div style={{ textAlign: 'center', padding: '40px' }}>
             <div style={spinnerStyle}></div>
           </div>
-        ) : displayTransactions.length === 0 ? (
+        ) : !Array.isArray(displayTransactions) || displayTransactions.length === 0 ? (
           <div style={emptyStateStyle}>Δεν υπάρχουν κινήσεις</div>
         ) : (
           displayTransactions.map((row) => {
@@ -733,12 +736,12 @@ function DashboardContent() {
                         <p style={ytdTitle}>ΑΝΑΛΥΣΗ ΚΛΕΙΣΙΜΑΤΟΣ Ζ</p>
                         <p style={ytdSubTitle}>Ανάλυση ανά μέθοδο</p>
 
-                        {row.breakdown.map((item) => (
+                        {Array.isArray(row.breakdown) && row.breakdown.length > 0 ? row.breakdown.map((item) => (
                           <div key={item.method} style={zBreakdownRow}>
                             <span style={ytdLabel}>{item.method}</span>
                             <span style={ytdValueGreen}>{money(item.amount)}€</span>
                           </div>
-                        ))}
+                        )) : <p style={ytdHint}>Δεν βρέθηκε ανάλυση μεθόδων.</p>}
 
                         {t.__collapsedZ && (
                           <div style={{ display: 'flex', gap: 10, marginTop: 12 }}>
@@ -1081,8 +1084,10 @@ const spinnerStyle: any = { width: '24px', height: '24px', border: '3px solid #f
 
 export default function DashboardPage() {
   return (
-    <Suspense fallback={null}>
-      <DashboardContent />
-    </Suspense>
+    <ErrorBoundary>
+      <Suspense fallback={<div style={{ textAlign: 'center', padding: '40px', color: colors.secondaryText, fontWeight: 800 }}>Φόρτωση dashboard...</div>}>
+        <DashboardContent />
+      </Suspense>
+    </ErrorBoundary>
   )
 }

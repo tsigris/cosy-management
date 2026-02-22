@@ -5,8 +5,9 @@ import { readStoresCache, refreshStoresCache, type StoreCard } from '@/lib/store
 import { useRouter } from 'next/navigation'
 import { LogOut, Plus, ArrowRight, TrendingUp, TrendingDown, Wallet, Store } from 'lucide-react'
 import { toast, Toaster } from 'sonner'
+import ErrorBoundary from '@/components/ErrorBoundary'
 
-export default function SelectStorePage() {
+function SelectStorePage() {
   const [userStores, setUserStores] = useState<StoreCard[]>([])
   const [loading, setLoading] = useState(true)
   const [accessWarning, setAccessWarning] = useState('')
@@ -102,10 +103,10 @@ export default function SelectStorePage() {
       const hasCachedStores = Boolean(cached)
 
       if (cached && isMounted) {
-        setUserStores(cached.stores)
+        setUserStores(Array.isArray(cached.stores) ? cached.stores : [])
         setAccessWarning(cached.accessWarning)
         setLoading(false)
-        if (maybeAutoRedirectSingleStore(cached.stores)) {
+        if (maybeAutoRedirectSingleStore(Array.isArray(cached.stores) ? cached.stores : [])) {
           return
         }
       }
@@ -113,12 +114,13 @@ export default function SelectStorePage() {
       void refreshStoresCache(userId)
         .then((fresh) => {
           if (!isMounted) return
-          setUserStores(fresh.stores)
+          const safeStores = Array.isArray(fresh?.stores) ? fresh.stores : []
+          setUserStores(safeStores)
           setAccessWarning(fresh.accessWarning)
           if (!hasCachedStores) {
             setLoading(false)
           }
-          maybeAutoRedirectSingleStore(fresh.stores)
+          maybeAutoRedirectSingleStore(safeStores)
         })
         .catch((err: unknown) => {
           console.error('Fetch error:', err)
@@ -139,8 +141,9 @@ export default function SelectStorePage() {
 
   // ✅ Global summary (all stores)
   const globalStats = useMemo(() => {
-    const income = userStores.reduce((acc: number, s: any) => acc + (Number(s.income) || 0), 0)
-    const expenses = userStores.reduce((acc: number, s: any) => acc + (Number(s.expenses) || 0), 0)
+    const safeStores = Array.isArray(userStores) ? userStores : []
+    const income = safeStores.reduce((acc: number, s: any) => acc + (Number(s?.income) || 0), 0)
+    const expenses = safeStores.reduce((acc: number, s: any) => acc + (Number(s?.expenses) || 0), 0)
     const profit = income - expenses
     return { income, expenses, profit }
   }, [userStores])
@@ -211,7 +214,7 @@ export default function SelectStorePage() {
         </div>
       )}
 
-      {userStores.length === 0 ? (
+      {!Array.isArray(userStores) || userStores.length === 0 ? (
         <>
           {accessWarning && (
             <div style={warningBoxStyle}>
@@ -228,7 +231,7 @@ export default function SelectStorePage() {
         </>
       ) : (
         <div style={{ display: 'grid', gap: '15px' }}>
-          {userStores.map((store: any) => (
+          {Array.isArray(userStores) && userStores.length > 0 ? userStores.map((store: any) => (
             <div key={store.id} onClick={() => handleSelect(store.id)} style={cardStyle} className="store-card">
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
                 <div>
@@ -274,7 +277,11 @@ export default function SelectStorePage() {
                 </span>
               </div>
             </div>
-          ))}
+          )) : (
+            <div style={emptyStateStyle}>
+              <p style={{ fontWeight: '700', color: '#64748b' }}>Δεν υπάρχουν διαθέσιμα δεδομένα καταστημάτων.</p>
+            </div>
+          )}
         </div>
       )}
 
@@ -394,3 +401,13 @@ const warningTextStyle: any = {
   fontSize: '12px',
   fontWeight: '700',
 }
+
+export function SelectStorePageWithBoundary() {
+  return (
+    <ErrorBoundary>
+      <SelectStorePage />
+    </ErrorBoundary>
+  )
+}
+
+export default SelectStorePageWithBoundary

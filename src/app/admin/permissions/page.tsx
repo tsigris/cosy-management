@@ -7,6 +7,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { toast, Toaster } from 'sonner'
 import { ShieldCheck, X, Settings, UserPlus, Trash2 } from 'lucide-react'
+import ErrorBoundary from '@/components/ErrorBoundary'
 
 function PermissionsContent() {
   const router = useRouter()
@@ -39,7 +40,16 @@ function PermissionsContent() {
 
       if (accErr) throw accErr;
 
-      const userIds = accessData.map(a => a.user_id);
+      const safeAccessData = Array.isArray(accessData) ? accessData : []
+      const userIds = safeAccessData
+        .map((a: any) => a?.user_id)
+        .filter((id: unknown): id is string => typeof id === 'string' && id.length > 0)
+
+      if (safeAccessData.length === 0) {
+        setUsers([])
+        return
+      }
+
       const { data: profiles } = await supabase
         .from('profiles')
         .select('id, username, email')
@@ -47,10 +57,10 @@ function PermissionsContent() {
 
       const profileMap = Object.fromEntries(profiles?.map(p => [p.id, p]) || []);
 
-      const combinedData = accessData.map(entry => ({
+      const combinedData = safeAccessData.map((entry: any) => ({
         ...entry,
-        username: profileMap[entry.user_id]?.username || 'Χρήστης',
-        email: profileMap[entry.user_id]?.email || '---'
+        username: profileMap?.[entry?.user_id]?.username || 'Χρήστης',
+        email: profileMap?.[entry?.user_id]?.email || '---'
       }));
 
       setUsers(combinedData);
@@ -85,7 +95,7 @@ function PermissionsContent() {
     // Optimistic UI update
     const updatedUser = { ...selectedUser, [field]: newValue };
     setSelectedUser(updatedUser);
-    setUsers(users.map(u => u.user_id === selectedUser.user_id ? updatedUser : u));
+    setUsers((prev) => (Array.isArray(prev) ? prev.map((u) => (u?.user_id === selectedUser?.user_id ? updatedUser : u)) : []));
 
     const { error } = await supabase
       .from('store_access')
@@ -126,13 +136,14 @@ function PermissionsContent() {
       .eq('store_id', storeId);
 
     if (!error) {
-      setUsers(users.filter(u => u.user_id !== userId));
+      setUsers((prev) => (Array.isArray(prev) ? prev.filter((u) => u?.user_id !== userId) : []));
       toast.success("Ο χρήστης αφαιρέθηκε");
     }
   };
 
-  const admins = users.filter(u => u.role === 'admin');
-  const staff = users.filter(u => u.role !== 'admin');
+  const safeUsers = Array.isArray(users) ? users : []
+  const admins = safeUsers.filter(u => u?.role === 'admin');
+  const staff = safeUsers.filter(u => u?.role !== 'admin');
 
   return (
     <div style={containerStyle}>
@@ -154,36 +165,36 @@ function PermissionsContent() {
       ) : (
         <div style={{ paddingBottom: '100px' }}> {/* Padding για το BottomNav */}
           <p style={sectionLabel}>ΔΙΑΧΕΙΡΙΣΤΕΣ</p>
-          {admins.map(u => (
+          {admins?.length > 0 ? admins.map((u: any) => (
             <div key={u.user_id} style={adminCard}>
               <div style={{ flex: 1 }}>
-                <p style={adminNameText}>{u.username.toUpperCase()} {u.user_id === myId ? '(ΕΣΕΙΣ)' : ''}</p>
-                <p style={adminEmailText}>{u.email}</p>
+                <p style={adminNameText}>{String(u?.username || 'Χρήστης').toUpperCase()} {u?.user_id === myId ? '(ΕΣΕΙΣ)' : ''}</p>
+                <p style={adminEmailText}>{u?.email || '---'}</p>
               </div>
               <span style={adminBadge}>FULL ACCESS</span>
             </div>
-          ))}
+          )) : <div style={loadingTextStyle}>Δεν βρέθηκαν διαχειριστές</div>}
 
           <div style={{ height: '30px' }} />
 
           <p style={sectionLabel}>ΠΡΟΣΩΠΙΚΟ / ΣΥΝΕΡΓΑΤΕΣ ({staff.length})</p>
           <div style={listContainer}>
-            {staff.map(u => (
+            {staff?.length > 0 ? staff.map((u: any) => (
               <div key={u.user_id} style={staffRow}>
                 <div style={{ flex: 1 }}>
-                  <p style={{fontWeight:'900', margin:0, fontSize:'15px', color:'#0f172a'}}>{u.username}</p>
+                  <p style={{fontWeight:'900', margin:0, fontSize:'15px', color:'#0f172a'}}>{u?.username || 'Χρήστης'}</p>
                   <div style={{display:'flex', gap:'5px', marginTop:'4px'}}>
-                    {u.can_view_analysis && <span>📊</span>}
-                    {u.can_view_history && <span>🏠</span>}
-                    {u.can_edit_transactions && <span>✏️</span>}
+                    {u?.can_view_analysis && <span>📊</span>}
+                    {u?.can_view_history && <span>🏠</span>}
+                    {u?.can_edit_transactions && <span>✏️</span>}
                   </div>
                 </div>
                 <div style={{display:'flex', gap:'10px'}}>
                     <button onClick={() => setSelectedUser(u)} style={editBtnStyle}><Settings size={18} /></button>
-                    <button onClick={() => removeUser(u.user_id)} style={delBtnStyle}><Trash2 size={18} /></button>
+                    <button onClick={() => removeUser(String(u?.user_id || ''))} style={delBtnStyle}><Trash2 size={18} /></button>
                 </div>
               </div>
-            ))}
+            )) : <div style={loadingTextStyle}>Δεν βρέθηκαν συνεργάτες</div>}
           </div>
 
           <Link href={`/admin/invite?store=${storeId}`} style={inviteBtn}>
@@ -197,11 +208,11 @@ function PermissionsContent() {
         <div style={modalOverlay}>
           <div style={modalContent}>
             <h3 style={{margin:0, fontWeight:'900'}}>Δικαιώματα</h3>
-            <p style={{fontSize:'12px', color:'#64748b', marginBottom:'20px'}}>{selectedUser.username}</p>
+            <p style={{fontSize:'12px', color:'#64748b', marginBottom:'20px'}}>{selectedUser?.username || 'Χρήστης'}</p>
             
-            <PermissionToggle label="📊 Ανάλυση" active={selectedUser.can_view_analysis} onClick={() => updatePermission('can_view_analysis')} />
-            <PermissionToggle label="🏠 Ιστορικό" active={selectedUser.can_view_history} onClick={() => updatePermission('can_view_history')} />
-            <PermissionToggle label="✏️ Επεξεργασία" active={selectedUser.can_edit_transactions} onClick={() => updatePermission('can_edit_transactions')} />
+            <PermissionToggle label="📊 Ανάλυση" active={selectedUser?.can_view_analysis === true} onClick={() => updatePermission('can_view_analysis')} />
+            <PermissionToggle label="🏠 Ιστορικό" active={selectedUser?.can_view_history === true} onClick={() => updatePermission('can_view_history')} />
+            <PermissionToggle label="✏️ Επεξεργασία" active={selectedUser?.can_edit_transactions === true} onClick={() => updatePermission('can_edit_transactions')} />
 
             <button onClick={() => setSelectedUser(null)} style={closeModalBtn}>ΚΛΕΙΣΙΜΟ</button>
           </div>
@@ -223,7 +234,15 @@ function PermissionToggle({ label, active, onClick }: any) {
 }
 
 export default function PermissionsPage() {
-  return <main style={{backgroundColor:'#f8fafc', minHeight:'100vh'}}><Suspense fallback={null}><PermissionsContent /></Suspense></main>
+  return (
+    <main style={{backgroundColor:'#f8fafc', minHeight:'100vh'}}>
+      <ErrorBoundary>
+        <Suspense fallback={<div style={loadingTextStyle}>Φόρτωση δικαιωμάτων...</div>}>
+          <PermissionsContent />
+        </Suspense>
+      </ErrorBoundary>
+    </main>
+  )
 }
 
 // --- STYLES (Παραμένουν ως έχουν) ---
