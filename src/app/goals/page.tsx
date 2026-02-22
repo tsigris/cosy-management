@@ -491,9 +491,10 @@ function GoalsContent() {
         p_amount: tx.amount,
       })
       if (error) throw error
-      await loadGoals()
     } catch (e: any) {
-      toast.error(e.message || 'Αποτυχία διαγραφής κίνησης')
+      toast.error(e?.message || e?.details || 'Αποτυχία διαγραφής κίνησης')
+    } finally {
+      await loadGoals()
     }
   }
 
