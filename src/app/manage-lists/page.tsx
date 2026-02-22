@@ -175,10 +175,18 @@ function ManageListsContent() {
 
   // -------------------- YEAR HELPERS --------------------
   const getTxDate = (t: any) => {
-    const raw = t?.date || t?.created_at
-    if (!raw) return null
-    const d = new Date(raw)
-    return isNaN(d.getTime()) ? null : d
+    if (!t) return null
+    // Προτεραιότητα στο ακριβές timestamp της βάσης
+    if (t.created_at) {
+      const d = new Date(t.created_at)
+      if (!isNaN(d.getTime())) return d
+    }
+    // Αν υπάρχει μόνο 'date' (π.χ. 2026-02-22), βάζουμε μεσημέρι για να μην πέσει στις 02:00 π.μ. λόγω UTC
+    if (t.date) {
+      const d = new Date(`${t.date}T12:00:00`)
+      if (!isNaN(d.getTime())) return d
+    }
+    return null
   }
 
   const getTxYear = (t: any) => {
