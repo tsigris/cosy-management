@@ -688,7 +688,9 @@ export default function NotificationsBell({ storeId, onUpdate }: { storeId: stri
             onClick={(e) => e.stopPropagation()}
             style={{
               width: '100%',
-              maxWidth: 640,
+              maxWidth: 540,
+              maxHeight: '85vh',
+              overflowY: 'auto',
               marginTop: 60,
               background: colors.white,
               borderRadius: 18,
@@ -760,9 +762,13 @@ export default function NotificationsBell({ storeId, onUpdate }: { storeId: stri
                       key={n.notificationKey}
                       style={{
                         position: 'relative',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '12px',
                         border: `1px solid ${colors.border}`,
                         borderRadius: 14,
-                        padding: 12,
+                        padding: '16px',
+                        paddingRight: '44px',
                         background: 'white',
                       }}
                     >
@@ -773,13 +779,13 @@ export default function NotificationsBell({ storeId, onUpdate }: { storeId: stri
                         }}
                         style={{
                           position: 'absolute',
-                          top: 8,
-                          right: 8,
-                          width: 34,
-                          height: 34,
+                          top: '12px',
+                          right: '12px',
+                          width: 28,
+                          height: 28,
                           borderRadius: 12,
-                          border: '1px solid #e2e8f0',
-                          background: '#ffffff',
+                          border: 'none',
+                          background: '#f1f5f9',
                           color: '#64748b',
                           cursor: 'pointer',
                           fontWeight: 900,
@@ -794,60 +800,65 @@ export default function NotificationsBell({ storeId, onUpdate }: { storeId: stri
                         ×
                       </button>
 
-                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
-                        <div style={{ flex: 1 }}>
-                          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                            <span
-                              style={{
-                                display: 'inline-flex',
-                                gap: 6,
-                                alignItems: 'center',
-                                padding: '4px 8px',
-                                borderRadius: 999,
-                                border: '1px solid',
-                                fontSize: 11,
-                                fontWeight: 900,
-                                ...pillStyleFor(n.severity),
-                              }}
-                            >
-                              {iconFor(n.severity)}
-                              {n.severity === 'danger' ? 'ΚΑΘΥΣΤΕΡΗΣΗ' : n.severity === 'warning' ? 'ΠΛΗΣΙΑΖΕΙ' : 'INFO'}
-                            </span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                        <span
+                          style={{
+                            display: 'inline-flex',
+                            gap: 6,
+                            alignItems: 'center',
+                            padding: '4px 8px',
+                            borderRadius: 999,
+                            border: '1px solid',
+                            fontSize: 11,
+                            fontWeight: 900,
+                            ...pillStyleFor(n.severity),
+                          }}
+                        >
+                          {iconFor(n.severity)}
+                          {n.severity === 'danger' ? 'ΚΑΘΥΣΤΕΡΗΣΗ' : n.severity === 'warning' ? 'ΠΛΗΣΙΑΖΕΙ' : 'INFO'}
+                        </span>
 
-                            <div style={{ fontWeight: 900, color: colors.primaryDark }}>{n.title}</div>
-                          </div>
+                        <div style={{ fontWeight: 900, color: colors.primaryDark }}>{n.title}</div>
+                      </div>
 
-                          <div style={{ marginTop: 6, color: colors.secondaryText, fontWeight: 800, fontSize: 12 }}>
-                            {n.message}
-                          </div>
+                      <div style={{ color: colors.secondaryText, fontWeight: 800, fontSize: 13 }}>
+                        {n.message}
+                      </div>
 
-                          {('dueDate' in n && n.dueDate) ? (
-                            <div style={{ marginTop: 8, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                              <span
-                                style={{
-                                  fontSize: 12,
-                                  fontWeight: 900,
-                                  background: colors.bgLight,
-                                  border: `1px solid ${colors.border}`,
-                                  padding: '6px 10px',
-                                  borderRadius: 12,
-                                  color: colors.primaryDark,
-                                }}
-                              >
-                                Ημ/νία: {formatDateGr(String(n.dueDate))}
-                              </span>
-                            </div>
-                          ) : null}
-                        </div>
+                      <div
+                        style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          flexWrap: 'wrap',
+                          gap: '12px',
+                          marginTop: '4px',
+                        }}
+                      >
+                        {('dueDate' in n && n.dueDate) ? (
+                          <span
+                            style={{
+                              fontSize: 12,
+                              fontWeight: 900,
+                              background: colors.bgLight,
+                              border: `1px solid ${colors.border}`,
+                              padding: '6px 10px',
+                              borderRadius: 12,
+                              color: colors.primaryDark,
+                            }}
+                          >
+                            Ημ/νία: {formatDateGr(String(n.dueDate))}
+                          </span>
+                        ) : <div />}
 
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, minWidth: 120 }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                           {n.source === 'installment' ? (
                             <button
                               onClick={() => openPayModal(n.installment, n.settlement)}
                               style={{
                                 border: 'none',
                                 borderRadius: 12,
-                                padding: '10px 10px',
+                                padding: '10px 16px',
                                 fontWeight: 900,
                                 cursor: 'pointer',
                                 background: colors.accentGreen,
@@ -862,7 +873,7 @@ export default function NotificationsBell({ storeId, onUpdate }: { storeId: stri
                               style={{
                                 textDecoration: 'none',
                                 borderRadius: 12,
-                                padding: '10px 10px',
+                                padding: '10px 16px',
                                 fontWeight: 900,
                                 cursor: 'pointer',
                                 background: colors.accentGreen,
@@ -881,7 +892,7 @@ export default function NotificationsBell({ storeId, onUpdate }: { storeId: stri
                               style={{
                                 border: `1px solid ${colors.border}`,
                                 borderRadius: 12,
-                                padding: '10px 10px',
+                                padding: '10px 16px',
                                 fontWeight: 900,
                                 cursor: 'pointer',
                                 background: colors.white,
