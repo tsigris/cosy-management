@@ -616,7 +616,7 @@ function GoalsContent() {
         </div>
 
         <button type="button" style={newBtnStyle} onClick={startCreate}>
-          <PlusCircle size={18} /> Νέος Στόχος
+          <PlusCircle size={16} /> Νέος Στόχος
         </button>
 
         {/* Goals List */}
@@ -626,7 +626,7 @@ function GoalsContent() {
             <p style={{ margin: '8px 0 0', fontWeight: 800, color: colors.secondaryText }}>Δεν έχεις δημιουργήσει στόχους.</p>
           </div>
         ) : (
-          <div style={{ display: 'grid', gap: 14 }}>
+          <div style={goalsGridStyle}>
             {goals.map((g) => {
               const target = Number(g.target_amount || 0)
               const current = Number(g.current_amount || 0)
@@ -634,6 +634,9 @@ function GoalsContent() {
               const isCompleted = g.status === 'completed'
               const plan = getPlan(g)
               const todayImpact = Number(todayImpactByGoal[g.id] || 0) // negative for deposits, positive for withdraw
+              const ringRadius = 28
+              const ringCircumference = 2 * Math.PI * ringRadius
+              const ringOffset = ringCircumference - (progress / 100) * ringCircumference
 
               const paceHint = plan.hasDate
                 ? plan.expired
@@ -650,119 +653,48 @@ function GoalsContent() {
                 : null
 
               return (
-                <article key={g.id} style={{ ...cardStyle, opacity: isCompleted ? 0.88 : 1 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
-                        <h3 style={goalTitleStyle}>{g.name}</h3>
-                        {isCompleted && (
-                          <span style={completedBadgeStyle}>
-                            <CheckCircle2 size={12} /> ΟΛΟΚΛΗΡΩΘΗΚΕ
-                          </span>
-                        )}
-                        {!!g.target_date && (
-                          <span style={dateBadgeStyle}>
-                            <Calendar size={12} /> {g.target_date}
-                          </span>
-                        )}
-                      </div>
-
-                      <p style={goalMetaStyle}>Στόχος: {toMoney(target)}</p>
-
-                      {/* ✅ plan cards */}
-                      <div style={planBox}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
-                          <span style={{ fontSize: 12, fontWeight: 900, color: colors.secondaryText, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                            <Target size={14} /> Πλάνο
-                          </span>
-
-                          {/* expired quick fix */}
-                          {plan.hasDate && plan.expired && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                // open edit with suggested date
-                                startEdit(g)
-                                setTargetDate(proposeNewDate(g))
-                              }}
-                              style={tinyBtnWarn}
-                            >
-                              Πρότεινε νέα ημερομηνία (+3 μήνες)
-                            </button>
-                          )}
-                        </div>
-
-                        <div style={{ marginTop: 8, fontSize: 13, fontWeight: 850, color: plan.hasDate && plan.expired ? colors.accentRed : colors.secondaryText }}>
-                          {paceHint}
-                        </div>
-
-                        {paceDelta && (
-                          <div style={{ marginTop: 6, fontSize: 13, fontWeight: 900, color: plan.deltaFromExpected! >= 0 ? colors.accentGreen : colors.accentRed }}>
-                            {paceDelta}
-                          </div>
-                        )}
-                      </div>
-
-                      {/* ✅ impact on today's cash */}
-                      <div style={{ marginTop: 10, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                        <span style={{ ...miniChip, borderColor: 'rgba(99,102,241,0.25)', background: 'rgba(99,102,241,0.08)', color: colors.indigo }}>
-                          <Clock size={14} /> Σήμερα (net): {toMoney(todayImpact)}
-                        </span>
-                        <span style={{ ...miniChip, borderColor: 'rgba(124,58,237,0.25)', background: 'rgba(124,58,237,0.08)', color: colors.purple }}>
-                          Υπόλοιπο: {toMoney(Math.max(0, target - current))}
-                        </span>
-                      </div>
-                    </div>
-
-                    <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-                      <button onClick={() => openHistory(g)} style={actionIconBtn} aria-label="history" title="Ιστορικό">
-                        <History size={16} />
-                      </button>
-                      <button onClick={() => startEdit(g)} style={actionIconBtn} aria-label="edit">
-                        <Pencil size={16} />
-                      </button>
-                      <button onClick={() => onDeleteGoal(g.id)} style={actionIconBtn} aria-label="delete">
-                        <Trash2 size={16} color={colors.accentRed} />
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Progress Bar */}
-                  <div style={{ marginTop: 14 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6, gap: 10 }}>
-                      <span style={{ fontSize: 18, fontWeight: 900, color: colors.primaryDark }}>{toMoney(current)}</span>
-                      <span style={{ fontSize: 13, fontWeight: 900, color: colors.accentBlue }}>{progress}%</span>
-                    </div>
-                    <div style={progressTrackStyle}>
-                      <div
-                        style={{
-                          ...progressFillStyle,
-                          width: `${progress}%`,
-                          background: isCompleted ? colors.accentGreen : colors.accentBlue,
-                        }}
+                <button
+                  key={g.id}
+                  type="button"
+                  onClick={() => openHistory(g)}
+                  style={{ ...goalTileStyle, opacity: isCompleted ? 0.9 : 1 }}
+                >
+                  <div style={goalTileRingWrap}>
+                    <svg width="84" height="84" viewBox="0 0 84 84" style={{ transform: 'rotate(-90deg)' }}>
+                      <circle cx="42" cy="42" r={ringRadius} stroke="#e2e8f0" strokeWidth="8" fill="none" />
+                      <circle
+                        cx="42"
+                        cy="42"
+                        r={ringRadius}
+                        stroke={isCompleted ? colors.accentGreen : colors.accentBlue}
+                        strokeWidth="8"
+                        strokeLinecap="round"
+                        fill="none"
+                        strokeDasharray={ringCircumference}
+                        strokeDashoffset={ringOffset}
+                        style={{ transition: 'stroke-dashoffset 0.35s ease' }}
                       />
+                    </svg>
+                    <div style={goalTileRingCenter}>
+                      {isCompleted ? <CheckCircle2 size={20} color={colors.accentGreen} /> : <PiggyBank size={20} color={colors.accentBlue} />}
                     </div>
                   </div>
 
-                  {/* Actions */}
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 16 }}>
-                    <button onClick={() => startTransaction(g, 'deposit')} style={{ ...txBtnStyle, background: colors.primaryDark, color: 'white' }}>
-                      <TrendingUp size={16} /> Κατάθεση
-                    </button>
-                    <button
-                      onClick={() => startTransaction(g, 'withdraw')}
-                      disabled={current <= 0}
-                      style={{
-                        ...txBtnStyle,
-                        background: '#f1f5f9',
-                        color: colors.primaryDark,
-                        opacity: current <= 0 ? 0.5 : 1,
-                      }}
-                    >
-                      <TrendingDown size={16} /> Ανάληψη
-                    </button>
+                  <div style={goalTilePercent}>{progress}%</div>
+                  <h3 style={goalTileName}>{g.name}</h3>
+                  <div style={goalTileAmount}>{toMoney(current)}</div>
+                  <div style={goalTileTarget}>Στόχος: {toMoney(target)}</div>
+                  <div style={goalTileBottomRow}>
+                    <span style={{ ...miniChip, borderColor: 'rgba(99,102,241,0.25)', background: 'rgba(99,102,241,0.08)', color: colors.indigo }}>
+                      <Clock size={12} /> {toMoney(todayImpact)}
+                    </span>
+                    {!!g.target_date && (
+                      <span style={dateBadgeStyle}>
+                        <Calendar size={12} /> {g.target_date}
+                      </span>
+                    )}
                   </div>
-                </article>
+                </button>
               )
             })}
           </div>
@@ -898,13 +830,13 @@ function GoalsContent() {
         </div>
       )}
 
-      {/* ✅ MODAL: HISTORY (last 10 / view all) */}
+      {/* ✅ MODAL: GOAL DETAILS + HISTORY */}
       {openHistoryModal && selectedGoal && (
         <div style={modalBackdropStyle} onClick={() => setOpenHistoryModal(false)}>
-          <div style={{ ...modalCardStyle, maxWidth: 520 }} onClick={(e) => e.stopPropagation()}>
+          <div style={{ ...modalCardStyle, maxWidth: 560 }} onClick={(e) => e.stopPropagation()}>
             <div style={modalHeaderStyle}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                <h2 style={{ margin: 0, fontWeight: 950 }}>Ιστορικό Κινήσεων</h2>
+                <h2 style={{ margin: 0, fontWeight: 950 }}>Λεπτομέρειες Στόχου</h2>
                 <div style={{ fontSize: 12, fontWeight: 800, color: colors.secondaryText }}>
                   {selectedGoal.name} • {toMoney(selectedGoal.current_amount)} / {toMoney(selectedGoal.target_amount)}
                 </div>
@@ -912,6 +844,117 @@ function GoalsContent() {
               <button style={iconCloseBtnStyle} onClick={() => setOpenHistoryModal(false)}>
                 <X size={16} />
               </button>
+            </div>
+
+            {(() => {
+              const target = Number(selectedGoal.target_amount || 0)
+              const current = Number(selectedGoal.current_amount || 0)
+              const plan = getPlan(selectedGoal)
+              const paceHint = plan.hasDate
+                ? plan.expired
+                  ? `Η ημερομηνία στόχου έχει περάσει. Υπόλοιπο: ${toMoney(plan.remaining)}`
+                  : `Απομένουν ~${plan.daysLeft} ημέρες • /ημέρα: ${toMoney(plan.perDay || 0)} • /μήνα: ${toMoney(plan.perMonth || 0)}`
+                : 'Βάλε ημερομηνία στόχου για να σου δείχνει /ημέρα και /μήνα.'
+
+              const paceDelta = plan.hasDate
+                ? plan.deltaFromExpected === null
+                  ? null
+                  : plan.deltaFromExpected >= 0
+                    ? `Μπροστά από πλάνο: ${toMoney(plan.deltaFromExpected)}`
+                    : `Πίσω από πλάνο: ${toMoney(Math.abs(plan.deltaFromExpected))}`
+                : null
+
+              return (
+                <>
+                  <div style={planBox}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: 12, fontWeight: 900, color: colors.secondaryText, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                        <Target size={14} /> Πλάνο
+                      </span>
+                      {plan.hasDate && plan.expired && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setOpenHistoryModal(false)
+                            startEdit(selectedGoal)
+                            setTargetDate(proposeNewDate(selectedGoal))
+                          }}
+                          style={tinyBtnWarn}
+                        >
+                          Πρότεινε νέα ημερομηνία (+3 μήνες)
+                        </button>
+                      )}
+                    </div>
+                    <div style={{ marginTop: 8, fontSize: 13, fontWeight: 850, color: plan.hasDate && plan.expired ? colors.accentRed : colors.secondaryText }}>
+                      {paceHint}
+                    </div>
+                    {paceDelta && (
+                      <div style={{ marginTop: 6, fontSize: 13, fontWeight: 900, color: plan.deltaFromExpected! >= 0 ? colors.accentGreen : colors.accentRed }}>
+                        {paceDelta}
+                      </div>
+                    )}
+                    <div style={{ marginTop: 8, fontSize: 12, fontWeight: 850, color: colors.secondaryText }}>
+                      Υπόλοιπο: {toMoney(Math.max(0, target - current))}
+                    </div>
+                  </div>
+
+                  <div style={detailsActionGrid}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setOpenHistoryModal(false)
+                        startTransaction(selectedGoal, 'deposit')
+                      }}
+                      style={{ ...txBtnStyle, background: colors.primaryDark, color: '#fff' }}
+                    >
+                      <TrendingUp size={16} /> Κατάθεση
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setOpenHistoryModal(false)
+                        startTransaction(selectedGoal, 'withdraw')
+                      }}
+                      disabled={current <= 0}
+                      style={{
+                        ...txBtnStyle,
+                        background: '#f1f5f9',
+                        color: colors.primaryDark,
+                        opacity: current <= 0 ? 0.5 : 1,
+                      }}
+                    >
+                      <TrendingDown size={16} /> Ανάληψη
+                    </button>
+                  </div>
+
+                  <div style={detailsActionGrid}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setOpenHistoryModal(false)
+                        startEdit(selectedGoal)
+                      }}
+                      style={{ ...txBtnStyle, background: '#eef2ff', color: colors.indigo }}
+                    >
+                      <Pencil size={16} /> Επεξεργασία
+                    </button>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        setOpenHistoryModal(false)
+                        await onDeleteGoal(selectedGoal.id)
+                      }}
+                      style={{ ...txBtnStyle, background: '#fff1f2', color: colors.accentRed }}
+                    >
+                      <Trash2 size={16} /> Διαγραφή
+                    </button>
+                  </div>
+                </>
+              )
+            })()}
+
+            <div style={{ marginTop: 14, marginBottom: 8, fontSize: 13, fontWeight: 900, color: colors.primaryDark, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              <History size={14} /> Ιστορικό
             </div>
 
             {/* Filters */}
@@ -1065,26 +1108,26 @@ const backBtnStyle: CSSProperties = {
 
 const summaryCardStyle: CSSProperties = {
   background: colors.accentBlue,
-  borderRadius: '20px',
-  padding: '20px',
+  borderRadius: '18px',
+  padding: '14px 16px',
   display: 'flex',
   justifyContent: 'space-between',
   alignItems: 'center',
   color: colors.white,
-  marginBottom: '16px',
-  boxShadow: '0 10px 25px rgba(37,99,235,0.2)',
+  marginBottom: '12px',
+  boxShadow: '0 8px 20px rgba(37,99,235,0.2)',
 }
 const summaryLabelStyle: CSSProperties = { margin: 0, opacity: 0.85, fontWeight: 900, fontSize: '11px', letterSpacing: 0.6 }
-const summaryValueStyle: CSSProperties = { margin: '4px 0 0', fontWeight: 950, fontSize: '26px' }
+const summaryValueStyle: CSSProperties = { margin: '2px 0 0', fontWeight: 950, fontSize: '22px' }
 const chipStyle: CSSProperties = {
   display: 'inline-flex',
   alignItems: 'center',
   gap: 6,
-  padding: '7px 10px',
+  padding: '6px 9px',
   borderRadius: 999,
   border: '1px solid rgba(255,255,255,0.25)',
   background: 'rgba(255,255,255,0.14)',
-  fontSize: 12,
+  fontSize: 11,
   fontWeight: 900,
   color: '#fff',
 }
@@ -1092,17 +1135,89 @@ const chipStyle: CSSProperties = {
 const newBtnStyle: CSSProperties = {
   width: '100%',
   border: 'none',
-  borderRadius: '14px',
+  borderRadius: '12px',
   background: colors.primaryDark,
   color: colors.white,
   fontWeight: 950,
-  padding: '14px',
+  padding: '12px',
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
   gap: 8,
   cursor: 'pointer',
-  marginBottom: '16px',
+  marginBottom: '12px',
+}
+
+const goalsGridStyle: CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: '1fr 1fr',
+  gap: 12,
+}
+
+const goalTileStyle: CSSProperties = {
+  border: `1px solid ${colors.border}`,
+  background: '#fff',
+  borderRadius: 20,
+  padding: 12,
+  minHeight: 210,
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'center',
+  textAlign: 'center',
+  cursor: 'pointer',
+}
+
+const goalTileRingWrap: CSSProperties = {
+  width: 84,
+  height: 84,
+  position: 'relative',
+  display: 'grid',
+  placeItems: 'center',
+}
+
+const goalTileRingCenter: CSSProperties = {
+  position: 'absolute',
+  inset: 0,
+  display: 'grid',
+  placeItems: 'center',
+}
+
+const goalTilePercent: CSSProperties = {
+  marginTop: 4,
+  fontSize: 12,
+  fontWeight: 950,
+  color: colors.accentBlue,
+}
+
+const goalTileName: CSSProperties = {
+  margin: '8px 0 0',
+  fontSize: 14,
+  fontWeight: 950,
+  color: colors.primaryDark,
+  lineHeight: 1.2,
+}
+
+const goalTileAmount: CSSProperties = {
+  marginTop: 4,
+  fontSize: 16,
+  fontWeight: 950,
+  color: colors.primaryDark,
+}
+
+const goalTileTarget: CSSProperties = {
+  marginTop: 2,
+  fontSize: 11,
+  fontWeight: 850,
+  color: colors.secondaryText,
+}
+
+const goalTileBottomRow: CSSProperties = {
+  marginTop: 'auto',
+  width: '100%',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: 6,
 }
 
 const emptyStateStyle: CSSProperties = { background: colors.white, border: `1px dashed ${colors.border}`, borderRadius: '18px', padding: '30px', textAlign: 'center' }
@@ -1165,6 +1280,13 @@ const txBtnStyle: CSSProperties = {
   justifyContent: 'center',
   gap: 6,
   cursor: 'pointer',
+}
+
+const detailsActionGrid: CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: '1fr 1fr',
+  gap: 10,
+  marginTop: 12,
 }
 
 const planBox: CSSProperties = {
