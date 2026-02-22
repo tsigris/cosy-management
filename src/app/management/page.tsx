@@ -40,7 +40,7 @@ function ManagementContent() {
       title: 'Οργάνωση Επιχείρησης',
       items: [
         { 
-          label: 'Διαχείριση Λιστών', 
+          label: 'Μητρώο & Συνεργάτες', 
           subLabel: 'Προμηθευτές, Πηγές Εσόδων, Λογαριασμοί, κ.α.',
           icon: <ListTree size={20} />, 
           path: '/manage-lists', 
