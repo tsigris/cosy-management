@@ -1237,6 +1237,12 @@ function ManageListsContent() {
               const isExpanded = expandedId === String(item.id)
               const history = getEntityTransactions(item, transactions, selectedYear)
               const isIncome = activeTab === 'revenue'
+              const storeForActions = urlStoreId || storeId || ''
+              const debtHref = isIncome
+                ? `/add-income?store=${storeForActions}&sourceId=${item.id}&mode=debt`
+                : `/add-expense?store=${storeForActions}&${activeTab === 'suppliers' ? 'supId' : 'assetId'}=${item.id}&mode=debt`
+              const showDebtAction = history.balance > 0.1 && !!storeForActions
+              const debtActionLabel = isIncome ? 'ΕΙΣΠΡΑΞΗ' : 'ΕΞΟΦΛΗΣΗ'
 
               const rfValue = String(item?.rf_code || '').trim()
               const ibanValue = String(item?.iban || '').trim()
@@ -1306,37 +1312,24 @@ function ManageListsContent() {
                       </div>
 
                       <div style={miniSummaryRow}>
-                        <div
-                          style={{
-                            ...summaryTotalCard,
-                            background: '#fff7ed',
-                            border: '1px solid #fed7aa',
-                          }}
-                        >
-                          <span style={summaryTotalLabel}>{isIncome ? 'ΑΠΑΙΤΗΣΕΙΣ' : 'ΧΡΕΩΣΕΙΣ'}</span>
-                          <span style={{ ...summaryTotalValue, color: colors.accentOrange }}>{history.totalCreditAmount.toFixed(2)}€</span>
+                        <div style={rfIbanRow}>
+                          <span style={rfIbanLabel}>RF:</span>
+                          <span style={rfIbanValue}>{rfValue || '—'}</span>
+                          {rfValue ? (
+                            <button type="button" style={copyCodeBtn} onClick={() => copyToClipboard(rfValue)}>
+                              <Copy size={14} />
+                            </button>
+                          ) : null}
                         </div>
 
-                        <div
-                          style={{
-                            ...summaryTotalCard,
-                            background: '#ecfdf5',
-                            border: '1px solid #a7f3d0',
-                          }}
-                        >
-                          <span style={summaryTotalLabel}>{isIncome ? 'ΕΙΣΠΡΑΞΕΙΣ' : 'ΕΞΟΦΛΗΣΕΙΣ'}</span>
-                          <span style={{ ...summaryTotalValue, color: colors.accentGreen }}>{history.totalSettlementAmount.toFixed(2)}€</span>
-                        </div>
-
-                        <div
-                          style={{
-                            ...summaryTotalCard,
-                            background: colors.white,
-                            border: `1px solid ${colors.border}`,
-                          }}
-                        >
-                          <span style={summaryTotalLabel}>ΥΠΟΛΟΙΠΟ</span>
-                          <span style={{ ...summaryTotalValue, color: colors.primaryDark }}>{history.balance.toFixed(2)}€</span>
+                        <div style={rfIbanRow}>
+                          <span style={rfIbanLabel}>IBAN:</span>
+                          <span style={rfIbanValue}>{ibanValue || '—'}</span>
+                          {ibanValue ? (
+                            <button type="button" style={copyCodeBtn} onClick={() => copyToClipboard(ibanValue)}>
+                              <Copy size={14} />
+                            </button>
+                          ) : null}
                         </div>
                       </div>
 
@@ -1374,31 +1367,14 @@ function ManageListsContent() {
                           <span style={miniPillLabel}>{isIncome ? 'Σύνολο εισπράξεων' : 'Σύνολο εξοφλήσεων'}</span>
                           <span style={miniPillValue}>{history.totalSettlementAmount.toFixed(2)}€</span>
                         </div>
+
+                        <div style={miniPill}>
+                          <span style={miniPillLabel}>Τρέχον υπόλοιπο</span>
+                          <span style={miniPillValue}>{history.balance.toFixed(2)}€</span>
+                        </div>
                       </div>
 
                       <div style={rfIbanWrap}>
-                        {activeTab !== 'suppliers' && (
-                          <div style={rfIbanRow}>
-                            <span style={rfIbanLabel}>RF</span>
-                            <span style={rfIbanValue}>{rfValue || '—'}</span>
-                            {rfValue ? (
-                              <button type="button" style={copyCodeBtn} onClick={() => copyToClipboard(rfValue)}>
-                                <Copy size={14} />
-                              </button>
-                            ) : null}
-                          </div>
-                        )}
-
-                        <div style={rfIbanRow}>
-                          <span style={rfIbanLabel}>IBAN</span>
-                          <span style={rfIbanValue}>{ibanValue || '—'}</span>
-                          {ibanValue ? (
-                            <button type="button" style={copyCodeBtn} onClick={() => copyToClipboard(ibanValue)}>
-                              <Copy size={14} />
-                            </button>
-                          ) : null}
-                        </div>
-
                         {item.bank_name && (
                           <div style={{ ...rfIbanRow, justifyContent: 'flex-start', gap: 8 }}>
                             <Landmark size={12} color={colors.secondaryText} />
@@ -1468,6 +1444,20 @@ function ManageListsContent() {
                       )}
 
                       <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
+                        {showDebtAction && (
+                          <Link
+                            href={debtHref}
+                            onClick={(e) => e.stopPropagation()}
+                            style={{
+                              ...debtActionBtn,
+                              backgroundColor: isIncome ? '#ecfdf5' : '#fff7ed',
+                              color: isIncome ? colors.accentGreen : colors.accentOrange,
+                              borderColor: isIncome ? '#bbf7d0' : '#fed7aa',
+                            }}
+                          >
+                            <CreditCard size={14} /> {debtActionLabel}
+                          </Link>
+                        )}
                         <button
                           onClick={(e) => {
                             e.stopPropagation()
@@ -1743,30 +1733,6 @@ const miniSummaryRow: any = {
   marginBottom: 12,
 }
 
-const summaryTotalCard: any = {
-  flex: '1 1 0',
-  minWidth: 130,
-  borderRadius: 14,
-  padding: '10px 12px',
-  display: 'flex',
-  flexDirection: 'column',
-  gap: 4,
-}
-
-const summaryTotalLabel: any = {
-  fontSize: 10,
-  fontWeight: 950,
-  color: colors.secondaryText,
-  textTransform: 'uppercase',
-  letterSpacing: 0.4,
-}
-
-const summaryTotalValue: any = {
-  fontSize: 14,
-  fontWeight: 950,
-  lineHeight: 1.1,
-}
-
 const miniPill: any = {
   display: 'flex',
   alignItems: 'center',
@@ -1922,6 +1888,21 @@ const delBtn: any = {
   justifyContent: 'center',
   gap: '5px',
   cursor: 'pointer',
+}
+
+const debtActionBtn: any = {
+  flex: 1,
+  padding: '10px',
+  borderRadius: '10px',
+  border: '1px solid',
+  fontWeight: '700',
+  fontSize: '12px',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: '5px',
+  cursor: 'pointer',
+  textDecoration: 'none',
 }
 
 const emptyText: any = { padding: '40px', textAlign: 'center', color: colors.secondaryText, fontSize: '13px', fontWeight: '600' }
