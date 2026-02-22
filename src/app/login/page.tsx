@@ -8,70 +8,18 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { toast, Toaster } from 'sonner'
 
-const getEmailRedirectUrl = () => {
-  const envUrl = process.env.NEXT_PUBLIC_SITE_URL || process.env.NEXT_PUBLIC_APP_URL
-
-  if (envUrl) {
-    return `${envUrl.replace(/\/$/, '')}/login`
-  }
-
-  if (typeof window !== 'undefined') {
-    return `${window.location.origin}/login`
-  }
-
-  return '/login'
-}
-
 function LoginContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const nextParam = searchParams.get('next')
-
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [resendLoading, setResendLoading] = useState(false)
   const [emailConfirmationPending, setEmailConfirmationPending] = useState(false)
 
-  const getSafeNextPath = (next: string | null) => {
-    if (!next) return null
-    if (!next.startsWith('/')) return null
-    if (next.startsWith('//')) return null
-    return next
-  }
-
-  const safeNextPath = getSafeNextPath(nextParam)
-  const registerHref = safeNextPath ? `/register?next=${encodeURIComponent(safeNextPath)}` : '/register'
-
-  const handleResendConfirmationEmail = async () => {
-    if (!email) {
-      toast.error('Συμπληρώστε πρώτα το email σας.')
-      return
-    }
-
-    setResendLoading(true)
-    try {
-      const { error } = await supabase.auth.resend({
-        type: 'signup',
-        email: email.trim(),
-        options: {
-          emailRedirectTo: getEmailRedirectUrl()
-        }
-      })
-
-      if (error) throw error
-      toast.success('Στάλθηκε νέο email επιβεβαίωσης. Ελέγξτε τα εισερχόμενα.')
-    } catch (error: any) {
-      toast.error(error.message || 'Αποτυχία επαναποστολής email επιβεβαίωσης.')
-    } finally {
-      setResendLoading(false)
-    }
-  }
-
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!email || !password) return toast.error('Συμπληρώστε τα στοιχεία σας.')
-    
     setLoading(true)
     
     try {
@@ -80,36 +28,17 @@ function LoginContent() {
         password: password.trim() 
       })
       
-      if (error) {
-        if (/email not confirmed/i.test(error.message)) {
-          setEmailConfirmationPending(true)
-          toast.error('Δεν έχει επιβεβαιωθεί το email σας. Ελέγξτε τα εισερχόμενα.', {
-            action: {
-              label: 'ΕΠΑΝΑΠΟΣΤΟΛΗ',
-              onClick: () => {
-                void handleResendConfirmationEmail()
-              }
-            }
-          })
-          return
-        }
+      if (error) throw error
 
-        throw error
-      }
-
-      setEmailConfirmationPending(false)
       const { session } = data
       if (session) {
+        // Χειροκίνητο "κάρφωμα" του session για Safari/iPhone
         await supabase.auth.setSession({
           access_token: session.access_token,
           refresh_token: session.refresh_token,
         })
-        await new Promise(resolve => setTimeout(resolve, 200))
-        window.location.href = '/select-store'
-        return
-      }
-
-      if (data.user) {
+        // Δίνουμε 200ms στο κινητό να γράψει το token
+        await new Promise(r => setTimeout(r, 200))
         window.location.href = '/select-store'
       }
     } catch (err: any) {
@@ -121,18 +50,16 @@ function LoginContent() {
 
   const signInWithGoogle = async () => {
     setLoading(true)
-
     try {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: window.location.origin,
+          // Στέλνουμε τον χρήστη ΑΠΕΥΘΕΙΑΣ στο select-store μετά τη Google
+          redirectTo: `${window.location.origin}/select-store`,
           queryParams: { prompt: 'select_account' }
         }
       })
-
       if (error) throw error
-      window.location.href = '/select-store'
     } catch (err: any) {
       toast.error(err.message || 'Αποτυχία σύνδεσης με Google.')
       setLoading(false)
@@ -148,29 +75,12 @@ function LoginContent() {
           <div style={dividerStyle} />
           <p style={instructionStyle}>Είσοδος στο Σύστημα</p>
         </div>
-        {emailConfirmationPending && (
-          <div style={confirmationWrapStyle}>
-            <p style={confirmationTextStyle}>
-              Δεν μπορείτε να συνδεθείτε ακόμα. Πρώτα επιβεβαιώστε το email σας από τα εισερχόμενα και μετά δοκιμάστε ξανά.
-            </p>
-            <button
-              type="button"
-              onClick={handleResendConfirmationEmail}
-              disabled={resendLoading}
-              style={{ ...resendBtnStyle, opacity: resendLoading ? 0.7 : 1 }}
-            >
-              {resendLoading ? 'ΓΙΝΕΤΑΙ ΑΠΟΣΤΟΛΗ...' : 'ΕΠΑΝΑΠΟΣΤΟΛΗ EMAIL'}
-            </button>
-          </div>
-        )}
-        <form onSubmit={handleLogin} action="javascript:void(0);" method="post" style={formStyle}>
+        
+        <form onSubmit={handleLogin} style={formStyle}>
           <div style={fieldGroup}>
-            <label htmlFor="username" style={labelStyle}>EMAIL</label>
+            <label style={labelStyle}>EMAIL</label>
             <input 
-              id="username"
               type="email" 
-              name="email"
-              autoComplete="email"
               value={email} 
               onChange={e => setEmail(e.target.value)} 
               style={inputStyle} 
@@ -179,12 +89,9 @@ function LoginContent() {
             />
           </div>
           <div style={fieldGroup}>
-            <label htmlFor="password" style={labelStyle}>ΚΩΔΙΚΟΣ ΠΡΟΣΒΑΣΗΣ</label>
+            <label style={labelStyle}>ΚΩΔΙΚΟΣ ΠΡΟΣΒΑΣΗΣ</label>
             <input 
-              id="password"
               type="password" 
-              name="password"
-              autoComplete="current-password"
               value={password} 
               onChange={e => setPassword(e.target.value)} 
               style={inputStyle} 
@@ -195,24 +102,19 @@ function LoginContent() {
           <button type="submit" disabled={loading} style={submitBtnStyle}>
             {loading ? 'ΤΑΥΤΟΠΟΙΗΣΗ...' : 'ΕΙΣΟΔΟΣ'}
           </button>
+          
           <div style={orDividerStyle}>
-            <span style={orLineStyle} />
-            <span style={orTextStyle}>ή</span>
-            <span style={orLineStyle} />
+            <span style={orLineStyle} /><span style={orTextStyle}>ή</span><span style={orLineStyle} />
           </div>
-          <button
-            type="button"
-            onClick={signInWithGoogle}
-            disabled={loading}
-            style={{ ...googleBtnStyle, opacity: loading ? 0.7 : 1 }}
-          >
+
+          <button type="button" onClick={signInWithGoogle} disabled={loading} style={googleBtnStyle}>
             <GoogleIcon />
             <span>Σύνδεση με Google</span>
           </button>
         </form>
+
         <div style={footerStyle}>
-          <p style={{fontSize:'13px', color:'#64748b', marginBottom:'10px'}}>Δεν έχετε λογαριασμό;</p>
-          <Link href={registerHref} style={footerLinkStyle}>ΔΗΜΙΟΥΡΓΙΑ ΛΟΓΑΡΙΑΣΜΟΥ →</Link>
+          <Link href="/register" style={footerLinkStyle}>ΔΗΜΙΟΥΡΓΙΑ ΛΟΓΑΡΙΑΣΜΟΥ →</Link>
         </div>
       </div>
     </main>
@@ -227,18 +129,8 @@ export default function LoginPage() {
   )
 }
 
-function GoogleIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-      <path fill="#EA4335" d="M12 10.2v3.9h5.5c-.2 1.2-.9 2.2-1.9 2.9l3 2.3c1.7-1.6 2.7-4 2.7-6.8 0-.7-.1-1.5-.2-2.2H12z" />
-      <path fill="#34A853" d="M12 22c2.6 0 4.8-.9 6.4-2.5l-3-2.3c-.8.6-2 1-3.4 1-2.6 0-4.8-1.8-5.6-4.2l-3.1 2.4C5.1 19.8 8.3 22 12 22z" />
-      <path fill="#4A90E2" d="M6.4 14c-.2-.6-.3-1.3-.3-2s.1-1.4.3-2L3.3 7.6C2.5 9.1 2 10.5 2 12s.5 2.9 1.3 4.4L6.4 14z" />
-      <path fill="#FBBC05" d="M12 5.8c1.4 0 2.7.5 3.7 1.4l2.8-2.8C16.8 2.8 14.6 2 12 2 8.3 2 5.1 4.2 3.3 7.6L6.4 10c.8-2.4 3-4.2 5.6-4.2z" />
-    </svg>
-  )
-}
-
-// --- STYLES ---
+// (Τα υπόλοιπα styles και το GoogleIcon παραμένουν ως έχουν)
+function GoogleIcon() { return <svg width="18" height="18" viewBox="0 0 24 24"><path fill="#EA4335" d="M12 10.2v3.9h5.5c-.2 1.2-.9 2.2-1.9 2.9l3 2.3c1.7-1.6 2.7-4 2.7-6.8 0-.7-.1-1.5-.2-2.2H12z" /><path fill="#34A853" d="M12 22c2.6 0 4.8-.9 6.4-2.5l-3-2.3c-.8.6-2 1-3.4 1-2.6 0-4.8-1.8-5.6-4.2l-3.1 2.4C5.1 19.8 8.3 22 12 22z" /><path fill="#4A90E2" d="M6.4 14c-.2-.6-.3-1.3-.3-2s.1-1.4.3-2L3.3 7.6C2.5 9.1 2 10.5 2 12s.5 2.9 1.3 4.4L6.4 14z" /><path fill="#FBBC05" d="M12 5.8c1.4 0 2.7.5 3.7 1.4l2.8-2.8C16.8 2.8 14.6 2 12 2 8.3 2 5.1 4.2 3.3 7.6L6.4 10c.8-2.4 3-4.2 5.6-4.2z" /></svg> }
 const containerStyle = { minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#f8fafc', padding: '20px' };
 const loginCardStyle = { backgroundColor: '#ffffff', width: '100%', maxWidth: '400px', padding: '40px', borderRadius: '24px', boxShadow: '0 10px 25px rgba(0,0,0,0.05)', borderTop: '6px solid #6366f1', textAlign: 'center' as const };
 const headerStyle = { marginBottom: '30px' };
@@ -256,6 +148,3 @@ const orTextStyle = { fontSize: '12px', color: '#64748b', fontWeight: '700' };
 const googleBtnStyle = { width: '100%', backgroundColor: '#ffffff', color: '#0f172a', padding: '14px 16px', borderRadius: '14px', border: '1px solid #d1d5db', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px' };
 const footerStyle = { marginTop: '30px', textAlign: 'center' as const, borderTop: '1px solid #f1f5f9', paddingTop: '20px' };
 const footerLinkStyle = { color: '#6366f1', fontWeight: '800', textDecoration: 'none', fontSize: '14px' };
-const confirmationWrapStyle = { marginBottom: '20px', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '14px', padding: '14px' };
-const confirmationTextStyle = { margin: '0 0 10px 0', color: '#334155', fontSize: '13px', lineHeight: '1.5' };
-const resendBtnStyle = { width: '100%', color: '#0f172a', backgroundColor: '#ffffff', padding: '12px 16px', borderRadius: '12px', border: '1px solid #cbd5e1', fontWeight: '800', fontSize: '12px', cursor: 'pointer' };
