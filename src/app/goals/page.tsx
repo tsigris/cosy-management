@@ -226,6 +226,15 @@ function GoalsContent() {
     loadGoals()
   }, [loadGoals])
 
+  useEffect(() => {
+    const onWindowFocus = () => {
+      loadGoals()
+    }
+
+    window.addEventListener('focus', onWindowFocus)
+    return () => window.removeEventListener('focus', onWindowFocus)
+  }, [loadGoals])
+
   // --- GOAL ACTIONS ---
   const resetGoalForm = () => {
     setEditingGoalId(null)
@@ -482,21 +491,16 @@ function GoalsContent() {
         p_amount: tx.amount,
       })
       if (error) throw error
+      void data
 
-      const newAmountRaw =
-        typeof data === 'number'
-          ? data
-          : typeof data === 'string'
-            ? Number(data)
-            : Number((data as any)?.current_amount ?? (data as any)?.new_amount)
-
-      const newAmount = Number.isFinite(newAmountRaw) ? Number(newAmountRaw) : Number(selectedGoal.current_amount || 0)
+      const txAmount = Number(tx.amount) || 0
 
       setHistoryRows((prev) => prev.filter((row) => row.id !== tx.id))
 
       setGoals((prev) =>
         prev.map((g) => {
           if (g.id !== selectedGoal.id) return g
+          const newAmount = Number(g.current_amount || 0) + txAmount
           const finalStatus =
             g.status === 'completed' && newAmount < Number(g.target_amount)
               ? 'completed'
@@ -506,6 +510,18 @@ function GoalsContent() {
           return { ...g, current_amount: newAmount, status: finalStatus }
         })
       )
+
+      setSelectedGoal((prev) => {
+        if (!prev || prev.id !== selectedGoal.id) return prev
+        const newAmount = Number(prev.current_amount || 0) + txAmount
+        const finalStatus =
+          prev.status === 'completed' && newAmount < Number(prev.target_amount)
+            ? 'completed'
+            : newAmount >= Number(prev.target_amount)
+              ? 'completed'
+              : 'active'
+        return { ...prev, current_amount: newAmount, status: finalStatus }
+      })
     } catch (e: any) {
       toast.error(e.message || 'Αποτυχία διαγραφής κίνησης')
     }
@@ -962,7 +978,7 @@ function GoalsContent() {
             </div>
 
             {/* Results */}
-            <div style={{ marginTop: 10 }}>
+            <div style={{ marginTop: 14 }}>
               {historyLoading ? (
                 <div style={hintBox}>Φόρτωση...</div>
               ) : historyRows.length === 0 ? (
