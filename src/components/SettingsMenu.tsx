@@ -37,7 +37,7 @@ export default function SettingsMenu() {
     { label: 'Πάγια', icon: '🔌', path: '/fixed-assets' },
     { label: 'Καρτέλες', icon: '🚩', path: '/suppliers-balance' },
     { label: 'Ανάλυση', icon: '📊', path: '/analysis' },
-    { label: 'Δικαιώματα', icon: '🔐', path: '/admin/permissions' },
+    { label: 'Δικαιώματα', icon: '🔐', path: '/permissions' },
     { label: 'Συνδρομή', icon: '💳', path: '/subscription' },
     { label: 'Ρυθμίσεις', icon: '⚙️', path: '/settings' },
   ]
