@@ -53,13 +53,7 @@ function ManagementContent() {
           path: '/employees', 
           color: '#6366f1' 
         },
-        { 
-          label: 'Αρχείο Προμηθευτών', 
-          subLabel: 'Πλήρης κατάλογος συνεργατών',
-          icon: <ShoppingCart size={20} />, 
-          path: '/suppliers', 
-          color: '#0ea5e9' 
-        },
+        
       ]
     },
     {
