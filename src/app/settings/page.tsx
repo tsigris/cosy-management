@@ -332,12 +332,10 @@ function SettingsContent() {
 
       const suppliersData = (sups.data ?? []) as NamedEntity[]
       const assetsData = (assets.data ?? []) as NamedEntity[]
-      const employeesData = (emps.data ?? []) as NamedEntity[]
       const fixedAssetsData = (fixedAssetsLookup.data ?? []) as NamedEntity[]
 
       const supplierMap = Object.fromEntries(suppliersData.map((s) => [s.id, s.name]))
       const assetMap = Object.fromEntries(assetsData.map((a) => [a.id, a.name]))
-      const employeeMap = Object.fromEntries(employeesData.map((e) => [e.id, e.name]))
       const fixedAssetEmployeeMap = Object.fromEntries(fixedAssetsData.map((a) => [a.id, a.name]))
 
       const formattedTransactions =
@@ -347,11 +345,9 @@ function SettingsContent() {
           Τύπος: t.type === 'expense' ? 'Έξοδο' : 'Έσοδο',
           Κατηγορία: t.category,
           Μέθοδος: t.method,
-          Προμηθευτής: supplierMap[t.supplier_id] || '-',
-          Πάγιο: assetMap[t.fixed_asset_id] || '-',
-          Υπάλληλος: t.fixed_asset_id
-            ? fixedAssetEmployeeMap[t.fixed_asset_id] || '-'
-            : employeeMap[t.employee_id] || '-',
+          Προμηθευτής: t.supplier_id ? (supplierMap[t.supplier_id] || '-') : '-',
+          Πάγιο: t.fixed_asset_id ? (assetMap[t.fixed_asset_id] || '-') : '-',
+          Υπάλληλος: t.fixed_asset_id ? (fixedAssetEmployeeMap[t.fixed_asset_id] || '-') : '-',
           Σημειώσεις: t.notes,
         }))
 
