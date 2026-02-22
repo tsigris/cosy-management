@@ -68,6 +68,17 @@ function PermissionsContent() {
   // 2. ΕΝΗΜΕΡΩΣΗ ΔΙΚΑΙΩΜΑΤΩΝ
   const togglePermission = async (field: string) => {
     if (!selectedUser || !storeId) return;
+    const { data: adminCheck } = await supabase
+      .from('store_access')
+      .select('role')
+      .eq('user_id', myId)
+      .eq('store_id', storeId)
+      .single();
+
+    if (adminCheck?.role !== 'admin') {
+      toast.error('Μη εξουσιοδοτημένη ενέργεια. Απαιτούνται δικαιώματα Admin.');
+      return;
+    }
     const newValue = !selectedUser[field];
     
     // Optimistic UI update
@@ -94,6 +105,18 @@ function PermissionsContent() {
     if (!storeId) return toast.error('Σφάλμα καταστήματος')
     if (userId === myId) return toast.error("Δεν μπορείτε να αφαιρέσετε τον εαυτό σας");
     if (!confirm('Οριστική αφαίρεση πρόσβασης;')) return;
+
+    const { data: adminCheck } = await supabase
+      .from('store_access')
+      .select('role')
+      .eq('user_id', myId)
+      .eq('store_id', storeId)
+      .single();
+
+    if (adminCheck?.role !== 'admin') {
+      toast.error('Μη εξουσιοδοτημένη ενέργεια. Απαιτούνται δικαιώματα Admin.');
+      return;
+    }
 
     const { error } = await supabase
       .from('store_access')
