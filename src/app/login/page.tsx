@@ -23,19 +23,18 @@ const getEmailRedirectUrl = () => {
   return '/login'
 }
 
-const getOAuthRedirectUrl = (safeNextPath: string | null) => {
+const getOAuthRedirectUrl = () => {
   const envUrl = process.env.NEXT_PUBLIC_SITE_URL || process.env.NEXT_PUBLIC_APP_URL
-  const query = safeNextPath ? `?next=${encodeURIComponent(safeNextPath)}` : ''
 
   if (envUrl) {
-    return `${envUrl.replace(/\/$/, '')}/login${query}`
+    return envUrl.replace(/\/$/, '')
   }
 
   if (typeof window !== 'undefined') {
-    return `${window.location.origin}/login${query}`
+    return window.location.origin
   }
 
-  return `/login${query}`
+  return '/'
 }
 
 function LoginContent() {
@@ -64,6 +63,7 @@ function LoginContent() {
     const checkSession = async () => {
       const session = await getSessionCached()
       if (session) {
+         router.refresh()
          router.replace(safeNextPath || '/')
       }
     }
@@ -144,6 +144,7 @@ function LoginContent() {
   }
 
   const signInWithGoogle = async () => {
+    const loadingToastId = toast.loading('Γίνεται ταυτοποίηση...')
     setLoading(true)
 
     try {
@@ -152,12 +153,13 @@ function LoginContent() {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: getOAuthRedirectUrl(safeNextPath)
+          redirectTo: getOAuthRedirectUrl()
         }
       })
 
       if (error) throw error
     } catch (err: any) {
+      toast.dismiss(loadingToastId)
       toast.error(err.message || 'Αποτυχία σύνδεσης με Google.')
       setLoading(false)
     }
