@@ -112,41 +112,61 @@ export const fetchStoresWithStats = async (userId: string): Promise<StoresFetchR
   const now = new Date()
   const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10)
 
-  const storesWithStats = await Promise.all(
-    access.map(async (item: any) => {
-      // H Supabase μπορεί να επιστρέψει το joined object ως αντικείμενο ή πίνακα
+  const stores = access
+    .map((item: any) => {
       const store = Array.isArray(item.stores) ? item.stores[0] : item.stores
-      if (!store) return null
-
-      const { data: trans } = await supabase
-        .from('transactions')
-        .select('amount, type, date')
-        .eq('store_id', store.id)
-        .gte('date', firstDay)
-        .order('date', { ascending: false })
-
-      const income = trans?.filter((t: any) => t.type === 'income')
-        .reduce((acc: number, curr: any) => acc + (Number(curr.amount) || 0), 0) || 0
-
-      const expenses = trans?.filter((t: any) => t.type === 'expense' || t.type === 'debt_payment')
-        .reduce((acc: number, curr: any) => acc + Math.abs(Number(curr.amount) || 0), 0) || 0
-
-      const lastUpdated = trans?.[0]?.date || null
-
-      const result: StoreCard = {
-        id: store.id,
-        name: store.name,
-        income,
-        expenses,
-        profit: income - expenses,
-        lastUpdated: String(lastUpdated)
-      }
-      return result
+      return store || null
     })
-  )
+    .filter((store: any) => store !== null)
+
+  const storeIds = stores.map((store: any) => String(store.id))
+
+  let allTxs: any[] = []
+  if (storeIds.length > 0) {
+    const { data, error: txError } = await supabase
+      .from('transactions')
+      .select('store_id, amount, type, date')
+      .in('store_id', storeIds)
+      .gte('date', firstDay)
+
+    if (txError) throw txError
+    allTxs = data || []
+  }
+
+  const statsByStore = new Map<string, { income: number; expenses: number; lastUpdated: string | null }>()
+
+  for (const tx of allTxs) {
+    const storeId = String(tx.store_id)
+    const current = statsByStore.get(storeId) || { income: 0, expenses: 0, lastUpdated: null }
+    const amount = Number(tx.amount) || 0
+
+    if (tx.type === 'income') current.income += amount
+    if (tx.type === 'expense' || tx.type === 'debt_payment') current.expenses += Math.abs(amount)
+
+    const txDate = tx?.date ? String(tx.date) : null
+    if (txDate && (!current.lastUpdated || txDate > current.lastUpdated)) {
+      current.lastUpdated = txDate
+    }
+
+    statsByStore.set(storeId, current)
+  }
+
+  const storesWithStats = stores.map((store: any) => {
+    const stats = statsByStore.get(String(store.id)) || { income: 0, expenses: 0, lastUpdated: null }
+
+    const result: StoreCard = {
+      id: store.id,
+      name: store.name,
+      income: stats.income,
+      expenses: stats.expenses,
+      profit: stats.income - stats.expenses,
+      lastUpdated: stats.lastUpdated ? String(stats.lastUpdated) : null
+    }
+    return result
+  })
 
   return {
-    stores: storesWithStats.filter((s): s is StoreCard => s !== null),
+    stores: storesWithStats,
     accessWarning
   }
 }
