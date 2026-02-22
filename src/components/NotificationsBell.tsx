@@ -403,7 +403,7 @@ export default function NotificationsBell({ storeId, onUpdate }: { storeId: stri
         msg = 'ΣΗΜΕΡΑ ΠΛΗΡΩΜΗ'
       } else if (daysLeft >= 1 && daysLeft <= 3) {
         severity = 'warning'
-        msg = `Πληρωμή σε ${daysLeft} μέρες • ${name}`
+        msg = `Σε ${daysLeft} μέρες`
       }
 
       if (!severity) continue
@@ -414,7 +414,7 @@ export default function NotificationsBell({ storeId, onUpdate }: { storeId: stri
         notificationKey,
         source: 'employee_pay',
         severity,
-        title: 'Πληρωμή Υπαλλήλου',
+        title: `Πληρωμή: ${name}`,
         message: msg,
         dueDate,
         employee: { id: emp.id, name },
