@@ -441,7 +441,7 @@ function SettingsContent() {
                       style={{ ...iosSwitch(zEnabled), opacity: zSaving || loading ? 0.7 : 1 }}
                       aria-label="toggle z"
                     >
-                      <div style={iosKnob(zEnabled)} />
+                      <div style={iosKnob()} />
                     </button>
                   )}
                 </div>
