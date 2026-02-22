@@ -19,6 +19,8 @@ import {
   Copy,
   XCircle,
   ChevronLeft,
+  ChevronDown,
+  ChevronUp,
   Building2,
   Hash,
   Phone,
@@ -26,19 +28,36 @@ import {
   Tag,
   TrendingUp,
   DollarSign,
+  Calendar,
+  X,
+  Clock3,
+  Landmark,
 } from 'lucide-react'
 
 const colors = {
-  primaryDark: '#0f172a',
+  primaryDark: '#1e293b',
   secondaryText: '#64748b',
-  accentGreen: '#10b981',
-  accentRed: '#f43f5e',
-  accentBlue: '#6366f1',
+  accentOrange: '#f97316',
   bgLight: '#f8fafc',
   border: '#e2e8f0',
   white: '#ffffff',
-  warning: '#fffbeb',
-  warningText: '#92400e',
+  accentBlue: '#2563eb',
+  accentRed: '#dc2626',
+  accentGreen: '#10b981',
+}
+
+const toBusinessDayDate = (d: Date) => {
+  const bd = new Date(d)
+  if (bd.getHours() < 7) bd.setDate(bd.getDate() - 1)
+  bd.setHours(12, 0, 0, 0)
+  return bd
+}
+
+const getBusinessDayKey = (d: Date) => {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
 }
 
 const BANK_OPTIONS = ['Εθνική Τράπεζα', 'Eurobank', 'Alpha Bank', 'Viva Wallet', 'Τράπεζα Πειραιώς'] as const
@@ -111,6 +130,7 @@ function ManageListsContent() {
   // ✅ Year selector (default: current year)
   const currentYear = new Date().getFullYear()
   const [selectedYear, setSelectedYear] = useState<number>(currentYear)
+  const RECEIVED_TYPES = useMemo(() => ['debt_payment', 'debt_received', 'income_collection'], [])
 
   const copyToClipboard = async (text: string) => {
     const value = String(text || '').trim()
@@ -170,6 +190,37 @@ function ManageListsContent() {
   const isTxInYear = (t: any, year: number) => {
     const y = getTxYear(t)
     return y === year
+  }
+
+  const formatTxDate = (d: Date | null) => {
+    if (!d) return '—'
+    return d.toLocaleString('el-GR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    })
+  }
+
+  const daysAgoLabel = (d: Date | null) => {
+    if (!d) return ''
+    const now = new Date()
+
+    const bdNow = toBusinessDayDate(now)
+    const bdTx = toBusinessDayDate(d)
+
+    const nowKey = getBusinessDayKey(bdNow)
+    const txKey = getBusinessDayKey(bdTx)
+
+    if (txKey === nowKey) return 'Σήμερα'
+
+    const diffMs = bdNow.getTime() - bdTx.getTime()
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
+
+    if (diffDays === 1) return 'Χθες'
+    if (diffDays < 0) return 'Μελλοντικό'
+    return `${diffDays} μέρες πριν`
   }
 
   // ✅ Map fixed_asset_id -> sub_category (για να μη "λερώνει" τα totals άλλων tabs)
@@ -377,7 +428,7 @@ function ManageListsContent() {
         // ✅ IMPORTANT: include type + date/created_at for year filter + credit logic
         supabase
           .from('transactions')
-          .select('amount, supplier_id, fixed_asset_id, revenue_source_id, type, date, created_at')
+          .select('id, amount, supplier_id, fixed_asset_id, revenue_source_id, type, date, created_at, notes, description, is_credit')
           .eq('store_id', activeStoreId),
       ])
 
@@ -778,20 +829,47 @@ function ManageListsContent() {
     resetForm()
   }
 
-  const getItemTransactions = useCallback(
-    (itemId: string) => {
-      const relationKey =
-        activeTab === 'suppliers' ? 'supplier_id' : activeTab === 'revenue' ? 'revenue_source_id' : 'fixed_asset_id'
+  const getEntityTransactions = useCallback(
+    (item: any, txs: any[], year: number) => {
+      const isIncome = activeTab === 'revenue'
 
-      return (transactions || [])
-        .filter((t: any) => String(t?.[relationKey] || '') === String(itemId))
-        .sort((a: any, b: any) => {
-          const aTime = getTxDate(a)?.getTime() || 0
-          const bTime = getTxDate(b)?.getTime() || 0
-          return bTime - aTime
+      const entityTrans = txs
+        .filter((t: any) => {
+          if (activeTab === 'suppliers') return t.supplier_id === item.id
+          if (activeTab === 'revenue') return t.revenue_source_id === item.id
+          return t.fixed_asset_id === item.id
         })
+        .filter((t: any) => isTxInYear(t, year))
+
+      const creditTxs = entityTrans
+        .filter((t: any) => t.is_credit === true)
+        .sort((a: any, b: any) => (getTxDate(b)?.getTime() || 0) - (getTxDate(a)?.getTime() || 0))
+
+      const settlementTxs = isIncome
+        ? entityTrans
+            .filter((t: any) => RECEIVED_TYPES.includes(String(t.type || '')))
+            .sort((a: any, b: any) => (getTxDate(b)?.getTime() || 0) - (getTxDate(a)?.getTime() || 0))
+        : entityTrans
+            .filter((t: any) => String(t.type || '') === 'debt_payment')
+            .sort((a: any, b: any) => (getTxDate(b)?.getTime() || 0) - (getTxDate(a)?.getTime() || 0))
+
+      const latestCreditDate = creditTxs.length ? getTxDate(creditTxs[0]) : null
+      const oldestCreditDate = creditTxs.length ? getTxDate(creditTxs[creditTxs.length - 1]) : null
+
+      const totalCreditAmount = creditTxs.reduce((acc: number, t: any) => acc + Math.abs(Number(t.amount) || 0), 0)
+      const totalSettlementAmount = settlementTxs.reduce((acc: number, t: any) => acc + Math.abs(Number(t.amount) || 0), 0)
+
+      return {
+        creditTxs,
+        settlementTxs,
+        latestCreditDate,
+        oldestCreditDate,
+        totalCreditAmount,
+        totalSettlementAmount,
+        balance: totalCreditAmount - totalSettlementAmount,
+      }
     },
-    [transactions, activeTab],
+    [activeTab, RECEIVED_TYPES],
   )
 
   // ---------------------- UI FORMS ----------------------
@@ -1033,104 +1111,6 @@ function ManageListsContent() {
     )
   }
 
-  const renderExpandedMeta = (item: any) => {
-    const ibanValue = String(item?.iban || '').trim()
-
-    const IbanLine = () => (
-      <p style={infoText}>
-        <strong>IBAN:</strong>{' '}
-        {ibanValue ? (
-          <span
-            onClick={() => copyToClipboard(ibanValue)}
-            style={{ fontWeight: 800, textDecoration: 'underline', cursor: 'pointer' }}
-            title="Πάτα για αντιγραφή"
-          >
-            {ibanValue}
-          </span>
-        ) : (
-          '-'
-        )}
-      </p>
-    )
-
-    if (activeTab === 'suppliers' || activeTab === 'revenue') {
-      return (
-        <div style={infoGrid}>
-          <p style={infoText}>
-            <strong>Τηλ:</strong> {item.phone || '-'}
-          </p>
-          <p style={infoText}>
-            <strong>ΑΦΜ:</strong> {item.vat_number || '-'}
-          </p>
-          <p style={infoText}>
-            <strong>Τράπεζα:</strong> {item.bank_name || '-'}
-          </p>
-          <IbanLine />
-        </div>
-      )
-    }
-
-    const sub = String(item.sub_category || '')
-    if (sub === 'utility') {
-      return (
-        <div style={infoGrid}>
-          <p style={infoText}>
-            <strong>RF:</strong> {item.rf_code || '-'}
-          </p>
-          <p style={infoText}>
-            <strong>Τράπεζα:</strong> {item.bank_name || '-'}
-          </p>
-          <p style={infoText}>
-            <strong>Κατηγορία:</strong> Λογαριασμοί
-          </p>
-        </div>
-      )
-    }
-
-    if (sub === 'staff') {
-      const pb = item.pay_basis === 'daily' ? 'ΗΜΕΡΟΜΙΣΘΙΟ' : 'ΜΗΝΙΑΙΟΣ'
-      const amount = item.pay_basis === 'daily' ? item.daily_rate ?? '-' : item.monthly_salary ?? '-'
-      return (
-        <div style={infoGrid}>
-          <p style={infoText}>
-            <strong>Συμφωνία:</strong> {pb}
-          </p>
-          <p style={infoText}>
-            <strong>Ποσό:</strong> {String(amount)}
-          </p>
-          <p style={infoText}>
-            <strong>Μέρες:</strong> {String(item.monthly_days ?? '-')}
-          </p>
-          <p style={infoText}>
-            <strong>Ημ. πρόσληψης:</strong> {item.start_date ? String(item.start_date).slice(0, 10) : '-'}
-          </p>
-          <p style={infoText}>
-            <strong>Τράπεζα:</strong> {item.bank_name || '-'}
-          </p>
-          <IbanLine />
-        </div>
-      )
-    }
-
-    return (
-      <div style={infoGrid}>
-        <p style={infoText}>
-          <strong>Τηλ:</strong> {item.phone || '-'}
-        </p>
-        <p style={infoText}>
-          <strong>ΑΦΜ:</strong> {item.vat_number || '-'}
-        </p>
-        <p style={infoText}>
-          <strong>Τράπεζα:</strong> {item.bank_name || '-'}
-        </p>
-        <IbanLine />
-        <p style={infoText}>
-          <strong>Κατηγορία:</strong> {sub === 'Maintenance' ? 'Συντήρηση' : sub || '-'}
-        </p>
-      </div>
-    )
-  }
-
   return (
     <div style={containerStyle}>
       <Toaster position="top-center" richColors />
@@ -1250,47 +1230,58 @@ function ManageListsContent() {
           ) : (
             visibleItems.map((item: any, idx: number) => {
               const isEditingThis = editingId && String(editingId) === String(item.id)
-              const turnover = getTurnover(String(item.id))
-              const itemTransactions = getItemTransactions(String(item.id))
-              const recentTransactions = itemTransactions.slice(0, 5)
+              const isExpanded = expandedId === String(item.id)
+              const history = getEntityTransactions(item, transactions, selectedYear)
+              const movementTxs = [...history.creditTxs, ...history.settlementTxs]
+                .sort((a: any, b: any) => (getTxDate(b)?.getTime() || 0) - (getTxDate(a)?.getTime() || 0))
+                .slice(0, 12)
 
-              const totals = itemTransactions.reduce(
-                (acc, tx) => {
-                  const amount = Math.abs(Number(tx?.amount)) || 0
-                  const type = String(tx?.type || '').toLowerCase()
+              const rfValue = String(item?.rf_code || '').trim()
+              const ibanValue = String(item?.iban || '').trim()
 
-                  if (type === 'debt_payment' || type === 'payment') acc.settlements += amount
-                  else acc.charges += amount
-
-                  return acc
-                },
-                { charges: 0, settlements: 0 },
-              )
-
-              const currentBalance = totals.charges - totals.settlements
-              const topCode = String(item?.rf_code || item?.iban || '').trim()
-              const topCodeLabel = item?.rf_code ? 'RF' : 'IBAN'
+              const summaryLine = history.latestCreditDate
+                ? `Τελευταία καταχώρηση: ${formatTxDate(history.latestCreditDate)} (${daysAgoLabel(history.latestCreditDate)})`
+                : '—'
 
               return (
-                <div key={item.id} style={{ borderBottom: `1px solid ${colors.border}` }}>
-                  <div style={rowWrapper} onClick={() => setExpandedId(expandedId === String(item.id) ? null : String(item.id))}>
+                <div
+                  key={item.id}
+                  style={{
+                    ...supplierCardStyle,
+                    border: isExpanded ? `1px solid ${colors.accentBlue}` : `1px solid ${colors.border}`,
+                    boxShadow: isExpanded ? '0 14px 40px rgba(15, 23, 42, 0.10)' : '0 6px 18px rgba(15, 23, 42, 0.06)',
+                    margin: '10px',
+                    cursor: 'pointer',
+                  }}
+                  onClick={() => setExpandedId(isExpanded ? null : String(item.id))}
+                >
+                  <div style={rowWrapper}>
                     <div style={rankNumber}>{idx + 1}</div>
 
-                    <div style={{ flex: 1 }}>
-                      <p style={rowName}>{String(item.name || '').toUpperCase()}</p>
-                      <p style={categoryBadge}>
-                        {activeTab === 'suppliers' || activeTab === 'revenue'
-                          ? item.bank_name
-                            ? `ΤΡΑΠΕΖΑ: ${item.bank_name}`
-                            : '—'
-                          : String(item.sub_category || '') === 'Maintenance'
-                            ? 'ΣΥΝΤΗΡΗΣΗ'
-                            : String(item.sub_category || '').toUpperCase() || '—'}
-                      </p>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                        <p style={rowName}>{String(item.name || '').toUpperCase()}</p>
+                        <span style={categoryBadge}>
+                          {activeTab === 'revenue'
+                            ? 'ΑΠΑΙΤΗΣΗ'
+                            : activeTab === 'suppliers'
+                              ? 'ΕΜΠΟΡΕΥΜΑΤΑ'
+                              : String(item.sub_category || '') === 'Maintenance'
+                                ? 'ΣΥΝΤΗΡΗΣΗ'
+                                : activeTab === 'utility'
+                                  ? 'ΛΟΓΑΡΙΑΣΜΟΣ'
+                                  : 'ΛΟΙΠΑ'}
+                        </span>
+                      </div>
+                      <div style={{ ...infoRow, marginTop: 6 }}>
+                        <Clock3 size={12} />
+                        <span style={infoText}>{summaryLine}</span>
+                      </div>
                     </div>
 
-                    <div style={{ textAlign: 'right' }}>
-                      <p style={{ ...turnoverText, color: colors.accentGreen }}>{turnover.toFixed(2)}€</p>
+                    <div style={{ textAlign: 'right', display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <p style={{ ...turnoverText, color: colors.accentOrange }}>{history.balance.toFixed(2)}€</p>
+                      {isExpanded ? <ChevronUp size={18} color={colors.secondaryText} /> : <ChevronDown size={18} color={colors.secondaryText} />}
                     </div>
 
                     {isEditingThis && (
@@ -1300,85 +1291,109 @@ function ManageListsContent() {
                     )}
                   </div>
 
-                  {expandedId === String(item.id) && (
-                    <div style={actionPanel}>
-                      {topCode ? (
-                        <div style={copyTopRow}>
-                          <div style={copyCodeText}>
-                            {topCodeLabel}: {topCode}
-                          </div>
-                          <button type="button" onClick={() => copyToClipboard(topCode)} style={copyCodeBtn}>
-                            <Copy size={14} />
-                          </button>
+                  {isExpanded && (
+                    <div style={detailsWrap} onClick={(e) => e.stopPropagation()}>
+                      <div style={detailsHeader}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <Calendar size={14} />
+                          <span style={{ fontWeight: 950, fontSize: 12, letterSpacing: 0.2 }}>ΙΣΤΟΡΙΚΟ ΟΦΕΙΛΩΝ ({selectedYear})</span>
                         </div>
-                      ) : null}
+                        <button style={closeMiniBtn} onClick={() => setExpandedId(null)} title="Κλείσιμο">
+                          <X size={14} />
+                        </button>
+                      </div>
 
-                      <div style={summaryCardsGrid}>
-                        <div style={summaryOrangeCard}>
-                          <div style={summaryCardLabel}>ΣΥΝΟΛΟ ΧΡΕΩΣΕΩΝ</div>
-                          <div style={summaryCardValue}>
-                            {totals.charges.toLocaleString('el-GR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}€
-                          </div>
+                      <div style={miniSummaryRow}>
+                        <div style={miniPill}>
+                          <span style={miniPillLabel}>Χρεώσεις</span>
+                          <span style={miniPillValue}>{history.totalCreditAmount.toFixed(2)}€</span>
                         </div>
-
-                        <div style={summaryOrangeCard}>
-                          <div style={summaryCardLabel}>ΣΥΝΟΛΟ ΕΞΟΦΛΗΣΕΩΝ</div>
-                          <div style={summaryCardValue}>
-                            {totals.settlements.toLocaleString('el-GR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}€
-                          </div>
+                        <div style={miniPill}>
+                          <span style={miniPillLabel}>Εξοφλήσεις</span>
+                          <span style={miniPillValue}>{history.totalSettlementAmount.toFixed(2)}€</span>
                         </div>
-
-                        <div style={summaryBorderCard}>
-                          <div style={summaryCardLabel}>ΤΡΕΧΟΝ ΥΠΟΛΟΙΠΟ</div>
-                          <div style={summaryCardValue}>
-                            {currentBalance.toLocaleString('el-GR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}€
-                          </div>
+                        <div style={miniPill}>
+                          <span style={miniPillLabel}>Υπόλοιπο</span>
+                          <span style={miniPillValue}>{history.balance.toFixed(2)}€</span>
                         </div>
                       </div>
 
-                      <div style={recentCard}>
-                        <div style={recentTitle}>5 ΤΕΛΕΥΤΑΙΕΣ ΚΙΝΗΣΕΙΣ</div>
-                        {recentTransactions.length === 0 ? (
-                          <p style={recentEmptyText}>Δεν υπάρχουν κινήσεις.</p>
-                        ) : (
-                          recentTransactions.map((tx: any, txIdx: number) => {
-                            const type = String(tx?.type || '').toLowerCase()
-                            const date = getTxDate(tx)
-                            const typeLabel =
-                              type === 'debt_payment' || type === 'payment'
-                                ? 'Εξόφληση'
-                                : type === 'expense'
-                                  ? 'Χρέωση'
-                                  : type === 'income'
-                                    ? 'Έσοδο'
-                                    : String(tx?.type || '-')
+                      <div style={rfIbanWrap}>
+                        <div style={rfIbanRow}>
+                          <span style={rfIbanLabel}>RF</span>
+                          <span style={rfIbanValue}>{rfValue || '—'}</span>
+                          {rfValue ? (
+                            <button type="button" style={copyCodeBtn} onClick={() => copyToClipboard(rfValue)}>
+                              <Copy size={14} />
+                            </button>
+                          ) : null}
+                        </div>
 
-                            return (
-                              <div key={`${item.id}-${txIdx}-${tx?.created_at || ''}`} style={recentRow}>
-                                <div style={recentMeta}>
-                                  <span>{date ? date.toLocaleDateString('el-GR') : '-'}</span>
-                                  <span>{typeLabel}</span>
-                                </div>
-                                <div style={recentAmount}>
-                                  {(Math.abs(Number(tx?.amount)) || 0).toLocaleString('el-GR', {
-                                    minimumFractionDigits: 2,
-                                    maximumFractionDigits: 2,
-                                  })}
-                                  €
-                                </div>
-                              </div>
-                            )
-                          })
+                        <div style={rfIbanRow}>
+                          <span style={rfIbanLabel}>IBAN</span>
+                          <span style={rfIbanValue}>{ibanValue || '—'}</span>
+                          {ibanValue ? (
+                            <button type="button" style={copyCodeBtn} onClick={() => copyToClipboard(ibanValue)}>
+                              <Copy size={14} />
+                            </button>
+                          ) : null}
+                        </div>
+
+                        {item.bank_name && (
+                          <div style={{ ...rfIbanRow, justifyContent: 'flex-start', gap: 8 }}>
+                            <Landmark size={12} color={colors.secondaryText} />
+                            <span style={{ ...infoText, fontWeight: 900 }}>{String(item.bank_name).toUpperCase()}</span>
+                          </div>
                         )}
                       </div>
 
-                      {renderExpandedMeta(item)}
+                      <div style={sectionTitle}>ΤΕΛΕΥΤΑΙΕΣ ΚΙΝΗΣΕΙΣ ({movementTxs.length})</div>
+                      {movementTxs.length === 0 ? (
+                        <div style={rowMuted}>Δεν βρέθηκαν κινήσεις.</div>
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                          {movementTxs.map((tx: any) => {
+                            const d = getTxDate(tx)
+                            const note =
+                              String(tx.notes || tx.description || '').trim() ||
+                              String(tx.type || '').trim() ||
+                              (activeTab === 'revenue' ? 'Είσπραξη' : 'Χρέωση')
+
+                            return (
+                              <div key={tx.id} style={txRow}>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                                    <div style={txDate}>{formatTxDate(d)}</div>
+                                    <span style={tinyChip}>{daysAgoLabel(d)}</span>
+                                  </div>
+                                  <div style={txNote} title={note}>
+                                    {note}
+                                  </div>
+                                </div>
+                                <div style={txAmount}>{Math.abs(Number(tx.amount) || 0).toFixed(2)}€</div>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )}
 
                       <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
-                        <button onClick={() => handleEdit(item)} style={editBtn}>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleEdit(item)
+                          }}
+                          style={editBtn}
+                        >
                           <Pencil size={14} /> Διόρθωση
                         </button>
-                        <button onClick={() => handleDelete(String(item.id))} style={delBtn}>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleDelete(String(item.id))
+                          }}
+                          style={delBtn}
+                        >
                           <Trash2 size={14} /> Διαγραφή
                         </button>
                       </div>
@@ -1391,7 +1406,7 @@ function ManageListsContent() {
         </div>
 
         <p style={{ marginTop: 14, fontSize: 12, fontWeight: 700, color: colors.secondaryText }}>
-          * Ο τζίρος είναι “καθαρός”: δεν διπλομετράει πληρωμές χρεών.
+          * Ο τζίρος εμφανίζεται στο list, ενώ το expanded ιστορικό δείχνει χρεώσεις/εξοφλήσεις από τις κινήσεις πίστωσης.
         </p>
       </div>
     </div>
@@ -1548,11 +1563,30 @@ const rankingHeader: any = {
   gap: '8px',
 }
 
-const rowWrapper: any = { display: 'flex', padding: '18px 20px', alignItems: 'center', cursor: 'pointer', gap: 10 }
+const supplierCardStyle: any = {
+  backgroundColor: colors.white,
+  borderRadius: '20px',
+  display: 'flex',
+  flexDirection: 'column',
+  border: `1px solid ${colors.border}`,
+}
+
+const rowWrapper: any = { display: 'flex', padding: '16px', alignItems: 'center', cursor: 'pointer', gap: 10 }
 const rankNumber: any = { width: '30px', fontWeight: '800', color: colors.secondaryText, fontSize: '14px' }
 const rowName: any = { fontSize: '15px', fontWeight: '800', margin: 0, color: colors.primaryDark }
-const categoryBadge: any = { fontSize: '10px', fontWeight: '700', color: colors.secondaryText, margin: 0 }
+const categoryBadge: any = {
+  fontSize: '9px',
+  fontWeight: '950',
+  padding: '4px 8px',
+  borderRadius: '8px',
+  display: 'inline-block',
+  textTransform: 'uppercase',
+  backgroundColor: '#fff7ed',
+  color: colors.accentOrange,
+}
 const turnoverText: any = { fontSize: '16px', fontWeight: '800', color: colors.accentGreen, margin: 0 }
+const infoRow: any = { display: 'flex', alignItems: 'center', gap: '6px', color: colors.secondaryText }
+const infoText: any = { fontSize: '11px', fontWeight: '800', margin: 0 }
 
 const editingPill: any = {
   marginLeft: 10,
@@ -1569,20 +1603,6 @@ const editingPill: any = {
   whiteSpace: 'nowrap',
 }
 
-const actionPanel: any = { padding: '20px', backgroundColor: '#fcfcfc', borderTop: `1px dashed ${colors.border}` }
-const copyTopRow: any = {
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'space-between',
-  gap: 8,
-  marginBottom: 12,
-}
-const copyCodeText: any = {
-  fontSize: 12,
-  fontWeight: 800,
-  color: colors.primaryDark,
-  overflowWrap: 'anywhere',
-}
 const copyCodeBtn: any = {
   minWidth: 34,
   height: 34,
@@ -1595,47 +1615,163 @@ const copyCodeBtn: any = {
   justifyContent: 'center',
   cursor: 'pointer',
 }
-const summaryCardsGrid: any = { display: 'grid', gridTemplateColumns: '1fr', gap: 8, marginBottom: 12 }
-const summaryOrangeCard: any = {
-  backgroundColor: colors.warning,
-  border: `1px solid #fed7aa`,
-  borderRadius: 12,
-  padding: '10px 12px',
-}
-const summaryBorderCard: any = {
-  backgroundColor: 'white',
+
+const detailsWrap: any = {
+  margin: '0 16px 16px 16px',
+  padding: '14px',
+  borderRadius: '18px',
+  background: '#f8fafc',
   border: `1px solid ${colors.border}`,
-  borderRadius: 12,
-  padding: '10px 12px',
+  width: 'auto',
 }
-const summaryCardLabel: any = { fontSize: 10, fontWeight: 900, color: colors.secondaryText }
-const summaryCardValue: any = { fontSize: 16, fontWeight: 900, color: colors.primaryDark, marginTop: 4 }
-const recentCard: any = {
-  border: `1px solid ${colors.border}`,
-  borderRadius: 12,
-  padding: '10px 12px',
-  backgroundColor: 'white',
-  marginBottom: 12,
-}
-const recentTitle: any = { fontSize: 10, fontWeight: 900, color: colors.secondaryText, marginBottom: 8 }
-const recentEmptyText: any = { margin: 0, fontSize: 12, fontWeight: 700, color: colors.secondaryText }
-const recentRow: any = {
+
+const detailsHeader: any = {
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'space-between',
-  padding: '6px 0',
-  borderBottom: `1px dashed ${colors.border}`,
+  marginBottom: '10px',
+  color: colors.primaryDark,
 }
-const recentMeta: any = { display: 'flex', gap: 10, fontSize: 12, fontWeight: 700, color: colors.primaryDark }
-const recentAmount: any = { fontSize: 12, fontWeight: 900, color: colors.primaryDark }
-const infoGrid: any = { display: 'grid', gap: '8px' }
-const infoText: any = { fontSize: '12px', margin: 0, color: colors.primaryDark }
+
+const closeMiniBtn: any = {
+  border: `1px solid ${colors.border}`,
+  background: colors.white,
+  borderRadius: '12px',
+  width: '36px',
+  height: '36px',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  cursor: 'pointer',
+  color: colors.secondaryText,
+}
+
+const miniSummaryRow: any = {
+  display: 'flex',
+  gap: 8,
+  flexWrap: 'wrap',
+  marginBottom: 12,
+}
+
+const miniPill: any = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 8,
+  background: colors.white,
+  border: `1px solid ${colors.border}`,
+  borderRadius: 14,
+  padding: '8px 10px',
+}
+
+const miniPillLabel: any = {
+  fontSize: 10,
+  fontWeight: 950,
+  color: colors.secondaryText,
+  textTransform: 'uppercase',
+  letterSpacing: 0.4,
+}
+
+const miniPillValue: any = {
+  fontSize: 10,
+  fontWeight: 950,
+  color: colors.primaryDark,
+}
+
+const rfIbanWrap: any = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 8,
+  marginBottom: 12,
+}
+
+const rfIbanRow: any = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: 8,
+  background: colors.white,
+  border: `1px solid ${colors.border}`,
+  borderRadius: 12,
+  padding: '8px 10px',
+}
+
+const rfIbanLabel: any = { fontSize: 10, fontWeight: 950, color: colors.secondaryText, minWidth: 34 }
+const rfIbanValue: any = {
+  fontSize: 12,
+  fontWeight: 900,
+  color: colors.primaryDark,
+  fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+  overflowWrap: 'anywhere',
+  flex: 1,
+}
+
+const sectionTitle: any = {
+  fontSize: '11px',
+  fontWeight: '950',
+  color: colors.primaryDark,
+  letterSpacing: '0.4px',
+  marginBottom: '8px',
+  textTransform: 'uppercase',
+}
+
+const txRow: any = {
+  display: 'flex',
+  justifyContent: 'space-between',
+  alignItems: 'flex-start',
+  gap: '12px',
+  padding: '10px',
+  background: colors.white,
+  border: `1px solid ${colors.border}`,
+  borderRadius: '16px',
+}
+
+const txDate: any = {
+  fontSize: '11px',
+  fontWeight: '950',
+  color: colors.primaryDark,
+}
+
+const txNote: any = {
+  fontSize: '11px',
+  fontWeight: '800',
+  color: colors.secondaryText,
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+  maxWidth: '100%',
+}
+
+const txAmount: any = {
+  fontSize: '12px',
+  fontWeight: '950',
+  color: colors.accentOrange,
+  whiteSpace: 'nowrap',
+}
+
+const rowMuted: any = {
+  fontSize: '11px',
+  fontWeight: '800',
+  color: colors.secondaryText,
+  padding: '6px 2px',
+}
+
+const tinyChip: any = {
+  fontSize: 9,
+  fontWeight: 950,
+  padding: '3px 8px',
+  borderRadius: 999,
+  border: `1px solid ${colors.border}`,
+  background: '#f1f5f9',
+  color: colors.secondaryText,
+  textTransform: 'uppercase',
+  letterSpacing: 0.2,
+}
 
 const editBtn: any = {
   flex: 1,
   padding: '10px',
-  background: colors.warning,
-  color: colors.warningText,
+  background: '#fff7ed',
+  color: '#9a3412',
   border: 'none',
   borderRadius: '10px',
   fontWeight: '700',
