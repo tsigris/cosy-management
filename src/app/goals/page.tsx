@@ -484,7 +484,7 @@ function GoalsContent() {
     if (!confirm('Θέλεις σίγουρα να διαγράψεις αυτή την κίνηση;')) return
 
     try {
-      const { data, error } = await supabase.rpc('delete_savings_transaction', {
+      const { error } = await supabase.rpc('delete_savings_transaction', {
         p_transaction_id: tx.id,
         p_goal_id: selectedGoal.id,
         p_store_id: storeId,
@@ -492,37 +492,6 @@ function GoalsContent() {
       })
       if (error) throw error
       await loadGoals()
-      void data
-
-      const txAmount = Number(tx.amount) || 0
-
-      setHistoryRows((prev) => prev.filter((row) => row.id !== tx.id))
-
-      setGoals((prev) =>
-        prev.map((g) => {
-          if (g.id !== selectedGoal.id) return g
-          const newAmount = Number(g.current_amount || 0) + txAmount
-          const finalStatus =
-            g.status === 'completed' && newAmount < Number(g.target_amount)
-              ? 'completed'
-              : newAmount >= Number(g.target_amount)
-                ? 'completed'
-                : 'active'
-          return { ...g, current_amount: newAmount, status: finalStatus }
-        })
-      )
-
-      setSelectedGoal((prev) => {
-        if (!prev || prev.id !== selectedGoal.id) return prev
-        const newAmount = Number(prev.current_amount || 0) + txAmount
-        const finalStatus =
-          prev.status === 'completed' && newAmount < Number(prev.target_amount)
-            ? 'completed'
-            : newAmount >= Number(prev.target_amount)
-              ? 'completed'
-              : 'active'
-        return { ...prev, current_amount: newAmount, status: finalStatus }
-      })
     } catch (e: any) {
       toast.error(e.message || 'Αποτυχία διαγραφής κίνησης')
     }
