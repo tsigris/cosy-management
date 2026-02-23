@@ -47,7 +47,8 @@ export default function AcceptInvitePage() {
           return
         }
 
-        const tokenHash = await sha256Hex(token)
+        const isAlreadyHash = /^[a-f0-9]{64}$/i.test(token)
+        const tokenHash = isAlreadyHash ? token : await sha256Hex(token)
 
         const { data, error } = await supabase.rpc('redeem_store_invite', {
           p_token_hash: tokenHash,
