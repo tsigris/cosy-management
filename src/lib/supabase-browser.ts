@@ -1,13 +1,31 @@
-import { createBrowserClient } from '@supabase/ssr'
+'use client'
 
-function mustGetEnv(name: string) {
-  const v = process.env[name]
-  if (!v) throw new Error(`Missing env var: ${name}`)
-  return v
-}
+import { createClient } from '@supabase/supabase-js'
 
-export function createSupabaseBrowserClient() {
-  const url = mustGetEnv('NEXT_PUBLIC_SUPABASE_URL')
-  const anon = mustGetEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY')
-  return createBrowserClient(url, anon)
+let client: ReturnType<typeof createClient> | null = null
+
+export function getSupabaseBrowser() {
+  if (typeof window === 'undefined') return null
+
+  if (client) return client
+
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+  if (!url || !anon) {
+    console.error('Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY')
+    return null
+  }
+
+  client = createClient(url, anon, {
+    auth: {
+      persistSession: true,
+      storageKey: 'cosy-management-auth',
+      autoRefreshToken: true,
+      detectSessionInUrl: true,
+      flowType: 'pkce',
+    },
+  })
+
+  return client
 }

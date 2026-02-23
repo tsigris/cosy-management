@@ -1,138 +1,101 @@
-import { supabase } from '@/lib/supabase'
+'use client'
 
-const STORES_CACHE_PREFIX = 'cosy:stores:v1:'
+import { getSupabaseBrowser } from '@/lib/supabase-browser'
+
+const STORES_CACHE_PREFIX = 'cosy-stores:v1:'
 
 export type StoreCard = {
   id: string
   name: string
-  income: number
-  expenses: number
-  profit: number
-  lastUpdated: string | null
+  income?: number
+  expenses?: number
+  profit?: number
+  lastUpdated?: string | null
 }
 
-export type StoresFetchResult = {
-  stores: StoreCard[]
-  accessWarning: string
+// --- Helpers ---
+function cacheKeyForUser(userId: string) {
+  return `${STORES_CACHE_PREFIX}${userId}`
 }
 
-type StoresCachePayload = {
-  stores: StoreCard[]
-  accessWarning: string
-  updatedAt: number
-}
-
-// --- UTILS ΓΙΑ CACHE ---
-const getStoresCacheKey = (userId: string) => `${STORES_CACHE_PREFIX}${userId}`
-
-export const readStoresCache = (userId: string): StoresCachePayload | null => {
-  if (typeof window === 'undefined' || !userId) return null
+function safeReadLocalStorage(key: string) {
   try {
-    const raw = localStorage.getItem(getStoresCacheKey(userId))
-    if (!raw) return null
-    return JSON.parse(raw) as StoresCachePayload
-  } catch (err) {
-    console.error("Cache read error:", err)
+    if (typeof window === 'undefined') return null
+    return window.localStorage.getItem(key)
+  } catch {
     return null
   }
 }
 
-export const writeStoresCache = (userId: string, payload: StoresFetchResult) => {
-  if (typeof window === 'undefined' || !userId) return
-  
-  // ΠΡΟΣΤΑΣΙΑ: Αν η βάση επιστρέψει 0 stores αλλά η cache έχει ήδη μέσα δεδομένα,
-  // ΜΗΝ γράφεις το κενό αποτέλεσμα. Πιθανότατα είναι σφάλμα του session στο κινητό.
-  if (payload.stores.length === 0) {
-    const existing = readStoresCache(userId)
-    if (existing && existing.stores.length > 0) return
+function safeWriteLocalStorage(key: string, value: string) {
+  try {
+    if (typeof window === 'undefined') return
+    window.localStorage.setItem(key, value)
+  } catch {
+    // ignore
   }
-
-  const value: StoresCachePayload = {
-    stores: payload.stores,
-    accessWarning: payload.accessWarning,
-    updatedAt: Date.now()
-  }
-  localStorage.setItem(getStoresCacheKey(userId), JSON.stringify(value))
 }
 
-// --- Η ΚΥΡΙΑ ΣΥΝΑΡΤΗΣΗ ΑΝΑΚΤΗΣΗΣ ---
-export const fetchStoresWithStats = async (userId: string): Promise<StoresFetchResult> => {
-  if (!userId) return { stores: [], accessWarning: 'User ID missing' }
+function safeRemoveLocalStorage(key: string) {
+  try {
+    if (typeof window === 'undefined') return
+    window.localStorage.removeItem(key)
+  } catch {
+    // ignore
+  }
+}
+
+// --- Public API ---
+export function clearStoresCacheForUser(userId: string) {
+  safeRemoveLocalStorage(cacheKeyForUser(userId))
+}
+
+export async function getStoresCachedForUser(userId: string): Promise<StoreCard[] | null> {
+  const raw = safeReadLocalStorage(cacheKeyForUser(userId))
+  if (!raw) return null
 
   try {
-    // 1. Κλήση RPC για ταχύτητα και υπολογισμό stats στη βάση
-    const { data, error } = await supabase.rpc('get_user_stores_with_monthly_stats')
-
-    if (error) throw error
-
-    const rows = (data ?? []) as any[]
-
-    // 2. Αν η βάση επιστρέψει 0, ελέγχουμε την cache πριν τα παρατήσουμε
-    if (rows.length === 0) {
-      const cached = readStoresCache(userId)
-      if (cached && cached.stores.length > 0) {
-        return { stores: cached.stores, accessWarning: '' }
-      }
-      return { stores: [], accessWarning: '' }
-    }
-
-    // 3. Mapping των δεδομένων στα σωστά Types
-    const stores: StoreCard[] = rows
-      .filter((row) => row.store_id)
-      .map((row) => {
-        const income = Number(row.income) || 0
-        const expenses = Number(row.expenses) || 0
-        const profit = Number(row.profit)
-        
-        return {
-          id: String(row.store_id),
-          name: String(row.store_name || 'Κατάστημα'),
-          income,
-          expenses,
-          profit: Number.isFinite(profit) ? profit : income - expenses,
-          lastUpdated: row.last_updated || null,
-        }
-      })
-
-    return { stores, accessWarning: '' }
-
-  } catch (error: any) {
-    console.error('Fetch error - falling back to cache:', error)
-    
-    // Fallback στην Cache σε περίπτωση που "πέσει" το δίκτυο ή η Supabase
-    const cached = readStoresCache(userId)
-    return {
-      stores: cached?.stores || [],
-      accessWarning: cached ? '' : 'Πρόβλημα σύνδεσης με τη βάση.'
-    }
-  }
-}
-
-// --- HELPER FUNCTIONS ΓΙΑ ΤΟ UI ---
-export const refreshStoresCache = async (userId: string) => {
-  const result = await fetchStoresWithStats(userId)
-  // Γράφουμε στην cache μόνο αν βρήκαμε πραγματικά δεδομένα
-  if (result.stores.length > 0) {
-    writeStoresCache(userId, result)
-  }
-  return result
-}
-
-export const prefetchStoresForUser = async (userId: string): Promise<StoresFetchResult | null> => {
-  try {
-    const result = await fetchStoresWithStats(userId)
-    if (result.stores.length > 0) {
-      writeStoresCache(userId, result)
-    }
-    return result
-  } catch (e) {
-    console.error("Prefetch error:", e)
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return null
+    return parsed as StoreCard[]
+  } catch {
     return null
   }
 }
 
-export const clearStoresCacheForUser = (userId: string) => {
-  if (typeof window !== 'undefined' && userId) {
-    localStorage.removeItem(getStoresCacheKey(userId))
+export async function fetchStoresForUser(userId: string): Promise<StoreCard[]> {
+  const supabase = getSupabaseBrowser()
+  if (!supabase) {
+    console.error('Supabase browser client not available (fetchStoresForUser)')
+    return []
   }
+
+  // Αν έχεις πίνακα stores + store_access:
+  // - stores: id, name
+  // - store_access: user_id, store_id, role, ...
+  const { data, error } = await supabase
+    .from('store_access')
+    .select('store_id, stores:stores(id, name)')
+    .eq('user_id', userId)
+
+  if (error) {
+    console.error('fetchStoresForUser error:', error)
+    return []
+  }
+
+  const rows = (data || [])
+    .map((r: any) => ({
+      id: String(r?.stores?.id || r?.store_id || ''),
+      name: String(r?.stores?.name || 'ΚΑΤΑΣΤΗΜΑ'),
+      income: 0,
+      expenses: 0,
+      profit: 0,
+      lastUpdated: null,
+    }))
+    .filter((x) => x.id)
+
+  // Cache
+  safeWriteLocalStorage(cacheKeyForUser(userId), JSON.stringify(rows))
+
+  return rows
 }
