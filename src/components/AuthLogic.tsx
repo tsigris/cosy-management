@@ -10,8 +10,17 @@ export function AuthLogic() {
   const searchParams = useSearchParams()
 
   useEffect(() => {
-    // Σελίδες που ΔΕΝ απαιτούν store_id στο URL
-    const publicPaths = ['/login', '/register', '/signup', '/select-store', '/stores/new', '/accept-invite']
+    // ✅ Προσθέσαμε το '/auth' στη λίστα για να επιτρέπεται η σελίδα reset-password
+    const publicPaths = [
+      '/login', 
+      '/register', 
+      '/signup', 
+      '/select-store', 
+      '/stores/new', 
+      '/accept-invite',
+      '/auth'
+    ]
+    
     const isPublicPath = publicPaths.some(path => pathname.startsWith(path))
     
     const storeInUrl = searchParams.get('store')
@@ -29,13 +38,14 @@ export function AuthLogic() {
         return
       }
 
-      // 2. ΑΝ ΥΠΑΡΧΕΙ SESSION ΑΛΛΑ ΟΧΙ STORE ID ΣΤΟ URL (Και δεν είμαστε σε public path)
+      // 2. ΑΝ ΥΠΑΡΧΕΙ SESSION ΑΛΛΑ ΟΧΙ STORE ID ΣΤΟ URL 
+      // Αν είμαστε σε public path (όπως το /auth/reset-password), ΔΕΝ κάνει redirect
       if (!isPublicPath && !storeInUrl) {
         router.push('/select-store')
         return
       }
 
-      // 3. ΣΥΓΧΡΟΝΙΣΜΟΣ LOCAL STORAGE (Προαιρετικό αλλά βοηθητικό)
+      // 3. ΣΥΓΧΡΟΝΙΣΜΟΣ LOCAL STORAGE
       if (storeInUrl) {
         localStorage.setItem('active_store_id', storeInUrl)
       }
@@ -63,7 +73,7 @@ export function AuthLogic() {
       window.removeEventListener('focus', handleFocus)
       document.removeEventListener('visibilitychange', handleFocus)
     }
-  }, [router, pathname, searchParams])
+  }, [router, pathname, searchParams, supabase]) // Προσθήκη supabase στα dependencies για τυπικούς λόγους
 
   return null;
 }
