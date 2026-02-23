@@ -1,6 +1,5 @@
-'use client'
-
-import { supabase } from '@/lib/supabase'const STORES_CACHE_PREFIX = 'cosy-stores:v1:'
+// src/lib/stores.ts
+import type { SupabaseClient } from '@supabase/supabase-js'
 
 export type StoreCard = {
   id: string
@@ -11,88 +10,24 @@ export type StoreCard = {
   lastUpdated?: string | null
 }
 
-// --- Helpers ---
-function cacheKeyForUser(userId: string) {
-  return `${STORES_CACHE_PREFIX}${userId}`
-}
+/**
+ * Server-safe + Client-safe:
+ * Δεν έχει 'use client'
+ * Δεν ακουμπάει window/localStorage
+ * Θέλει Supabase client να του το δώσεις απ' έξω
+ */
+export async function fetchStoresForUser(
+  supabase: SupabaseClient,
+  userId: string
+): Promise<StoreCard[]> {
+  if (!userId) return []
 
-function safeReadLocalStorage(key: string) {
-  try {
-    if (typeof window === 'undefined') return null
-    return window.localStorage.getItem(key)
-  } catch {
-    return null
-  }
-}
-
-function safeWriteLocalStorage(key: string, value: string) {
-  try {
-    if (typeof window === 'undefined') return
-    window.localStorage.setItem(key, value)
-  } catch {
-    // ignore
-  }
-}
-
-function safeRemoveLocalStorage(key: string) {
-  try {
-    if (typeof window === 'undefined') return
-    window.localStorage.removeItem(key)
-  } catch {
-    // ignore
-  }
-}
-
-// --- Public API ---
-export function clearStoresCacheForUser(userId: string) {
-  safeRemoveLocalStorage(cacheKeyForUser(userId))
-}
-
-export async function getStoresCachedForUser(userId: string): Promise<StoreCard[] | null> {
-  const raw = safeReadLocalStorage(cacheKeyForUser(userId))
-  if (!raw) return null
-
-  try {
-    const parsed = JSON.parse(raw)
-    if (!Array.isArray(parsed)) return null
-    return parsed as StoreCard[]
-  } catch {
-    return null
-  }
-}
-
-export async function fetchStoresForUser(userId: string): Promise<StoreCard[]> {
-  if (!supabase) {
-    console.error('Supabase browser client not available (fetchStoresForUser)')
-    return []
-  }
-
-  // Αν έχεις πίνακα stores + store_access:
-  // - stores: id, name
-  // - store_access: user_id, store_id, role, ...
   const { data, error } = await supabase
-    .from('store_access')
-    .select('store_id, stores:stores(id, name)')
+    .from('stores')
+    .select('id, name')
     .eq('user_id', userId)
+    .order('name', { ascending: true })
 
-  if (error) {
-    console.error('fetchStoresForUser error:', error)
-    return []
-  }
-
-  const rows = (data || [])
-    .map((r: any) => ({
-      id: String(r?.stores?.id || r?.store_id || ''),
-      name: String(r?.stores?.name || 'ΚΑΤΑΣΤΗΜΑ'),
-      income: 0,
-      expenses: 0,
-      profit: 0,
-      lastUpdated: null,
-    }))
-    .filter((x) => x.id)
-
-  // Cache
-  safeWriteLocalStorage(cacheKeyForUser(userId), JSON.stringify(rows))
-
-  return rows
+  if (error) throw error
+  return (data ?? []) as StoreCard[]
 }
