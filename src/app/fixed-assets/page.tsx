@@ -1,7 +1,7 @@
 'use client'
 export const dynamic = 'force-dynamic'
 
-import { useEffect, useState, Suspense, useCallback, useMemo } from 'react'
+import { useEffect, useState, Suspense, useCallback } from 'react'
 import { getSupabase } from '@/lib/supabase'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
@@ -17,7 +17,7 @@ type FixedAsset = {
 function FixedAssetsContent() {
   const searchParams = useSearchParams()
   const storeId = searchParams.get('store')
-  const supabase = useMemo(() => getSupabase(), [])
+  const supabase = getSupabase()
 
   const [assets, setAssets] = useState<FixedAsset[]>([])
   const [loading, setLoading] = useState(true)
