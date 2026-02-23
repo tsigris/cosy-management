@@ -1,7 +1,4 @@
-import type { SupabaseClient } from '@supabase/supabase-js'
 import { getSupabase } from '@/lib/supabase'
-const supabase = getSupabase()
-
 
 export type StoreCard = {
   id: string
@@ -12,16 +9,15 @@ export type StoreCard = {
   lastUpdated?: string | null
 }
 
-export async function fetchStoresForUser(
-  supabase: SupabaseClient,
-  userId: string
-): Promise<StoreCard[]> {
+const supabase = getSupabase()
+
+export async function fetchStoresForUser(userId: string): Promise<StoreCard[]> {
   if (!userId) return []
 
   const { data, error } = await supabase
     .from('stores')
     .select('id, name')
-    .eq('user_id', userId)
+    .eq('owner_id', userId) // ✅ FIX
     .order('name')
 
   if (error) throw error
