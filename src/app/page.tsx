@@ -50,6 +50,7 @@ function getPaymentMethod(tx: any): string {
 }
 
 function DashboardContent() {
+  const supabase = getSupabase()
   const router = useRouter()
   const searchParams = useSearchParams()
   const storeIdFromUrl = searchParams.get('store')
@@ -1102,7 +1103,6 @@ const emptyStateStyle: any = { textAlign: 'center', padding: '40px 20px', color:
 const spinnerStyle: any = { width: '24px', height: '24px', border: '3px solid #f3f3f3', borderTop: '3px solid #6366f1', borderRadius: '50%', animation: 'spin 1s linear infinite', margin: '0 auto' }
 
 export default function DashboardPage() {
-  const supabase = getSupabase()
   return (
     <ErrorBoundary>
       <Suspense fallback={<div style={{ textAlign: 'center', padding: '40px', color: colors.secondaryText, fontWeight: 800 }}>Φόρτωση dashboard...</div>}>

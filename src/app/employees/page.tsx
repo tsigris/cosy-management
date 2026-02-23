@@ -52,6 +52,7 @@ const getBusinessMonth = (d: Date) => toBusinessDayDate(d).getMonth()
 const formatBusinessDateShort = (d: Date) => toBusinessDayDate(d).toLocaleDateString('el-GR')
 
 function EmployeesContent() {
+  const supabase = getSupabase()
   const router = useRouter()
   const searchParams = useSearchParams()
   const storeId = searchParams.get('store') // ✅ SaaS context from URL
@@ -1859,7 +1860,6 @@ const payrollHeroTipsBtn: any = {
 }
 
 export default function EmployeesPage() {
-  const supabase = getSupabase()
   return (
     <Suspense
       fallback={

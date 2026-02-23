@@ -33,6 +33,7 @@ const colors = {
 }
 
 function SuppliersContent() {
+  const supabase = getSupabase()
   const searchParams = useSearchParams()
   const router = useRouter()
 
@@ -608,7 +609,6 @@ const delBtn: any = {
 const emptyText: any = { padding: '40px', textAlign: 'center', color: colors.secondaryText, fontSize: '13px', fontWeight: '600' }
 
 export default function SuppliersPage() {
-  const supabase = getSupabase()
   return (
     <Suspense fallback={null}>
       <SuppliersContent />

@@ -22,6 +22,7 @@ const navItems = [
 ];
 
 function NavContent() {
+  const supabase = getSupabase()
   const pathname = usePathname();
   const searchParams = useSearchParams();
   
@@ -138,7 +139,6 @@ function NavContent() {
 }
 
 export default function BottomNav() {
-  const supabase = getSupabase()
   return (
     <Suspense fallback={null}>
       <NavContent />

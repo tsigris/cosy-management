@@ -92,7 +92,6 @@ const colors = {
 }
 
 function yyyyMmDd(d: Date) {
-  const supabase = getSupabase()
   const y = d.getFullYear()
   const m = String(d.getMonth() + 1).padStart(2, '0')
   const day = String(d.getDate()).padStart(2, '0')
@@ -156,6 +155,7 @@ function getNextMonthlyPayDate(startDateStr: string, todayStr: string) {
 }
 
 export default function NotificationsBell({ storeId, onUpdate }: { storeId: string; onUpdate?: () => void }) {
+  const supabase = getSupabase()
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [hasLoaded, setHasLoaded] = useState(false)

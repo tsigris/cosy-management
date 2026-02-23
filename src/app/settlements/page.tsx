@@ -161,7 +161,6 @@ type AmountFocus = 'total' | 'installment'
 
 
 function yyyyMmDd(d: Date) {
-  const supabase = getSupabase()
 
 const y = d.getFullYear()
 
@@ -414,6 +413,8 @@ return n.toLocaleString('el-GR', { minimumFractionDigits: 2, maximumFractionDigi
 
 
 function SettlementsContent({ onUpdate }: { onUpdate?: () => void }) {
+
+const supabase = getSupabase()
 
 const searchParams = useSearchParams()
 

@@ -133,6 +133,7 @@ function monthsApprox(days: number) {
 }
 
 function GoalsContent() {
+  const supabase = getSupabase()
   const router = useRouter()
   const searchParams = useSearchParams()
   const storeId = searchParams.get('store')
@@ -1396,7 +1397,6 @@ const historyPager: CSSProperties = { display: 'flex', justifyContent: 'space-be
 const pagerBtn: CSSProperties = { border: `1px solid ${colors.border}`, background: '#fff', borderRadius: 12, padding: '10px 12px', fontWeight: 950, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 8, color: colors.primaryDark }
 
 export default function GoalsPage() {
-  const supabase = getSupabase()
   return (
     <Suspense fallback={null}>
       <GoalsContent />

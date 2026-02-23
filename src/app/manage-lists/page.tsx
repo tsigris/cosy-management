@@ -80,6 +80,7 @@ const MENU: Array<{
 ]
 
 function ManageListsContent() {
+  const supabase = getSupabase()
   const router = useRouter()
   const searchParams = useSearchParams()
 
@@ -1927,7 +1928,6 @@ const segBtn: any = {
 }
 
 export default function ManageListsPage() {
-  const supabase = getSupabase()
   return (
     <Suspense fallback={<div style={{ fontSize: 16, padding: 20 }}>Φόρτωση...</div>}>
       <ManageListsContent />

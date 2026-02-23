@@ -58,6 +58,7 @@ const getBusinessDayKey = (d: Date) => {
 }
 
 function BalancesContent() {
+  const supabase = getSupabase()
   const router = useRouter()
   const searchParams = useSearchParams()
   const storeIdFromUrl = searchParams.get('store')
@@ -1015,7 +1016,6 @@ const tinyChip: any = {
 }
 
 export default function SuppliersBalancePage() {
-  const supabase = getSupabase()
   return (
     <main style={{ backgroundColor: colors.bgLight, minHeight: '100vh' }}>
       <Suspense fallback={<div style={{ padding: '50px', textAlign: 'center' }}>Φόρτωση...</div>}>

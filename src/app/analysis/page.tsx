@@ -112,6 +112,7 @@ function getPaymentMethod(tx: any): string {
 }
 
 function AnalysisContent() {
+  const supabase = getSupabase()
   const router = useRouter()
   const searchParams = useSearchParams()
   const storeId = searchParams.get('store')
@@ -1982,7 +1983,6 @@ const navBtn: any = {
 }
 
 export default function AnalysisPage() {
-  const supabase = getSupabase()
   return (
     <main>
       <Suspense fallback={<div style={{ fontSize: 16, padding: 20 }}>Φόρτωση...</div>}>

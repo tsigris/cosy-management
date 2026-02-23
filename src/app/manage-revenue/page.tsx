@@ -38,6 +38,7 @@ const TABS: Array<{ key: TabKey; label: string; icon: any; type: 'expense' | 'in
 ]
 
 function ManageListsInner() {
+  const supabase = getSupabase()
   const router = useRouter()
   const searchParams = useSearchParams()
   const urlStoreId = searchParams.get('store')
@@ -265,6 +266,5 @@ const delBtn: any = { flex: 1, padding: '10px', background: '#fee2e2', color: co
 const emptyText: any = { padding: '40px', textAlign: 'center', color: colors.secondaryText };
 
 export default function ManageListsPage() {
-  const supabase = getSupabase()
   return <Suspense fallback={null}><ManageListsInner /></Suspense>
 }

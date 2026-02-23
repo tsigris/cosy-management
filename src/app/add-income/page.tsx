@@ -125,6 +125,7 @@ function parseAmount(input: string) {
 }
 
 function AddIncomeForm() {
+  const supabase = getSupabase()
   const router = useRouter()
   const searchParams = useSearchParams()
 
@@ -952,7 +953,6 @@ const modalPrimaryBtn: any = {
 }
 
 export default function AddIncomePage() {
-  const supabase = getSupabase()
   return (
     <Suspense fallback={<div style={{ fontSize: 16, padding: 20 }}>Φόρτωση...</div>}>
       <AddIncomeForm />

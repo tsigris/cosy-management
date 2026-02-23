@@ -33,6 +33,7 @@ type EmployeeRow = {
 }
 
 function OvertimeReportContent() {
+  const supabase = getSupabase()
   const router = useRouter()
   const searchParams = useSearchParams()
   const storeId = searchParams.get('store_id') || searchParams.get('store')
@@ -402,7 +403,6 @@ const footerValueStyle: React.CSSProperties = {
 }
 
 export default function OvertimeReportPage() {
-  const supabase = getSupabase()
   return (
     <main>
       <Suspense fallback={<div>Φόρτωση...</div>}>

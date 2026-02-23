@@ -23,6 +23,7 @@ const Z_NOTES = {
 const Z_CATEGORY = 'Εσοδα Ζ' as const
 
 function DailyZContent() {
+  const supabase = getSupabase()
   const router = useRouter()
   const searchParams = useSearchParams()
 
@@ -403,7 +404,6 @@ const backBtnStyle: any = {
 }
 
 export default function DailyZPage() {
-  const supabase = getSupabase()
   return (
     <Suspense fallback={null}>
       <DailyZContent />

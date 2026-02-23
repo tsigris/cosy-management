@@ -25,6 +25,7 @@ const colors = {
 const isValidUUID = (id: any) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
 
 function FixedAssetsContent() {
+  const supabase = getSupabase()
   const router = useRouter()
   const searchParams = useSearchParams()
   const storeIdFromUrl = searchParams.get('store')
@@ -170,7 +171,6 @@ function FixedAssetsContent() {
 }
 
 export default function FixedAssetsPage() {
-  const supabase = getSupabase()
   return (
     <Suspense fallback={<div style={{padding:'50px', textAlign:'center'}}>Φόρτωση...</div>}>
       <FixedAssetsContent />

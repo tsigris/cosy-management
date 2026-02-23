@@ -10,6 +10,7 @@ import { ShieldCheck, X, Settings, UserPlus, Trash2 } from 'lucide-react'
 import ErrorBoundary from '@/components/ErrorBoundary'
 
 function PermissionsContent() {
+  const supabase = getSupabase()
   const router = useRouter()
   const searchParams = useSearchParams()
   const storeId = searchParams.get('store')
@@ -234,7 +235,6 @@ function PermissionToggle({ label, active, onClick }: any) {
 }
 
 export default function PermissionsPage() {
-  const supabase = getSupabase()
   return (
     <main style={{backgroundColor:'#f8fafc', minHeight:'100vh'}}>
       <ErrorBoundary>

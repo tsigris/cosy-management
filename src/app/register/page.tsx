@@ -22,6 +22,7 @@ const getEmailRedirectUrl = () => {
 }
 
 function RegisterForm() {
+  const supabase = getSupabase()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [username, setUsername] = useState('')
@@ -318,7 +319,6 @@ function RegisterForm() {
 }
 
 export default function RegisterPage() {
-  const supabase = getSupabase()
   return (
     <main style={containerStyle}>
       <Suspense fallback={<div>Φόρτωση...</div>}>

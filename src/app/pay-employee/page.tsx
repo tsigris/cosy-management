@@ -20,6 +20,7 @@ const colors = {
 };
 
 function PayEmployeeContent() {
+  const supabase = getSupabase()
   const searchParams = useSearchParams()
   const router = useRouter()
   
@@ -246,6 +247,5 @@ const methodToggleBtnActive: any = { backgroundColor: colors.white, color: color
 const inputGroup = { display: 'flex', flexDirection: 'column' as const };
 
 export default function PayEmployeePage() {
-  const supabase = getSupabase()
   return <Suspense fallback={null}><PayEmployeeContent /></Suspense>
 }

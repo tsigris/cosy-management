@@ -155,6 +155,7 @@ function AnimatedBody({ open, children }: { open: boolean; children: ReactNode }
 }
 
 function SettingsContent() {
+  const supabase = getSupabase()
   const searchParams = useSearchParams()
   const storeId = searchParams.get('store')
 
@@ -810,7 +811,6 @@ const supportText: CSSProperties = { fontSize: 13, fontWeight: 800, color: '#647
 const waBtnStyle: CSSProperties = { width: '100%', backgroundColor: '#25d366', color: 'white', padding: '14px', borderRadius: '14px', border: 'none', fontWeight: '900', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', boxShadow: '0 12px 18px rgba(37,211,102,0.18)' }
 
 export default function SettingsPage() {
-  const supabase = getSupabase()
   return (
     <main>
       <Suspense fallback={null}>
