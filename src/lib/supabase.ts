@@ -1,8 +1,8 @@
-import { createClient } from '@supabase/supabase-js'
+import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 
-let client: ReturnType<typeof createClient> | null = null
+let client: SupabaseClient | null = null
 
-export function getSupabase() {
+export function getSupabase(): SupabaseClient {
   if (client) return client
 
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -16,7 +16,6 @@ export function getSupabase() {
     auth: {
       persistSession: true,
       storageKey: 'cosy-management-auth',
-      storage: typeof window !== 'undefined' ? window.localStorage : undefined,
       autoRefreshToken: true,
       detectSessionInUrl: true,
       flowType: 'pkce',

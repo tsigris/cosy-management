@@ -2,7 +2,7 @@
 export const dynamic = 'force-dynamic'
 
 import { useEffect, useState, Suspense, useCallback, useMemo } from 'react'
-import { supabase } from '@/lib/supabase'
+import { getSupabase } from '@/lib/supabase'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { toast, Toaster } from 'sonner'
@@ -1015,6 +1015,7 @@ const tinyChip: any = {
 }
 
 export default function SuppliersBalancePage() {
+  const supabase = getSupabase()
   return (
     <main style={{ backgroundColor: colors.bgLight, minHeight: '100vh' }}>
       <Suspense fallback={<div style={{ padding: '50px', textAlign: 'center' }}>Φόρτωση...</div>}>

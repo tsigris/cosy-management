@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic'
 
 import React, { useEffect, useState, Suspense, useCallback, useMemo, useRef } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { supabase } from '@/lib/supabase'
+import { getSupabase } from '@/lib/supabase'
 import Link from 'next/link'
 import { toast, Toaster } from 'sonner'
 
@@ -1655,6 +1655,7 @@ const segBtn: any = {
 }
 
 export default function AddExpensePage() {
+  const supabase = getSupabase()
   return (
     <Suspense fallback={<div style={{ fontSize: 16, padding: 20 }}>Φόρτωση...</div>}>
       <AddExpenseForm />

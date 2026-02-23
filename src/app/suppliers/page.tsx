@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic'
 
 import { useEffect, useState, Suspense, useCallback, useMemo } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
-import { supabase } from '@/lib/supabase'
+import { getSupabase } from '@/lib/supabase'
 import Link from 'next/link'
 import {
   Plus,
@@ -608,6 +608,7 @@ const delBtn: any = {
 const emptyText: any = { padding: '40px', textAlign: 'center', color: colors.secondaryText, fontSize: '13px', fontWeight: '600' }
 
 export default function SuppliersPage() {
+  const supabase = getSupabase()
   return (
     <Suspense fallback={null}>
       <SuppliersContent />

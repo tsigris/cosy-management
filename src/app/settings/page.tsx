@@ -2,7 +2,7 @@
 export const dynamic = 'force-dynamic'
 
 import { useEffect, useState, Suspense, useCallback, useRef, type Dispatch, type SetStateAction, type ReactNode, type CSSProperties } from 'react'
-import { supabase } from '@/lib/supabase'
+import { getSupabase } from '@/lib/supabase'
 import PermissionGuard from '@/components/PermissionGuard'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
@@ -810,6 +810,7 @@ const supportText: CSSProperties = { fontSize: 13, fontWeight: 800, color: '#647
 const waBtnStyle: CSSProperties = { width: '100%', backgroundColor: '#25d366', color: 'white', padding: '14px', borderRadius: '14px', border: 'none', fontWeight: '900', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', boxShadow: '0 12px 18px rgba(37,211,102,0.18)' }
 
 export default function SettingsPage() {
+  const supabase = getSupabase()
   return (
     <main>
       <Suspense fallback={null}>

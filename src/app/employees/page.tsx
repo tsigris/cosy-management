@@ -2,7 +2,7 @@
 export const dynamic = 'force-dynamic'
 
 import { useEffect, useState, Suspense, useCallback, useMemo, useRef } from 'react'
-import { supabase } from '@/lib/supabase'
+import { getSupabase } from '@/lib/supabase'
 import PermissionGuard from '@/components/PermissionGuard'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
@@ -1859,6 +1859,7 @@ const payrollHeroTipsBtn: any = {
 }
 
 export default function EmployeesPage() {
+  const supabase = getSupabase()
   return (
     <Suspense
       fallback={

@@ -2,7 +2,7 @@
 export const dynamic = 'force-dynamic'
 
 import { useEffect, useState, Suspense } from 'react'
-import { supabase } from '@/lib/supabase'
+import { getSupabase } from '@/lib/supabase'
 import Link from 'next/link'
 import { format } from 'date-fns'
 import { el } from 'date-fns/locale'
@@ -169,6 +169,7 @@ const featureSub: any = { fontSize: '11px', color: '#64748b', margin: '2px 0 0 0
 const supportBtnStyle: any = { width: '100%', padding: '18px', backgroundColor: '#0f172a', color: 'white', border: 'none', borderRadius: '16px', fontWeight: '900', fontSize: '14px', cursor: 'pointer', boxShadow: '0 10px 20px rgba(0,0,0,0.1)' };
 
 export default function SubscriptionPage() {
+  const supabase = getSupabase()
   return (
     <main style={{ backgroundColor: '#f8fafc', minHeight: '100vh', padding: '15px' }}>
        {/* CSS για το spinner */}

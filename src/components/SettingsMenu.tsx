@@ -1,6 +1,6 @@
 'use client'
 import { useState } from 'react'
-import { supabase } from '@/lib/supabase'
+import { getSupabase } from '@/lib/supabase'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 
@@ -16,6 +16,7 @@ const colors = {
 };
 
 export default function SettingsMenu() {
+  const supabase = getSupabase()
   const [isOpen, setIsOpen] = useState(false)
   const router = useRouter()
   const searchParams = useSearchParams()

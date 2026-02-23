@@ -2,7 +2,7 @@
 import React, { Suspense, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
-import { supabase } from '@/lib/supabase';
+import { getSupabase } from '@/lib/supabase'
 
 const colors = {
   primary: '#0f172a',    
@@ -138,6 +138,7 @@ function NavContent() {
 }
 
 export default function BottomNav() {
+  const supabase = getSupabase()
   return (
     <Suspense fallback={null}>
       <NavContent />

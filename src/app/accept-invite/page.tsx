@@ -4,10 +4,11 @@ export const dynamic = 'force-dynamic'
 
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { supabase } from '@/lib/supabase'
+import { getSupabase } from '@/lib/supabase'
 import { toast, Toaster } from 'sonner'
 
 export default function AcceptInvitePage() {
+  const supabase = getSupabase()
   const router = useRouter()
   const searchParams = useSearchParams()
   const token = useMemo(() => searchParams.get('token') || '', [searchParams])

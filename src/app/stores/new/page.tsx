@@ -1,11 +1,12 @@
 'use client'
 import { useState } from 'react'
-import { supabase } from '@/lib/supabase'
+import { getSupabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import { toast, Toaster } from 'sonner'
 import { Home, ArrowLeft, Store } from 'lucide-react'
 
 export default function NewStorePage() {
+  const supabase = getSupabase()
   const [name, setName] = useState('')
   const [loading, setLoading] = useState(false)
   const router = useRouter()

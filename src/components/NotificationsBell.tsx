@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react'
-import { supabase } from '@/lib/supabase'
+import { getSupabase } from '@/lib/supabase'
 import { toast } from 'sonner'
 import { Bell, X, AlertTriangle, AlertOctagon, Info, Banknote, Landmark, PlusCircle } from 'lucide-react'
 
@@ -92,6 +92,7 @@ const colors = {
 }
 
 function yyyyMmDd(d: Date) {
+  const supabase = getSupabase()
   const y = d.getFullYear()
   const m = String(d.getMonth() + 1).padStart(2, '0')
   const day = String(d.getDate()).padStart(2, '0')

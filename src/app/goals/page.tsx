@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useState, Suspense, type CSSProperties
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { toast, Toaster } from 'sonner'
-import { supabase } from '@/lib/supabase'
+import { getSupabase } from '@/lib/supabase'
 import {
   ChevronLeft,
   PiggyBank,
@@ -1396,6 +1396,7 @@ const historyPager: CSSProperties = { display: 'flex', justifyContent: 'space-be
 const pagerBtn: CSSProperties = { border: `1px solid ${colors.border}`, background: '#fff', borderRadius: 12, padding: '10px 12px', fontWeight: 950, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 8, color: colors.primaryDark }
 
 export default function GoalsPage() {
+  const supabase = getSupabase()
   return (
     <Suspense fallback={null}>
       <GoalsContent />

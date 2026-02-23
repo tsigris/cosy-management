@@ -1,6 +1,6 @@
 'use client'
 import { useEffect } from 'react'
-import { supabase } from '@/lib/supabase'
+import { getSupabase } from '@/lib/supabase'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { toast } from 'sonner'
 
@@ -48,5 +48,6 @@ function LegacyInviteRedirect() {
 }
 
 export default function InvitePage() {
+  const supabase = getSupabase()
   return <LegacyInviteRedirect />
 }

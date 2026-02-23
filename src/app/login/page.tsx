@@ -156,6 +156,7 @@ function LoginContent() {
 }
 
 export default function LoginPage() {
+  const supabase = getSupabase()
   return (
     <Suspense fallback={<div style={containerStyle}>Φόρτωση...</div>}>
       <LoginContent />

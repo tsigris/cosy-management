@@ -4,7 +4,7 @@ export const dynamic = 'force-dynamic'
 import { useCallback, useEffect, useMemo, useState, Suspense } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { supabase } from '@/lib/supabase'
+import { getSupabase } from '@/lib/supabase'
 
 const colors = {
   primaryDark: '#1e293b',
@@ -402,6 +402,7 @@ const footerValueStyle: React.CSSProperties = {
 }
 
 export default function OvertimeReportPage() {
+  const supabase = getSupabase()
   return (
     <main>
       <Suspense fallback={<div>Φόρτωση...</div>}>

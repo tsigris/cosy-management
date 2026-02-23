@@ -1,7 +1,7 @@
 'use client'
 
 import { ReactNode, useEffect, useState } from 'react'
-import { supabase } from '@/lib/supabase'
+import { getSupabase } from '@/lib/supabase'
 
 type PermissionGuardRenderProps = {
   isAdmin: boolean
@@ -14,6 +14,7 @@ type PermissionGuardProps = {
 }
 
 export default function PermissionGuard({ storeId, children }: PermissionGuardProps) {
+  const supabase = getSupabase()
   const [isLoading, setIsLoading] = useState(true)
   const [isAdmin, setIsAdmin] = useState(false)
 

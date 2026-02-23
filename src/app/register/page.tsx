@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, Suspense } from 'react'
-import { supabase } from '@/lib/supabase'
+import { getSupabase } from '@/lib/supabase'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { toast, Toaster } from 'sonner'
@@ -318,6 +318,7 @@ function RegisterForm() {
 }
 
 export default function RegisterPage() {
+  const supabase = getSupabase()
   return (
     <main style={containerStyle}>
       <Suspense fallback={<div>Φόρτωση...</div>}>

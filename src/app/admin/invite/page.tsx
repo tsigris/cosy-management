@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic'
 
 import { useEffect, useMemo, useState, useRef } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { supabase } from '@/lib/supabase'
+import { getSupabase } from '@/lib/supabase'
 import Link from 'next/link'
 import { toast, Toaster } from 'sonner'
 import { Copy, UserPlus, X } from 'lucide-react'
@@ -29,6 +29,7 @@ function createTokenHex() {
 }
 
 export default function InvitePage() {
+  const supabase = getSupabase()
   const router = useRouter()
   const searchParams = useSearchParams()
   const storeId = useMemo(() => searchParams.get('store'), [searchParams])

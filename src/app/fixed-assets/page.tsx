@@ -2,7 +2,7 @@
 export const dynamic = 'force-dynamic'
 
 import { useEffect, useState, Suspense, useCallback } from 'react'
-import { supabase } from '@/lib/supabase'
+import { getSupabase } from '@/lib/supabase'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { Trash2, Plus, X, CreditCard, History } from 'lucide-react'
@@ -147,4 +147,5 @@ const payLinkStyle: any = { display: 'inline-flex', alignItems: 'center', gap: '
 const delBtnStyle: any = { background: 'none', border: 'none', color: '#f43f5e', cursor: 'pointer' };
 const emptyCardStyle: any = { textAlign: 'center', padding: '40px', backgroundColor: 'white', borderRadius: '15px', color: '#64748b', border: '1px dashed #cbd5e1' };
 
-export default function FixedAssetsPage() { return <Suspense fallback={null}><FixedAssetsContent /></Suspense> }
+export default function FixedAssetsPage() {
+  const supabase = getSupabase() return <Suspense fallback={null}><FixedAssetsContent /></Suspense> }

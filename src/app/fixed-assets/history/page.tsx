@@ -2,7 +2,7 @@
 export const dynamic = 'force-dynamic'
 
 import { useEffect, useState, Suspense, useCallback } from 'react'
-import { supabase } from '@/lib/supabase'
+import { getSupabase } from '@/lib/supabase'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Trash2, Edit2, History, Plus, X, CreditCard, ChevronLeft } from 'lucide-react'
@@ -170,6 +170,7 @@ function FixedAssetsContent() {
 }
 
 export default function FixedAssetsPage() {
+  const supabase = getSupabase()
   return (
     <Suspense fallback={<div style={{padding:'50px', textAlign:'center'}}>Φόρτωση...</div>}>
       <FixedAssetsContent />

@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic'
 
 import { useEffect, useState, Suspense, useCallback } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
-import { supabase } from '@/lib/supabase'
+import { getSupabase } from '@/lib/supabase'
 import Link from 'next/link'
 import { toast, Toaster } from 'sonner'
 import { ChevronLeft, Calculator, Clock, Banknote } from 'lucide-react'
@@ -246,5 +246,6 @@ const methodToggleBtnActive: any = { backgroundColor: colors.white, color: color
 const inputGroup = { display: 'flex', flexDirection: 'column' as const };
 
 export default function PayEmployeePage() {
+  const supabase = getSupabase()
   return <Suspense fallback={null}><PayEmployeeContent /></Suspense>
 }

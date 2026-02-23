@@ -2,7 +2,7 @@
 export const dynamic = 'force-dynamic'
 
 import { useEffect, useState, Suspense, useCallback } from 'react'
-import { supabase } from '@/lib/supabase'
+import { getSupabase } from '@/lib/supabase'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { toast, Toaster } from 'sonner'
@@ -234,6 +234,7 @@ function PermissionToggle({ label, active, onClick }: any) {
 }
 
 export default function PermissionsPage() {
+  const supabase = getSupabase()
   return (
     <main style={{backgroundColor:'#f8fafc', minHeight:'100vh'}}>
       <ErrorBoundary>

@@ -1,14 +1,23 @@
 'use client'
 
 import { useEffect, useState, useMemo, useRef, useCallback } from 'react'
-import { clearSessionCache, supabase } from '@/lib/supabase'
-import { refreshStoresCache, type StoreCard } from '@/lib/stores'
+import { getSupabase } from '@/lib/supabase'
+import { fetchStoresForUser } from '@/lib/stores'
 import { useRouter } from 'next/navigation'
-import { LogOut, Plus, ArrowRight, TrendingUp, TrendingDown, Wallet, Store, RefreshCw } from 'lucide-react'
+import { LogOut, Plus, ArrowRight, RefreshCw, Store } from 'lucide-react'
 import { toast, Toaster } from 'sonner'
-import ErrorBoundary from '@/components/ErrorBoundary'
+
+type StoreCard = {
+  id: string
+  name: string
+  income?: number
+  expenses?: number
+  profit?: number
+  lastUpdated?: string | null
+}
 
 function SelectStorePage() {
+  const supabase = getSupabase()
   const [userStores, setUserStores] = useState<StoreCard[]>([])
   const [loading, setLoading] = useState(true)
   const [isRetrying, setIsRetrying] = useState(false)
@@ -21,8 +30,9 @@ function SelectStorePage() {
   const [liveDateTime, setLiveDateTime] = useState<string>('')
 
   const handleLogout = async () => {
-    await supabase.auth.signOut()
-    clearSessionCache()
+    try {
+      if (supabase) await supabase.auth.signOut()
+    } catch {}
     window.location.href = '/login'
   }
 
@@ -42,9 +52,14 @@ function SelectStorePage() {
 
   const buildStripeLiveLabel = () => {
     const now = new Date()
-    const datePart = now.toLocaleDateString('el-GR', {
-      weekday: 'short', day: '2-digit', month: 'short', year: 'numeric'
-    }).toUpperCase()
+    const datePart = now
+      .toLocaleDateString('el-GR', {
+        weekday: 'short',
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+      })
+      .toUpperCase()
     const timePart = now.toLocaleTimeString('el-GR', { hour: '2-digit', minute: '2-digit' })
     return `${datePart} • ${timePart}`
   }
@@ -60,13 +75,16 @@ function SelectStorePage() {
     window.location.href = `/?store=${storeId}`
   }, [])
 
-  const maybeAutoRedirectSingleStore = useCallback((stores: StoreCard[]) => {
-    if (hasAutoRedirected.current) return false
-    if (stores.length !== 1) return false
-    hasAutoRedirected.current = true
-    handleSelect(stores[0].id)
-    return true
-  }, [handleSelect])
+  const maybeAutoRedirectSingleStore = useCallback(
+    (stores: StoreCard[]) => {
+      if (hasAutoRedirected.current) return false
+      if (stores.length !== 1) return false
+      hasAutoRedirected.current = true
+      handleSelect(stores[0].id)
+      return true
+    },
+    [handleSelect]
+  )
 
   useEffect(() => {
     let isMounted = true
@@ -76,14 +94,23 @@ function SelectStorePage() {
         setLoading(true)
         setAccessWarning('')
         setIsRetrying(false)
+        setShowRetryButton(false)
 
-        // 1. Αρχικός έλεγχος Session
-        let { data: { session } } = await supabase.auth.getSession()
+        if (!supabase) {
+          toast.error('Λείπουν env variables Supabase. Έλεγξε Vercel Environment Variables.')
+          router.replace('/login')
+          return
+        }
 
-        // 2. Επίμονο Retry Logic για Safari (iPhone) & Samsung Internet
+        // 1) session
+        let {
+          data: { session },
+        } = await supabase.auth.getSession()
+
+        // 2) retry session για mobile
         if (!session) {
           setIsRetrying(true)
-          await new Promise(r => setTimeout(r, 1000)) // Περιμένουμε 1 δευτερόλεπτο
+          await new Promise((r) => setTimeout(r, 1000))
           const retry = await supabase.auth.getSession()
           session = retry.data.session
         }
@@ -102,24 +129,24 @@ function SelectStorePage() {
           return
         }
 
-        // 3. Πρώτη προσπάθεια φόρτωσης καταστημάτων
-        let fresh = await refreshStoresCache(session.user.id)
-        
-        // 4. ΔΕΥΤΕΡΗ ΕΥΚΑΙΡΙΑ: Αν η RLS της Supabase δεν έχει ενημερωθεί ακόμα
-        if (isMounted && (!fresh?.stores || fresh.stores.length === 0)) {
+        // 3) load stores (αντικαθιστά το refreshStoresCache)
+        let stores = await fetchStoresForUser(supabase, session.user.id)
+
+        // 4) δεύτερη ευκαιρία αν RLS “αργεί”
+        if (isMounted && (!stores || stores.length === 0)) {
           setIsRetrying(true)
-          await new Promise(r => setTimeout(r, 1200)) // Επιπλέον αναμονή
-          fresh = await refreshStoresCache(session.user.id)
+          await new Promise((r) => setTimeout(r, 1200))
+          stores = await fetchStoresForUser(supabase, session.user.id)
         }
 
         if (!isMounted) return
 
-        const safeStores = Array.isArray(fresh?.stores) ? fresh.stores : []
+        const safeStores = Array.isArray(stores) ? stores : []
         setUserStores(safeStores)
-        setAccessWarning(fresh?.accessWarning || '')
+        setAccessWarning('') // αν θέλεις μήνυμα εδώ, το περνάμε από fetchStoresForUser
         setShowRetryButton(false)
         setIsRetrying(false)
-        
+
         maybeAutoRedirectSingleStore(safeStores)
       } catch (err: any) {
         console.error('Fetch error:', err)
@@ -136,8 +163,10 @@ function SelectStorePage() {
     }
 
     void loadStores()
-    return () => { isMounted = false }
-  }, [router, maybeAutoRedirectSingleStore, retryNonce])
+    return () => {
+      isMounted = false
+    }
+  }, [router, maybeAutoRedirectSingleStore, retryNonce, supabase])
 
   const globalStats = useMemo(() => {
     const safeStores = Array.isArray(userStores) ? userStores : []
@@ -150,7 +179,16 @@ function SelectStorePage() {
   if (loading) {
     return (
       <div style={containerStyle}>
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '60vh', gap: '15px' }}>
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            height: '60vh',
+            gap: '15px',
+          }}
+        >
           <RefreshCw className="animate-spin" size={32} color="#6366f1" />
           <p style={{ fontWeight: '800', color: '#0f172a', fontSize: '18px' }}>
             {isRetrying ? 'Συγχρονισμός πρόσβασης...' : 'Φόρτωση δεδομένων...'}
@@ -166,14 +204,40 @@ function SelectStorePage() {
   return (
     <div style={containerStyle}>
       <Toaster richColors position="top-center" />
-      
+
       <header style={{ marginBottom: '18px', textAlign: 'center' }}>
         <h1 style={{ fontWeight: '900', fontSize: '28px', color: '#0f172a', margin: 0 }}>Τα Καταστήματά μου</h1>
         <div style={liveRow}>
-          <span style={livePill}><span style={liveDot} />LIVE</span>
+          <span style={livePill}>
+            <span style={liveDot} />
+            LIVE
+          </span>
           <span style={liveText}>{liveDateTime}</span>
         </div>
       </header>
+
+      {!!accessWarning && (
+        <div
+          style={{
+            background: '#fff7ed',
+            border: '1px solid #fed7aa',
+            color: '#9a3412',
+            padding: '12px 14px',
+            borderRadius: '16px',
+            fontWeight: 800,
+            fontSize: '12px',
+            marginBottom: '14px',
+          }}
+        >
+          {accessWarning}
+        </div>
+      )}
+
+      {showRetryButton && (
+        <button onClick={() => setRetryNonce((n) => n + 1)} style={retryBtnStyle}>
+          ΑΝΑΝΕΩΣΗ ΠΡΟΣΒΑΣΗΣ
+        </button>
+      )}
 
       {userStores.length > 0 && (
         <div style={heroCard}>
@@ -200,10 +264,7 @@ function SelectStorePage() {
           <p style={{ color: '#94a3b8', fontSize: '13px', marginTop: '5px' }}>
             Δεν βρέθηκε σύνδεση του λογαριασμού σας με κάποιο κατάστημα.
           </p>
-          <button 
-            onClick={() => setRetryNonce(n => n + 1)} 
-            style={retryBtnStyle}
-          >
+          <button onClick={() => setRetryNonce((n) => n + 1)} style={retryBtnStyle}>
             ΑΝΑΝΕΩΣΗ ΠΡΟΣΒΑΣΗΣ
           </button>
         </div>
@@ -216,28 +277,34 @@ function SelectStorePage() {
                   <h2 style={{ fontSize: '18px', fontWeight: '900', margin: 0, color: '#0f172a' }}>{store.name}</h2>
                   <p style={lastUpdatedStyle}>Ενημέρωση: {formatRelativeMinutes(store.lastUpdated)}</p>
                 </div>
-                <div style={arrowCircle}><ArrowRight size={16} /></div>
+                <div style={arrowCircle}>
+                  <ArrowRight size={16} />
+                </div>
               </div>
-              
+
               <div style={statsGrid}>
                 <div style={statBox}>
-                  <span style={statLabel}>ΕΣΟΔΑ</span><br/>
-                  <span style={{...statValue, color: '#059669'}}>{Number(store.income).toFixed(2)} €</span>
+                  <span style={statLabel}>ΕΣΟΔΑ</span>
+                  <br />
+                  <span style={{ ...statValue, color: '#059669' }}>{(Number(store.income) || 0).toFixed(2)} €</span>
                 </div>
                 <div style={statBox}>
-                  <span style={statLabel}>ΕΞΟΔΑ</span><br/>
-                  <span style={{...statValue, color: '#dc2626'}}>{Number(store.expenses).toFixed(2)} €</span>
+                  <span style={statLabel}>ΕΞΟΔΑ</span>
+                  <br />
+                  <span style={{ ...statValue, color: '#dc2626' }}>{(Number(store.expenses) || 0).toFixed(2)} €</span>
                 </div>
               </div>
 
               <div style={profitRow}>
                 <span style={{ fontWeight: '800', color: '#1e293b', fontSize: '14px' }}>ΚΑΘΑΡΟ ΚΕΡΔΟΣ</span>
-                <span style={{ 
-                  fontWeight: '900', 
-                  fontSize: '18px', 
-                  color: Number(store.profit) >= 0 ? '#0f172a' : '#dc2626' 
-                }}>
-                  {Number(store.profit).toFixed(2)} €
+                <span
+                  style={{
+                    fontWeight: '900',
+                    fontSize: '18px',
+                    color: (Number(store.profit) || 0) >= 0 ? '#0f172a' : '#dc2626',
+                  }}
+                >
+                  {(Number(store.profit) || (Number(store.income) || 0) - (Number(store.expenses) || 0)).toFixed(2)} €
                 </span>
               </div>
             </div>
@@ -248,7 +315,7 @@ function SelectStorePage() {
       <button onClick={() => router.push('/stores/new')} style={addBtnStyle}>
         <Plus size={20} /> ΠΡΟΣΘΗΚΗ ΝΕΟΥ ΚΑΤΑΣΤΗΜΑΤΟΣ
       </button>
-      
+
       <button onClick={handleLogout} style={logoutBtnStyle}>
         <LogOut size={16} /> ΑΠΟΣΥΝΔΕΣΗ ΧΡΗΣΤΗ
       </button>
@@ -259,10 +326,27 @@ function SelectStorePage() {
 // --- STYLES ---
 const containerStyle: any = { padding: '30px 20px', backgroundColor: '#f8fafc', minHeight: '100dvh' }
 const liveRow: any = { marginTop: '10px', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '10px' }
-const livePill: any = { display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '6px 10px', borderRadius: '999px', backgroundColor: '#ffffff', border: '1px solid #e2e8f0', fontSize: '11px', fontWeight: '900' }
+const livePill: any = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '6px',
+  padding: '6px 10px',
+  borderRadius: '999px',
+  backgroundColor: '#ffffff',
+  border: '1px solid #e2e8f0',
+  fontSize: '11px',
+  fontWeight: '900',
+}
 const liveDot: any = { width: '8px', height: '8px', borderRadius: '999px', backgroundColor: '#10b981' }
 const liveText: any = { fontSize: '12px', fontWeight: '800', color: '#64748b' }
-const heroCard: any = { background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)', borderRadius: '26px', padding: '18px', color: 'white', marginBottom: '18px', boxShadow: '0 8px 20px rgba(15, 23, 42, 0.15)' }
+const heroCard: any = {
+  background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
+  borderRadius: '26px',
+  padding: '18px',
+  color: 'white',
+  marginBottom: '18px',
+  boxShadow: '0 8px 20px rgba(15, 23, 42, 0.15)',
+}
 const heroLabel: any = { margin: 0, fontSize: '10px', fontWeight: '900', opacity: 0.75 }
 const heroValue: any = { marginTop: '6px', fontSize: '26px', fontWeight: '900' }
 const heroDivider: any = { height: '1px', backgroundColor: 'rgba(255,255,255,0.12)', marginTop: '12px' }
@@ -274,12 +358,58 @@ const statsGrid: any = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '
 const statBox: any = { padding: '12px', backgroundColor: '#f8fafc', borderRadius: '16px', border: '1px solid #f1f5f9' }
 const statLabel: any = { fontSize: '10px', fontWeight: '800', color: '#94a3b8' }
 const statValue: any = { fontSize: '15px', fontWeight: '900' }
-const profitRow: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '15px', paddingTop: '15px', borderTop: '1px dashed #e2e8f0' }
-const arrowCircle: any = { width: '32px', height: '32px', backgroundColor: '#0f172a', color: 'white', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }
+const profitRow: any = {
+  display: 'flex',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+  marginTop: '15px',
+  paddingTop: '15px',
+  borderTop: '1px dashed #e2e8f0',
+}
+const arrowCircle: any = {
+  width: '32px',
+  height: '32px',
+  backgroundColor: '#0f172a',
+  color: 'white',
+  borderRadius: '50%',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+}
 const lastUpdatedStyle: any = { margin: '6px 0 0', fontSize: '11px', fontWeight: 800, color: '#64748b' }
-const addBtnStyle: any = { width: '100%', padding: '18px', border: '2px dashed #cbd5e1', backgroundColor: 'transparent', color: '#64748b', borderRadius: '20px', fontWeight: '800', marginTop: '20px', cursor: 'pointer' }
-const logoutBtnStyle: any = { backgroundColor: '#fff', color: '#f43f5e', border: '1px solid #fee2e2', padding: '14px', borderRadius: '16px', fontWeight: '800', width: '100%', marginTop: '40px', cursor: 'pointer' }
+const addBtnStyle: any = {
+  width: '100%',
+  padding: '18px',
+  border: '2px dashed #cbd5e1',
+  backgroundColor: 'transparent',
+  color: '#64748b',
+  borderRadius: '20px',
+  fontWeight: '800',
+  marginTop: '20px',
+  cursor: 'pointer',
+}
+const logoutBtnStyle: any = {
+  backgroundColor: '#fff',
+  color: '#f43f5e',
+  border: '1px solid #fee2e2',
+  padding: '14px',
+  borderRadius: '16px',
+  fontWeight: '800',
+  width: '100%',
+  marginTop: '40px',
+  cursor: 'pointer',
+}
 const emptyStateStyle: any = { textAlign: 'center', padding: '50px 20px', backgroundColor: 'white', borderRadius: '24px', border: '1px solid #e2e8f0' }
-const retryBtnStyle: any = { marginTop: '18px', padding: '12px 20px', borderRadius: '14px', border: '1px solid #0f172a', backgroundColor: '#0f172a', color: '#fff', fontWeight: '800', fontSize: '13px', cursor: 'pointer' }
+const retryBtnStyle: any = {
+  marginTop: '18px',
+  padding: '12px 20px',
+  borderRadius: '14px',
+  border: '1px solid #0f172a',
+  backgroundColor: '#0f172a',
+  color: '#fff',
+  fontWeight: '800',
+  fontSize: '13px',
+  cursor: 'pointer',
+}
 
-export default SelectStorePage;
+export default SelectStorePage

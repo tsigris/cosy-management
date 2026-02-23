@@ -2,10 +2,11 @@
 
 import { useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { supabase } from '@/lib/supabase'
+import { getSupabase } from '@/lib/supabase'
 import { toast, Toaster } from 'sonner'
 
 export default function AuthCallbackPage() {
+  const supabase = getSupabase()
   const router = useRouter()
   const searchParams = useSearchParams()
 

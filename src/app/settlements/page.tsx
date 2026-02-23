@@ -12,7 +12,7 @@ import Link from 'next/link'
 
 import { toast, Toaster } from 'sonner'
 
-import { supabase } from '@/lib/supabase'
+import { getSupabase } from '@/lib/supabase'
 
 import {
 
@@ -161,6 +161,7 @@ type AmountFocus = 'total' | 'installment'
 
 
 function yyyyMmDd(d: Date) {
+  const supabase = getSupabase()
 
 const y = d.getFullYear()
 

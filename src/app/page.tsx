@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic'
 
 import { useEffect, useState, Suspense, useCallback, useMemo } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { supabase } from '@/lib/supabase'
+import { getSupabase } from '@/lib/supabase'
 import NotificationsBell from '@/components/NotificationsBell'
 import NextLink from 'next/link'
 import { format, addDays, subDays, parseISO } from 'date-fns'
@@ -1102,6 +1102,7 @@ const emptyStateStyle: any = { textAlign: 'center', padding: '40px 20px', color:
 const spinnerStyle: any = { width: '24px', height: '24px', border: '3px solid #f3f3f3', borderTop: '3px solid #6366f1', borderRadius: '50%', animation: 'spin 1s linear infinite', margin: '0 auto' }
 
 export default function DashboardPage() {
+  const supabase = getSupabase()
   return (
     <ErrorBoundary>
       <Suspense fallback={<div style={{ textAlign: 'center', padding: '40px', color: colors.secondaryText, fontWeight: 800 }}>Φόρτωση dashboard...</div>}>

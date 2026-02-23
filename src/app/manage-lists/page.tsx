@@ -4,7 +4,7 @@ export const dynamic = 'force-dynamic'
 import { useEffect, useMemo, useState, useCallback, Suspense } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { supabase } from '@/lib/supabase'
+import { getSupabase } from '@/lib/supabase'
 import { toast, Toaster } from 'sonner'
 import {
   Users,
@@ -1927,6 +1927,7 @@ const segBtn: any = {
 }
 
 export default function ManageListsPage() {
+  const supabase = getSupabase()
   return (
     <Suspense fallback={<div style={{ fontSize: 16, padding: 20 }}>Φόρτωση...</div>}>
       <ManageListsContent />

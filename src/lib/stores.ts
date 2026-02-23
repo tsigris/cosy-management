@@ -1,4 +1,3 @@
-// src/lib/stores.ts
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 export type StoreCard = {
@@ -10,12 +9,6 @@ export type StoreCard = {
   lastUpdated?: string | null
 }
 
-/**
- * Server-safe + Client-safe:
- * Δεν έχει 'use client'
- * Δεν ακουμπάει window/localStorage
- * Θέλει Supabase client να του το δώσεις απ' έξω
- */
 export async function fetchStoresForUser(
   supabase: SupabaseClient,
   userId: string
@@ -26,8 +19,9 @@ export async function fetchStoresForUser(
     .from('stores')
     .select('id, name')
     .eq('user_id', userId)
-    .order('name', { ascending: true })
+    .order('name')
 
   if (error) throw error
+
   return (data ?? []) as StoreCard[]
 }

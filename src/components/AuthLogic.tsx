@@ -1,9 +1,10 @@
 'use client'
 import { useEffect } from 'react'
-import { supabase } from '@/lib/supabase'
+import { getSupabase } from '@/lib/supabase'
 import { useRouter, usePathname, useSearchParams } from 'next/navigation'
 
 export function AuthLogic() {
+  const supabase = getSupabase()
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()

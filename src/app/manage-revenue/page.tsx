@@ -4,7 +4,7 @@ export const dynamic = 'force-dynamic'
 import { useEffect, useMemo, useState, useCallback, Suspense } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { supabase } from '@/lib/supabase'
+import { getSupabase } from '@/lib/supabase'
 import { toast, Toaster } from 'sonner'
 import { 
   Users, Wrench, Lightbulb, User, Package, Trash2, Plus, 
@@ -265,5 +265,6 @@ const delBtn: any = { flex: 1, padding: '10px', background: '#fee2e2', color: co
 const emptyText: any = { padding: '40px', textAlign: 'center', color: colors.secondaryText };
 
 export default function ManageListsPage() {
+  const supabase = getSupabase()
   return <Suspense fallback={null}><ManageListsInner /></Suspense>
 }

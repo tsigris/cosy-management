@@ -2,7 +2,7 @@
 export const dynamic = 'force-dynamic'
 
 import { useState, useEffect, Suspense, useCallback } from 'react'
-import { supabase } from '@/lib/supabase'
+import { getSupabase } from '@/lib/supabase'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { format, subHours } from 'date-fns'
@@ -403,6 +403,7 @@ const backBtnStyle: any = {
 }
 
 export default function DailyZPage() {
+  const supabase = getSupabase()
   return (
     <Suspense fallback={null}>
       <DailyZContent />
