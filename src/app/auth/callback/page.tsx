@@ -14,26 +14,44 @@ export default function AuthCallbackPage() {
     let isCancelled = false
 
     const processOAuthCallback = async () => {
-      const code = searchParams.get('code')
       const nextRaw = searchParams.get('next') || '/select-store'
       const next = decodeURIComponent(nextRaw)
       const safeNext = next.startsWith('/') ? next : '/select-store'
 
-      if (!code) {
-        router.replace('/login')
+      // 1) Αν γυρίσει με error, να το δούμε καθαρά
+      const errParam = searchParams.get('error')
+      const errDesc = searchParams.get('error_description')
+      if (errParam) {
+        toast.error(decodeURIComponent(errDesc || errParam))
+        if (!isCancelled) router.replace('/login')
         return
       }
 
+      const code = searchParams.get('code')
+
       try {
-        const { error } = await supabase.auth.exchangeCodeForSession(code)
-        if (error) throw error
+        // 2) Αν έχουμε code (PKCE flow)
+        if (code) {
+          const { error } = await supabase.auth.exchangeCodeForSession(code)
+          if (error) throw error
 
-        // force hydration on some mobile browsers
-        await supabase.auth.getSession()
+          await supabase.auth.getSession()
+          await new Promise((resolve) => setTimeout(resolve, 250))
 
-        await new Promise((resolve) => setTimeout(resolve, 250))
+          if (!isCancelled) router.replace(safeNext)
+          return
+        }
 
-        if (!isCancelled) router.replace(safeNext)
+        // 3) Αν ΔΕΝ έχουμε code, κάνουμε fallback:
+        //    μήπως η Supabase έγραψε session με άλλο τρόπο (hash / implicit)
+        const { data } = await supabase.auth.getSession()
+        if (data?.session) {
+          if (!isCancelled) router.replace(safeNext)
+          return
+        }
+
+        // 4) Τίποτα -> πίσω στο login
+        if (!isCancelled) router.replace('/login')
       } catch (err: any) {
         toast.error(err?.message || 'Αποτυχία σύνδεσης με Google.')
         if (!isCancelled) router.replace('/login')
@@ -45,7 +63,7 @@ export default function AuthCallbackPage() {
     return () => {
       isCancelled = true
     }
-  }, [router, searchParams])
+  }, [router, searchParams, supabase])
 
   return (
     <main style={{ minHeight: '100vh', display: 'grid', placeItems: 'center' }}>
