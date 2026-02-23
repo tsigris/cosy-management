@@ -10,17 +10,12 @@ export function AuthLogic() {
   const searchParams = useSearchParams()
 
   useEffect(() => {
-    // ✅ Προσθέσαμε το '/auth' στη λίστα για να επιτρέπεται η σελίδα reset-password
-    const publicPaths = [
-      '/login', 
-      '/register', 
-      '/signup', 
-      '/select-store', 
-      '/stores/new', 
-      '/accept-invite',
-      '/auth'
-    ]
-    
+    // 1. ΑΠΟΛΥΤΗ ΠΡΟΤΕΡΑΙΟΤΗΤΑ: Αν είμαστε σε σελίδα auth, σταματάμε κάθε έλεγχο
+    if (pathname?.includes('reset-password') || pathname?.startsWith('/auth')) {
+      return 
+    }
+
+    const publicPaths = ['/login', '/register', '/signup', '/select-store', '/stores/new', '/accept-invite']
     const isPublicPath = publicPaths.some(path => pathname.startsWith(path))
     
     const storeInUrl = searchParams.get('store')
@@ -30,7 +25,6 @@ export function AuthLogic() {
     const checkAuth = async () => {
       const { data: { session } } = await supabase.auth.getSession()
 
-      // 1. ΑΝ ΔΕΝ ΥΠΑΡΧΕΙ SESSION -> LOGIN
       if (!session) {
         if (!isPublicPath) {
           window.location.href = loginWithNext
@@ -38,32 +32,26 @@ export function AuthLogic() {
         return
       }
 
-      // 2. ΑΝ ΥΠΑΡΧΕΙ SESSION ΑΛΛΑ ΟΧΙ STORE ID ΣΤΟ URL 
-      // Αν είμαστε σε public path (όπως το /auth/reset-password), ΔΕΝ κάνει redirect
       if (!isPublicPath && !storeInUrl) {
         router.push('/select-store')
         return
       }
 
-      // 3. ΣΥΓΧΡΟΝΙΣΜΟΣ LOCAL STORAGE
       if (storeInUrl) {
         localStorage.setItem('active_store_id', storeInUrl)
       }
     }
 
-    // Listener για αλλαγές στο Auth state (π.χ. Logout)
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'SIGNED_OUT') {
         localStorage.removeItem('active_store_id')
         window.location.href = '/login'
-      } else if (event === 'SIGNED_IN' && pathname === '/login') {
-        router.push('/select-store')
-      }
+      } 
+      // Αφαιρέσαμε το αυτόματο redirect στο SIGNED_IN για να μην σε πετάει από το reset-password
     })
 
     checkAuth()
 
-    // Επανέλεγχος όταν ο χρήστης επιστρέφει στο tab
     const handleFocus = () => checkAuth()
     window.addEventListener('focus', handleFocus)
     document.addEventListener('visibilitychange', handleFocus)
@@ -73,7 +61,7 @@ export function AuthLogic() {
       window.removeEventListener('focus', handleFocus)
       document.removeEventListener('visibilitychange', handleFocus)
     }
-  }, [router, pathname, searchParams, supabase]) // Προσθήκη supabase στα dependencies για τυπικούς λόγους
+  }, [router, pathname, searchParams, supabase])
 
   return null;
 }
