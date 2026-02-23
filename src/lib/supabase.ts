@@ -1,36 +1,35 @@
-import { createBrowserClient } from '@supabase/ssr'
+'use client'
 
-function mustGetEnv(name: string) {
-  const v = process.env[name]
-  if (!v) throw new Error(`Missing Supabase environment variable: ${name}`)
-  return v
-}
+import { createClient } from '@supabase/supabase-js'
 
-// ✅ Single shared browser client
-export const supabase = (() => {
-  const url = mustGetEnv('NEXT_PUBLIC_SUPABASE_URL')
-  const anon = mustGetEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY')
-  return createBrowserClient(url, anon)
-})()
+let client: ReturnType<typeof createClient> | null = null
 
-// ✅ Optional helpers (αν τα χρησιμοποιείς αλλού)
-let sessionCache: any = undefined
+export function getSupabaseBrowser() {
+  // Σε περίπτωση που γίνει import κατά λάθος σε server, να μην σκάσει όλο το app
+  if (typeof window === 'undefined') return null as any
 
-export const getSessionCached = async () => {
-  if (sessionCache !== undefined) return sessionCache
-  const { data, error } = await supabase.auth.getSession()
-  if (error || !data.session) {
-    sessionCache = null
-    return null
+  if (client) return client
+
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+  // Μην κάνεις throw εδώ (ρίχνει όλο το site στο Vercel)
+  if (!url || !anon) {
+    console.error('Missing NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY')
+    // Επιστρέφουμε “dummy” για να μην σκάσει η σελίδα
+    return null as any
   }
-  sessionCache = data.session
-  return data.session
-}
 
-export const setSessionCache = (session: any) => {
-  sessionCache = session
-}
+  client = createClient(url, anon, {
+    auth: {
+      persistSession: true,
+      storageKey: 'cosy-management-auth',
+      storage: window.localStorage,
+      autoRefreshToken: true,
+      detectSessionInUrl: true,
+      flowType: 'pkce',
+    },
+  })
 
-export const clearSessionCache = () => {
-  sessionCache = null
+  return client
 }
