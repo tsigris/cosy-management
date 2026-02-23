@@ -1,46 +1,36 @@
-import { createClient } from '@supabase/supabase-js'
+import { createBrowserClient } from '@supabase/ssr'
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-
-if (!supabaseUrl || !supabaseAnonKey) {
-	throw new Error('Missing Supabase environment variables')
+function mustGetEnv(name: string) {
+  const v = process.env[name]
+  if (!v) throw new Error(`Missing Supabase environment variable: ${name}`)
+  return v
 }
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-	auth: {
-		persistSession: true,
-		storageKey: 'cosy-management-auth',
-		storage: typeof window !== 'undefined' ? window.localStorage : undefined,
-		autoRefreshToken: true,
-		detectSessionInUrl: true,
-		flowType: 'pkce',
-	},
-})
+// ✅ Single shared browser client
+export const supabase = (() => {
+  const url = mustGetEnv('NEXT_PUBLIC_SUPABASE_URL')
+  const anon = mustGetEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY')
+  return createBrowserClient(url, anon)
+})()
 
-// Απλοποιημένο cache χωρίς Promises που "κολλάνε"
+// ✅ Optional helpers (αν τα χρησιμοποιείς αλλού)
 let sessionCache: any = undefined
 
 export const getSessionCached = async () => {
-	// Αν υπάρχει ήδη session στη μνήμη, δώσε το ακαριαία
-	if (sessionCache) return sessionCache
-
-	// Αν δεν υπάρχει, ρώτα ΤΩΡΑ τη Supabase (απαραίτητο για Safari/Mobile)
-	const { data, error } = await supabase.auth.getSession()
-	
-	if (error || !data.session) {
-		sessionCache = null
-		return null
-	}
-
-	sessionCache = data.session
-	return data.session
+  if (sessionCache !== undefined) return sessionCache
+  const { data, error } = await supabase.auth.getSession()
+  if (error || !data.session) {
+    sessionCache = null
+    return null
+  }
+  sessionCache = data.session
+  return data.session
 }
 
 export const setSessionCache = (session: any) => {
-	sessionCache = session
+  sessionCache = session
 }
 
 export const clearSessionCache = () => {
-	sessionCache = null
+  sessionCache = null
 }
