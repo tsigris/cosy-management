@@ -116,7 +116,7 @@ export default function InvitePage() {
       const { error } = await supabase.from('store_invites').insert({
         store_id: storeId,
         role,
-        email: email.trim() || null,
+        email: email.trim().toLowerCase(),
         token_hash: tokenHash,
         created_by: user.id,
         expires_at: expiresAt
