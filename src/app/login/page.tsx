@@ -48,20 +48,23 @@ function LoginContent() {
     }
   }
 
-  const signInWithGoogle = async () => {
-    setLoading(true)
+  const handleGoogleLogin = async () => {
     try {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: `${window.location.origin}/auth/callback?next=/select-store`,
-          queryParams: { prompt: 'select_account' }
+          redirectTo: `${window.location.origin}/auth/callback`,
+          queryParams: {
+            access_type: 'offline',
+            prompt: 'select_account'
+          }
         }
       })
+
       if (error) throw error
-    } catch (err: any) {
-      toast.error(err.message || 'Αποτυχία σύνδεσης με Google.')
-      setLoading(false)
+
+    } catch (err) {
+      console.error('Google login error:', err)
     }
   }
 
@@ -106,7 +109,7 @@ function LoginContent() {
             <span style={orLineStyle} /><span style={orTextStyle}>ή</span><span style={orLineStyle} />
           </div>
 
-          <button type="button" onClick={signInWithGoogle} disabled={loading} style={googleBtnStyle}>
+          <button type="button" onClick={handleGoogleLogin} disabled={loading} style={googleBtnStyle}>
             <GoogleIcon />
             <span>Σύνδεση με Google</span>
           </button>
