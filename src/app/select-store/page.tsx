@@ -22,7 +22,7 @@ function SelectStorePage() {
 
   const handleLogout = async () => {
     try {
-      if (supabase) await supabase.auth.signOut()
+      await supabase.auth.signOut()
     } catch {}
     window.location.href = '/login'
   }
@@ -86,12 +86,6 @@ function SelectStorePage() {
         setShowRetryButton(false)
         setIsRetrying(false)
 
-        if (!supabase) {
-          toast.error('Σφάλμα: Δεν φορτώθηκε το Supabase (λείπουν env variables).')
-          router.replace('/login')
-          return
-        }
-
         // 1) Session (με retry για mobile browsers)
         let { data: s1 } = await supabase.auth.getSession()
         let session = s1.session
@@ -118,22 +112,23 @@ function SelectStorePage() {
           return
         }
 
-        // 2) Φέρνουμε stores από τη βάση (με retry για RLS delay)
-        let stores = await fetchStoresForUser(supabase, session.user.id)
+        // 2) Φέρνουμε stores (με retry για RLS/replication delay)
+        let stores = await fetchStoresForUser(session.user.id)
 
-        if (!stores.length) {
+        // Αν δεν βρει τίποτα, κάνουμε ένα μικρό retry μετά από λίγο
+        if (!stores || stores.length === 0) {
           setIsRetrying(true)
           await new Promise((r) => setTimeout(r, 1200))
-          stores = await fetchStoresForUser(supabase, session.user.id)
+          stores = await fetchStoresForUser(session.user.id)
         }
 
         if (!isMounted) return
 
-        setUserStores(stores)
+        setUserStores(stores || [])
         setIsRetrying(false)
         setShowRetryButton(false)
 
-        maybeAutoRedirectSingleStore(stores)
+        maybeAutoRedirectSingleStore(stores || [])
       } catch (err: any) {
         console.error('Fetch error:', err)
         if (isMounted) {
@@ -151,7 +146,6 @@ function SelectStorePage() {
     }
   }, [router, maybeAutoRedirectSingleStore, retryNonce, supabase])
 
-  // Αν δεν έχεις ακόμα income/expenses, τα κρατάμε 0. Αν αργότερα τα γεμίσεις, θα δουλέψει.
   const globalStats = useMemo(() => {
     const safe = Array.isArray(userStores) ? userStores : []
     const income = safe.reduce((acc, s) => acc + (Number(s?.income) || 0), 0)
@@ -159,7 +153,6 @@ function SelectStorePage() {
     return { income, expenses, profit: income - expenses }
   }, [userStores])
 
-  // --- LOADING STATE ---
   if (loading) {
     return (
       <div style={containerStyle}>
@@ -381,7 +374,13 @@ const logoutBtnStyle: any = {
   marginTop: '40px',
   cursor: 'pointer',
 }
-const emptyStateStyle: any = { textAlign: 'center', padding: '50px 20px', backgroundColor: 'white', borderRadius: '24px', border: '1px solid #e2e8f0' }
+const emptyStateStyle: any = {
+  textAlign: 'center',
+  padding: '50px 20px',
+  backgroundColor: 'white',
+  borderRadius: '24px',
+  border: '1px solid #e2e8f0',
+}
 const retryBtnStyle: any = {
   marginTop: '18px',
   padding: '12px 20px',
