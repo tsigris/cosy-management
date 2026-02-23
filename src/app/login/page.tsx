@@ -2,22 +2,33 @@
 
 export const dynamic = 'force-dynamic'
 
-import { useState, Suspense } from 'react'
+import { useMemo, useState, Suspense } from 'react'
 import type { FormEvent } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { toast, Toaster } from 'sonner'
 import { getSupabase } from '@/lib/supabase'
 
+function safeNextPath(nextUrl: string | null, fallback: string) {
+  const raw = (nextUrl || '').trim()
+  if (!raw) return fallback
+  // allow only internal paths like "/select-store"
+  if (raw.startsWith('/') && !raw.startsWith('//') && !raw.startsWith('/\\')) return raw
+  return fallback
+}
+
 function LoginContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
 
-  // Optional: αν έρχεται next param (π.χ. /login?next=/select-store)
-  const nextUrl = searchParams.get('next') || '/select-store'
+  const nextUrl = useMemo(() => {
+    const nextParam = searchParams.get('next')
+    return safeNextPath(nextParam, '/select-store')
+  }, [searchParams])
 
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [showPass, setShowPass] = useState(false)
   const [loading, setLoading] = useState(false)
 
   const handleLogin = async (e: FormEvent) => {
@@ -43,16 +54,13 @@ function LoginContent() {
         email: email.trim(),
         password: password.trim(),
       })
-
       if (error) throw error
 
-      // Αν υπάρχει session, προχώρα
+      // mobile-friendly redirect
       if (data?.session) {
-        // μικρό delay βοηθάει mobile browsers να γράψουν storage
         await new Promise((r) => setTimeout(r, 150))
         window.location.href = nextUrl
       } else {
-        // fallback
         router.push(nextUrl)
       }
     } catch (err: any) {
@@ -72,6 +80,7 @@ function LoginContent() {
       return
     }
 
+    setLoading(true)
     try {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
@@ -83,72 +92,145 @@ function LoginContent() {
           },
         },
       })
-
       if (error) throw error
+      // redirect handled by supabase provider flow
     } catch (err: any) {
       console.error('Google login error:', err)
       toast.error(err?.message || 'Αποτυχία σύνδεσης με Google.')
+      setLoading(false)
     }
   }
 
   return (
-    <main style={containerStyle}>
+    <main className="min-h-screen bg-slate-50 text-slate-900">
       <Toaster richColors position="top-center" />
 
-      <div style={loginCardStyle}>
-        <div style={headerStyle}>
-          <h1 style={brandStyle}>COSY APP</h1>
-          <div style={dividerStyle} />
-          <p style={instructionStyle}>Είσοδος στο Σύστημα</p>
-        </div>
+      {/* soft background blobs */}
+      <div className="pointer-events-none fixed inset-0 overflow-hidden">
+        <div className="absolute -top-24 left-1/2 h-72 w-[700px] -translate-x-1/2 rounded-full bg-slate-900/10 blur-3xl" />
+        <div className="absolute top-28 left-[-120px] h-64 w-64 rounded-full bg-indigo-500/10 blur-3xl" />
+        <div className="absolute top-36 right-[-120px] h-64 w-64 rounded-full bg-emerald-500/10 blur-3xl" />
+      </div>
 
-        <form onSubmit={handleLogin} style={formStyle}>
-          <div style={fieldGroup}>
-            <label style={labelStyle}>EMAIL</label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              style={inputStyle}
-              placeholder="email@example.com"
-              autoComplete="email"
-              required
-            />
+      <div className="relative mx-auto flex min-h-screen max-w-6xl items-center justify-center px-4 py-10">
+        <div className="w-full max-w-md">
+          {/* Brand */}
+          <div className="mb-6 text-center">
+            <Link href="/" className="inline-flex items-center gap-2">
+              <div className="grid h-11 w-11 place-items-center rounded-2xl bg-slate-900 text-white font-black">
+                P
+              </div>
+              <div className="text-left leading-tight">
+                <div className="text-lg font-black tracking-tight">Profitro</div>
+                <div className="text-xs font-semibold text-slate-500">Sign in to your workspace</div>
+              </div>
+            </Link>
           </div>
 
-          <div style={fieldGroup}>
-            <label style={labelStyle}>ΚΩΔΙΚΟΣ ΠΡΟΣΒΑΣΗΣ</label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              style={inputStyle}
-              placeholder="••••••••"
-              autoComplete="current-password"
-              required
-            />
+          {/* Card */}
+          <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-[0_20px_60px_rgba(15,23,42,0.12)]">
+            <div className="mb-5">
+              <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-extrabold text-slate-700">
+                <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                Secure login
+              </div>
+              <h1 className="mt-3 text-2xl font-black tracking-tight">Είσοδος</h1>
+              <p className="mt-1 text-sm font-semibold text-slate-600">
+                Συνδέσου για να δεις τα καταστήματά σου και τα reports σου.
+              </p>
+            </div>
+
+            <form onSubmit={handleLogin} className="grid gap-4">
+              <div>
+                <label className="text-[11px] font-extrabold text-slate-500">EMAIL</label>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="email@example.com"
+                  autoComplete="email"
+                  required
+                  disabled={loading}
+                  className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold outline-none focus:border-slate-400"
+                />
+              </div>
+
+              <div>
+                <label className="text-[11px] font-extrabold text-slate-500">ΚΩΔΙΚΟΣ</label>
+                <div className="mt-2 flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 focus-within:border-slate-400">
+                  <input
+                    type={showPass ? 'text' : 'password'}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="••••••••"
+                    autoComplete="current-password"
+                    required
+                    disabled={loading}
+                    className="w-full bg-transparent px-1 py-1 text-sm font-semibold outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPass((v) => !v)}
+                    disabled={loading}
+                    className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-extrabold text-slate-700 hover:bg-slate-50"
+                    aria-label={showPass ? 'Hide password' : 'Show password'}
+                  >
+                    {showPass ? 'HIDE' : 'SHOW'}
+                  </button>
+                </div>
+
+                <div className="mt-2 flex items-center justify-between">
+                  <Link
+                    href="/forgot-password"
+                    className="text-xs font-extrabold text-slate-700 hover:text-slate-900"
+                  >
+                    Ξέχασες κωδικό;
+                  </Link>
+                  <span className="text-xs font-semibold text-slate-400">Next: {nextUrl}</span>
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="mt-1 w-full rounded-2xl bg-slate-900 px-4 py-3 text-sm font-extrabold text-white hover:bg-slate-800 disabled:opacity-60"
+              >
+                {loading ? 'ΤΑΥΤΟΠΟΙΗΣΗ...' : 'ΕΙΣΟΔΟΣ'}
+              </button>
+
+              <div className="my-1 flex items-center gap-3">
+                <div className="h-px flex-1 bg-slate-200" />
+                <div className="text-xs font-extrabold text-slate-400">ή</div>
+                <div className="h-px flex-1 bg-slate-200" />
+              </div>
+
+              <button
+                type="button"
+                onClick={handleGoogleLogin}
+                disabled={loading}
+                className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-extrabold text-slate-900 hover:bg-slate-50 disabled:opacity-60"
+              >
+                <span className="inline-flex items-center justify-center gap-2">
+                  <GoogleIcon />
+                  Σύνδεση με Google
+                </span>
+              </button>
+            </form>
+
+            <div className="mt-6 border-t border-slate-200 pt-5 text-center">
+              <Link href="/register" className="text-sm font-extrabold text-indigo-600 hover:text-indigo-700">
+                Δημιουργία λογαριασμού →
+              </Link>
+              <div className="mt-2 text-xs font-semibold text-slate-500">
+                Με το login αποδέχεσαι τους όρους χρήσης & την πολιτική απορρήτου.
+              </div>
+            </div>
           </div>
 
-          <button type="submit" disabled={loading} style={submitBtnStyle}>
-            {loading ? 'ΤΑΥΤΟΠΟΙΗΣΗ...' : 'ΕΙΣΟΔΟΣ'}
-          </button>
-
-          <div style={orDividerStyle}>
-            <span style={orLineStyle} />
-            <span style={orTextStyle}>ή</span>
-            <span style={orLineStyle} />
+          {/* small footer */}
+          <div className="mt-6 text-center text-xs font-semibold text-slate-500">
+            © {new Date().getFullYear()} Profitro.app
           </div>
-
-          <button type="button" onClick={handleGoogleLogin} disabled={loading} style={googleBtnStyle}>
-            <GoogleIcon />
-            <span>Σύνδεση με Google</span>
-          </button>
-        </form>
-
-        <div style={footerStyle}>
-          <Link href="/register" style={footerLinkStyle}>
-            ΔΗΜΙΟΥΡΓΙΑ ΛΟΓΑΡΙΑΣΜΟΥ →
-          </Link>
         </div>
       </div>
     </main>
@@ -156,9 +238,8 @@ function LoginContent() {
 }
 
 export default function LoginPage() {
-  const supabase = getSupabase()
   return (
-    <Suspense fallback={<div style={containerStyle}>Φόρτωση...</div>}>
+    <Suspense fallback={<div className="min-h-screen bg-slate-50 p-6 text-sm font-semibold text-slate-600">Φόρτωση...</div>}>
       <LoginContent />
     </Suspense>
   )
@@ -167,7 +248,7 @@ export default function LoginPage() {
 // ----- UI -----
 function GoogleIcon() {
   return (
-    <svg width="18" height="18" viewBox="0 0 24 24">
+    <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
       <path
         fill="#EA4335"
         d="M12 10.2v3.9h5.5c-.2 1.2-.9 2.2-1.9 2.9l3 2.3c1.7-1.6 2.7-4 2.7-6.8 0-.7-.1-1.5-.2-2.2H12z"
@@ -187,96 +268,3 @@ function GoogleIcon() {
     </svg>
   )
 }
-
-const containerStyle = {
-  minHeight: '100vh',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  backgroundColor: '#f8fafc',
-  padding: '20px',
-}
-
-const loginCardStyle = {
-  backgroundColor: '#ffffff',
-  width: '100%',
-  maxWidth: '400px',
-  padding: '40px',
-  borderRadius: '24px',
-  boxShadow: '0 10px 25px rgba(0,0,0,0.05)',
-  borderTop: '6px solid #6366f1',
-  textAlign: 'center' as const,
-}
-
-const headerStyle = { marginBottom: '30px' }
-const brandStyle = {
-  fontSize: '28px',
-  fontWeight: '900',
-  color: '#0f172a',
-  margin: '0 0 5px 0',
-  letterSpacing: '-1px',
-}
-const dividerStyle = {
-  height: '3px',
-  width: '30px',
-  backgroundColor: '#6366f1',
-  margin: '0 auto 15px auto',
-  borderRadius: '2px',
-}
-const instructionStyle = {
-  fontSize: '14px',
-  color: '#64748b',
-  fontWeight: '700',
-  textTransform: 'uppercase' as const,
-  letterSpacing: '0.5px',
-}
-
-const formStyle = { display: 'flex', flexDirection: 'column' as const, gap: '20px', textAlign: 'left' as const }
-const fieldGroup = { display: 'flex', flexDirection: 'column' as const, gap: '6px' }
-const labelStyle = { fontSize: '10px', fontWeight: '800', color: '#94a3b8', letterSpacing: '0.5px' }
-const inputStyle = {
-  padding: '14px',
-  borderRadius: '12px',
-  border: '1px solid #e2e8f0',
-  fontSize: '15px',
-  outline: 'none',
-  backgroundColor: '#f8fafc',
-}
-
-const submitBtnStyle = {
-  backgroundColor: '#0f172a',
-  color: '#ffffff',
-  padding: '16px',
-  borderRadius: '14px',
-  border: 'none',
-  fontWeight: '800',
-  cursor: 'pointer',
-  marginTop: '10px',
-}
-
-const orDividerStyle = { display: 'flex', alignItems: 'center', gap: '10px', marginTop: '6px' }
-const orLineStyle = { flex: 1, height: '1px', backgroundColor: '#e2e8f0' }
-const orTextStyle = { fontSize: '12px', color: '#64748b', fontWeight: '700' }
-
-const googleBtnStyle = {
-  width: '100%',
-  backgroundColor: '#ffffff',
-  color: '#0f172a',
-  padding: '14px 16px',
-  borderRadius: '14px',
-  border: '1px solid #d1d5db',
-  fontWeight: '700',
-  cursor: 'pointer',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  gap: '10px',
-}
-
-const footerStyle = {
-  marginTop: '30px',
-  textAlign: 'center' as const,
-  borderTop: '1px solid #f1f5f9',
-  paddingTop: '20px',
-}
-const footerLinkStyle = { color: '#6366f1', fontWeight: '800', textDecoration: 'none', fontSize: '14px' }
