@@ -14,7 +14,9 @@ export default function AuthCallbackPage() {
 
     const processOAuthCallback = async () => {
       const code = searchParams.get('code')
-      const next = searchParams.get('next') || '/select-store'
+      const nextRaw = searchParams.get('next') || '/select-store'
+      const next = decodeURIComponent(nextRaw)
+      const safeNext = next.startsWith('/') ? next : '/select-store'
 
       if (!code) {
         router.replace('/login')
@@ -25,16 +27,15 @@ export default function AuthCallbackPage() {
         const { error } = await supabase.auth.exchangeCodeForSession(code)
         if (error) throw error
 
-        await new Promise((resolve) => setTimeout(resolve, 200))
+        // force hydration on some mobile browsers
+        await supabase.auth.getSession()
 
-        if (!isCancelled) {
-          router.replace(next)
-        }
+        await new Promise((resolve) => setTimeout(resolve, 250))
+
+        if (!isCancelled) router.replace(safeNext)
       } catch (err: any) {
         toast.error(err?.message || 'Αποτυχία σύνδεσης με Google.')
-        if (!isCancelled) {
-          router.replace('/login')
-        }
+        if (!isCancelled) router.replace('/login')
       }
     }
 
