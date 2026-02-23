@@ -21,7 +21,7 @@ async function sha256Hex(input: string) {
 }
 
 export default function AcceptInvitePage() {
-  const supabase = getSupabase()
+  const supabase = useMemo(() => getSupabase(), []) // ✅ σταθερό instance
   const router = useRouter()
   const searchParams = useSearchParams()
   const token = useMemo(() => searchParams.get('token') || '', [searchParams])
@@ -56,13 +56,14 @@ export default function AcceptInvitePage() {
         if (error) {
           console.error(error)
           const msg = (error?.message || '').toLowerCase()
-          const mappedMessage = msg.includes('invalid') || msg.includes('not found')
-            ? 'Το link είναι άκυρο ή έχει ήδη χρησιμοποιηθεί.'
-            : msg.includes('expired')
-            ? 'Η πρόσκληση έχει λήξει.'
-            : msg.includes('already used') || msg.includes('used')
-            ? 'Η πρόσκληση έχει ήδη χρησιμοποιηθεί.'
-            : 'Το link είναι άκυρο ή έληξε ή έχει ήδη χρησιμοποιηθεί.'
+          const mappedMessage =
+            msg.includes('invalid') || msg.includes('not found')
+              ? 'Το link είναι άκυρο ή έχει ήδη χρησιμοποιηθεί.'
+              : msg.includes('expired')
+                ? 'Η πρόσκληση έχει λήξει.'
+                : msg.includes('already used') || msg.includes('used')
+                  ? 'Η πρόσκληση έχει ήδη χρησιμοποιηθεί.'
+                  : 'Το link είναι άκυρο ή έληξε ή έχει ήδη χρησιμοποιηθεί.'
 
           toast.error(mappedMessage)
           if (!isCancelled) setScreenMessage(mappedMessage)
@@ -78,6 +79,7 @@ export default function AcceptInvitePage() {
 
         if (storeId) {
           toast.success('Η πρόσβαση ενεργοποιήθηκε!')
+          if (!isCancelled) setScreenMessage('Η πρόσβαση ενεργοποιήθηκε! Μεταφορά...')
           router.replace(`/?store=${storeId}`)
           return
         }
@@ -96,7 +98,7 @@ export default function AcceptInvitePage() {
     return () => {
       isCancelled = true
     }
-  }, [router, token, supabase])
+  }, [router, token, supabase]) // supabase είναι σταθερό λόγω useMemo([])
 
   return (
     <main style={pageStyle}>
