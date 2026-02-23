@@ -157,31 +157,6 @@ function RegisterForm() {
         ]
         const { error: assetsError } = await supabase.from('fixed_assets').insert(defaultAssets)
         if (assetsError) throw assetsError
-      } else if (tokenParam) {
-        const { data: inviteData, error: inviteError } = await supabase.rpc('accept_store_invite', {
-          p_token: tokenParam
-        })
-
-        if (inviteError) {
-          const msg = (inviteError.message || '').toLowerCase()
-          const mappedMessage = msg.includes('expired')
-            ? 'Η πρόσκληση έχει λήξει.'
-            : msg.includes('already used') || msg.includes('used')
-              ? 'Η πρόσκληση έχει ήδη χρησιμοποιηθεί.'
-              : 'Το link είναι άκυρο ή έληξε ή έχει ήδη χρησιμοποιηθεί.'
-          throw new Error(mappedMessage)
-        }
-
-        finalStoreId =
-          typeof inviteData === 'string' || typeof inviteData === 'number'
-            ? String(inviteData)
-            : (inviteData as { storeId?: string; store_id?: string } | null)?.storeId ||
-              (inviteData as { storeId?: string; store_id?: string } | null)?.store_id ||
-              ''
-
-        if (!finalStoreId) {
-          throw new Error('Το link είναι άκυρο ή έληξε ή έχει ήδη χρησιμοποιηθεί.')
-        }
       }
 
       // 3. ΕΛΕΓΧΟΣ EMAIL CONFIRMATION

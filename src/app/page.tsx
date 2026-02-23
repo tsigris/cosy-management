@@ -310,36 +310,7 @@ function DashboardContent() {
   const acceptInviteFromToken = useCallback(async () => {
     if (!inviteTokenFromUrl || storeIdFromUrl) return
 
-    try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
-
-      if (!user) {
-        router.push(`/login?next=${encodeURIComponent(`/?token=${inviteTokenFromUrl}`)}`)
-        return
-      }
-
-      const { data, error } = await supabase.rpc('accept_store_invite', { p_token: inviteTokenFromUrl })
-      if (error) throw error
-
-      const acceptedStoreId =
-        typeof data === 'string' || typeof data === 'number'
-          ? String(data)
-          : (data as { storeId?: string; store_id?: string } | null)?.storeId ||
-            (data as { storeId?: string; store_id?: string } | null)?.store_id ||
-            ''
-
-      if (!acceptedStoreId) {
-        throw new Error('Η πρόσκληση δεν επέστρεψε έγκυρο κατάστημα.')
-      }
-
-      toast.success('Η πρόσκληση έγινε αποδεκτή!')
-      router.replace(`/?store=${acceptedStoreId}`)
-    } catch (err) {
-      console.error('Invite accept error:', err)
-      toast.error('Αποτυχία αποδοχής πρόσκλησης')
-    }
+    router.replace(`/accept-invite?token=${inviteTokenFromUrl}`)
   }, [inviteTokenFromUrl, storeIdFromUrl, router])
 
   useEffect(() => {
