@@ -1,27 +1,18 @@
 'use client'
 
 import { useEffect, useState, useMemo, useRef, useCallback } from 'react'
-import { getSupabase } from '@/lib/supabase'
-import { fetchStoresForUser } from '@/lib/stores'
 import { useRouter } from 'next/navigation'
-import { LogOut, Plus, ArrowRight, RefreshCw, Store } from 'lucide-react'
+import { LogOut, Plus, ArrowRight, RefreshCw, Store as StoreIcon } from 'lucide-react'
 import { toast, Toaster } from 'sonner'
 
-type StoreCard = {
-  id: string
-  name: string
-  income?: number
-  expenses?: number
-  profit?: number
-  lastUpdated?: string | null
-}
+import { getSupabase } from '@/lib/supabase'
+import { fetchStoresForUser, type StoreCard } from '@/lib/stores'
 
 function SelectStorePage() {
   const supabase = getSupabase()
   const [userStores, setUserStores] = useState<StoreCard[]>([])
   const [loading, setLoading] = useState(true)
   const [isRetrying, setIsRetrying] = useState(false)
-  const [accessWarning, setAccessWarning] = useState('')
   const [showRetryButton, setShowRetryButton] = useState(false)
   const [retryNonce, setRetryNonce] = useState(0)
   const hasAutoRedirected = useRef(false)
@@ -92,33 +83,31 @@ function SelectStorePage() {
     const loadStores = async () => {
       try {
         setLoading(true)
-        setAccessWarning('')
-        setIsRetrying(false)
         setShowRetryButton(false)
+        setIsRetrying(false)
 
         if (!supabase) {
-          toast.error('Λείπουν env variables Supabase. Έλεγξε Vercel Environment Variables.')
+          toast.error('Σφάλμα: Δεν φορτώθηκε το Supabase (λείπουν env variables).')
           router.replace('/login')
           return
         }
 
-        // 1) session
-        let {
-          data: { session },
-        } = await supabase.auth.getSession()
+        // 1) Session (με retry για mobile browsers)
+        let { data: s1 } = await supabase.auth.getSession()
+        let session = s1.session
 
-        // 2) retry session για mobile
         if (!session) {
           setIsRetrying(true)
-          await new Promise((r) => setTimeout(r, 1000))
-          const retry = await supabase.auth.getSession()
-          session = retry.data.session
+          await new Promise((r) => setTimeout(r, 900))
+          const s2 = await supabase.auth.getSession()
+          session = s2.data.session
         }
 
         if (!session) {
+          // extra nudge
           await supabase.auth.getUser()
-          const retryAfterUser = await supabase.auth.getSession()
-          session = retryAfterUser.data.session
+          const s3 = await supabase.auth.getSession()
+          session = s3.data.session
         }
 
         if (!session) {
@@ -129,11 +118,10 @@ function SelectStorePage() {
           return
         }
 
-        // 3) load stores (αντικαθιστά το refreshStoresCache)
+        // 2) Φέρνουμε stores από τη βάση (με retry για RLS delay)
         let stores = await fetchStoresForUser(supabase, session.user.id)
 
-        // 4) δεύτερη ευκαιρία αν RLS “αργεί”
-        if (isMounted && (!stores || stores.length === 0)) {
+        if (!stores.length) {
           setIsRetrying(true)
           await new Promise((r) => setTimeout(r, 1200))
           stores = await fetchStoresForUser(supabase, session.user.id)
@@ -141,13 +129,11 @@ function SelectStorePage() {
 
         if (!isMounted) return
 
-        const safeStores = Array.isArray(stores) ? stores : []
-        setUserStores(safeStores)
-        setAccessWarning('') // αν θέλεις μήνυμα εδώ, το περνάμε από fetchStoresForUser
-        setShowRetryButton(false)
+        setUserStores(stores)
         setIsRetrying(false)
+        setShowRetryButton(false)
 
-        maybeAutoRedirectSingleStore(safeStores)
+        maybeAutoRedirectSingleStore(stores)
       } catch (err: any) {
         console.error('Fetch error:', err)
         if (isMounted) {
@@ -155,10 +141,7 @@ function SelectStorePage() {
           setShowRetryButton(true)
         }
       } finally {
-        if (isMounted) {
-          setLoading(false)
-          setIsRetrying(false)
-        }
+        if (isMounted) setLoading(false)
       }
     }
 
@@ -168,10 +151,11 @@ function SelectStorePage() {
     }
   }, [router, maybeAutoRedirectSingleStore, retryNonce, supabase])
 
+  // Αν δεν έχεις ακόμα income/expenses, τα κρατάμε 0. Αν αργότερα τα γεμίσεις, θα δουλέψει.
   const globalStats = useMemo(() => {
-    const safeStores = Array.isArray(userStores) ? userStores : []
-    const income = safeStores.reduce((acc, s) => acc + (Number(s?.income) || 0), 0)
-    const expenses = safeStores.reduce((acc, s) => acc + (Number(s?.expenses) || 0), 0)
+    const safe = Array.isArray(userStores) ? userStores : []
+    const income = safe.reduce((acc, s) => acc + (Number(s?.income) || 0), 0)
+    const expenses = safe.reduce((acc, s) => acc + (Number(s?.expenses) || 0), 0)
     return { income, expenses, profit: income - expenses }
   }, [userStores])
 
@@ -216,29 +200,6 @@ function SelectStorePage() {
         </div>
       </header>
 
-      {!!accessWarning && (
-        <div
-          style={{
-            background: '#fff7ed',
-            border: '1px solid #fed7aa',
-            color: '#9a3412',
-            padding: '12px 14px',
-            borderRadius: '16px',
-            fontWeight: 800,
-            fontSize: '12px',
-            marginBottom: '14px',
-          }}
-        >
-          {accessWarning}
-        </div>
-      )}
-
-      {showRetryButton && (
-        <button onClick={() => setRetryNonce((n) => n + 1)} style={retryBtnStyle}>
-          ΑΝΑΝΕΩΣΗ ΠΡΟΣΒΑΣΗΣ
-        </button>
-      )}
-
       {userStores.length > 0 && (
         <div style={heroCard}>
           <p style={heroLabel}>ΣΥΝΟΛΟ ΜΗΝΑ (ΟΛΑ ΤΑ ΚΑΤΑΣΤΗΜΑΤΑ)</p>
@@ -259,11 +220,12 @@ function SelectStorePage() {
 
       {userStores.length === 0 ? (
         <div style={emptyStateStyle}>
-          <Store size={40} color="#cbd5e1" style={{ margin: '0 auto 15px' }} />
+          <StoreIcon size={40} color="#cbd5e1" style={{ margin: '0 auto 15px' }} />
           <p style={{ fontWeight: '700', color: '#64748b', fontSize: '18px' }}>Δεν βρέθηκαν καταστήματα.</p>
           <p style={{ color: '#94a3b8', fontSize: '13px', marginTop: '5px' }}>
             Δεν βρέθηκε σύνδεση του λογαριασμού σας με κάποιο κατάστημα.
           </p>
+
           <button onClick={() => setRetryNonce((n) => n + 1)} style={retryBtnStyle}>
             ΑΝΑΝΕΩΣΗ ΠΡΟΣΒΑΣΗΣ
           </button>
@@ -272,7 +234,14 @@ function SelectStorePage() {
         <div style={{ display: 'grid', gap: '15px' }}>
           {userStores.map((store) => (
             <div key={store.id} onClick={() => handleSelect(store.id)} style={cardStyle} className="store-card">
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  marginBottom: '10px',
+                }}
+              >
                 <div>
                   <h2 style={{ fontSize: '18px', fontWeight: '900', margin: 0, color: '#0f172a' }}>{store.name}</h2>
                   <p style={lastUpdatedStyle}>Ενημέρωση: {formatRelativeMinutes(store.lastUpdated)}</p>
@@ -304,12 +273,18 @@ function SelectStorePage() {
                     color: (Number(store.profit) || 0) >= 0 ? '#0f172a' : '#dc2626',
                   }}
                 >
-                  {(Number(store.profit) || (Number(store.income) || 0) - (Number(store.expenses) || 0)).toFixed(2)} €
+                  {(Number(store.profit) || 0).toFixed(2)} €
                 </span>
               </div>
             </div>
           ))}
         </div>
+      )}
+
+      {showRetryButton && (
+        <button onClick={() => setRetryNonce((n) => n + 1)} style={retryBtnStyle}>
+          ΑΝΑΝΕΩΣΗ
+        </button>
       )}
 
       <button onClick={() => router.push('/stores/new')} style={addBtnStyle}>
@@ -353,7 +328,14 @@ const heroDivider: any = { height: '1px', backgroundColor: 'rgba(255,255,255,0.1
 const heroRow: any = { display: 'flex', justifyContent: 'space-between', marginTop: '12px' }
 const heroMiniLabel: any = { fontSize: '10px', fontWeight: '900', opacity: 0.7 }
 const heroMiniValue: any = { fontSize: '14px', fontWeight: '900' }
-const cardStyle: any = { backgroundColor: 'white', padding: '24px', borderRadius: '24px', border: '1px solid #e2e8f0', cursor: 'pointer', marginBottom: '5px' }
+const cardStyle: any = {
+  backgroundColor: 'white',
+  padding: '24px',
+  borderRadius: '24px',
+  border: '1px solid #e2e8f0',
+  cursor: 'pointer',
+  marginBottom: '5px',
+}
 const statsGrid: any = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }
 const statBox: any = { padding: '12px', backgroundColor: '#f8fafc', borderRadius: '16px', border: '1px solid #f1f5f9' }
 const statLabel: any = { fontSize: '10px', fontWeight: '800', color: '#94a3b8' }
