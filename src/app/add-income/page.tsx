@@ -114,6 +114,16 @@ type RevenueSource = {
   name: string
 }
 
+type PaymentMethod = 'Μετρητά' | 'Τράπεζα' | 'Πίστωση'
+
+function parseAmount(input: string) {
+  const s = String(input || '')
+    .trim()
+    .replace(/\s+/g, '')
+    .replace(',', '.')
+  return Number(s)
+}
+
 function AddIncomeForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -125,7 +135,7 @@ function AddIncomeForm() {
   const mode = searchParams.get('mode')
 
   const [amount, setAmount] = useState('')
-  const [method, setMethod] = useState<'Μετρητά' | 'Τράπεζα'>('Μετρητά')
+  const [method, setMethod] = useState<PaymentMethod>('Μετρητά')
   const [notes, setNotes] = useState('')
   const [isCredit, setIsCredit] = useState(false) // Αναμονή είσπραξης
   const [isAgainstDebt, setIsAgainstDebt] = useState(mode === 'debt')
@@ -156,15 +166,17 @@ function AddIncomeForm() {
     return () => document.removeEventListener('pointerdown', handler, true)
   }, [])
 
-  // ✅ ERP/SaaS safety: prefer localStorage active_store_id, ignore swapped URL store if differs
   const getActiveStoreId = useCallback(() => {
-    const ls =
-      typeof window !== 'undefined' ? (localStorage.getItem('active_store_id') || '').trim() : ''
+    const ls = typeof window !== 'undefined' ? (localStorage.getItem('active_store_id') || '').trim() : ''
     const url = (urlStoreId || '').trim()
-
-    // If both exist and mismatch → use localStorage (prevents id swapping via URL)
-    if (ls && url && ls !== url) return ls
-    return ls || url || storeId || null
+    if (ls) return ls
+    if (url) {
+      try {
+        localStorage.setItem('active_store_id', url)
+      } catch {}
+      return url
+    }
+    return storeId || null
   }, [urlStoreId, storeId])
 
   const loadFormData = useCallback(async () => {
@@ -176,6 +188,7 @@ function AddIncomeForm() {
 
       const activeStoreId = getActiveStoreId()
       if (!activeStoreId) {
+        toast.error('Δεν βρέθηκε κατάστημα (store)')
         setLoading(false)
         return
       }
@@ -297,7 +310,7 @@ function AddIncomeForm() {
 
   const doCreateSource = async () => {
     const activeStoreId = getActiveStoreId()
-    if (!activeStoreId) return toast.error('Δεν βρέθηκε κατάστημα')
+    if (!activeStoreId) return toast.error('Δεν βρέθηκε κατάστημα (store)')
 
     const nm = cName.trim()
     if (!nm) return toast.error('Γράψε όνομα πηγής')
@@ -335,7 +348,8 @@ function AddIncomeForm() {
   }
 
   const handleSave = async () => {
-    if (!amount || Number(amount) <= 0) return toast.error('Συμπληρώστε το ποσό')
+    const amt = parseAmount(amount)
+    if (!amount || !Number.isFinite(amt) || amt <= 0) return toast.error('Συμπληρώστε σωστό ποσό')
     if (!selectedSourceId) return toast.error('Επιλέξτε πηγή εσόδου')
 
     // ✅ HARD RULES:
@@ -353,13 +367,17 @@ function AddIncomeForm() {
       if (!session?.user?.id) throw new Error('Δεν βρέθηκε session χρήστη')
 
       const activeStoreId = getActiveStoreId()
-      if (!activeStoreId) throw new Error('Δεν βρέθηκε κατάστημα')
+      if (!activeStoreId) {
+        toast.error('Δεν βρέθηκε κατάστημα (store)')
+        setLoading(false)
+        return
+      }
 
       // ✅ Canonical transaction type:
       // income side debt collection = debt_received
       const txType = isAgainstDebt ? 'debt_received' : 'income'
       const finalIsCredit = txType === 'debt_received' ? false : isCredit
-      const finalMethod = txType === 'debt_received' ? method : isCredit ? ('Πίστωση' as any) : method
+      const finalMethod: PaymentMethod = txType === 'debt_received' ? method : isCredit ? 'Πίστωση' : method
 
       // ✅ Auto notes safety for debt collection
       const baseNotes = (notes || '').trim()
@@ -371,7 +389,7 @@ function AddIncomeForm() {
           : baseNotes
 
       const payload: any = {
-        amount: Math.abs(Number(amount)), // income always +
+        amount: Math.abs(amt), // income always +
         method: finalMethod,
         is_credit: finalIsCredit,
         type: txType,
@@ -391,7 +409,7 @@ function AddIncomeForm() {
       if (error) throw error
 
       toast.success(editId ? 'Το έσοδο ενημερώθηκε!' : 'Το έσοδο καταχωρήθηκε!')
-      router.push(`/?date=${selectedDate}&store=${activeStoreId}`)
+      router.push(`/?date=${selectedDate}&store=${getActiveStoreId() || ''}`)
       router.refresh()
     } catch (error: any) {
       toast.error(error?.message || 'Κάτι πήγε στραβά')
@@ -428,7 +446,7 @@ function AddIncomeForm() {
             </div>
           </div>
 
-          <Link href={`/?store=${storeId || ''}`} style={backBtnStyle}>
+          <Link href={`/?store=${getActiveStoreId() || ''}`} style={backBtnStyle}>
             ✕
           </Link>
         </div>

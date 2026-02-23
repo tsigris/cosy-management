@@ -284,12 +284,17 @@ function AddExpenseForm() {
     return () => document.removeEventListener('pointerdown', handler, true)
   }, [])
 
-  // ✅ Safer active store resolver (URL -> localStorage -> state)
-  const resolveActiveStoreId = useCallback(() => {
-    const ls = typeof window !== 'undefined' ? localStorage.getItem('active_store_id') : null
-    // If both exist and mismatch, prefer localStorage to avoid URL swap
-    if (ls && urlStoreId && ls !== urlStoreId) return ls
-    return urlStoreId || ls || storeId
+  const getActiveStoreId = useCallback(() => {
+    const ls = typeof window !== 'undefined' ? (localStorage.getItem('active_store_id') || '').trim() : ''
+    const url = (urlStoreId || '').trim()
+    if (ls) return ls
+    if (url) {
+      try {
+        localStorage.setItem('active_store_id', url)
+      } catch {}
+      return url
+    }
+    return storeId || null
   }, [urlStoreId, storeId])
 
   const loadFormData = useCallback(async () => {
@@ -299,7 +304,7 @@ function AddExpenseForm() {
       } = await supabase.auth.getSession()
       if (!session) return router.push('/login')
 
-      const activeStoreId = resolveActiveStoreId()
+      const activeStoreId = getActiveStoreId()
       if (!activeStoreId) {
         setLoading(false)
         toast.error('Δεν βρέθηκε κατάστημα (store)')
@@ -414,7 +419,7 @@ function AddExpenseForm() {
     } finally {
       setLoading(false)
     }
-  }, [editId, router, selectedDate, urlSupId, urlAssetId, searchParams, resolveActiveStoreId])
+  }, [editId, router, selectedDate, urlSupId, urlAssetId, searchParams, getActiveStoreId])
 
   useEffect(() => {
     loadFormData()
@@ -524,7 +529,7 @@ function AddExpenseForm() {
   }
 
   const doCreate = async () => {
-    const activeStoreId = resolveActiveStoreId()
+    const activeStoreId = getActiveStoreId()
     if (!activeStoreId) return toast.error('Δεν βρέθηκε κατάστημα (store)')
 
     const nm = clampText(cName, 80)
@@ -643,7 +648,12 @@ function AddExpenseForm() {
   }
 
   // ✅ Balance lock: block entries before last Z date (assumes type='z_report')
-  const checkBalanceLock = async (activeStoreId: string) => {
+  const checkBalanceLock = async () => {
+    const activeStoreId = getActiveStoreId()
+    if (!activeStoreId) {
+      toast.error('Δεν βρέθηκε κατάστημα (store)')
+      return null
+    }
     try {
       const { data, error } = await supabase
         .from('transactions')
@@ -662,7 +672,12 @@ function AddExpenseForm() {
   }
 
   // ✅ Duplicate detection: same day + same amount + same receiver (+ same txType)
-  const checkPossibleDuplicate = async (activeStoreId: string, txType: 'expense' | 'debt_payment', amtAbs: number) => {
+  const checkPossibleDuplicate = async (txType: 'expense' | 'debt_payment', amtAbs: number) => {
+    const activeStoreId = getActiveStoreId()
+    if (!activeStoreId) {
+      toast.error('Δεν βρέθηκε κατάστημα (store)')
+      return null
+    }
     try {
       let q = supabase
         .from('transactions')
@@ -702,7 +717,7 @@ function AddExpenseForm() {
         return router.push('/login')
       }
 
-      const activeStoreId = resolveActiveStoreId()
+      const activeStoreId = getActiveStoreId()
       if (!activeStoreId) {
         setLoading(false)
         return toast.error('Δεν βρέθηκε κατάστημα (store)')
@@ -711,7 +726,7 @@ function AddExpenseForm() {
       setStoreId(activeStoreId)
 
       // ✅ Balance lock check
-      const lastZ = await checkBalanceLock(activeStoreId)
+      const lastZ = await checkBalanceLock()
       if (lastZ && selectedDate < lastZ) {
         setLoading(false)
         toast.error(`Η ημερομηνία είναι κλειδωμένη λόγω Z Report (τελευταίο κλείσιμο: ${lastZ})`)
@@ -737,7 +752,7 @@ function AddExpenseForm() {
       }
 
       // ✅ Duplicate detection confirm (only for new saves OR edits too—kept for both)
-      const dup = await checkPossibleDuplicate(activeStoreId, txType, amt)
+      const dup = await checkPossibleDuplicate(txType, amt)
       if (dup && dup.length > 0) {
         const label = smartQuery || 'Δικαιούχο'
         const ok = window.confirm(
@@ -814,7 +829,7 @@ function AddExpenseForm() {
       if (error) throw error
 
       toast.success(editId ? 'Η κίνηση ενημερώθηκε!' : 'Η κίνηση καταχωρήθηκε!')
-      router.push(`/?date=${selectedDate}&store=${activeStoreId}`)
+      router.push(`/?date=${selectedDate}&store=${getActiveStoreId() || ''}`)
       router.refresh()
     } catch (error: any) {
       console.error(error)
@@ -866,7 +881,7 @@ function AddExpenseForm() {
             </div>
           </div>
 
-          <Link href={`/?store=${resolveActiveStoreId() || ''}`} style={backBtnStyle}>
+          <Link href={`/?store=${getActiveStoreId() || ''}`} style={backBtnStyle}>
             ✕
           </Link>
         </div>
