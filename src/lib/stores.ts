@@ -9,23 +9,14 @@ export type StoreCard = {
   lastUpdated?: string | null
 }
 
-const supabase = getSupabase()
-
 export async function fetchStoresForUser(userId: string): Promise<StoreCard[]> {
   if (!userId) return []
 
-  // φέρνουμε stores + balances μαζί
+  const supabase = getSupabase()
+
   const { data, error } = await supabase
-    .from('stores')
-    .select(`
-      id,
-      name,
-      owner_id,
-      v_financial_balances (
-        credit_income,
-        credit_expenses
-      )
-    `)
+    .from('v_store_stats')
+    .select('id, name, owner_id, income, expenses, profit, last_updated')
     .eq('owner_id', userId)
     .order('name')
 
@@ -34,20 +25,12 @@ export async function fetchStoresForUser(userId: string): Promise<StoreCard[]> {
     throw error
   }
 
-  return (data ?? []).map((store: any) => {
-    const balances = store.v_financial_balances?.[0]
-
-    const income = Number(balances?.credit_income) || 0
-    const expenses = Number(balances?.credit_expenses) || 0
-    const profit = income - expenses
-
-    return {
-      id: store.id,
-      name: store.name,
-      income,
-      expenses,
-      profit,
-      lastUpdated: null,
-    }
-  })
+  return (data ?? []).map((row: any) => ({
+    id: row.id,
+    name: row.name,
+    income: Number(row.income) || 0,
+    expenses: Number(row.expenses) || 0,
+    profit: Number(row.profit) || 0,
+    lastUpdated: row.last_updated ?? null,
+  }))
 }
