@@ -7,6 +7,18 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { getSupabase } from '@/lib/supabase'
 import { toast, Toaster } from 'sonner'
 
+function bytesToHex(bytes: Uint8Array) {
+  return Array.from(bytes)
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('')
+}
+
+async function sha256Hex(input: string) {
+  const inputBytes = new TextEncoder().encode(input)
+  const hashBuffer = await crypto.subtle.digest('SHA-256', inputBytes)
+  return bytesToHex(new Uint8Array(hashBuffer))
+}
+
 export default function AcceptInvitePage() {
   const supabase = useMemo(() => getSupabase(), []) // ✅ σταθερό instance
   const router = useRouter()
@@ -34,8 +46,11 @@ export default function AcceptInvitePage() {
           return
         }
 
+        const isHexSha256 = /^[a-f0-9]{64}$/i.test(token)
+        const tokenHash = isHexSha256 ? token.toLowerCase() : await sha256Hex(token)
+
         const { data, error } = await supabase.rpc('redeem_store_invite', {
-          p_token_hash: token,
+          p_token_hash: tokenHash,
         })
 
         if (error) {
