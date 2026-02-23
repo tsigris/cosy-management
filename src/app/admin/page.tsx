@@ -8,6 +8,7 @@ function LegacyInviteRedirect() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const storeIdFromUrl = searchParams.get('store')
+  const supabase = getSupabase()
 
   useEffect(() => {
     async function redirectToInvitePage() {
@@ -48,6 +49,5 @@ function LegacyInviteRedirect() {
 }
 
 export default function InvitePage() {
-  const supabase = getSupabase()
   return <LegacyInviteRedirect />
 }
