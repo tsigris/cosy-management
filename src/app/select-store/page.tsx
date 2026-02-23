@@ -89,6 +89,12 @@ function SelectStorePage() {
         }
 
         if (!session) {
+          await supabase.auth.getUser()
+          const retryAfterUser = await supabase.auth.getSession()
+          session = retryAfterUser.data.session
+        }
+
+        if (!session) {
           if (isMounted) {
             toast.error('Δεν βρέθηκε ενεργή σύνδεση. Επιστροφή στο Login.')
             router.replace('/login')

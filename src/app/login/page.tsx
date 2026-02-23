@@ -54,8 +54,7 @@ function LoginContent() {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          // Στέλνουμε τον χρήστη ΑΠΕΥΘΕΙΑΣ στο select-store μετά τη Google
-          redirectTo: `${window.location.origin}/select-store`,
+          redirectTo: `${window.location.origin}/auth/callback?next=/select-store`,
           queryParams: { prompt: 'select_account' }
         }
       })
