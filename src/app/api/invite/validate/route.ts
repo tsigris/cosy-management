@@ -1,8 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
 import { getSupabase } from '@/lib/supabase'
-
-const FALLBACK_SUPABASE_URL = 'https://eytpewhenrnoueipjmuk.supabase.co'
 
 export const runtime = 'nodejs'
 
@@ -16,26 +13,8 @@ export async function POST(request: NextRequest) {
     }
 
     const supabase = getSupabase()
-    void supabase
 
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || FALLBACK_SUPABASE_URL
-    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-
-    if (!serviceRoleKey) {
-      return NextResponse.json(
-        { valid: false, error: 'Server invite validation is not configured.' },
-        { status: 500 }
-      )
-    }
-
-    const adminSupabase = createClient(supabaseUrl, serviceRoleKey, {
-      auth: {
-        autoRefreshToken: false,
-        persistSession: false
-      }
-    })
-
-    const { data, error } = await adminSupabase.from('stores').select('id').eq('id', inviteId).maybeSingle()
+    const { data, error } = await supabase.from('stores').select('id').eq('id', inviteId).maybeSingle()
 
     if (error) {
       console.error('Invite validation failed:', error)

@@ -1,4 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { getSupabase } from '@/lib/supabase'
+const supabase = getSupabase()
+
 
 export type StoreCard = {
   id: string
