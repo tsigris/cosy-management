@@ -1,8 +1,6 @@
 'use client'
 
-import { getSupabaseBrowser } from '@/lib/supabase-browser'
-
-const STORES_CACHE_PREFIX = 'cosy-stores:v1:'
+import { supabase } from '@/lib/supabase'const STORES_CACHE_PREFIX = 'cosy-stores:v1:'
 
 export type StoreCard = {
   id: string
@@ -64,7 +62,6 @@ export async function getStoresCachedForUser(userId: string): Promise<StoreCard[
 }
 
 export async function fetchStoresForUser(userId: string): Promise<StoreCard[]> {
-  const supabase = getSupabaseBrowser()
   if (!supabase) {
     console.error('Supabase browser client not available (fetchStoresForUser)')
     return []

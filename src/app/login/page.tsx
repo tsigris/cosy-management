@@ -7,7 +7,7 @@ import type { FormEvent } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { toast, Toaster } from 'sonner'
-import { getSupabaseBrowser } from '@/lib/supabase-browser'
+import { getSupabase } from '@/lib/supabase'
 
 function LoginContent() {
   const router = useRouter()
@@ -23,9 +23,12 @@ function LoginContent() {
   const handleLogin = async (e: FormEvent) => {
     e.preventDefault()
 
-    const supabase = getSupabaseBrowser()
-    if (!supabase) {
-      toast.error('Σφάλμα: Δεν φορτώθηκε το Supabase (λείπουν env variables).')
+    let supabase: ReturnType<typeof getSupabase>
+    try {
+      supabase = getSupabase()
+    } catch (err: any) {
+      toast.error('Σφάλμα: Λείπουν env variables της Supabase στο Vercel.')
+      console.error(err)
       return
     }
 
@@ -60,9 +63,12 @@ function LoginContent() {
   }
 
   const handleGoogleLogin = async () => {
-    const supabase = getSupabaseBrowser()
-    if (!supabase) {
-      toast.error('Σφάλμα: Δεν φορτώθηκε το Supabase (λείπουν env variables).')
+    let supabase: ReturnType<typeof getSupabase>
+    try {
+      supabase = getSupabase()
+    } catch (err: any) {
+      toast.error('Σφάλμα: Λείπουν env variables της Supabase στο Vercel.')
+      console.error(err)
       return
     }
 
@@ -202,14 +208,39 @@ const loginCardStyle = {
 }
 
 const headerStyle = { marginBottom: '30px' }
-const brandStyle = { fontSize: '28px', fontWeight: '900', color: '#0f172a', margin: '0 0 5px 0', letterSpacing: '-1px' }
-const dividerStyle = { height: '3px', width: '30px', backgroundColor: '#6366f1', margin: '0 auto 15px auto', borderRadius: '2px' }
-const instructionStyle = { fontSize: '14px', color: '#64748b', fontWeight: '700', textTransform: 'uppercase' as const, letterSpacing: '0.5px' }
+const brandStyle = {
+  fontSize: '28px',
+  fontWeight: '900',
+  color: '#0f172a',
+  margin: '0 0 5px 0',
+  letterSpacing: '-1px',
+}
+const dividerStyle = {
+  height: '3px',
+  width: '30px',
+  backgroundColor: '#6366f1',
+  margin: '0 auto 15px auto',
+  borderRadius: '2px',
+}
+const instructionStyle = {
+  fontSize: '14px',
+  color: '#64748b',
+  fontWeight: '700',
+  textTransform: 'uppercase' as const,
+  letterSpacing: '0.5px',
+}
 
 const formStyle = { display: 'flex', flexDirection: 'column' as const, gap: '20px', textAlign: 'left' as const }
 const fieldGroup = { display: 'flex', flexDirection: 'column' as const, gap: '6px' }
 const labelStyle = { fontSize: '10px', fontWeight: '800', color: '#94a3b8', letterSpacing: '0.5px' }
-const inputStyle = { padding: '14px', borderRadius: '12px', border: '1px solid #e2e8f0', fontSize: '15px', outline: 'none', backgroundColor: '#f8fafc' }
+const inputStyle = {
+  padding: '14px',
+  borderRadius: '12px',
+  border: '1px solid #e2e8f0',
+  fontSize: '15px',
+  outline: 'none',
+  backgroundColor: '#f8fafc',
+}
 
 const submitBtnStyle = {
   backgroundColor: '#0f172a',
@@ -241,5 +272,10 @@ const googleBtnStyle = {
   gap: '10px',
 }
 
-const footerStyle = { marginTop: '30px', textAlign: 'center' as const, borderTop: '1px solid #f1f5f9', paddingTop: '20px' }
+const footerStyle = {
+  marginTop: '30px',
+  textAlign: 'center' as const,
+  borderTop: '1px solid #f1f5f9',
+  paddingTop: '20px',
+}
 const footerLinkStyle = { color: '#6366f1', fontWeight: '800', textDecoration: 'none', fontSize: '14px' }
