@@ -203,6 +203,7 @@ function ymFromDate(dateStr: string) {
 function AddExpenseForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
+  const supabase = getSupabase()
 
   const editId = searchParams.get('editId')
   const selectedDate = searchParams.get('date') || new Date().toISOString().split('T')[0]
@@ -1655,7 +1656,6 @@ const segBtn: any = {
 }
 
 export default function AddExpensePage() {
-  const supabase = getSupabase()
   return (
     <Suspense fallback={<div style={{ fontSize: 16, padding: 20 }}>Φόρτωση...</div>}>
       <AddExpenseForm />
