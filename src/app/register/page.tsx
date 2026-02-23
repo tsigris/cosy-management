@@ -47,7 +47,7 @@ function RegisterForm() {
     safeNextPath && safeNextPath.startsWith('/accept-invite?token=')
       ? safeNextPath
       : tokenParam
-        ? `/accept-invite?token=${encodeURIComponent(tokenParam)}`
+        ? `/accept-invite?token=${tokenParam}`
         : null
 
   const isInviteRegistration = Boolean(inviteNextPath)

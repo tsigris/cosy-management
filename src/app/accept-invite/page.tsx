@@ -19,6 +19,10 @@ async function sha256Hex(input: string) {
   return bytesToHex(new Uint8Array(hashBuffer))
 }
 
+function isHexSha256(s: string) {
+  return /^[0-9a-f]{64}$/i.test(s)
+}
+
 export default function AcceptInvitePage() {
   const supabase = useMemo(() => getSupabase(), []) // ✅ σταθερό instance
   const router = useRouter()
@@ -46,8 +50,14 @@ export default function AcceptInvitePage() {
           return
         }
 
-        const isHexSha256 = /^[a-f0-9]{64}$/i.test(token)
-        const tokenHash = isHexSha256 ? token.toLowerCase() : await sha256Hex(token)
+        const tokenAlreadyHashed = isHexSha256(token)
+        const tokenHash = tokenAlreadyHashed ? token.toLowerCase() : await sha256Hex(token)
+
+        if (process.env.NODE_ENV !== 'production') {
+          console.log(
+            `[accept-invite] token treated as ${tokenAlreadyHashed ? 'hashed' : 'raw'}`
+          )
+        }
 
         const { data, error } = await supabase.rpc('redeem_store_invite', {
           p_token_hash: tokenHash,
