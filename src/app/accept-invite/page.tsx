@@ -7,6 +7,19 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { getSupabase } from '@/lib/supabase'
 import { toast, Toaster } from 'sonner'
 
+// --- helpers (ίδια λογική με InvitePage: token -> sha256Hex) ---
+function bytesToHex(bytes: Uint8Array) {
+  return Array.from(bytes)
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('')
+}
+
+async function sha256Hex(input: string) {
+  const inputBytes = new TextEncoder().encode(input)
+  const hashBuffer = await crypto.subtle.digest('SHA-256', inputBytes)
+  return bytesToHex(new Uint8Array(hashBuffer))
+}
+
 export default function AcceptInvitePage() {
   const supabase = getSupabase()
   const router = useRouter()
@@ -26,7 +39,7 @@ export default function AcceptInvitePage() {
 
       try {
         const {
-          data: { user }
+          data: { user },
         } = await supabase.auth.getUser()
 
         if (!user) {
@@ -34,7 +47,17 @@ export default function AcceptInvitePage() {
           return
         }
 
-        const { data, error } = await supabase.rpc('accept_store_invite', { p_token: token })
+        // ✅ FIX: Το invite αποθηκεύει token_hash = sha256(token)
+        // Άρα στέλνουμε hash στο RPC (για να βρει σωστά το invite)
+        const tokenHash = await sha256Hex(token)
+
+        // ✅ Στέλνουμε ΚΑΙ τα 2 payload formats για μέγιστη συμβατότητα
+        // (αν το RPC περιμένει p_token_hash, θα δουλέψει)
+        // (αν περιμένει p_token, του δίνουμε ήδη το hash)
+        const { data, error } = await supabase.rpc('accept_store_invite', {
+          p_token_hash: tokenHash,
+          p_token: tokenHash,
+        } as any)
 
         if (error) {
           console.error(error)
@@ -42,8 +65,8 @@ export default function AcceptInvitePage() {
           const mappedMessage = msg.includes('expired')
             ? 'Η πρόσκληση έχει λήξει.'
             : msg.includes('already used') || msg.includes('used')
-              ? 'Η πρόσκληση έχει ήδη χρησιμοποιηθεί.'
-              : 'Το link είναι άκυρο ή έληξε ή έχει ήδη χρησιμοποιηθεί.'
+            ? 'Η πρόσκληση έχει ήδη χρησιμοποιηθεί.'
+            : 'Το link είναι άκυρο ή έληξε ή έχει ήδη χρησιμοποιηθεί.'
 
           toast.error(mappedMessage)
           if (!isCancelled) setScreenMessage(mappedMessage)
@@ -77,7 +100,7 @@ export default function AcceptInvitePage() {
     return () => {
       isCancelled = true
     }
-  }, [router, token])
+  }, [router, token, supabase])
 
   return (
     <main style={pageStyle}>
@@ -93,7 +116,7 @@ const pageStyle: React.CSSProperties = {
   alignItems: 'center',
   justifyContent: 'center',
   padding: '24px',
-  background: '#f8fafc'
+  background: '#f8fafc',
 }
 
 const messageStyle: React.CSSProperties = {
@@ -101,5 +124,5 @@ const messageStyle: React.CSSProperties = {
   color: '#0f172a',
   fontSize: '18px',
   fontWeight: 700,
-  textAlign: 'center'
+  textAlign: 'center',
 }
