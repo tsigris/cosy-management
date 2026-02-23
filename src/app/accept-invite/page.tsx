@@ -47,22 +47,18 @@ export default function AcceptInvitePage() {
           return
         }
 
-        // ✅ FIX: Το invite αποθηκεύει token_hash = sha256(token)
-        // Άρα στέλνουμε hash στο RPC (για να βρει σωστά το invite)
         const tokenHash = await sha256Hex(token)
 
-        // ✅ Στέλνουμε ΚΑΙ τα 2 payload formats για μέγιστη συμβατότητα
-        // (αν το RPC περιμένει p_token_hash, θα δουλέψει)
-        // (αν περιμένει p_token, του δίνουμε ήδη το hash)
-        const { data, error } = await supabase.rpc('accept_store_invite', {
+        const { data, error } = await supabase.rpc('redeem_store_invite', {
           p_token_hash: tokenHash,
-          p_token: tokenHash,
-        } as any)
+        })
 
         if (error) {
           console.error(error)
           const msg = (error?.message || '').toLowerCase()
-          const mappedMessage = msg.includes('expired')
+          const mappedMessage = msg.includes('invalid') || msg.includes('not found')
+            ? 'Το link είναι άκυρο ή έχει ήδη χρησιμοποιηθεί.'
+            : msg.includes('expired')
             ? 'Η πρόσκληση έχει λήξει.'
             : msg.includes('already used') || msg.includes('used')
             ? 'Η πρόσκληση έχει ήδη χρησιμοποιηθεί.'
