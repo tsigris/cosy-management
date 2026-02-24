@@ -112,8 +112,8 @@ export async function POST(request: NextRequest) {
 
     if (caller.id === userId && role !== 'admin') {
       return NextResponse.json(
-        { ok: false, error: 'Δεν μπορείς να αφαιρέσεις δικαιώματα admin από τον εαυτό σου.' },
-        { status: 400 }
+        { ok: false, error: 'Δεν μπορείτε να αλλάξετε τον ρόλο του εαυτού σας.' },
+        { status: 403 }
       )
     }
 

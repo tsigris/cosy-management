@@ -105,7 +105,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (caller.id === userId) {
-      return NextResponse.json({ ok: false, error: 'Δεν μπορείς να αφαιρέσεις τον εαυτό σου.' }, { status: 400 })
+      return NextResponse.json({ ok: false, error: 'Δεν μπορείτε να αφαιρέσετε τον εαυτό σας.' }, { status: 403 })
     }
 
     const { error: deleteError } = await adminClient

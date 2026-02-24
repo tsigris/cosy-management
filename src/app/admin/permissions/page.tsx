@@ -6,7 +6,7 @@ import { getSupabaseBrowser } from '@/lib/supabase-browser'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { toast, Toaster } from 'sonner'
-import { ShieldCheck, X, UserPlus } from 'lucide-react'
+import { ShieldCheck, X } from 'lucide-react'
 import ErrorBoundary from '@/components/ErrorBoundary'
 
 type UserRole = 'admin' | 'user'
@@ -167,7 +167,7 @@ function PermissionsContent() {
     if (!storeId) return
 
     if (userId === myId && role !== 'admin') {
-      toast.error('Δεν μπορείς να αφαιρέσεις δικαιώματα admin από τον εαυτό σου.')
+      toast.error('Δεν μπορείτε να αλλάξετε τον ρόλο του εαυτού σας.')
       return
     }
 
@@ -210,7 +210,7 @@ function PermissionsContent() {
   const removeUser = async (userId: string) => {
     if (!storeId) return
     if (userId === myId) {
-      toast.error('Δεν μπορείς να αφαιρέσεις τον εαυτό σου.')
+      toast.error('Δεν μπορείτε να αφαιρέσετε τον εαυτό σας.')
       return
     }
 
@@ -253,7 +253,6 @@ function PermissionsContent() {
 
   const safeUsers = Array.isArray(users) ? users : []
   const admins = safeUsers.filter((u) => u?.role === 'admin')
-  const staff = safeUsers.filter((u) => u?.role !== 'admin')
 
   return (
     <div style={containerStyle}>
@@ -278,11 +277,20 @@ function PermissionsContent() {
         <div style={loadingTextStyle}>ΣΥΓΧΡΟΝΙΣΜΟΣ ΧΡΗΣΤΩΝ...</div>
       ) : (
         <div style={{ paddingBottom: '100px' }}>
-          <p style={sectionLabel}>ΔΙΑΧΕΙΡΙΣΤΕΣ</p>
+          <div style={heroCardStyle}>
+            <p style={heroLabel}>ΔΙΚΑΙΩΜΑΤΑ ΚΑΤΑΣΤΗΜΑΤΟΣ</p>
+            <h2 style={heroAmountText}>{admins.length}</h2>
+            <div style={heroStatsRow}>
+              <span style={heroStatValue}>ΕΝΕΡΓΟΙ ADMINS</span>
+            </div>
+          </div>
+
+          <p style={sectionLabel}>ΔΙΑΧΕΙΡΙΣΤΕΣ ({admins.length})</p>
           {admins.length > 0 ? (
             admins.map((u) => {
               const selectValue: UserRole = u.role === 'admin' ? 'admin' : 'user'
               const disabledByLoad = actionsDisabled || actionLoadingUserId === u.user_id
+              const isSelf = u.user_id === myId
 
               return (
                 <article key={u.user_id} style={userCard}>
@@ -307,21 +315,31 @@ function PermissionsContent() {
                     </button>
                     <select
                       value={selectValue}
-                      disabled={disabledByLoad || u.user_id === myId}
+                      disabled={disabledByLoad || isSelf}
                       onChange={(event) => {
+                        if (isSelf) {
+                          toast.error('Δεν μπορείτε να αλλάξετε τον ρόλο του εαυτού σας.')
+                          return
+                        }
                         const role = event.target.value as UserRole
                         void updateUserRole(u.user_id, role)
                       }}
-                      style={{ ...selectStyle, opacity: disabledByLoad || u.user_id === myId ? 0.6 : 1, cursor: disabledByLoad || u.user_id === myId ? 'not-allowed' : 'pointer' }}
+                      style={{ ...selectStyle, opacity: disabledByLoad || isSelf ? 0.6 : 1, cursor: disabledByLoad || isSelf ? 'not-allowed' : 'pointer' }}
                     >
                       <option value="user">USER</option>
                       <option value="admin">ADMIN</option>
                     </select>
                     <button
                       type="button"
-                      onClick={() => void removeUser(u.user_id)}
-                      style={{ ...delBtnStyle, opacity: disabledByLoad || u.user_id === myId ? 0.6 : 1, cursor: disabledByLoad || u.user_id === myId ? 'not-allowed' : 'pointer' }}
-                      disabled={disabledByLoad || u.user_id === myId}
+                      onClick={() => {
+                        if (isSelf) {
+                          toast.error('Δεν μπορείτε να αφαιρέσετε τον εαυτό σας.')
+                          return
+                        }
+                        void removeUser(u.user_id)
+                      }}
+                      style={{ ...delBtnStyle, opacity: disabledByLoad || isSelf ? 0.6 : 1, cursor: disabledByLoad || isSelf ? 'not-allowed' : 'pointer' }}
+                      disabled={disabledByLoad || isSelf}
                     >
                       Αφαίρεση
                     </button>
@@ -333,61 +351,16 @@ function PermissionsContent() {
             <div style={loadingTextStyle}>Δεν βρέθηκαν διαχειριστές</div>
           )}
 
-          <div style={{ height: '30px' }} />
-
-          <p style={sectionLabel}>ΠΡΟΣΩΠΙΚΟ / ΣΥΝΕΡΓΑΤΕΣ ({staff.length})</p>
-          <div style={listContainer}>
-            {staff.length > 0 ? staff.map((u) => {
-              const selectValue: UserRole = u.role === 'admin' ? 'admin' : 'user'
-              const disabledByLoad = actionsDisabled || actionLoadingUserId === u.user_id
-
-              return (
-                <article key={u.user_id} style={staffRow}>
-                  <div style={{ flex: 1 }}>
-                    <p style={adminNameText}>{u.user_email || u.user_id}</p>
-                    {!u.user_email ? <p style={unknownEmailStyle}>Email άγνωστο (παλιή εγγραφή)</p> : null}
-                  </div>
-
-                  <div style={rowActionsStyle}>
-                    <button
-                      type="button"
-                      style={{ ...editBtnStyle, opacity: disabledByLoad || !u.user_email ? 0.6 : 1, cursor: disabledByLoad || !u.user_email ? 'not-allowed' : 'pointer' }}
-                      disabled={disabledByLoad || !u.user_email}
-                      onClick={() => {
-                        if (!u.user_email) return
-                        void sendResetFor(u.user_email)
-                      }}
-                    >
-                      Reset
-                    </button>
-                    <select
-                      value={selectValue}
-                      disabled={disabledByLoad || u.user_id === myId}
-                      onChange={(event) => {
-                        const role = event.target.value as UserRole
-                        void updateUserRole(u.user_id, role)
-                      }}
-                      style={{ ...selectStyle, opacity: disabledByLoad || u.user_id === myId ? 0.6 : 1, cursor: disabledByLoad || u.user_id === myId ? 'not-allowed' : 'pointer' }}
-                    >
-                      <option value="user">USER</option>
-                      <option value="admin">ADMIN</option>
-                    </select>
-                    <button
-                      type="button"
-                      onClick={() => void removeUser(u.user_id)}
-                      style={{ ...delBtnStyle, opacity: disabledByLoad || u.user_id === myId ? 0.6 : 1, cursor: disabledByLoad || u.user_id === myId ? 'not-allowed' : 'pointer' }}
-                      disabled={disabledByLoad || u.user_id === myId}
-                    >
-                      Αφαίρεση
-                    </button>
-                  </div>
-                </article>
-              )
-            }) : <div style={loadingTextStyle}>Δεν βρέθηκαν συνεργάτες</div>}
+          <div style={actionGrid}>
+            <div style={actionRow}>
+              <Link href={storeId ? `/manage-users?store=${storeId}` : '/manage-users'} style={{ ...actionBtn, backgroundColor: colors.accentGreen }}>
+                + ΠΡΟΣΘΗΚΗ ΧΕΙΡΙΣΤΗ
+              </Link>
+            </div>
           </div>
 
           <Link href={storeId ? `/manage-users?store=${storeId}` : '/manage-users'} style={inviteBtn}>
-            <UserPlus size={20} /> ΔΙΑΧΕΙΡΙΣΗ ΧΡΗΣΤΩΝ
+            ADVANCED VIEW
           </Link>
         </div>
       )}
@@ -419,13 +392,46 @@ const adminCard: any = { backgroundColor: '#1e293b', padding: '20px', borderRadi
 const adminNameText = { color: 'white', fontWeight: '900', margin: 0, fontSize: '15px' };
 const adminEmailText = { color: '#94a3b8', fontSize: '11px', margin: 0, fontWeight: '700' };
 const adminBadge = { color: '#4ade80', fontSize: '10px', fontWeight: '900', border: '1px solid #166534', padding: '5px 10px', borderRadius: '10px' };
-const listContainer: any = { backgroundColor: 'white', borderRadius: '24px', border: '1px solid #e2e8f0', overflow: 'hidden' };
 const userCard: any = { backgroundColor: '#1e293b', padding: '14px', borderRadius: '18px', marginBottom: '10px' };
 const userTopRow: any = { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', marginBottom: '10px' };
 const unknownEmailStyle: any = { margin: '4px 0 0 0', color: '#fbbf24', fontWeight: '700', fontSize: '11px' };
-const staffRow: any = { padding: '14px', display: 'flex', flexDirection: 'column', gap: '10px', borderBottom: '1px solid #f1f5f9' };
 const rowActionsStyle: any = { display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' };
 const editBtnStyle: any = { backgroundColor: '#f1f5f9', border: 'none', padding: '10px', borderRadius: '12px', cursor: 'pointer', fontWeight: '700', fontSize: '12px' };
 const selectStyle: any = { border: '1px solid #cbd5e1', padding: '10px', borderRadius: '12px', fontWeight: '700', fontSize: '12px', backgroundColor: '#fff' };
 const delBtnStyle: any = { ...editBtnStyle, backgroundColor: '#fee2e2', color: '#ef4444' };
-const inviteBtn: any = { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', marginTop: '30px', padding: '18px', backgroundColor: '#0f172a', color: 'white', borderRadius: '20px', fontWeight: '900', textDecoration: 'none' };
+const inviteBtn: any = { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', marginTop: '14px', padding: '12px', backgroundColor: '#fff', color: '#0f172a', borderRadius: '14px', fontWeight: '800', textDecoration: 'none', border: '1px solid #e2e8f0' };
+
+const colors = {
+  primaryDark: '#0f172a',
+  secondaryText: '#64748b',
+  accentGreen: '#10b981',
+  border: '#e2e8f0',
+}
+
+const heroCardStyle: any = {
+  background: colors.primaryDark,
+  padding: '30px 20px',
+  borderRadius: '28px',
+  color: 'white',
+  boxShadow: '0 20px 40px rgba(15, 23, 42, 0.2)',
+  marginBottom: '30px',
+  textAlign: 'center',
+}
+const heroLabel: any = { fontSize: '10px', fontWeight: '700', opacity: 0.5, letterSpacing: '1px', marginBottom: '10px' }
+const heroAmountText: any = { fontSize: '38px', fontWeight: '900', margin: 0 }
+const heroStatsRow: any = { display: 'flex', gap: '20px', marginTop: '25px', justifyContent: 'center' }
+const heroStatValue = { fontSize: '15px', fontWeight: '800' }
+
+const actionGrid: any = { display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '16px' }
+const actionRow: any = { display: 'flex', gap: '12px' }
+const actionBtn: any = {
+  flex: 1,
+  padding: '18px',
+  borderRadius: '18px',
+  color: 'white',
+  textDecoration: 'none',
+  textAlign: 'center',
+  fontWeight: '800',
+  fontSize: '14px',
+  boxShadow: '0 8px 15px rgba(0,0,0,0.08)',
+}
