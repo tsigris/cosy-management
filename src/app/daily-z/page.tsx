@@ -76,7 +76,8 @@ function DailyZContent() {
 
       if (user) {
         const { data } = await supabase.from('profiles').select('username').eq('id', user.id).maybeSingle()
-        if (data?.username) setUsername(data.username)
+        const createdByName = (data?.username || user.email?.split('@')[0] || 'Χρήστης').trim()
+        setUsername(createdByName)
       }
     }
     fetchUser()
@@ -117,6 +118,19 @@ function DailyZContent() {
     if (isAlreadyClosed || totalSales <= 0 || !storeId) return
     setLoading(true)
 
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+
+    if (!user?.id) {
+      alert('Σφάλμα: Δεν βρέθηκε χρήστης')
+      setLoading(false)
+      return
+    }
+
+    const { data: prof } = await supabase.from('profiles').select('username').eq('id', user.id).maybeSingle()
+    const createdByName = (prof?.username || user.email?.split('@')[0] || 'Χρήστης').trim()
+
     const incomeTransactions = [
       {
         amount: Number(cashZ),
@@ -125,7 +139,8 @@ function DailyZContent() {
         type: 'income',
         date,
         category: Z_CATEGORY,
-        created_by_name: username,
+        created_by_name: createdByName,
+        user_id: user.id,
         store_id: storeId,
       },
       {
@@ -135,7 +150,8 @@ function DailyZContent() {
         type: 'income',
         date,
         category: Z_CATEGORY,
-        created_by_name: username,
+        created_by_name: createdByName,
+        user_id: user.id,
         store_id: storeId,
       },
       {
@@ -145,7 +161,8 @@ function DailyZContent() {
         type: 'income',
         date,
         category: Z_CATEGORY, // ✅ ΠΑΝΤΑ Εσοδα Ζ
-        created_by_name: username,
+        created_by_name: createdByName,
+        user_id: user.id,
         store_id: storeId,
       },
     ].filter((t) => (Number(t.amount) || 0) > 0)

@@ -816,6 +816,14 @@ function AddExpenseForm() {
         return router.push('/login')
       }
 
+      const { data: prof } = await supabase
+        .from('profiles')
+        .select('username')
+        .eq('id', session.user.id)
+        .maybeSingle()
+
+      const createdByName = (prof?.username || session.user.email?.split('@')[0] || 'Χρήστης').trim()
+
       const activeStoreId = getActiveStoreId()
       if (!activeStoreId) {
         setLoading(false)
@@ -892,7 +900,7 @@ function AddExpenseForm() {
         supplier_id: selectedEntity.kind === 'supplier' ? selectedEntity.id : null,
         fixed_asset_id: selectedEntity.kind === 'asset' ? selectedEntity.id : null,
         category,
-        created_by_name: clampText(currentUsername, 60),
+        created_by_name: clampText(createdByName, 60),
         notes: finalNotes,
       }
 

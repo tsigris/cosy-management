@@ -50,7 +50,7 @@ function getPaymentMethod(tx: any): string {
 }
 
 function getUserLabelFromTx(tx: any): string {
-  return tx?.profiles?.username || tx?.user_id || 'Χρήστης'
+  return tx?.created_by_name || tx?.profiles?.username || 'Χρήστης'
 }
 
 function DashboardContent() {
@@ -729,7 +729,7 @@ function DashboardContent() {
             const txMethod = isZMaster ? 'Συγκεντρωτική εγγραφή' : t?.method
             const txCreatedAt = isZMaster ? row.created_at : t?.created_at
 
-            const displayUser = isZMaster ? row.user_label : t?.profiles?.username || t?.user_id || 'Χρήστης'
+            const displayUser = isZMaster ? row.user_label : t?.created_by_name || t?.profiles?.username || 'Χρήστης'
             const txAmountValue = isZMaster ? row.amount : Number(t?.amount) || 0
 
             return (

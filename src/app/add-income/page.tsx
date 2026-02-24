@@ -368,6 +368,14 @@ function AddIncomeForm() {
       } = await supabase.auth.getSession()
       if (!session?.user?.id) throw new Error('Δεν βρέθηκε session χρήστη')
 
+      const { data: prof } = await supabase
+        .from('profiles')
+        .select('username')
+        .eq('id', session.user.id)
+        .maybeSingle()
+
+      const createdByName = (prof?.username || session.user.email?.split('@')[0] || 'Χρήστης').trim()
+
       const activeStoreId = getActiveStoreId()
       if (!activeStoreId) {
         toast.error('Δεν βρέθηκε κατάστημα (store)')
@@ -400,7 +408,7 @@ function AddIncomeForm() {
         user_id: session.user.id,
         store_id: activeStoreId,
         revenue_source_id: selectedSourceId,
-        created_by_name: currentUsername,
+        created_by_name: createdByName,
         notes: finalNotes,
       }
 
