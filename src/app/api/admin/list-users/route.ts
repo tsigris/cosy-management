@@ -72,14 +72,20 @@ function getAdminClient() {
 }
 
 export async function POST(request: NextRequest) {
+  let storeId = ''
   try {
     const body = await request.json()
-    const storeId = typeof body?.storeId === 'string' ? body.storeId.trim() : ''
+    storeId = typeof body?.storeId === 'string' ? body.storeId.trim() : ''
     const q = typeof body?.q === 'string' ? body.q.trim() : ''
     const rawPage = Number(body?.page)
     const rawPageSize = Number(body?.pageSize)
     const page = Number.isFinite(rawPage) && rawPage > 0 ? Math.floor(rawPage) : 1
     const pageSize = Number.isFinite(rawPageSize) && rawPageSize > 0 ? Math.min(Math.floor(rawPageSize), 50) : 10
+
+    console.log('LIST_USERS_START', {
+      storeId,
+      hasAuthHeader: Boolean(request.headers.get('x-supabase-auth'))
+    })
 
     if (!storeId) {
       return NextResponse.json({ ok: false, error: 'Λείπει το storeId.' }, { status: 400 })
@@ -149,7 +155,16 @@ export async function POST(request: NextRequest) {
       totalPages: Math.max(1, Math.ceil(total / pageSize)),
     })
   } catch (error) {
-    console.error('admin/list-users error:', error)
-    return NextResponse.json({ ok: false, error: 'Αποτυχία φόρτωσης χρηστών.' }, { status: 500 })
+    console.error('LIST_USERS_FAIL', {
+      storeId,
+      tokenPresent: Boolean(request.headers.get('x-supabase-auth')),
+      errorMessage: error instanceof Error ? error.message : String(error),
+      errorStack: error instanceof Error ? error.stack : null
+    })
+
+    return new Response(
+      JSON.stringify({ error: 'LIST_USERS_FAILED' }),
+      { status: 500 }
+    )
   }
 }
