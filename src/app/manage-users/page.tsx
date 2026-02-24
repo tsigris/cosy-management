@@ -38,11 +38,22 @@ export default function ManageUsersPage() {
   const [loadingReset, setLoadingReset] = useState(false)
   const [users, setUsers] = useState<StoreUser[]>([])
   const [loadingUsers, setLoadingUsers] = useState(false)
+  const [searchInput, setSearchInput] = useState('')
+  const [searchTerm, setSearchTerm] = useState('')
+  const [usersPage, setUsersPage] = useState(1)
+  const [usersPageSize] = useState(10)
+  const [usersTotal, setUsersTotal] = useState(0)
+  const [usersTotalPages, setUsersTotalPages] = useState(1)
   const actionsDisabled = !hasStoreId || loadingUsers || loadingCreate || loadingReset
 
-  const loadUsers = async () => {
+  const loadUsers = async (options?: { page?: number; search?: string }) => {
+    const effectivePage = options?.page ?? usersPage
+    const effectiveSearch = options?.search ?? searchTerm
+
     if (!storeId) {
       setUsers([])
+      setUsersTotal(0)
+      setUsersTotalPages(1)
       return
     }
 
@@ -51,7 +62,12 @@ export default function ManageUsersPage() {
       const response = await fetch('/api/admin/list-users', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ storeId }),
+        body: JSON.stringify({
+          storeId,
+          search: effectiveSearch,
+          page: effectivePage,
+          pageSize: usersPageSize,
+        }),
       })
 
       const result = await response.json()
@@ -61,10 +77,14 @@ export default function ManageUsersPage() {
 
       const rows = Array.isArray(result?.users) ? result.users : []
       setUsers(rows)
+      setUsersTotal(typeof result?.total === 'number' ? result.total : 0)
+      setUsersTotalPages(typeof result?.totalPages === 'number' ? Math.max(1, result.totalPages) : 1)
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Αποτυχία φόρτωσης χρηστών.'
       toast.error(message)
       setUsers([])
+      setUsersTotal(0)
+      setUsersTotalPages(1)
     } finally {
       setLoadingUsers(false)
     }
@@ -73,11 +93,13 @@ export default function ManageUsersPage() {
   useEffect(() => {
     if (!storeId) {
       setUsers([])
+      setUsersTotal(0)
+      setUsersTotalPages(1)
       return
     }
 
     void loadUsers()
-  }, [storeId])
+  }, [storeId, usersPage, searchTerm])
 
   const createUser = async () => {
     if (!storeId) {
@@ -109,7 +131,7 @@ export default function ManageUsersPage() {
       }
 
       toast.success('Ο χρήστης δημιουργήθηκε και συνδέθηκε με το κατάστημα.')
-      await loadUsers()
+      await loadUsers({ page: usersPage, search: searchTerm })
 
       if (sendResetAfterCreate) {
         await sendResetFor(email.trim().toLowerCase())
@@ -186,7 +208,7 @@ export default function ManageUsersPage() {
       }
 
       toast.success('Ο ρόλος ενημερώθηκε.')
-      await loadUsers()
+      await loadUsers({ page: usersPage, search: searchTerm })
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Αποτυχία ενημέρωσης ρόλου.'
       toast.error(message)
@@ -218,11 +240,23 @@ export default function ManageUsersPage() {
       }
 
       toast.success('Ο χρήστης αφαιρέθηκε από το κατάστημα.')
-      await loadUsers()
+      await loadUsers({ page: usersPage, search: searchTerm })
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Αποτυχία αφαίρεσης χρήστη.'
       toast.error(message)
     }
+  }
+
+  const applySearch = () => {
+    const normalized = searchInput.trim()
+    setUsersPage(1)
+    setSearchTerm(normalized)
+  }
+
+  const clearSearch = () => {
+    setSearchInput('')
+    setUsersPage(1)
+    setSearchTerm('')
   }
 
   return (
@@ -294,6 +328,24 @@ export default function ManageUsersPage() {
         <section style={cardStyle}>
           <h2 style={sectionTitleStyle}>Λίστα Χρηστών</h2>
 
+          <div style={searchRowStyle}>
+            <input
+              type="text"
+              value={searchInput}
+              onChange={(event) => setSearchInput(event.target.value)}
+              placeholder="Αναζήτηση email ή user id"
+              style={searchInputStyle}
+            />
+            <button type="button" onClick={applySearch} disabled={loadingUsers || !hasStoreId} style={{ ...searchBtnStyle, opacity: loadingUsers || !hasStoreId ? 0.6 : 1, cursor: loadingUsers || !hasStoreId ? 'not-allowed' : 'pointer' }}>
+              Αναζήτηση
+            </button>
+            <button type="button" onClick={clearSearch} disabled={loadingUsers || !hasStoreId} style={{ ...clearBtnStyle, opacity: loadingUsers || !hasStoreId ? 0.6 : 1, cursor: loadingUsers || !hasStoreId ? 'not-allowed' : 'pointer' }}>
+              Καθαρισμός
+            </button>
+          </div>
+
+          <p style={helperTextStyle}>Σύνολο: {usersTotal}</p>
+
           {loadingUsers ? (
             <p style={helperTextStyle}>Φόρτωση χρηστών...</p>
           ) : users.length === 0 ? (
@@ -359,6 +411,28 @@ export default function ManageUsersPage() {
               })}
             </div>
           )}
+
+          <div style={paginationRowStyle}>
+            <button
+              type="button"
+              onClick={() => setUsersPage((previous) => Math.max(1, previous - 1))}
+              disabled={loadingUsers || usersPage <= 1 || !hasStoreId}
+              style={{ ...paginationBtnStyle, opacity: loadingUsers || usersPage <= 1 || !hasStoreId ? 0.6 : 1, cursor: loadingUsers || usersPage <= 1 || !hasStoreId ? 'not-allowed' : 'pointer' }}
+            >
+              Προηγούμενη
+            </button>
+
+            <p style={paginationTextStyle}>Σελίδα {usersPage} / {usersTotalPages}</p>
+
+            <button
+              type="button"
+              onClick={() => setUsersPage((previous) => Math.min(usersTotalPages, previous + 1))}
+              disabled={loadingUsers || usersPage >= usersTotalPages || !hasStoreId}
+              style={{ ...paginationBtnStyle, opacity: loadingUsers || usersPage >= usersTotalPages || !hasStoreId ? 0.6 : 1, cursor: loadingUsers || usersPage >= usersTotalPages || !hasStoreId ? 'not-allowed' : 'pointer' }}
+            >
+              Επόμενη
+            </button>
+          </div>
         </section>
       </div>
     </main>
@@ -481,6 +555,42 @@ const listWrapStyle: React.CSSProperties = {
   gap: '10px',
 }
 
+const searchRowStyle: React.CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: '1fr auto auto',
+  gap: '8px',
+}
+
+const searchInputStyle: React.CSSProperties = {
+  border: '1px solid #cbd5e1',
+  borderRadius: '10px',
+  padding: '10px',
+  fontSize: '13px',
+  outline: 'none',
+}
+
+const searchBtnStyle: React.CSSProperties = {
+  border: 'none',
+  borderRadius: '10px',
+  padding: '10px 12px',
+  background: '#0f172a',
+  color: '#fff',
+  fontWeight: 700,
+  fontSize: '12px',
+  cursor: 'pointer',
+}
+
+const clearBtnStyle: React.CSSProperties = {
+  border: '1px solid #cbd5e1',
+  borderRadius: '10px',
+  padding: '10px 12px',
+  background: '#fff',
+  color: '#0f172a',
+  fontWeight: 700,
+  fontSize: '12px',
+  cursor: 'pointer',
+}
+
 const userRowStyle: React.CSSProperties = {
   border: '1px solid #e2e8f0',
   borderRadius: '14px',
@@ -565,4 +675,30 @@ const removeBtnStyle: React.CSSProperties = {
   fontWeight: 700,
   fontSize: '12px',
   cursor: 'pointer',
+}
+
+const paginationRowStyle: React.CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: '1fr auto 1fr',
+  alignItems: 'center',
+  gap: '8px',
+  marginTop: '6px',
+}
+
+const paginationBtnStyle: React.CSSProperties = {
+  border: '1px solid #cbd5e1',
+  borderRadius: '10px',
+  padding: '9px 10px',
+  background: '#fff',
+  color: '#0f172a',
+  fontWeight: 700,
+  fontSize: '12px',
+  cursor: 'pointer',
+}
+
+const paginationTextStyle: React.CSSProperties = {
+  margin: 0,
+  color: '#334155',
+  fontWeight: 700,
+  fontSize: '12px',
 }
