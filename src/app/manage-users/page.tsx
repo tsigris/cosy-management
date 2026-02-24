@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { toast, Toaster } from 'sonner'
+import { getSupabaseBrowser } from '@/lib/supabase-browser'
 
 type UserRole = 'admin' | 'user'
 type ListedRole = 'admin' | 'user' | 'staff'
@@ -46,6 +47,22 @@ export default function ManageUsersPage() {
   const [usersTotalPages, setUsersTotalPages] = useState(1)
   const actionsDisabled = !hasStoreId || loadingUsers || loadingCreate || loadingReset
 
+  const getAuthHeaders = async () => {
+    const supabase = getSupabaseBrowser()
+    const { data } = await supabase.auth.getSession()
+    const token = data.session?.access_token
+
+    if (!token) {
+      toast.error('Η συνεδρία έληξε. Κάνε ξανά σύνδεση.')
+      return null
+    }
+
+    return {
+      'Content-Type': 'application/json',
+      'X-Supabase-Auth': token,
+    }
+  }
+
   const loadUsers = async (options?: { page?: number; search?: string }) => {
     const effectivePage = options?.page ?? usersPage
     const effectiveSearch = options?.search ?? searchTerm
@@ -59,9 +76,12 @@ export default function ManageUsersPage() {
 
     setLoadingUsers(true)
     try {
+      const headers = await getAuthHeaders()
+      if (!headers) return
+
       const response = await fetch('/api/admin/list-users', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           storeId,
           q: effectiveSearch,
@@ -118,9 +138,12 @@ export default function ManageUsersPage() {
 
     setLoadingCreate(true)
     try {
+      const headers = await getAuthHeaders()
+      if (!headers) return
+
       const response = await fetch('/api/admin/create-user', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           email: email.trim().toLowerCase(),
           role,
@@ -162,9 +185,12 @@ export default function ManageUsersPage() {
 
     setLoadingReset(true)
     try {
+      const headers = await getAuthHeaders()
+      if (!headers) return
+
       const response = await fetch('/api/admin/send-reset', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           email: normalizedEmail,
           storeId,
@@ -196,9 +222,12 @@ export default function ManageUsersPage() {
     }
 
     try {
+      const headers = await getAuthHeaders()
+      if (!headers) return
+
       const response = await fetch('/api/admin/update-user-role', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           storeId,
           userId,
@@ -229,9 +258,12 @@ export default function ManageUsersPage() {
     if (!confirmed) return
 
     try {
+      const headers = await getAuthHeaders()
+      if (!headers) return
+
       const response = await fetch('/api/admin/remove-user', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           storeId,
           userId,

@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
 
 export const runtime = 'nodejs'
 
@@ -19,32 +17,36 @@ function getServiceRoleKey() {
   return process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SERVICE_ROLE_KEY
 }
 
-async function getCallerClient() {
+function getAnonKey() {
+  return process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+}
+
+async function getCallerFromHeader(request: NextRequest) {
   const url = getSupabaseUrl()
-  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  const anon = getAnonKey()
 
   if (!url || !anon) {
     throw new Error('Missing Supabase public env vars on server')
   }
 
-  const cookieStore = await cookies()
+  const token = request.headers.get('x-supabase-auth')?.trim() || ''
+  if (!token) return null
 
-  return createServerClient(url, anon, {
-    cookies: {
-      getAll() {
-        return cookieStore.getAll()
-      },
-      setAll(cookiesToSet) {
-        for (const cookie of cookiesToSet) {
-          try {
-            cookieStore.set(cookie.name, cookie.value, cookie.options)
-          } catch {
-            break
-          }
-        }
-      },
+  const callerClient = createClient(url, anon, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
     },
   })
+
+  const {
+    data: { user },
+    error,
+  } = await callerClient.auth.getUser(token)
+
+  if (error || !user) return null
+  return user
 }
 
 function getAdminClient() {
@@ -84,13 +86,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: false, error: 'Μη έγκυρος ρόλος. Επιτρεπτά: admin, user.' }, { status: 400 })
     }
 
-    const callerClient = await getCallerClient()
-    const {
-      data: { user: caller },
-      error: callerError,
-    } = await callerClient.auth.getUser()
-
-    if (callerError || !caller) {
+    const caller = await getCallerFromHeader(request)
+    if (!caller) {
       return NextResponse.json({ ok: false, error: 'Πρέπει να είστε συνδεδεμένος.' }, { status: 401 })
     }
 
