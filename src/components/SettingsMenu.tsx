@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { getSupabase } from '@/lib/supabase'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
@@ -23,6 +23,19 @@ export default function SettingsMenu() {
   
   // ΔΙΑΒΑΖΟΥΜΕ ΤΟ ΤΡΕΧΟΝ ID ΑΠΟ ΤΟ URL ΓΙΑ ΝΑ ΤΟ ΜΕΤΑΦΕΡΟΥΜΕ ΣΤΑ LINKS
   const currentStoreId = searchParams.get('store')
+  const [activeStoreId, setActiveStoreId] = useState<string | null>(currentStoreId)
+
+  useEffect(() => {
+    if (currentStoreId) {
+      setActiveStoreId(currentStoreId)
+      return
+    }
+
+    if (typeof window !== 'undefined') {
+      const fromLocalStorage = localStorage.getItem('active_store_id')
+      setActiveStoreId(fromLocalStorage || null)
+    }
+  }, [currentStoreId])
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
@@ -68,12 +81,21 @@ export default function SettingsMenu() {
               const fullPath = currentStoreId 
                 ? `${item.path}?store=${currentStoreId}` 
                 : item.path;
+              const isPermissionsItem = item.path === '/admin/permissions'
+              const permissionsPath = activeStoreId ? `/admin/permissions?store=${activeStoreId}` : '/admin/permissions'
+              const linkPath = isPermissionsItem ? permissionsPath : fullPath
 
               return (
                 <div key={item.label}>
                   <Link 
-                    href={fullPath}
-                    onClick={() => setIsOpen(false)}
+                    href={linkPath}
+                    onClick={(e) => {
+                      if (isPermissionsItem && !activeStoreId) {
+                        e.preventDefault()
+                        return
+                      }
+                      setIsOpen(false)
+                    }}
                     style={linkStyle}
                     onMouseEnter={(e) => e.currentTarget.style.backgroundColor = colors.hoverBg}
                     onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
