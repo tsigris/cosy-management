@@ -13,10 +13,17 @@ function getServiceRoleKey() {
   return process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SERVICE_ROLE_KEY
 }
 
-function normalizeSiteUrl() {
-  const siteUrl = process.env.SITE_URL || process.env.NEXT_PUBLIC_SITE_URL || process.env.NEXT_PUBLIC_APP_URL
-  if (!siteUrl) return null
-  return siteUrl.replace(/\/$/, '')
+function buildLoginRedirectUrl(request: NextRequest) {
+  const base =
+    process.env.SITE_URL ||
+    process.env.NEXT_PUBLIC_SITE_URL ||
+    request.headers.get('origin') ||
+    ''
+
+  const normalizedBase = base.trim().replace(/\/$/, '')
+  if (!normalizedBase) return null
+
+  return `${normalizedBase}/login`
 }
 
 async function getCallerClient() {
@@ -68,9 +75,14 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
     const email = typeof body?.email === 'string' ? body.email.trim().toLowerCase() : ''
+    const storeId = typeof body?.storeId === 'string' ? body.storeId.trim() : ''
 
     if (!email) {
       return NextResponse.json({ ok: false, error: 'Δώσε email.' }, { status: 400 })
+    }
+
+    if (!storeId) {
+      return NextResponse.json({ ok: false, error: 'Λείπει το storeId.' }, { status: 400 })
     }
 
     const callerClient = await getCallerClient()
@@ -88,6 +100,7 @@ export async function POST(request: NextRequest) {
       .from('store_access')
       .select('store_id')
       .eq('user_id', caller.id)
+      .eq('store_id', storeId)
       .eq('role', 'admin')
       .limit(1)
       .maybeSingle()
@@ -100,9 +113,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: false, error: 'Δεν έχετε δικαιώματα admin.' }, { status: 403 })
     }
 
-    const siteUrl = normalizeSiteUrl()
+    const redirectTo = buildLoginRedirectUrl(request)
+    if (!redirectTo) {
+      return NextResponse.json(
+        { ok: false, error: 'Missing SITE_URL/NEXT_PUBLIC_SITE_URL/origin for absolute redirect URL.' },
+        { status: 500 }
+      )
+    }
+
     const { error } = await adminClient.auth.resetPasswordForEmail(email, {
-      redirectTo: `${siteUrl || ''}/login`,
+      redirectTo,
     })
 
     if (error) {

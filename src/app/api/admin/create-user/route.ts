@@ -201,11 +201,26 @@ export async function POST(request: NextRequest) {
       throw new Error('Δεν εντοπίστηκε userId για σύνδεση με το κατάστημα.')
     }
 
+    const defaultPermissions =
+      role === 'admin'
+        ? {
+            can_view_analysis: true,
+            can_view_history: true,
+            can_edit_transactions: true,
+          }
+        : {
+            can_view_analysis: true,
+            can_view_history: true,
+            can_edit_transactions: false,
+          }
+
     const { error: accessUpsertError } = await adminClient.from('store_access').upsert(
       {
         user_id: userId,
         store_id: storeId,
+        user_email: email,
         role,
+        ...defaultPermissions,
       },
       {
         onConflict: 'user_id,store_id',

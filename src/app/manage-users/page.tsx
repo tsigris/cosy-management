@@ -4,7 +4,7 @@ export const dynamic = 'force-dynamic'
 import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
-import { toast } from 'sonner'
+import { toast, Toaster } from 'sonner'
 
 type UserRole = 'admin' | 'user'
 
@@ -13,6 +13,7 @@ export default function ManageUsersPage() {
   const storeFromQuery = searchParams.get('store')
   const [storeFromStorage, setStoreFromStorage] = useState('')
   const storeId = useMemo(() => (storeFromQuery || storeFromStorage || '').trim(), [storeFromQuery, storeFromStorage])
+  const hasStoreId = Boolean(storeId)
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -69,6 +70,11 @@ export default function ManageUsersPage() {
   }
 
   const sendReset = async () => {
+    if (!storeId) {
+      toast.error('Δεν βρέθηκε ενεργό κατάστημα.')
+      return
+    }
+
     if (!email.trim()) {
       toast.error('Συμπλήρωσε email.')
       return
@@ -81,6 +87,7 @@ export default function ManageUsersPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           email: email.trim().toLowerCase(),
+          storeId,
         }),
       })
 
@@ -100,6 +107,7 @@ export default function ManageUsersPage() {
 
   return (
     <main style={pageStyle}>
+      <Toaster position="top-center" richColors />
       <div style={containerStyle}>
         <header style={headerStyle}>
           <h1 style={titleStyle}>Διαχείριση Χρηστών</h1>
@@ -144,11 +152,21 @@ export default function ManageUsersPage() {
             Στείλε Reset Password μετά τη δημιουργία
           </label>
 
-          <button type="button" onClick={createUser} disabled={loadingCreate || loadingReset} style={primaryBtnStyle}>
+          <button
+            type="button"
+            onClick={createUser}
+            disabled={loadingCreate || loadingReset || !hasStoreId}
+            style={{ ...primaryBtnStyle, opacity: hasStoreId ? 1 : 0.6, cursor: hasStoreId ? 'pointer' : 'not-allowed' }}
+          >
             {loadingCreate ? 'ΔΗΜΙΟΥΡΓΙΑ...' : 'ΔΗΜΙΟΥΡΓΙΑ'}
           </button>
 
-          <button type="button" onClick={sendReset} disabled={loadingReset || loadingCreate} style={secondaryBtnStyle}>
+          <button
+            type="button"
+            onClick={sendReset}
+            disabled={loadingReset || loadingCreate || !hasStoreId}
+            style={{ ...secondaryBtnStyle, opacity: hasStoreId ? 1 : 0.6, cursor: hasStoreId ? 'pointer' : 'not-allowed' }}
+          >
             {loadingReset ? 'ΑΠΟΣΤΟΛΗ...' : 'ΣΤΕΙΛΕ RESET'}
           </button>
         </section>
