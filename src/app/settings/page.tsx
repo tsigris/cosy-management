@@ -193,6 +193,37 @@ function SettingsContent() {
   // ✅ IMPORTANT: no section open by default
   const [openSection, setOpenSection] = useState<SectionId | null>(null)
 
+  const loadProfileRecord = useCallback(async (uid: string) => {
+    const direct = await supabase
+      .from('profiles')
+      .select('id, user_id, username')
+      .or(`id.eq.${uid},user_id.eq.${uid}`)
+      .maybeSingle()
+
+    if (!direct.error) return direct.data
+
+    const byId = await supabase.from('profiles').select('id, username').eq('id', uid).maybeSingle()
+    if (!byId.error) return byId.data
+
+    const byUserId = await supabase.from('profiles').select('user_id, username').eq('user_id', uid).maybeSingle()
+    if (!byUserId.error) return byUserId.data
+
+    return null
+  }, [supabase])
+
+  const ensureProfileRow = useCallback(async (uid: string) => {
+    const profile = await loadProfileRecord(uid)
+    if (profile) return profile
+
+    const createById = await supabase.from('profiles').upsert({ id: uid, username: '' }, { onConflict: 'id' })
+    if (!createById.error) return await loadProfileRecord(uid)
+
+    const createByUserId = await supabase.from('profiles').upsert({ user_id: uid, username: '' }, { onConflict: 'user_id' })
+    if (createByUserId.error) throw createByUserId.error
+
+    return await loadProfileRecord(uid)
+  }, [supabase, loadProfileRecord])
+
   // Fetch profile
   useEffect(() => {
     ;(async () => {
@@ -208,13 +239,7 @@ function SettingsContent() {
 
         setUserId(user.id)
 
-        const { data: profile, error: profileError } = await supabase
-          .from('profiles')
-          .select('username')
-          .eq('id', user.id)
-          .maybeSingle()
-
-        if (profileError) throw profileError
+        const profile = await ensureProfileRow(user.id)
         setProfileName(profile?.username || '')
       } catch {
         setProfileError('Σφάλμα φόρτωσης προφίλ')
@@ -222,7 +247,7 @@ function SettingsContent() {
         setProfileLoading(false)
       }
     })()
-  }, [])
+  }, [supabase, ensureProfileRow])
 
   const handleProfileSave = async () => {
     if (!userId) return
@@ -230,8 +255,17 @@ function SettingsContent() {
     setProfileError('')
     setProfileSuccess('')
     try {
-      const { error } = await supabase.from('profiles').update({ username: profileName.trim() }).eq('id', userId)
-      if (error) throw error
+      const clean = profileName.trim()
+
+      const saveById = await supabase.from('profiles').upsert({ id: userId, username: clean }, { onConflict: 'id' })
+      if (saveById.error) {
+        const saveByUserId = await supabase.from('profiles').upsert({ user_id: userId, username: clean }, { onConflict: 'user_id' })
+        if (saveByUserId.error) throw saveByUserId.error
+      }
+
+      const profile = await loadProfileRecord(userId)
+      setProfileName(profile?.username || '')
+
       setProfileSuccess('Το όνομα ενημερώθηκε!')
       toast.success('Το προφίλ αποθηκεύτηκε ✅')
     } catch {
