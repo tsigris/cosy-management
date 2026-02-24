@@ -5,6 +5,17 @@ import { cookies } from 'next/headers'
 
 export const runtime = 'nodejs'
 
+type StoreAccessRow = {
+  id: string
+  user_id: string
+  store_id: string
+  role: 'admin' | 'user'
+  can_view_analysis: boolean
+  can_view_history: boolean
+  can_edit_transactions: boolean
+  user_email: string | null
+}
+
 function getSupabaseUrl() {
   return process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL
 }
@@ -105,7 +116,19 @@ export async function POST(request: NextRequest) {
     const to = from + pageSize - 1
     let query = adminClient
       .from('store_access')
-      .select('id,user_id,store_id,role,can_view_analysis,can_view_history,can_edit_transactions,user_email', { count: 'exact' })
+      .select(
+        `
+          id,
+          user_id,
+          store_id,
+          role,
+          can_view_analysis,
+          can_view_history,
+          can_edit_transactions,
+          user_email
+        `,
+        { count: 'exact' }
+      )
       .eq('store_id', storeId)
       .order('role', { ascending: false })
       .order('user_email', { ascending: true })
@@ -117,12 +140,12 @@ export async function POST(request: NextRequest) {
     const { data, count, error } = await query.range(from, to)
     if (error) throw error
 
-    const items = Array.isArray(data) ? data : []
-    const total = Number(count || 0)
+    const rows: StoreAccessRow[] = (data ?? []) as StoreAccessRow[]
+    const total = count ?? rows.length
 
     return NextResponse.json({
       ok: true,
-      items,
+      items: rows,
       page,
       pageSize,
       total,
