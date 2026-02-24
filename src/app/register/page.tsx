@@ -123,6 +123,12 @@ function RegisterForm() {
       }])
       if (adminAccessError) throw adminAccessError
 
+      const { error: profileStoreRoleError } = await supabase
+        .from('profiles')
+        .update({ store_id: finalStoreId, role: 'admin' })
+        .eq('id', user.id)
+      if (profileStoreRoleError) throw profileStoreRoleError
+
       const defaultAssets = [
         { name: 'ΕΝΟΙΚΙΟ', store_id: finalStoreId },
         { name: 'ΛΟΓΙΣΤΗΣ', store_id: finalStoreId },

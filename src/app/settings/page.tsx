@@ -46,7 +46,6 @@ type ExportTransactionRow = {
 
 type ProfileRecord = {
   id?: string | null
-  store_id?: string | null
   username?: string | null
 }
 
@@ -200,8 +199,8 @@ function SettingsContent() {
   const [openSection, setOpenSection] = useState<SectionId | null>(null)
 
   const loadProfileRecord = useCallback(async (uid: string): Promise<ProfileRecord | null> => {
-    const { data, error } = await supabase.from('profiles').select('id, username, store_id').eq('id', uid).maybeSingle()
-    if (error) return null
+    const { data, error } = await supabase.from('profiles').select('id, username').eq('id', uid).maybeSingle()
+    if (error) throw error
     return data
   }, [supabase])
 
@@ -209,14 +208,11 @@ function SettingsContent() {
     const profile = await loadProfileRecord(uid)
     if (profile) return profile
 
-    const payload: { id: string; username: string; store_id?: string } = { id: uid, username: '' }
-    if (storeId) payload.store_id = storeId
-
-    const createById = await supabase.from('profiles').upsert(payload, { onConflict: 'id' })
+    const createById = await supabase.from('profiles').upsert({ id: uid, username: '' }, { onConflict: 'id' })
     if (createById.error) throw createById.error
 
     return await loadProfileRecord(uid)
-  }, [supabase, loadProfileRecord, storeId])
+  }, [supabase, loadProfileRecord])
 
   // Fetch profile
   useEffect(() => {
@@ -235,7 +231,8 @@ function SettingsContent() {
 
         const profile = await ensureProfileRow(user.id)
         setProfileName(profile?.username || '')
-      } catch {
+      } catch (error) {
+        console.error('Settings profile load error:', error)
         setProfileError('Σφάλμα φόρτωσης προφίλ')
       } finally {
         setProfileLoading(false)
@@ -255,15 +252,16 @@ function SettingsContent() {
     try {
       const clean = profileName.trim()
 
-      const payload: { id: string; username: string; store_id?: string } = { id: userId, username: clean }
-      if (storeId) payload.store_id = storeId
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update({ username: clean })
+        .eq('id', userId)
 
-      const saveById = await supabase.from('profiles').upsert(payload, { onConflict: 'id' })
-      if (saveById.error) throw saveById.error
+      if (updateError) throw updateError
 
       const { data: profile, error: profileError } = await supabase
         .from('profiles')
-        .select('id, username, store_id')
+        .select('id, username')
         .eq('id', userId)
         .maybeSingle()
 
@@ -271,10 +269,11 @@ function SettingsContent() {
       setProfileName(profile?.username || '')
 
       setProfileSuccess('Το όνομα ενημερώθηκε!')
-      toast.success('Το προφίλ αποθηκεύτηκε ✅')
-    } catch {
+      toast.success('Το username αποθηκεύτηκε ✅')
+    } catch (error) {
+      console.error('Settings profile save error:', error)
       setProfileError('Σφάλμα αποθήκευσης')
-      toast.error('Σφάλμα αποθήκευσης')
+      toast.error('Αποτυχία αποθήκευσης username')
     } finally {
       setProfileSaveLoading(false)
     }
