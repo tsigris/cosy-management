@@ -41,7 +41,7 @@ export default function ManageUsersPage() {
   const [searchInput, setSearchInput] = useState('')
   const [searchTerm, setSearchTerm] = useState('')
   const [usersPage, setUsersPage] = useState(1)
-  const [usersPageSize] = useState(10)
+  const [usersPageSize, setUsersPageSize] = useState<number>(10)
   const [usersTotal, setUsersTotal] = useState(0)
   const [usersTotalPages, setUsersTotalPages] = useState(1)
   const actionsDisabled = !hasStoreId || loadingUsers || loadingCreate || loadingReset
@@ -64,7 +64,7 @@ export default function ManageUsersPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           storeId,
-          search: effectiveSearch,
+          q: effectiveSearch,
           page: effectivePage,
           pageSize: usersPageSize,
         }),
@@ -75,7 +75,7 @@ export default function ManageUsersPage() {
         throw new Error(result?.error || 'Αποτυχία φόρτωσης χρηστών.')
       }
 
-      const rows = Array.isArray(result?.users) ? result.users : []
+      const rows = Array.isArray(result?.items) ? result.items : []
       setUsers(rows)
       setUsersTotal(typeof result?.total === 'number' ? result.total : 0)
       setUsersTotalPages(typeof result?.totalPages === 'number' ? Math.max(1, result.totalPages) : 1)
@@ -91,6 +91,10 @@ export default function ManageUsersPage() {
   }
 
   useEffect(() => {
+    setUsersPage(1)
+  }, [storeId])
+
+  useEffect(() => {
     if (!storeId) {
       setUsers([])
       setUsersTotal(0)
@@ -99,19 +103,7 @@ export default function ManageUsersPage() {
     }
 
     void loadUsers()
-  }, [storeId, usersPage, searchTerm])
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => {
-      const normalized = searchInput.trim()
-      setUsersPage(1)
-      setSearchTerm(normalized)
-    }, 350)
-
-    return () => {
-      window.clearTimeout(timer)
-    }
-  }, [searchInput])
+  }, [storeId, usersPage, searchTerm, usersPageSize])
 
   const createUser = async () => {
     if (!storeId) {
@@ -267,6 +259,8 @@ export default function ManageUsersPage() {
 
   const clearSearch = () => {
     setSearchInput('')
+    setUsersPage(1)
+    setSearchTerm('')
   }
 
   return (
@@ -338,25 +332,53 @@ export default function ManageUsersPage() {
         <section style={cardStyle}>
           <h2 style={sectionTitleStyle}>Λίστα Χρηστών</h2>
 
-          <div style={searchRowStyle}>
+          <form
+            style={searchRowStyle}
+            onSubmit={(event) => {
+              event.preventDefault()
+              applySearch()
+            }}
+          >
             <input
               type="text"
               value={searchInput}
               onChange={(event) => setSearchInput(event.target.value)}
-              placeholder="Αναζήτηση email ή user id"
+              placeholder="Αναζήτηση email…"
               style={searchInputStyle}
+              disabled={!hasStoreId}
             />
-            <button type="button" onClick={applySearch} disabled={loadingUsers || !hasStoreId} style={{ ...searchBtnStyle, opacity: loadingUsers || !hasStoreId ? 0.6 : 1, cursor: loadingUsers || !hasStoreId ? 'not-allowed' : 'pointer' }}>
+            <button type="submit" disabled={loadingUsers || !hasStoreId} style={{ ...searchBtnStyle, opacity: loadingUsers || !hasStoreId ? 0.6 : 1, cursor: loadingUsers || !hasStoreId ? 'not-allowed' : 'pointer' }}>
               Αναζήτηση
             </button>
             <button type="button" onClick={clearSearch} disabled={loadingUsers || !hasStoreId} style={{ ...clearBtnStyle, opacity: loadingUsers || !hasStoreId ? 0.6 : 1, cursor: loadingUsers || !hasStoreId ? 'not-allowed' : 'pointer' }}>
               Καθαρισμός
             </button>
+          </form>
+
+          <div style={metaRowStyle}>
+            <p style={helperTextStyle}>Σύνολο: {usersTotal} χρήστες</p>
+            <div style={pageSizeWrapStyle}>
+              <label style={pageSizeLabelStyle}>pageSize</label>
+              <select
+                value={usersPageSize}
+                onChange={(event) => {
+                  const next = Number(event.target.value)
+                  setUsersPage(1)
+                  setUsersPageSize(next)
+                }}
+                disabled={!hasStoreId || loadingUsers}
+                style={{ ...pageSizeSelectStyle, opacity: !hasStoreId || loadingUsers ? 0.6 : 1, cursor: !hasStoreId || loadingUsers ? 'not-allowed' : 'pointer' }}
+              >
+                <option value={10}>10</option>
+                <option value={20}>20</option>
+                <option value={50}>50</option>
+              </select>
+            </div>
           </div>
 
-          <p style={helperTextStyle}>Σύνολο: {usersTotal}</p>
-
-          {loadingUsers ? (
+          {!hasStoreId ? (
+            <p style={helperTextStyle}>Επιλέξτε κατάστημα</p>
+          ) : loadingUsers ? (
             <p style={helperTextStyle}>Φόρτωση χρηστών...</p>
           ) : users.length === 0 ? (
             <p style={helperTextStyle}>Δεν υπάρχουν χρήστες στο κατάστημα.</p>
@@ -429,10 +451,10 @@ export default function ManageUsersPage() {
               disabled={loadingUsers || usersPage <= 1 || !hasStoreId}
               style={{ ...paginationBtnStyle, opacity: loadingUsers || usersPage <= 1 || !hasStoreId ? 0.6 : 1, cursor: loadingUsers || usersPage <= 1 || !hasStoreId ? 'not-allowed' : 'pointer' }}
             >
-              Προηγούμενη
+              Previous
             </button>
 
-            <p style={paginationTextStyle}>Σελίδα {usersPage} / {usersTotalPages}</p>
+            <p style={paginationTextStyle}>Σελίδα {usersPage} από {usersTotalPages}</p>
 
             <button
               type="button"
@@ -440,7 +462,7 @@ export default function ManageUsersPage() {
               disabled={loadingUsers || usersPage >= usersTotalPages || !hasStoreId}
               style={{ ...paginationBtnStyle, opacity: loadingUsers || usersPage >= usersTotalPages || !hasStoreId ? 0.6 : 1, cursor: loadingUsers || usersPage >= usersTotalPages || !hasStoreId ? 'not-allowed' : 'pointer' }}
             >
-              Επόμενη
+              Next
             </button>
           </div>
         </section>
@@ -569,6 +591,35 @@ const searchRowStyle: React.CSSProperties = {
   display: 'grid',
   gridTemplateColumns: '1fr auto auto',
   gap: '8px',
+}
+
+const metaRowStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: '8px',
+}
+
+const pageSizeWrapStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: '6px',
+}
+
+const pageSizeLabelStyle: React.CSSProperties = {
+  fontSize: '12px',
+  color: '#475569',
+  fontWeight: 700,
+}
+
+const pageSizeSelectStyle: React.CSSProperties = {
+  border: '1px solid #cbd5e1',
+  borderRadius: '8px',
+  padding: '6px 8px',
+  background: '#fff',
+  color: '#0f172a',
+  fontWeight: 700,
+  fontSize: '12px',
 }
 
 const searchInputStyle: React.CSSProperties = {
