@@ -729,7 +729,7 @@ function DashboardContent() {
             const txMethod = isZMaster ? 'Συγκεντρωτική εγγραφή' : t?.method
             const txCreatedAt = isZMaster ? row.created_at : t?.created_at
 
-            const txCreatedBy = isZMaster ? row.user_label : getUserLabelFromTx(t)
+            const displayUser = isZMaster ? row.user_label : t?.profiles?.username || t?.user_id || 'Χρήστης'
             const txAmountValue = isZMaster ? row.amount : Number(t?.amount) || 0
 
             return (
@@ -762,7 +762,7 @@ function DashboardContent() {
                     )}
 
                     <p style={txMeta}>
-                      {txMethod} • {txCreatedAt ? format(parseISO(txCreatedAt), 'HH:mm') : '--:--'} • {txCreatedBy}
+                      {txMethod} • {txCreatedAt ? format(parseISO(txCreatedAt), 'HH:mm') : '--:--'} • {displayUser}
                     </p>
                   </div>
 
