@@ -44,6 +44,12 @@ type ExportTransactionRow = {
   description: string | null
 }
 
+type ProfileRecord = {
+  id?: string | null
+  user_id?: string | null
+  username?: string | null
+}
+
 function SectionCard({
   id,
   icon,
@@ -193,7 +199,7 @@ function SettingsContent() {
   // ✅ IMPORTANT: no section open by default
   const [openSection, setOpenSection] = useState<SectionId | null>(null)
 
-  const loadProfileRecord = useCallback(async (uid: string) => {
+  const loadProfileRecord = useCallback(async (uid: string): Promise<ProfileRecord | null> => {
     const direct = await supabase
       .from('profiles')
       .select('id, user_id, username')
@@ -211,7 +217,7 @@ function SettingsContent() {
     return null
   }, [supabase])
 
-  const ensureProfileRow = useCallback(async (uid: string) => {
+  const ensureProfileRow = useCallback(async (uid: string): Promise<ProfileRecord | null> => {
     const profile = await loadProfileRecord(uid)
     if (profile) return profile
 
