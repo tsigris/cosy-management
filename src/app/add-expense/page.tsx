@@ -285,6 +285,103 @@ function AddExpenseForm() {
     return () => document.removeEventListener('pointerdown', handler, true)
   }, [])
 
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof document === 'undefined') return
+
+    const ua = navigator.userAgent || ''
+    const isMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(ua) || window.matchMedia('(pointer: coarse)').matches
+    if (!isMobile) return
+
+    let rafId: number | null = null
+
+    const blurActiveInput = () => {
+      const el = document.activeElement as HTMLElement | null
+      if (!el || el === document.body) return
+
+      const isEditable = el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable
+      if (!isEditable) return
+
+      if (rafId !== null) {
+        window.cancelAnimationFrame(rafId)
+      }
+
+      rafId = window.requestAnimationFrame(() => {
+        rafId = null
+        const current = document.activeElement as HTMLElement | null
+        if (!current) return
+
+        const currentIsEditable = current.tagName === 'INPUT' || current.tagName === 'TEXTAREA' || current.isContentEditable
+        if (currentIsEditable) current.blur()
+      })
+    }
+
+    const listenerOptions: AddEventListenerOptions = { passive: true }
+    const documentScrollOptions: AddEventListenerOptions = { passive: true, capture: true }
+
+    window.addEventListener('scroll', blurActiveInput, listenerOptions)
+    window.addEventListener('touchmove', blurActiveInput, listenerOptions)
+    window.addEventListener('wheel', blurActiveInput, listenerOptions)
+
+    document.addEventListener('scroll', blurActiveInput, documentScrollOptions)
+
+    const scrollableContainers = new Set<HTMLElement>()
+
+    const registerScrollableContainer = (node: Element) => {
+      if (!(node instanceof HTMLElement)) return
+      if (scrollableContainers.has(node)) return
+
+      const styles = window.getComputedStyle(node)
+      const overflowY = styles.overflowY
+      const overflowX = styles.overflowX
+      const canScrollY = (overflowY === 'auto' || overflowY === 'scroll') && node.scrollHeight > node.clientHeight
+      const canScrollX = (overflowX === 'auto' || overflowX === 'scroll') && node.scrollWidth > node.clientWidth
+
+      if (!canScrollY && !canScrollX) return
+
+      node.addEventListener('scroll', blurActiveInput, listenerOptions)
+      node.addEventListener('touchmove', blurActiveInput, listenerOptions)
+      node.addEventListener('wheel', blurActiveInput, listenerOptions)
+      scrollableContainers.add(node)
+    }
+
+    const scanScrollableContainers = () => {
+      document.querySelectorAll('*').forEach(registerScrollableContainer)
+    }
+
+    scanScrollableContainers()
+
+    const observer = new MutationObserver(() => {
+      scanScrollableContainers()
+    })
+
+    observer.observe(document.body, {
+      subtree: true,
+      childList: true,
+      attributes: true,
+      attributeFilter: ['style', 'class'],
+    })
+
+    return () => {
+      if (rafId !== null) {
+        window.cancelAnimationFrame(rafId)
+      }
+
+      observer.disconnect()
+
+      window.removeEventListener('scroll', blurActiveInput, listenerOptions)
+      window.removeEventListener('touchmove', blurActiveInput, listenerOptions)
+      window.removeEventListener('wheel', blurActiveInput, listenerOptions)
+
+      document.removeEventListener('scroll', blurActiveInput, documentScrollOptions)
+
+      scrollableContainers.forEach((node) => {
+        node.removeEventListener('scroll', blurActiveInput, listenerOptions)
+        node.removeEventListener('touchmove', blurActiveInput, listenerOptions)
+        node.removeEventListener('wheel', blurActiveInput, listenerOptions)
+      })
+    }
+  }, [])
+
   const getActiveStoreId = useCallback(() => {
     const ls = typeof window !== 'undefined' ? (localStorage.getItem('active_store_id') || '').trim() : ''
     const url = (urlStoreId || '').trim()
