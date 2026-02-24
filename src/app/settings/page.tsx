@@ -46,7 +46,7 @@ type ExportTransactionRow = {
 
 type ProfileRecord = {
   id?: string | null
-  user_id?: string | null
+  store_id?: string | null
   username?: string | null
 }
 
@@ -200,35 +200,23 @@ function SettingsContent() {
   const [openSection, setOpenSection] = useState<SectionId | null>(null)
 
   const loadProfileRecord = useCallback(async (uid: string): Promise<ProfileRecord | null> => {
-    const direct = await supabase
-      .from('profiles')
-      .select('id, user_id, username')
-      .or(`id.eq.${uid},user_id.eq.${uid}`)
-      .maybeSingle()
-
-    if (!direct.error) return direct.data
-
-    const byId = await supabase.from('profiles').select('id, username').eq('id', uid).maybeSingle()
-    if (!byId.error) return byId.data
-
-    const byUserId = await supabase.from('profiles').select('user_id, username').eq('user_id', uid).maybeSingle()
-    if (!byUserId.error) return byUserId.data
-
-    return null
+    const { data, error } = await supabase.from('profiles').select('id, username, store_id').eq('id', uid).maybeSingle()
+    if (error) return null
+    return data
   }, [supabase])
 
   const ensureProfileRow = useCallback(async (uid: string): Promise<ProfileRecord | null> => {
     const profile = await loadProfileRecord(uid)
     if (profile) return profile
 
-    const createById = await supabase.from('profiles').upsert({ id: uid, username: '' }, { onConflict: 'id' })
-    if (!createById.error) return await loadProfileRecord(uid)
+    const payload: { id: string; username: string; store_id?: string } = { id: uid, username: '' }
+    if (storeId) payload.store_id = storeId
 
-    const createByUserId = await supabase.from('profiles').upsert({ user_id: uid, username: '' }, { onConflict: 'user_id' })
-    if (createByUserId.error) throw createByUserId.error
+    const createById = await supabase.from('profiles').upsert(payload, { onConflict: 'id' })
+    if (createById.error) throw createById.error
 
     return await loadProfileRecord(uid)
-  }, [supabase, loadProfileRecord])
+  }, [supabase, loadProfileRecord, storeId])
 
   // Fetch profile
   useEffect(() => {
@@ -256,20 +244,30 @@ function SettingsContent() {
   }, [supabase, ensureProfileRow])
 
   const handleProfileSave = async () => {
-    if (!userId) return
+    if (!userId) {
+      setProfileError('Σφάλμα αποθήκευσης')
+      toast.error('Σφάλμα αποθήκευσης')
+      return
+    }
     setProfileSaveLoading(true)
     setProfileError('')
     setProfileSuccess('')
     try {
       const clean = profileName.trim()
 
-      const saveById = await supabase.from('profiles').upsert({ id: userId, username: clean }, { onConflict: 'id' })
-      if (saveById.error) {
-        const saveByUserId = await supabase.from('profiles').upsert({ user_id: userId, username: clean }, { onConflict: 'user_id' })
-        if (saveByUserId.error) throw saveByUserId.error
-      }
+      const payload: { id: string; username: string; store_id?: string } = { id: userId, username: clean }
+      if (storeId) payload.store_id = storeId
 
-      const profile = await loadProfileRecord(userId)
+      const saveById = await supabase.from('profiles').upsert(payload, { onConflict: 'id' })
+      if (saveById.error) throw saveById.error
+
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('id, username, store_id')
+        .eq('id', userId)
+        .maybeSingle()
+
+      if (profileError) throw profileError
       setProfileName(profile?.username || '')
 
       setProfileSuccess('Το όνομα ενημερώθηκε!')
