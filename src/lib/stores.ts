@@ -14,7 +14,7 @@ export async function fetchStoresForUser(userId: string): Promise<StoreCard[]> {
 
   const supabase = getSupabase()
 
-  // 1) Φέρνουμε όλα τα stores που έχει πρόσβαση ο χρήστης (invites / staff / admin)
+  // Canonical mapping user -> stores
   const { data: accessRows, error: accessError } = await supabase
     .from('store_access')
     .select('store_id')
@@ -29,21 +29,15 @@ export async function fetchStoresForUser(userId: string): Promise<StoreCard[]> {
     new Set((accessRows ?? []).map((r: any) => String(r.store_id)).filter(Boolean))
   )
 
-  // 2) Φέρνουμε stats για:
-  // - stores που είναι owner ο user
-  // - stores που έχει access μέσω store_access
-  let query = supabase
-    .from('v_store_stats')
-    .select('id, name, owner_id, income, expenses, profit, last_updated')
-    .order('name')
-
-  if (accessStoreIds.length > 0) {
-    // Supabase "or" syntax: owner_id.eq.<id>,id.in.(a,b,c)
-    const inList = accessStoreIds.join(',')
-    query = query.or(`owner_id.eq.${userId},id.in.(${inList})`)
-  } else {
-    query = query.eq('owner_id', userId)
+  if (accessStoreIds.length === 0) {
+    return []
   }
+
+  const query = supabase
+    .from('v_store_stats')
+    .select('id, name, income, expenses, profit, last_updated')
+    .in('id', accessStoreIds)
+    .order('name')
 
   const { data, error } = await query
 

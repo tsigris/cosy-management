@@ -1,150 +1,259 @@
 'use client'
 export const dynamic = 'force-dynamic'
 
-import { useEffect, useState, Suspense, useCallback } from 'react'
-import { getSupabase } from '@/lib/supabase'
+import { useEffect, useMemo, useState, Suspense, useCallback } from 'react'
+import { getSupabaseBrowser } from '@/lib/supabase-browser'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { toast, Toaster } from 'sonner'
-import { ShieldCheck, X, Settings, UserPlus, Trash2 } from 'lucide-react'
+import { ShieldCheck, X, UserPlus } from 'lucide-react'
 import ErrorBoundary from '@/components/ErrorBoundary'
 
+type UserRole = 'admin' | 'user'
+
+type StoreUser = {
+  user_id: string
+  user_email: string | null
+  role: 'admin' | 'user' | 'staff'
+  can_view_analysis?: boolean
+  can_view_history?: boolean
+  can_edit_transactions?: boolean
+}
+
 function PermissionsContent() {
-  const supabase = getSupabase()
+  const supabase = getSupabaseBrowser()
   const router = useRouter()
   const searchParams = useSearchParams()
-  const storeId = searchParams.get('store')
+  const storeFromQuery = searchParams.get('store')
+  const [storeFromStorage, setStoreFromStorage] = useState('')
+  const storeId = useMemo(() => (storeFromQuery || storeFromStorage || '').trim(), [storeFromQuery, storeFromStorage])
 
-  const [users, setUsers] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
-  const [selectedUser, setSelectedUser] = useState<any>(null)
+  const [users, setUsers] = useState<StoreUser[]>([])
+  const [loading, setLoading] = useState(false)
+  const [hasToken, setHasToken] = useState(true)
+  const [actionLoadingUserId, setActionLoadingUserId] = useState('')
   const [myId, setMyId] = useState('')
+  const actionsDisabled = !storeId || loading || !hasToken
 
-  // 1. ΦΟΡΤΩΣΗ ΔΕΔΟΜΕΝΩΝ
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    setStoreFromStorage(localStorage.getItem('active_store_id') || '')
+  }, [])
+
+  const getAccessToken = async (): Promise<string> => {
+    const { data } = await supabase.auth.getSession()
+    return data.session?.access_token || ''
+  }
+
+  const getAuthHeaders = (token: string) => ({
+    'Content-Type': 'application/json',
+    'X-Supabase-Auth': token,
+  })
+
+  const fetchAllUsers = useCallback(async (token: string) => {
+    if (!storeId) return [] as StoreUser[]
+
+    let page = 1
+    let totalPages = 1
+    const allUsers: StoreUser[] = []
+
+    while (page <= totalPages) {
+      const response = await fetch('/api/admin/list-users', {
+        method: 'POST',
+        headers: getAuthHeaders(token),
+        body: JSON.stringify({
+          storeId,
+          q: '',
+          page,
+          pageSize: 50,
+        }),
+      })
+
+      const result = await response.json()
+      if (!response.ok || !result?.ok) {
+        throw new Error(result?.error || 'Αποτυχία φόρτωσης χρηστών.')
+      }
+
+      const pageItems = Array.isArray(result?.items) ? result.items : []
+      allUsers.push(...pageItems)
+      totalPages = typeof result?.totalPages === 'number' ? Math.max(1, result.totalPages) : 1
+      page += 1
+    }
+
+    return allUsers
+  }, [storeId])
+
   const fetchPermissionsData = useCallback(async () => {
-    // Αν λείπει το storeId, μην κολλάς, στείλε τον χρήστη να διαλέξει μαγαζί
     if (!storeId) {
-      router.push('/select-store')
+      setUsers([])
       return
     }
 
     try {
       setLoading(true)
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) return router.push('/login')
-      setMyId(user.id)
+      const token = await getAccessToken()
+      setHasToken(Boolean(token))
 
-      const { data: accessData, error: accErr } = await supabase
-        .from('store_access')
-        .select('user_id, role, can_view_analysis, can_view_history, can_edit_transactions, store_id')
-        .eq('store_id', storeId);
-
-      if (accErr) throw accErr;
-
-      const safeAccessData = Array.isArray(accessData) ? accessData : []
-      const userIds = safeAccessData
-        .map((a: any) => a?.user_id)
-        .filter((id: unknown): id is string => typeof id === 'string' && id.length > 0)
-
-      if (safeAccessData.length === 0) {
+      if (!token) {
+        toast.error('Πρέπει να είστε συνδεδεμένος.')
         setUsers([])
         return
       }
 
-      const { data: profiles } = await supabase
-        .from('profiles')
-        .select('id, username, email')
-        .in('id', userIds);
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
 
-      const profileMap = Object.fromEntries(profiles?.map(p => [p.id, p]) || []);
+      if (!user) {
+        router.push('/login')
+        return
+      }
 
-      const combinedData = safeAccessData.map((entry: any) => ({
-        ...entry,
-        username: profileMap?.[entry?.user_id]?.username || 'Χρήστης',
-        email: profileMap?.[entry?.user_id]?.email || '---'
-      }));
+      setMyId(user.id)
 
-      setUsers(combinedData);
+      const loadedUsers = await fetchAllUsers(token)
+      setUsers(loadedUsers)
     } catch (err: any) {
-      toast.error('Αποτυχία συγχρονισμού');
+      toast.error(err?.message || 'Αποτυχία συγχρονισμού')
     } finally {
       setLoading(false)
     }
-  }, [storeId, router])
+  }, [fetchAllUsers, router, storeId, supabase])
 
   useEffect(() => {
-    fetchPermissionsData()
+    void fetchPermissionsData()
   }, [fetchPermissionsData])
 
-  // 2. ΕΝΗΜΕΡΩΣΗ ΔΙΚΑΙΩΜΑΤΩΝ
-  const updatePermission = async (field: string) => {
-    if (!selectedUser || !storeId) return;
-    const newValue = !selectedUser[field];
+  const sendResetFor = async (targetEmail: string) => {
+    if (!storeId) return
 
-    const { data: adminCheck } = await supabase
-      .from('store_access')
-      .select('role')
-      .eq('user_id', myId)
-      .eq('store_id', storeId)
-      .single();
-
-    if (adminCheck?.role !== 'admin') {
-      toast.error('Μη εξουσιοδοτημένη ενέργεια. Απαιτούνται δικαιώματα Admin.');
-      return;
+    const normalizedEmail = targetEmail.trim().toLowerCase()
+    if (!normalizedEmail) {
+      toast.error('Συμπλήρωσε email.')
+      return
     }
-    
-    // Optimistic UI update
-    const updatedUser = { ...selectedUser, [field]: newValue };
-    setSelectedUser(updatedUser);
-    setUsers((prev) => (Array.isArray(prev) ? prev.map((u) => (u?.user_id === selectedUser?.user_id ? updatedUser : u)) : []));
 
-    const { error } = await supabase
-      .from('store_access')
-      .update({ [field]: newValue })
-      .eq('user_id', selectedUser.user_id)
-      .eq('store_id', storeId);
+    try {
+      const token = await getAccessToken()
+      setHasToken(Boolean(token))
 
-    if (error) {
-      toast.error("Σφάλμα στην ενημέρωση");
-      fetchPermissionsData(); // Rollback σε περίπτωση σφάλματος
-    } else {
-      toast.success("Η αλλαγή αποθηκεύτηκε");
+      if (!token) {
+        toast.error('Πρέπει να είστε συνδεδεμένος.')
+        return
+      }
+
+      const response = await fetch('/api/admin/send-reset', {
+        method: 'POST',
+        headers: getAuthHeaders(token),
+        body: JSON.stringify({
+          email: normalizedEmail,
+          storeId,
+        }),
+      })
+
+      const result = await response.json()
+      if (!response.ok || !result?.ok) {
+        throw new Error(result?.error || 'Αποτυχία αποστολής reset.')
+      }
+
+      toast.success('Στάλθηκε email για reset password.')
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Αποτυχία αποστολής reset.'
+      toast.error(message)
     }
-  };
+  }
 
-  // 3. ΔΙΑΓΡΑΦΗ ΧΡΗΣΤΗ
+  const updateUserRole = async (userId: string, role: UserRole) => {
+    if (!storeId) return
+
+    if (userId === myId && role !== 'admin') {
+      toast.error('Δεν μπορείς να αφαιρέσεις δικαιώματα admin από τον εαυτό σου.')
+      return
+    }
+
+    try {
+      setActionLoadingUserId(userId)
+
+      const token = await getAccessToken()
+      setHasToken(Boolean(token))
+
+      if (!token) {
+        toast.error('Πρέπει να είστε συνδεδεμένος.')
+        return
+      }
+
+      const response = await fetch('/api/admin/update-user-role', {
+        method: 'POST',
+        headers: getAuthHeaders(token),
+        body: JSON.stringify({
+          storeId,
+          userId,
+          role,
+        }),
+      })
+
+      const result = await response.json()
+      if (!response.ok || !result?.ok) {
+        throw new Error(result?.error || 'Αποτυχία ενημέρωσης ρόλου.')
+      }
+
+      toast.success('Ο ρόλος ενημερώθηκε.')
+      await fetchPermissionsData()
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Αποτυχία ενημέρωσης ρόλου.'
+      toast.error(message)
+    } finally {
+      setActionLoadingUserId('')
+    }
+  }
+
   const removeUser = async (userId: string) => {
-    if (!storeId) return toast.error('Σφάλμα καταστήματος')
-    if (userId === myId) return toast.error("Δεν μπορείτε να αφαιρέσετε τον εαυτό σας");
-    if (!confirm('Οριστική αφαίρεση πρόσβασης;')) return;
-
-    const { data: adminCheck } = await supabase
-      .from('store_access')
-      .select('role')
-      .eq('user_id', myId)
-      .eq('store_id', storeId)
-      .single();
-
-    if (adminCheck?.role !== 'admin') {
-      toast.error('Μη εξουσιοδοτημένη ενέργεια. Απαιτούνται δικαιώματα Admin.');
-      return;
+    if (!storeId) return
+    if (userId === myId) {
+      toast.error('Δεν μπορείς να αφαιρέσεις τον εαυτό σου.')
+      return
     }
 
-    const { error } = await supabase
-      .from('store_access')
-      .delete()
-      .eq('user_id', userId)
-      .eq('store_id', storeId);
+    if (!confirm('Οριστική αφαίρεση πρόσβασης;')) return
 
-    if (!error) {
-      setUsers((prev) => (Array.isArray(prev) ? prev.filter((u) => u?.user_id !== userId) : []));
-      toast.success("Ο χρήστης αφαιρέθηκε");
+    try {
+      setActionLoadingUserId(userId)
+
+      const token = await getAccessToken()
+      setHasToken(Boolean(token))
+
+      if (!token) {
+        toast.error('Πρέπει να είστε συνδεδεμένος.')
+        return
+      }
+
+      const response = await fetch('/api/admin/remove-user', {
+        method: 'POST',
+        headers: getAuthHeaders(token),
+        body: JSON.stringify({
+          storeId,
+          userId,
+        }),
+      })
+
+      const result = await response.json()
+      if (!response.ok || !result?.ok) {
+        throw new Error(result?.error || 'Αποτυχία αφαίρεσης χρήστη.')
+      }
+
+      toast.success('Ο χρήστης αφαιρέθηκε')
+      await fetchPermissionsData()
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Αποτυχία αφαίρεσης χρήστη.'
+      toast.error(message)
+    } finally {
+      setActionLoadingUserId('')
     }
-  };
+  }
 
   const safeUsers = Array.isArray(users) ? users : []
-  const admins = safeUsers.filter(u => u?.role === 'admin');
-  const staff = safeUsers.filter(u => u?.role !== 'admin');
+  const admins = safeUsers.filter((u) => u?.role === 'admin')
+  const staff = safeUsers.filter((u) => u?.role !== 'admin')
 
   return (
     <div style={containerStyle}>
@@ -158,78 +267,130 @@ function PermissionsContent() {
             <p style={subtitleStyle}>ΔΙΑΧΕΙΡΙΣΗ ΠΡΟΣΒΑΣΗΣ</p>
           </div>
         </div>
-        <Link href={`/?store=${storeId}`} style={closeBtnStyle}><X size={20} /></Link>
+        <Link href={storeId ? `/?store=${storeId}` : '/select-store'} style={closeBtnStyle}><X size={20} /></Link>
       </header>
 
-      {loading ? (
+      {!storeId ? (
+        <div style={loadingTextStyle}>Επιλέξτε κατάστημα</div>
+      ) : !hasToken ? (
+        <div style={loadingTextStyle}>Πρέπει να είστε συνδεδεμένος.</div>
+      ) : loading ? (
         <div style={loadingTextStyle}>ΣΥΓΧΡΟΝΙΣΜΟΣ ΧΡΗΣΤΩΝ...</div>
       ) : (
-        <div style={{ paddingBottom: '100px' }}> {/* Padding για το BottomNav */}
+        <div style={{ paddingBottom: '100px' }}>
           <p style={sectionLabel}>ΔΙΑΧΕΙΡΙΣΤΕΣ</p>
-          {admins?.length > 0 ? admins.map((u: any) => (
-            <div key={u.user_id} style={adminCard}>
-              <div style={{ flex: 1 }}>
-                <p style={adminNameText}>{String(u?.username || 'Χρήστης').toUpperCase()} {u?.user_id === myId ? '(ΕΣΕΙΣ)' : ''}</p>
-                <p style={adminEmailText}>{u?.email || '---'}</p>
-              </div>
-              <span style={adminBadge}>FULL ACCESS</span>
-            </div>
-          )) : <div style={loadingTextStyle}>Δεν βρέθηκαν διαχειριστές</div>}
+          {admins.length > 0 ? (
+            admins.map((u) => {
+              const selectValue: UserRole = u.role === 'admin' ? 'admin' : 'user'
+              const disabledByLoad = actionsDisabled || actionLoadingUserId === u.user_id
+
+              return (
+                <article key={u.user_id} style={userCard}>
+                  <div style={userTopRow}>
+                    <div style={{ flex: 1 }}>
+                      <p style={adminNameText}>{(u.user_email || u.user_id)} {u.user_id === myId ? '(ΕΣΕΙΣ)' : ''}</p>
+                      {!u.user_email ? <p style={unknownEmailStyle}>Email άγνωστο (παλιή εγγραφή)</p> : null}
+                    </div>
+                    <span style={adminBadge}>ADMIN</span>
+                  </div>
+                  <div style={rowActionsStyle}>
+                    <button
+                      type="button"
+                      style={{ ...editBtnStyle, opacity: disabledByLoad || !u.user_email ? 0.6 : 1, cursor: disabledByLoad || !u.user_email ? 'not-allowed' : 'pointer' }}
+                      disabled={disabledByLoad || !u.user_email}
+                      onClick={() => {
+                        if (!u.user_email) return
+                        void sendResetFor(u.user_email)
+                      }}
+                    >
+                      Reset
+                    </button>
+                    <select
+                      value={selectValue}
+                      disabled={disabledByLoad || u.user_id === myId}
+                      onChange={(event) => {
+                        const role = event.target.value as UserRole
+                        void updateUserRole(u.user_id, role)
+                      }}
+                      style={{ ...selectStyle, opacity: disabledByLoad || u.user_id === myId ? 0.6 : 1, cursor: disabledByLoad || u.user_id === myId ? 'not-allowed' : 'pointer' }}
+                    >
+                      <option value="user">USER</option>
+                      <option value="admin">ADMIN</option>
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => void removeUser(u.user_id)}
+                      style={{ ...delBtnStyle, opacity: disabledByLoad || u.user_id === myId ? 0.6 : 1, cursor: disabledByLoad || u.user_id === myId ? 'not-allowed' : 'pointer' }}
+                      disabled={disabledByLoad || u.user_id === myId}
+                    >
+                      Αφαίρεση
+                    </button>
+                  </div>
+                </article>
+              )
+            })
+          ) : (
+            <div style={loadingTextStyle}>Δεν βρέθηκαν διαχειριστές</div>
+          )}
 
           <div style={{ height: '30px' }} />
 
           <p style={sectionLabel}>ΠΡΟΣΩΠΙΚΟ / ΣΥΝΕΡΓΑΤΕΣ ({staff.length})</p>
           <div style={listContainer}>
-            {staff?.length > 0 ? staff.map((u: any) => (
-              <div key={u.user_id} style={staffRow}>
-                <div style={{ flex: 1 }}>
-                  <p style={{fontWeight:'900', margin:0, fontSize:'15px', color:'#0f172a'}}>{u?.username || 'Χρήστης'}</p>
-                  <div style={{display:'flex', gap:'5px', marginTop:'4px'}}>
-                    {u?.can_view_analysis && <span>📊</span>}
-                    {u?.can_view_history && <span>🏠</span>}
-                    {u?.can_edit_transactions && <span>✏️</span>}
+            {staff.length > 0 ? staff.map((u) => {
+              const selectValue: UserRole = u.role === 'admin' ? 'admin' : 'user'
+              const disabledByLoad = actionsDisabled || actionLoadingUserId === u.user_id
+
+              return (
+                <article key={u.user_id} style={staffRow}>
+                  <div style={{ flex: 1 }}>
+                    <p style={adminNameText}>{u.user_email || u.user_id}</p>
+                    {!u.user_email ? <p style={unknownEmailStyle}>Email άγνωστο (παλιή εγγραφή)</p> : null}
                   </div>
-                </div>
-                <div style={{display:'flex', gap:'10px'}}>
-                    <button onClick={() => setSelectedUser(u)} style={editBtnStyle}><Settings size={18} /></button>
-                    <button onClick={() => removeUser(String(u?.user_id || ''))} style={delBtnStyle}><Trash2 size={18} /></button>
-                </div>
-              </div>
-            )) : <div style={loadingTextStyle}>Δεν βρέθηκαν συνεργάτες</div>}
+
+                  <div style={rowActionsStyle}>
+                    <button
+                      type="button"
+                      style={{ ...editBtnStyle, opacity: disabledByLoad || !u.user_email ? 0.6 : 1, cursor: disabledByLoad || !u.user_email ? 'not-allowed' : 'pointer' }}
+                      disabled={disabledByLoad || !u.user_email}
+                      onClick={() => {
+                        if (!u.user_email) return
+                        void sendResetFor(u.user_email)
+                      }}
+                    >
+                      Reset
+                    </button>
+                    <select
+                      value={selectValue}
+                      disabled={disabledByLoad || u.user_id === myId}
+                      onChange={(event) => {
+                        const role = event.target.value as UserRole
+                        void updateUserRole(u.user_id, role)
+                      }}
+                      style={{ ...selectStyle, opacity: disabledByLoad || u.user_id === myId ? 0.6 : 1, cursor: disabledByLoad || u.user_id === myId ? 'not-allowed' : 'pointer' }}
+                    >
+                      <option value="user">USER</option>
+                      <option value="admin">ADMIN</option>
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => void removeUser(u.user_id)}
+                      style={{ ...delBtnStyle, opacity: disabledByLoad || u.user_id === myId ? 0.6 : 1, cursor: disabledByLoad || u.user_id === myId ? 'not-allowed' : 'pointer' }}
+                      disabled={disabledByLoad || u.user_id === myId}
+                    >
+                      Αφαίρεση
+                    </button>
+                  </div>
+                </article>
+              )
+            }) : <div style={loadingTextStyle}>Δεν βρέθηκαν συνεργάτες</div>}
           </div>
 
-          <Link href={`/manage-users?store=${storeId}`} style={inviteBtn}>
+          <Link href={storeId ? `/manage-users?store=${storeId}` : '/manage-users'} style={inviteBtn}>
             <UserPlus size={20} /> ΔΙΑΧΕΙΡΙΣΗ ΧΡΗΣΤΩΝ
           </Link>
         </div>
       )}
-
-      {/* MODAL ΕΠΕΞΕΡΓΑΣΙΑΣ */}
-      {selectedUser && (
-        <div style={modalOverlay}>
-          <div style={modalContent}>
-            <h3 style={{margin:0, fontWeight:'900'}}>Δικαιώματα</h3>
-            <p style={{fontSize:'12px', color:'#64748b', marginBottom:'20px'}}>{selectedUser?.username || 'Χρήστης'}</p>
-            
-            <PermissionToggle label="📊 Ανάλυση" active={selectedUser?.can_view_analysis === true} onClick={() => updatePermission('can_view_analysis')} />
-            <PermissionToggle label="🏠 Ιστορικό" active={selectedUser?.can_view_history === true} onClick={() => updatePermission('can_view_history')} />
-            <PermissionToggle label="✏️ Επεξεργασία" active={selectedUser?.can_edit_transactions === true} onClick={() => updatePermission('can_edit_transactions')} />
-
-            <button onClick={() => setSelectedUser(null)} style={closeModalBtn}>ΚΛΕΙΣΙΜΟ</button>
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
-
-function PermissionToggle({ label, active, onClick }: any) {
-  return (
-    <div style={toggleRow}>
-      <span style={{fontSize:'14px', fontWeight:'700'}}>{label}</span>
-      <button onClick={onClick} style={{...toggleBtn, backgroundColor: active ? '#10b981' : '#e2e8f0', transition: 'all 0.3s'}}>
-        {active ? 'ΝΑΙ' : 'ΟΧΙ'}
-      </button>
     </div>
   )
 }
@@ -246,7 +407,6 @@ export default function PermissionsPage() {
   )
 }
 
-// --- STYLES (Παραμένουν ως έχουν) ---
 const containerStyle: any = { maxWidth: '480px', margin: '0 auto', padding: '20px' };
 const headerStyle: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px' };
 const logoBoxStyle: any = { width: '45px', height: '45px', backgroundColor: '#fef3c7', borderRadius: '15px', display: 'flex', alignItems: 'center', justifyContent: 'center' };
@@ -260,12 +420,12 @@ const adminNameText = { color: 'white', fontWeight: '900', margin: 0, fontSize: 
 const adminEmailText = { color: '#94a3b8', fontSize: '11px', margin: 0, fontWeight: '700' };
 const adminBadge = { color: '#4ade80', fontSize: '10px', fontWeight: '900', border: '1px solid #166534', padding: '5px 10px', borderRadius: '10px' };
 const listContainer: any = { backgroundColor: 'white', borderRadius: '24px', border: '1px solid #e2e8f0', overflow: 'hidden' };
-const staffRow: any = { padding: '18px 20px', display: 'flex', alignItems: 'center', borderBottom: '1px solid #f1f5f9' };
-const editBtnStyle: any = { backgroundColor: '#f1f5f9', border: 'none', padding: '10px', borderRadius: '12px', cursor: 'pointer' };
+const userCard: any = { backgroundColor: '#1e293b', padding: '14px', borderRadius: '18px', marginBottom: '10px' };
+const userTopRow: any = { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', marginBottom: '10px' };
+const unknownEmailStyle: any = { margin: '4px 0 0 0', color: '#fbbf24', fontWeight: '700', fontSize: '11px' };
+const staffRow: any = { padding: '14px', display: 'flex', flexDirection: 'column', gap: '10px', borderBottom: '1px solid #f1f5f9' };
+const rowActionsStyle: any = { display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' };
+const editBtnStyle: any = { backgroundColor: '#f1f5f9', border: 'none', padding: '10px', borderRadius: '12px', cursor: 'pointer', fontWeight: '700', fontSize: '12px' };
+const selectStyle: any = { border: '1px solid #cbd5e1', padding: '10px', borderRadius: '12px', fontWeight: '700', fontSize: '12px', backgroundColor: '#fff' };
 const delBtnStyle: any = { ...editBtnStyle, backgroundColor: '#fee2e2', color: '#ef4444' };
 const inviteBtn: any = { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', marginTop: '30px', padding: '18px', backgroundColor: '#0f172a', color: 'white', borderRadius: '20px', fontWeight: '900', textDecoration: 'none' };
-const modalOverlay: any = { position: 'fixed', top:0, left:0, width:'100%', height:'100%', backgroundColor:'rgba(0,0,0,0.5)', display:'flex', justifyContent:'center', alignItems:'center', zIndex: 1000, backdropFilter: 'blur(4px)' };
-const modalContent: any = { backgroundColor:'white', padding:'30px', borderRadius:'28px', width:'90%', maxWidth:'350px' };
-const toggleRow = { display:'flex', justifyContent:'space-between', alignItems:'center', padding:'15px 0', borderBottom:'1px solid #f1f5f9' };
-const toggleBtn: any = { border:'none', color:'white', padding:'8px 15px', borderRadius:'10px', fontWeight:'900', cursor:'pointer', minWidth:'65px', fontSize:'11px' };
-const closeModalBtn: any = { width:'100%', padding:'16px', backgroundColor:'#0f172a', color:'white', borderRadius:'15px', border:'none', fontWeight:'900', marginTop:'20px', cursor:'pointer' };
