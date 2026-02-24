@@ -388,9 +388,7 @@ const subtitleStyle = { fontSize: '10px', color: '#94a3b8', fontWeight: '800', m
 const closeBtnStyle: any = { padding: '8px', backgroundColor: 'white', borderRadius: '12px', border: '1px solid #e2e8f0', color: '#94a3b8' };
 const loadingTextStyle: any = { textAlign: 'center', padding: '100px 0', fontWeight: '800', color: '#cbd5e1' };
 const sectionLabel = { fontSize: '11px', fontWeight: '900', color: '#94a3b8', marginBottom: '12px', textTransform: 'uppercase' as const };
-const adminCard: any = { backgroundColor: '#1e293b', padding: '20px', borderRadius: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' };
 const adminNameText = { color: 'white', fontWeight: '900', margin: 0, fontSize: '15px' };
-const adminEmailText = { color: '#94a3b8', fontSize: '11px', margin: 0, fontWeight: '700' };
 const adminBadge = { color: '#4ade80', fontSize: '10px', fontWeight: '900', border: '1px solid #166534', padding: '5px 10px', borderRadius: '10px' };
 const userCard: any = { backgroundColor: '#1e293b', padding: '14px', borderRadius: '18px', marginBottom: '10px' };
 const userTopRow: any = { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', marginBottom: '10px' };
@@ -403,9 +401,7 @@ const inviteBtn: any = { display: 'flex', alignItems: 'center', justifyContent: 
 
 const colors = {
   primaryDark: '#0f172a',
-  secondaryText: '#64748b',
   accentGreen: '#10b981',
-  border: '#e2e8f0',
 }
 
 const heroCardStyle: any = {
