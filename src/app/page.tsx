@@ -50,7 +50,7 @@ function getPaymentMethod(tx: any): string {
 }
 
 function getUserLabelFromTx(tx: any): string {
-  return tx?.profiles?.display_name || tx?.profiles?.full_name || tx?.profiles?.name || 'Χρήστης'
+  return tx?.profiles?.username || tx?.user_id || 'Χρήστης'
 }
 
 function DashboardContent() {
@@ -273,9 +273,7 @@ function DashboardContent() {
   user_id,
   created_by_name,
   profiles:profiles!transactions_user_id_fkey (
-    display_name,
-    full_name,
-    name
+    username
   ),
   suppliers(name),
   fixed_assets(name),
@@ -322,19 +320,17 @@ function DashboardContent() {
         const baseRows = txWithoutJoin || []
         const userIds = Array.from(new Set(baseRows.map((row: any) => String(row?.user_id || '').trim()).filter(Boolean)))
 
-        let profilesByUserId: Record<string, { display_name?: string | null; full_name?: string | null; name?: string | null }> = {}
+        let profilesByUserId: Record<string, { username?: string | null }> = {}
 
         if (userIds.length > 0) {
-          const { data: profileRows, error: profilesError } = await supabase.from('profiles').select('id, display_name, full_name, name').in('id', userIds)
+          const { data: profileRows, error: profilesError } = await supabase.from('profiles').select('id, username').in('id', userIds)
 
           if (profilesError) {
             console.error('Profiles fallback load failed:', profilesError)
           } else {
-            profilesByUserId = (profileRows || []).reduce((acc: Record<string, { display_name?: string | null; full_name?: string | null; name?: string | null }>, profile: any) => {
+            profilesByUserId = (profileRows || []).reduce((acc: Record<string, { username?: string | null }>, profile: any) => {
               acc[String(profile.id)] = {
-                display_name: profile.display_name,
-                full_name: profile.full_name,
-                name: profile.name,
+                username: profile.username,
               }
               return acc
             }, {})
