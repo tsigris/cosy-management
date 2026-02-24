@@ -623,7 +623,22 @@ function DashboardContent() {
                 <NextLink href={`/help?store=${storeIdFromUrl}`} style={menuItem} onClick={() => setIsMenuOpen(false)}>
                   📖 Οδηγίες Χρήσης
                 </NextLink>
-                <NextLink href={`/admin/permissions?store=${storeIdFromUrl}`} style={menuItem} onClick={() => setIsMenuOpen(false)}>
+                <NextLink
+                  href={
+                    storeIdFromUrl
+                      ? `https://cosy-management.vercel.app/admin/permissions?store=${storeIdFromUrl}`
+                      : '#'
+                  }
+                  style={menuItem}
+                  onClick={(e) => {
+                    if (!storeIdFromUrl) {
+                      e.preventDefault()
+                      toast.error('Δεν βρέθηκε store στο URL')
+                      return
+                    }
+                    setIsMenuOpen(false)
+                  }}
+                >
                   🔐 Δικαιώματα
                 </NextLink>
 
