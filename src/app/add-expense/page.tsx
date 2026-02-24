@@ -223,6 +223,7 @@ function AddExpenseForm() {
   const [imagePreview, setImagePreview] = useState<string | null>(null)
 
   const [currentUsername, setCurrentUsername] = useState('Χρήστης')
+
   const [loading, setLoading] = useState(true)
 
   const [storeId, setStoreId] = useState<string | null>(urlStoreId)

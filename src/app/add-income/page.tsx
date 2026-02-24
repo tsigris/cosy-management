@@ -142,6 +142,7 @@ function AddIncomeForm() {
   const [isAgainstDebt, setIsAgainstDebt] = useState(mode === 'debt')
 
   const [currentUsername, setCurrentUsername] = useState('Χρήστης')
+
   const [loading, setLoading] = useState(true)
   const [storeId, setStoreId] = useState<string | null>(urlStoreId)
 
