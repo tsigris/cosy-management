@@ -15,7 +15,7 @@ export function AuthLogic() {
       return 
     }
 
-    const publicPaths = ['/login', '/register', '/signup', '/select-store', '/stores/new', '/accept-invite']
+    const publicPaths = ['/login', '/register', '/signup', '/select-store', '/stores/new']
     const isPublicPath = publicPaths.some(path => pathname.startsWith(path))
     
     const storeInUrl = searchParams.get('store')

@@ -198,8 +198,8 @@ function PermissionsContent() {
             )) : <div style={loadingTextStyle}>Δεν βρέθηκαν συνεργάτες</div>}
           </div>
 
-          <Link href={`/admin/invite?store=${storeId}`} style={inviteBtn}>
-            <UserPlus size={20} /> ΠΡΟΣΚΛΗΣΗ ΣΥΝΕΡΓΑΤΗ
+          <Link href={`/manage-users?store=${storeId}`} style={inviteBtn}>
+            <UserPlus size={20} /> ΔΙΑΧΕΙΡΙΣΗ ΧΡΗΣΤΩΝ
           </Link>
         </div>
       )}

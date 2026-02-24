@@ -2,7 +2,7 @@
 
 import { useState, Suspense } from 'react'
 import { getSupabase } from '@/lib/supabase'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { toast, Toaster } from 'sonner'
 import { Mail } from 'lucide-react'
@@ -30,28 +30,7 @@ function RegisterForm() {
   const [resendLoading, setResendLoading] = useState(false)
   const [emailConfirmationPending, setEmailConfirmationPending] = useState(false)
   const router = useRouter()
-  const searchParams = useSearchParams()
-
-  const nextParam = searchParams.get('next')
-  const tokenParam = searchParams.get('token')
-
-  const getSafeNextPath = (next: string | null) => {
-    if (!next) return null
-    if (!next.startsWith('/')) return null
-    if (next.startsWith('//')) return null
-    return next
-  }
-
-  const safeNextPath = getSafeNextPath(nextParam)
-  const inviteNextPath =
-    safeNextPath && safeNextPath.startsWith('/accept-invite?token=')
-      ? safeNextPath
-      : tokenParam
-        ? `/accept-invite?token=${tokenParam}`
-        : null
-
-  const isInviteRegistration = Boolean(inviteNextPath)
-  const loginHref = inviteNextPath ? `/login?next=${encodeURIComponent(inviteNextPath)}` : '/login'
+  const loginHref = '/login'
 
   const handleResendConfirmationEmail = async () => {
     if (!email) {
@@ -124,66 +103,46 @@ function RegisterForm() {
 
       let finalStoreId = ''
 
-      // 2. ΝΕΟΣ ΙΔΙΟΚΤΗΤΗΣ (χωρίς πρόσκληση)
-      if (!isInviteRegistration) {
-        // --- ΣΕΝΑΡΙΟ Β: ΝΕΟΣ ΙΔΙΟΚΤΗΤΗΣ (ADMIN) ---
-        
-        // Δημιουργία νέου καταστήματος
-        const { data: newStore, error: storeErr } = await supabase
-          .from('stores')
-          .insert([{ 
-            name: `ΚΑΤΑΣΤΗΜΑ ${username.toUpperCase() || 'ΜΟΥ'}`, 
-            owner_id: user.id 
-          }])
-          .select()
-          .single()
-
-        if (storeErr) throw storeErr
-        finalStoreId = newStore.id
-
-        // Δίνουμε ρόλο admin στον ιδιοκτήτη
-        const { error: adminAccessError } = await supabase.from('store_access').insert([{
-          user_id: user.id,
-          store_id: finalStoreId,
-          role: 'admin'
+      // 2. ΝΕΟΣ ΙΔΙΟΚΤΗΤΗΣ (ADMIN)
+      const { data: newStore, error: storeErr } = await supabase
+        .from('stores')
+        .insert([{ 
+          name: `ΚΑΤΑΣΤΗΜΑ ${username.toUpperCase() || 'ΜΟΥ'}`, 
+          owner_id: user.id 
         }])
-        if (adminAccessError) throw adminAccessError
+        .select()
+        .single()
 
-        // Δημιουργία Βασικών Παγίων για το νέο κατάστημα
-        const defaultAssets = [
-          { name: 'ΕΝΟΙΚΙΟ', store_id: finalStoreId },
-          { name: 'ΛΟΓΙΣΤΗΣ', store_id: finalStoreId },
-          { name: 'ΔΕΗ / ΡΕΥΜΑ', store_id: finalStoreId }
-        ]
-        const { error: assetsError } = await supabase.from('fixed_assets').insert(defaultAssets)
-        if (assetsError) throw assetsError
-      }
+      if (storeErr) throw storeErr
+      finalStoreId = newStore.id
+
+      const { error: adminAccessError } = await supabase.from('store_access').insert([{
+        user_id: user.id,
+        store_id: finalStoreId,
+        role: 'admin'
+      }])
+      if (adminAccessError) throw adminAccessError
+
+      const defaultAssets = [
+        { name: 'ΕΝΟΙΚΙΟ', store_id: finalStoreId },
+        { name: 'ΛΟΓΙΣΤΗΣ', store_id: finalStoreId },
+        { name: 'ΔΕΗ / ΡΕΥΜΑ', store_id: finalStoreId }
+      ]
+      const { error: assetsError } = await supabase.from('fixed_assets').insert(defaultAssets)
+      if (assetsError) throw assetsError
 
       // 3. ΕΛΕΓΧΟΣ EMAIL CONFIRMATION
       const requiresEmailConfirmation = authData.session === null
 
       if (requiresEmailConfirmation) {
         setEmailConfirmationPending(true)
-        toast.success(
-          isInviteRegistration
-            ? 'Η εγγραφή έγινε! Επιβεβαιώστε πρώτα το email σας και μετά συνδεθείτε για να ολοκληρωθεί η αποδοχή πρόσκλησης.'
-            : 'Η εγγραφή έγινε! Παρακαλώ ελέγξτε το email σας για να ενεργοποιήσετε το λογαριασμό σας.'
-        )
+        toast.success('Η εγγραφή έγινε! Παρακαλώ ελέγξτε το email σας για να ενεργοποιήσετε το λογαριασμό σας.')
         return
       }
 
       // 4. ΟΛΟΚΛΗΡΩΣΗ & REDIRECT
       toast.success('Η εγγραφή ολοκληρώθηκε!')
 
-      if (isInviteRegistration && finalStoreId) {
-        if (typeof window !== 'undefined') {
-          localStorage.setItem('active_store_id', finalStoreId)
-        }
-        router.replace(`/?store=${finalStoreId}`)
-        router.refresh()
-        return
-      }
-      
       // Αποθηκεύουμε το active store για να ξέρει το dashboard τι να δείξει
       if (typeof window !== 'undefined') {
         localStorage.setItem('active_store_id', finalStoreId)
@@ -207,9 +166,7 @@ function RegisterForm() {
       <div style={headerStyle}>
         <h1 style={brandStyle}>COSY APP</h1>
         <div style={dividerStyle} />
-        <p style={instructionStyle}>
-          {isInviteRegistration ? 'ΕΓΓΡΑΦΗ ΓΙΑ ΠΡΟΣΚΛΗΣΗ' : 'ΔΗΜΙΟΥΡΓΙΑ ΛΟΓΑΡΙΑΣΜΟΥ'}
-        </p>
+        <p style={instructionStyle}>ΔΗΜΙΟΥΡΓΙΑ ΛΟΓΑΡΙΑΣΜΟΥ</p>
       </div>
       
       {emailConfirmationPending ? (
@@ -218,7 +175,7 @@ function RegisterForm() {
             <Mail size={26} color="#0f172a" strokeWidth={2.2} />
           </div>
           <p style={confirmationTextStyle}>
-            Η εγγραφή ολοκληρώθηκε. Επιβεβαιώστε το email σας και μετά συνδεθείτε για να συνεχιστεί η πρόσκληση.
+            Η εγγραφή ολοκληρώθηκε. Επιβεβαιώστε το email σας και μετά συνδεθείτε.
           </p>
           <button
             type="button"
@@ -281,7 +238,7 @@ function RegisterForm() {
             disabled={loading} 
             style={{...submitBtnStyle, backgroundColor: loading ? '#94a3b8' : '#0f172a'}}
           >
-            {loading ? 'ΓΙΝΕΤΑΙ ΕΓΓΡΑΦΗ...' : (isInviteRegistration ? 'ΣΥΝΕΧΕΙΑ ΠΡΟΣΚΛΗΣΗΣ' : 'ΔΗΜΙΟΥΡΓΙΑ ΛΟΓΑΡΙΑΣΜΟΥ')}
+            {loading ? 'ΓΙΝΕΤΑΙ ΕΓΓΡΑΦΗ...' : 'ΔΗΜΙΟΥΡΓΙΑ ΛΟΓΑΡΙΑΣΜΟΥ'}
           </button>
         </form>
       )}

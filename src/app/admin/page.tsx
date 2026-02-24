@@ -13,7 +13,7 @@ function LegacyInviteRedirect() {
   useEffect(() => {
     async function redirectToInvitePage() {
       if (storeIdFromUrl) {
-        router.replace(`/admin/invite?store=${storeIdFromUrl}`)
+        router.replace(`/manage-users?store=${storeIdFromUrl}`)
         return
       }
 
@@ -34,18 +34,18 @@ function LegacyInviteRedirect() {
         .maybeSingle()
 
       if (access?.store_id) {
-        router.replace(`/admin/invite?store=${access.store_id}`)
+        router.replace(`/manage-users?store=${access.store_id}`)
         return
       }
 
-      toast.error('Δεν βρέθηκε κατάστημα για πρόσκληση')
+      toast.error('Δεν βρέθηκε κατάστημα για διαχείριση χρηστών')
       router.replace('/select-store')
     }
 
     void redirectToInvitePage()
   }, [router, storeIdFromUrl])
 
-  return <div style={{ padding: '50px', textAlign: 'center' }}>Μετάβαση στη νέα ροή προσκλήσεων...</div>
+  return <div style={{ padding: '50px', textAlign: 'center' }}>Μετάβαση στη διαχείριση χρηστών...</div>
 }
 
 export default function InvitePage() {

@@ -54,7 +54,6 @@ function DashboardContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const storeIdFromUrl = searchParams.get('store')
-  const inviteTokenFromUrl = searchParams.get('token')
 
   // ✅ Business day logic: before 07:00 counts as previous day
   const getBusinessDate = () => {
@@ -228,7 +227,6 @@ function DashboardContent() {
 
   const loadDashboard = useCallback(async () => {
     if (!storeIdFromUrl) {
-      if (inviteTokenFromUrl) return
       router.replace('/select-store')
       return
     }
@@ -305,23 +303,11 @@ function DashboardContent() {
     } finally {
       setLoading(false)
     }
-  }, [selectedDate, router, storeIdFromUrl, inviteTokenFromUrl])
-
-  const acceptInviteFromToken = useCallback(async () => {
-    if (!inviteTokenFromUrl || storeIdFromUrl) return
-
-    router.replace(`/accept-invite?token=${inviteTokenFromUrl}`)
-  }, [inviteTokenFromUrl, storeIdFromUrl, router])
+  }, [selectedDate, router, storeIdFromUrl])
 
   useEffect(() => {
-    if (!inviteTokenFromUrl || storeIdFromUrl) return
-    void acceptInviteFromToken()
-  }, [inviteTokenFromUrl, storeIdFromUrl, acceptInviteFromToken])
-
-  useEffect(() => {
-    if (inviteTokenFromUrl && !storeIdFromUrl) return
     loadDashboard()
-  }, [loadDashboard, inviteTokenFromUrl, storeIdFromUrl])
+  }, [loadDashboard, storeIdFromUrl])
 
   const handleDelete = async (id: string) => {
     if (!confirm('Οριστική διαγραφή αυτής της κίνησης;')) return
