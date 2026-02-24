@@ -49,6 +49,10 @@ function getPaymentMethod(tx: any): string {
   return String(tx?.payment_method ?? tx?.method ?? '').trim()
 }
 
+function getUserLabelFromTx(tx: any): string {
+  return tx?.profiles?.display_name || tx?.profiles?.full_name || tx?.profiles?.name || 'Χρήστης'
+}
+
 function DashboardContent() {
   const supabase = getSupabase()
   const router = useRouter()
@@ -266,7 +270,13 @@ function DashboardContent() {
   supplier_id,
   fixed_asset_id,
   revenue_source_id,
+  user_id,
   created_by_name,
+  profiles:profiles!transactions_user_id_fkey (
+    display_name,
+    full_name,
+    name
+  ),
   suppliers(name),
   fixed_assets(name),
   revenue_sources(name)
@@ -275,11 +285,71 @@ function DashboardContent() {
         .or(`date.eq.${selectedDate},and(created_at.gte.${windowStartIso},created_at.lte.${windowEndIso})`)
         .order('created_at', { ascending: false })
 
-      if (txError) throw txError
+      let txRows = tx || []
+
+      if (txError) {
+        const joinFailed = /relationship|foreign key|could not find a relationship/i.test(String(txError.message || ''))
+
+        if (!joinFailed) throw txError
+
+        const { data: txWithoutJoin, error: txWithoutJoinError } = await supabase
+          .from('transactions')
+          .select(`
+  id,
+  created_at,
+  amount,
+  type,
+  category,
+  description:notes,
+  method,
+  date,
+  is_credit,
+  supplier_id,
+  fixed_asset_id,
+  revenue_source_id,
+  user_id,
+  created_by_name,
+  suppliers(name),
+  fixed_assets(name),
+  revenue_sources(name)
+`)
+          .eq('store_id', storeIdFromUrl)
+          .or(`date.eq.${selectedDate},and(created_at.gte.${windowStartIso},created_at.lte.${windowEndIso})`)
+          .order('created_at', { ascending: false })
+
+        if (txWithoutJoinError) throw txWithoutJoinError
+
+        const baseRows = txWithoutJoin || []
+        const userIds = Array.from(new Set(baseRows.map((row: any) => String(row?.user_id || '').trim()).filter(Boolean)))
+
+        let profilesByUserId: Record<string, { display_name?: string | null; full_name?: string | null; name?: string | null }> = {}
+
+        if (userIds.length > 0) {
+          const { data: profileRows, error: profilesError } = await supabase.from('profiles').select('id, display_name, full_name, name').in('id', userIds)
+
+          if (profilesError) {
+            console.error('Profiles fallback load failed:', profilesError)
+          } else {
+            profilesByUserId = (profileRows || []).reduce((acc: Record<string, { display_name?: string | null; full_name?: string | null; name?: string | null }>, profile: any) => {
+              acc[String(profile.id)] = {
+                display_name: profile.display_name,
+                full_name: profile.full_name,
+                name: profile.name,
+              }
+              return acc
+            }, {})
+          }
+        }
+
+        txRows = baseRows.map((row: any) => ({
+          ...row,
+          profiles: profilesByUserId[String(row?.user_id || '')] || null,
+        }))
+      }
 
       // ✅ DEDUPE
       const map = new Map<string, any>()
-      for (const row of tx || []) map.set(String(row.id), row)
+      for (const row of txRows) map.set(String(row.id), row)
       setTransactions(Array.from(map.values()))
 
       // RBAC
@@ -420,7 +490,7 @@ function DashboardContent() {
           date: string
           amount: number
           created_at: string | null
-          created_by_name: string | null
+          user_label: string
           itemsCount: number
           breakdown: Array<{ method: string; amount: number }>
         }
@@ -441,7 +511,7 @@ function DashboardContent() {
           date: zTx[0]?.date || selectedDate,
           amount: zTotal,
           created_at: zTx[0]?.created_at || null,
-          created_by_name: zTx[0]?.created_by_name || null,
+          user_label: getUserLabelFromTx(zTx[0]),
           itemsCount: zTx.length,
           breakdown: zBreakdown,
         })
@@ -663,7 +733,7 @@ function DashboardContent() {
             const txMethod = isZMaster ? 'Συγκεντρωτική εγγραφή' : t?.method
             const txCreatedAt = isZMaster ? row.created_at : t?.created_at
 
-            const txCreatedBy = isZMaster ? row.created_by_name : t?.created_by_name || 'Χρήστης'
+            const txCreatedBy = isZMaster ? row.user_label : getUserLabelFromTx(t)
             const txAmountValue = isZMaster ? row.amount : Number(t?.amount) || 0
 
             return (
