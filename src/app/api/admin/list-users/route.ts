@@ -66,6 +66,11 @@ function normalizeRole(value: unknown): 'admin' | 'user' | 'staff' {
   return 'user'
 }
 
+function toRowRecords(data: unknown): Array<Record<string, unknown>> {
+  if (!Array.isArray(data)) return []
+  return data.filter((item): item is Record<string, unknown> => typeof item === 'object' && item !== null)
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
@@ -147,7 +152,7 @@ export async function POST(request: NextRequest) {
     const tryFull = await runUsersQuery(fullSelect, true)
 
     if (!tryFull.error) {
-      rows = (tryFull.data as Array<Record<string, unknown>>) || []
+      rows = toRowRecords(tryFull.data)
       total = Number(tryFull.count || 0)
     } else {
       const fullMessage = String(tryFull.error.message || '').toLowerCase()
@@ -156,7 +161,7 @@ export async function POST(request: NextRequest) {
         const tryNoCreatedAt = await runUsersQuery(noCreatedAtSelect, true)
 
         if (!tryNoCreatedAt.error) {
-          rows = (tryNoCreatedAt.data as Array<Record<string, unknown>>) || []
+          rows = toRowRecords(tryNoCreatedAt.data)
           total = Number(tryNoCreatedAt.count || 0)
         } else {
           const noCreatedAtMessage = String(tryNoCreatedAt.error.message || '').toLowerCase()
@@ -165,7 +170,7 @@ export async function POST(request: NextRequest) {
             const tryMinimal = await runUsersQuery(minimalSelect, false)
 
             if (tryMinimal.error) throw tryMinimal.error
-            rows = (tryMinimal.data as Array<Record<string, unknown>>) || []
+            rows = toRowRecords(tryMinimal.data)
             total = Number(tryMinimal.count || 0)
           } else {
             throw tryNoCreatedAt.error
@@ -175,7 +180,7 @@ export async function POST(request: NextRequest) {
         const tryNoEmail = await runUsersQuery(noEmailSelect, false)
 
         if (!tryNoEmail.error) {
-          rows = (tryNoEmail.data as Array<Record<string, unknown>>) || []
+          rows = toRowRecords(tryNoEmail.data)
           total = Number(tryNoEmail.count || 0)
         } else {
           const noEmailMessage = String(tryNoEmail.error.message || '').toLowerCase()
@@ -184,7 +189,7 @@ export async function POST(request: NextRequest) {
             const tryMinimal = await runUsersQuery(minimalSelect, false)
 
             if (tryMinimal.error) throw tryMinimal.error
-            rows = (tryMinimal.data as Array<Record<string, unknown>>) || []
+            rows = toRowRecords(tryMinimal.data)
             total = Number(tryMinimal.count || 0)
           } else {
             throw tryNoEmail.error

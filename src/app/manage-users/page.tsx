@@ -101,6 +101,18 @@ export default function ManageUsersPage() {
     void loadUsers()
   }, [storeId, usersPage, searchTerm])
 
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      const normalized = searchInput.trim()
+      setUsersPage(1)
+      setSearchTerm(normalized)
+    }, 350)
+
+    return () => {
+      window.clearTimeout(timer)
+    }
+  }, [searchInput])
+
   const createUser = async () => {
     if (!storeId) {
       toast.error('Δεν βρέθηκε ενεργό κατάστημα.')
@@ -255,8 +267,6 @@ export default function ManageUsersPage() {
 
   const clearSearch = () => {
     setSearchInput('')
-    setUsersPage(1)
-    setSearchTerm('')
   }
 
   return (
