@@ -759,8 +759,8 @@ function BalancesContent() {
 
 // --- STYLES ---
 const iphoneWrapper: any = {
-  backgroundColor: colors.bgLight,
-  minHeight: '100dvh',
+  background: 'var(--bg-grad)',
+  minHeight: '100vh',
   padding: '20px',
   position: 'relative',
 }
@@ -768,7 +768,7 @@ const iphoneWrapper: any = {
 const logoBoxStyle: any = {
   width: '45px',
   height: '45px',
-  backgroundColor: '#fff7ed',
+  background: 'var(--surface)',
   borderRadius: '14px',
   display: 'flex',
   alignItems: 'center',
@@ -777,15 +777,15 @@ const logoBoxStyle: any = {
 
 const backBtnStyle: any = {
   textDecoration: 'none',
-  color: colors.secondaryText,
-  backgroundColor: colors.white,
+  color: 'var(--muted)',
+  background: 'var(--surface)',
   width: '40px',
   height: '40px',
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
   borderRadius: '12px',
-  border: `1px solid ${colors.border}`,
+  border: '1px solid var(--border)',
 }
 
 const switcherWrap: any = {
@@ -809,7 +809,7 @@ const switchBtn: any = {
 const smallLabel: any = {
   fontSize: 10,
   fontWeight: 950,
-  color: colors.secondaryText,
+  color: 'var(--muted)',
   marginBottom: 6,
   letterSpacing: 0.8,
 }
@@ -819,18 +819,20 @@ const totalCardStyle: any = {
   borderRadius: '24px',
   marginBottom: '22px',
   textAlign: 'center',
-  color: 'white',
-  boxShadow: '0 18px 50px rgba(15, 23, 42, 0.15)',
+  color: 'var(--text)',
+  background: 'var(--surface)',
+  boxShadow: 'var(--shadow)',
 }
 
 const supplierCardStyle: any = {
-  backgroundColor: colors.white,
+  background: 'var(--surface)',
   padding: '16px',
   borderRadius: '20px',
   display: 'flex',
   justifyContent: 'space-between',
   alignItems: 'stretch',
-  border: `1px solid ${colors.border}`,
+  border: '1px solid var(--border)',
+  boxShadow: 'var(--shadow)',
 }
 
 const payBtnStyle: any = {
@@ -855,16 +857,16 @@ const badgeStyle: any = {
   textTransform: 'uppercase',
 }
 
-const infoRow: any = { display: 'flex', alignItems: 'center', gap: '6px', color: colors.secondaryText }
+const infoRow: any = { display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--muted)' }
 const infoText: any = { fontSize: '11px', fontWeight: '800' }
 
 const emptyStateStyle: any = {
   textAlign: 'center',
   padding: '60px 20px',
-  background: colors.white,
+  background: 'var(--surface)',
   borderRadius: '24px',
-  border: `2px dashed ${colors.border}`,
-  color: colors.secondaryText,
+  border: '2px dashed var(--border)',
+  color: 'var(--muted)',
   fontWeight: '800',
 }
 
@@ -872,12 +874,12 @@ const selectStyle: any = {
   width: '100%',
   padding: '14px',
   borderRadius: '14px',
-  border: `1px solid ${colors.border}`,
+  border: '1px solid var(--border)',
   fontSize: '13px',
   fontWeight: '800',
-  backgroundColor: colors.white,
+  background: 'var(--surface)',
   outline: 'none',
-  color: colors.primaryDark,
+  color: 'var(--text)',
   appearance: 'none',
 }
 
@@ -885,8 +887,8 @@ const detailsWrap: any = {
   marginTop: '14px',
   padding: '14px',
   borderRadius: '18px',
-  background: '#f8fafc',
-  border: `1px solid ${colors.border}`,
+  background: 'var(--surface)',
+  border: '1px solid var(--border)',
   width: '100%',
 }
 
@@ -895,7 +897,7 @@ const detailsHeader: any = {
   alignItems: 'center',
   justifyContent: 'space-between',
   marginBottom: '10px',
-  color: colors.primaryDark,
+  color: 'var(--text)',
 }
 
 const closeMiniBtn: any = {
