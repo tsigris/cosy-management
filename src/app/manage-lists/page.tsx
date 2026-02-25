@@ -941,7 +941,7 @@ function ManageListsContent() {
         <input value={iban} onChange={(e) => setIban(e.target.value)} style={inputStyle} placeholder="GR..." />
       </div>
 
-      <button onClick={handleSave} disabled={saving || loading} style={{ ...saveBtn, backgroundColor: colors.accentGreen }}>
+      <button onClick={handleSave} disabled={saving || loading} style={{ ...saveBtn, backgroundColor: 'var(--surfaceSolid)' }}>
         {saving ? 'ΑΠΟΘΗΚΕΥΣΗ...' : editingId ? 'ΕΝΗΜΕΡΩΣΗ' : 'ΚΑΤΑΧΩΡΗΣΗ'}
       </button>
     </div>
@@ -1016,9 +1016,9 @@ function ManageListsContent() {
                 onClick={() => setPayBasis('monthly')}
                 style={{
                   ...segBtn,
-                  backgroundColor: payBasis === 'monthly' ? colors.primaryDark : colors.white,
-                  color: payBasis === 'monthly' ? 'white' : colors.primaryDark,
-                  borderColor: payBasis === 'monthly' ? colors.primaryDark : colors.border,
+                  backgroundColor: payBasis === 'monthly' ? 'var(--surfaceSolid)' : 'var(--surface)',
+                  color: payBasis === 'monthly' ? 'var(--text)' : 'var(--text)',
+                  borderColor: payBasis === 'monthly' ? 'var(--border)' : 'var(--border)',
                 }}
               >
                 ΜΗΝΙΑΙΟΣ
@@ -1028,9 +1028,9 @@ function ManageListsContent() {
                 onClick={() => setPayBasis('daily')}
                 style={{
                   ...segBtn,
-                  backgroundColor: payBasis === 'daily' ? colors.primaryDark : colors.white,
-                  color: payBasis === 'daily' ? 'white' : colors.primaryDark,
-                  borderColor: payBasis === 'daily' ? colors.primaryDark : colors.border,
+                  backgroundColor: payBasis === 'daily' ? 'var(--surfaceSolid)' : 'var(--surface)',
+                  color: payBasis === 'daily' ? 'var(--text)' : 'var(--text)',
+                  borderColor: payBasis === 'daily' ? 'var(--border)' : 'var(--border)',
                 }}
               >
                 ΗΜΕΡΟΜΙΣΘΙΟ
@@ -1142,7 +1142,7 @@ function ManageListsContent() {
           <div>
             <h1 style={titleStyle}>Μητρώο & Συνεργάτες</h1>
             <p style={subtitleStyle}>
-              ΚΑΤΑΣΤΗΜΑ: <span style={{ color: colors.accentBlue }}>{currentStoreName.toUpperCase()}</span>
+              ΚΑΤΑΣΤΗΜΑ: <span style={{ color: 'var(--text)' }}>{currentStoreName.toUpperCase()}</span>
             </p>
           </div>
           <Link href={backHref} style={closeBtn}>
@@ -1232,7 +1232,7 @@ function ManageListsContent() {
         {/* ✅ LIST */}
         <div style={listArea}>
           <div style={rankingHeader}>
-            <TrendingUp size={14} style={{ color: colors.secondaryText }} />
+            <TrendingUp size={14} style={{ color: 'var(--muted)' }} />
             ΚΑΤΑΤΑΞΗ ΒΑΣΕΙ ΤΖΙΡΟΥ ({selectedYear}): {currentTab.label.toUpperCase()}
           </div>
 
@@ -1299,7 +1299,7 @@ function ManageListsContent() {
 
                     <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <p style={{ ...turnoverText, color: colors.accentOrange }}>{cardMainAmount.toFixed(2)}€</p>
+                        <p style={{ ...turnoverText, color: 'var(--text)' }}>{cardMainAmount.toFixed(2)}€</p>
                         {isExpanded ? <ChevronUp size={18} color={colors.secondaryText} /> : <ChevronDown size={18} color={colors.secondaryText} />}
                       </div>
 
@@ -1309,9 +1309,9 @@ function ManageListsContent() {
                           onClick={(e) => e.stopPropagation()}
                           style={{
                             ...debtActionCompactBtn,
-                            backgroundColor: isIncome ? '#ecfdf5' : '#eff6ff',
-                            color: isIncome ? colors.accentGreen : colors.accentBlue,
-                            borderColor: isIncome ? '#bbf7d0' : '#bfdbfe',
+                            backgroundColor: 'var(--surfaceSolid)',
+                            color: 'var(--text)',
+                            borderColor: 'var(--border)',
                           }}
                         >
                           <CreditCard size={13} /> {debtActionLabel}
@@ -1456,7 +1456,7 @@ function ManageListsContent() {
                                     {note}
                                   </div>
                                 </div>
-                                <div style={{ ...txAmount, color: colors.accentGreen }}>{Math.abs(Number(tx.amount) || 0).toFixed(2)}€</div>
+                                <div style={{ ...txAmount, color: 'var(--text)' }}>{Math.abs(Number(tx.amount) || 0).toFixed(2)}€</div>
                               </div>
                             )
                           })}
@@ -1493,7 +1493,7 @@ function ManageListsContent() {
           )}
         </div>
 
-        <p style={{ marginTop: 14, fontSize: 12, fontWeight: 700, color: colors.secondaryText }}>
+        <p style={{ marginTop: 14, fontSize: 12, fontWeight: 700, color: 'var(--muted)' }}>
           * Ο τζίρος εμφανίζεται στο list, ενώ το expanded ιστορικό δείχνει χρεώσεις/εξοφλήσεις από τις κινήσεις πίστωσης.
         </p>
       </div>
@@ -1568,16 +1568,16 @@ const addBtn: any = {
   cursor: 'pointer',
 }
 
-const cancelBtn: any = { ...addBtn, backgroundColor: '#fee2e2', color: colors.accentRed }
+const cancelBtn: any = { ...addBtn, backgroundColor: 'var(--surfaceSolid)', color: 'var(--text)' }
 
 const miniCancel: any = {
   width: '100%',
   marginBottom: 12,
   padding: '12px',
   borderRadius: 14,
-  border: `1px solid ${colors.border}`,
-  backgroundColor: 'white',
-  color: colors.primaryDark,
+  border: '1px solid var(--border)',
+  backgroundColor: 'var(--surface)',
+  color: 'var(--text)',
   fontWeight: 800,
   fontSize: 14,
   display: 'flex',
@@ -1588,7 +1588,7 @@ const miniCancel: any = {
 }
 
 const formCard: any = {
-  background: 'white',
+  background: 'var(--surface)',
   padding: '24px',
   borderRadius: '24px',
   marginBottom: '16px',
@@ -1633,7 +1633,7 @@ const saveBtn: any = {
 }
 
 const listArea: any = {
-  background: 'white',
+  background: 'var(--surface)',
   borderRadius: '24px',
   border: `1px solid ${colors.border}`,
   overflow: 'hidden',
@@ -1652,7 +1652,7 @@ const rankingHeader: any = {
 }
 
 const supplierCardStyle: any = {
-  backgroundColor: colors.white,
+  backgroundColor: 'var(--surface)',
   borderRadius: '20px',
   display: 'flex',
   flexDirection: 'column',
@@ -1669,7 +1669,7 @@ const categoryBadge: any = {
   borderRadius: '8px',
   display: 'inline-block',
   textTransform: 'uppercase',
-  backgroundColor: '#fff7ed',
+  backgroundColor: 'var(--surfaceSolid)',
   color: colors.accentOrange,
 }
 const turnoverText: any = { fontSize: '16px', fontWeight: '800', color: colors.accentGreen, margin: 0 }
@@ -1681,8 +1681,8 @@ const editingPill: any = {
   fontSize: 11,
   fontWeight: 800,
   color: colors.accentBlue,
-  backgroundColor: '#eef2ff',
-  border: '1px solid #c7d2fe',
+  backgroundColor: 'var(--surfaceSolid)',
+  border: '1px solid var(--border)',
   padding: '6px 10px',
   borderRadius: 999,
   display: 'inline-flex',
@@ -1696,8 +1696,8 @@ const copyCodeBtn: any = {
   height: 34,
   borderRadius: 10,
   border: `1px solid ${colors.border}`,
-  backgroundColor: 'white',
-  color: colors.primaryDark,
+  backgroundColor: 'var(--surface)',
+  color: 'var(--text)',
   display: 'inline-flex',
   alignItems: 'center',
   justifyContent: 'center',
@@ -1708,7 +1708,7 @@ const detailsWrap: any = {
   margin: '0 16px 16px 16px',
   padding: '14px',
   borderRadius: '18px',
-  background: '#f8fafc',
+  background: 'var(--surfaceSolid)',
   border: `1px solid ${colors.border}`,
   width: 'auto',
 }
@@ -1723,7 +1723,7 @@ const detailsHeader: any = {
 
 const closeMiniBtn: any = {
   border: `1px solid ${colors.border}`,
-  background: colors.white,
+  background: 'var(--surface)',
   borderRadius: '12px',
   width: '36px',
   height: '36px',
@@ -1745,7 +1745,7 @@ const miniPill: any = {
   display: 'flex',
   alignItems: 'center',
   gap: 8,
-  background: colors.white,
+  background: 'var(--surface)',
   border: `1px solid ${colors.border}`,
   borderRadius: 14,
   padding: '8px 10px',
@@ -1771,7 +1771,7 @@ const miniAmountChip: any = {
   padding: '4px 10px',
   borderRadius: 999,
   border: `1px solid ${colors.border}`,
-  background: '#f1f5f9',
+  background: 'var(--surfaceSolid)',
   color: colors.primaryDark,
   letterSpacing: 0.2,
 }
@@ -1788,7 +1788,7 @@ const rfIbanRow: any = {
   alignItems: 'center',
   justifyContent: 'space-between',
   gap: 8,
-  background: colors.white,
+  background: 'var(--surface)',
   border: `1px solid ${colors.border}`,
   borderRadius: 12,
   padding: '8px 10px',
@@ -1819,7 +1819,7 @@ const txRow: any = {
   alignItems: 'flex-start',
   gap: '12px',
   padding: '10px',
-  background: colors.white,
+  background: 'var(--surface)',
   border: `1px solid ${colors.border}`,
   borderRadius: '16px',
 }
@@ -1860,7 +1860,7 @@ const tinyChip: any = {
   padding: '3px 8px',
   borderRadius: 999,
   border: `1px solid ${colors.border}`,
-  background: '#f1f5f9',
+  background: 'var(--surfaceSolid)',
   color: colors.secondaryText,
   textTransform: 'uppercase',
   letterSpacing: 0.2,
@@ -1869,8 +1869,8 @@ const tinyChip: any = {
 const editBtn: any = {
   flex: 1,
   padding: '10px',
-  background: '#fff7ed',
-  color: '#9a3412',
+  background: 'var(--surfaceSolid)',
+  color: 'var(--text)',
   border: 'none',
   borderRadius: '10px',
   fontWeight: '700',
@@ -1885,7 +1885,7 @@ const editBtn: any = {
 const delBtn: any = {
   flex: 1,
   padding: '10px',
-  background: '#fee2e2',
+  background: 'var(--surfaceSolid)',
   color: colors.accentRed,
   border: 'none',
   borderRadius: '10px',
@@ -1903,7 +1903,7 @@ const debtActionCompactBtn: any = {
   height: 30,
   padding: '0 10px',
   borderRadius: 10,
-  border: '1px solid',
+  border: '1px solid var(--border)',
   fontWeight: 800,
   fontSize: 11,
   display: 'inline-flex',
@@ -1918,7 +1918,7 @@ const emptyText: any = { padding: '40px', textAlign: 'center', color: colors.sec
 
 const segBtn: any = {
   borderRadius: 14,
-  border: `1px solid ${colors.border}`,
+  border: '1px solid var(--border)',
   padding: '12px 12px',
   cursor: 'pointer',
   fontSize: 16,
