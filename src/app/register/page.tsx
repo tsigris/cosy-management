@@ -268,19 +268,19 @@ export default function RegisterPage() {
 
 // --- STYLES ---
 const containerStyle: any = { minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#f8fafc', padding: '20px' };
-const cardStyle: any = { backgroundColor: '#ffffff', width: '100%', maxWidth: '400px', padding: '40px', borderRadius: '24px', boxShadow: '0 10px 30px rgba(0,0,0,0.05)', border: '1px solid #e2e8f0' };
+const cardStyle: any = { backgroundColor: 'var(--surfaceSolid)', width: '100%', maxWidth: '400px', padding: '40px', borderRadius: '24px', boxShadow: 'var(--shadow)', border: '1px solid var(--border)' };
 const headerStyle: any = { textAlign: 'center', marginBottom: '30px' };
-const brandStyle: any = { fontSize: '26px', fontWeight: '900', color: '#0f172a', letterSpacing: '-1px', margin: 0 };
+const brandStyle: any = { fontSize: '26px', fontWeight: '900', color: 'var(--text)', letterSpacing: '-1px', margin: 0 };
 const dividerStyle: any = { height: '4px', width: '40px', backgroundColor: '#6366f1', margin: '12px auto', borderRadius: '10px' };
-const instructionStyle: any = { fontSize: '11px', color: '#64748b', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '1px', margin: 0 };
+const instructionStyle: any = { fontSize: '11px', color: 'var(--muted)', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '1px', margin: 0 };
 const formStyle: any = { display: 'flex', flexDirection: 'column', gap: '20px' };
-const labelStyle: any = { fontSize: '10px', fontWeight: '800', color: '#94a3b8', marginBottom: '6px', display: 'block' };
-const inputStyle: any = { width: '100%', padding: '14px', borderRadius: '12px', border: '1px solid #e2e8f0', fontSize: '15px', outline: 'none', backgroundColor: '#f8fafc', boxSizing: 'border-box' };
-const submitBtnStyle: any = { color: '#ffffff', padding: '16px', borderRadius: '14px', border: 'none', fontWeight: '800', cursor: 'pointer', fontSize: '15px' };
-const confirmationWrapStyle: any = { backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '14px', padding: '16px', textAlign: 'center' };
-const confirmationIconWrapStyle: any = { width: '52px', height: '52px', margin: '0 auto 10px auto', borderRadius: '999px', backgroundColor: '#e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center' };
-const confirmationTextStyle: any = { margin: '0 0 14px 0', color: '#334155', fontSize: '14px', lineHeight: '1.5' };
-const resendBtnStyle: any = { display: 'block', width: '100%', margin: '0 0 10px 0', color: '#0f172a', backgroundColor: '#ffffff', padding: '12px 16px', borderRadius: '12px', border: '1px solid #cbd5e1', fontWeight: '800', fontSize: '13px', cursor: 'pointer' };
-const confirmLoginBtnStyle: any = { display: 'inline-block', color: '#ffffff', backgroundColor: '#0f172a', padding: '12px 16px', borderRadius: '12px', textDecoration: 'none', fontWeight: '800', fontSize: '13px' };
+const labelStyle: any = { fontSize: '10px', fontWeight: '800', color: 'var(--muted)', marginBottom: '6px', display: 'block' };
+const inputStyle: any = { width: '100%', padding: '14px', borderRadius: '12px', border: '1px solid var(--border)', fontSize: '15px', outline: 'none', backgroundColor: 'var(--bg)', boxSizing: 'border-box' };
+const submitBtnStyle: any = { color: 'var(--surfaceSolid)', padding: '16px', borderRadius: '14px', border: 'none', fontWeight: '800', cursor: 'pointer', fontSize: '15px' };
+const confirmationWrapStyle: any = { backgroundColor: 'var(--bg)', border: '1px solid var(--border)', borderRadius: '14px', padding: '16px', textAlign: 'center' };
+const confirmationIconWrapStyle: any = { width: '52px', height: '52px', margin: '0 auto 10px auto', borderRadius: '999px', backgroundColor: 'var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center' };
+const confirmationTextStyle: any = { margin: '0 0 14px 0', color: 'var(--muted)', fontSize: '14px', lineHeight: '1.5' };
+const resendBtnStyle: any = { display: 'block', width: '100%', margin: '0 0 10px 0', color: 'var(--text)', backgroundColor: 'var(--surfaceSolid)', padding: '12px 16px', borderRadius: '12px', border: '1px solid var(--border)', fontWeight: '800', fontSize: '13px', cursor: 'pointer' };
+const confirmLoginBtnStyle: any = { display: 'inline-block', color: 'var(--surfaceSolid)', backgroundColor: 'var(--text)', padding: '12px 16px', borderRadius: '12px', textDecoration: 'none', fontWeight: '800', fontSize: '13px' };
 const footerStyle: any = { marginTop: '25px', textAlign: 'center', paddingTop: '20px', borderTop: '1px solid #f1f5f9' };
-const linkStyle: any = { color: '#64748b', fontWeight: '700', textDecoration: 'none', fontSize: '12px' };
+const linkStyle: any = { color: 'var(--muted)', fontWeight: '700', textDecoration: 'none', fontSize: '12px' };
