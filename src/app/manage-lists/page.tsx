@@ -1509,6 +1509,7 @@ const containerStyle: any = {
   width: '100%',
   padding: '20px',
   touchAction: 'pan-y',
+  colorScheme: 'light dark',
 }
 
 const contentWrapper: any = { maxWidth: '560px', margin: '0 auto', paddingBottom: '120px' }
@@ -1534,7 +1535,7 @@ const heroCard: any = {
   padding: '18px',
   borderRadius: '22px',
   border: '1px solid var(--border)',
-  boxShadow: 'var(--shadow)',
+  boxShadow: 'var(--shadow, 0 10px 24px rgba(0,0,0,0.12))',
   marginBottom: '14px',
 }
 
@@ -1593,7 +1594,7 @@ const formCard: any = {
   borderRadius: '24px',
   marginBottom: '16px',
   border: '1px solid var(--border)',
-  boxShadow: 'var(--shadow)',
+  boxShadow: 'var(--shadow, 0 10px 24px rgba(0,0,0,0.12))',
 }
 
 const inputGroup: any = { marginBottom: '15px' }
@@ -1623,8 +1624,8 @@ const inputStyle: any = {
 const saveBtn: any = {
   width: '100%',
   padding: '16px',
-  backgroundColor: colors.accentGreen,
-  color: 'white',
+  backgroundColor: 'var(--accentGreen)',
+  color: 'var(--textOnAccent, var(--text))',
   borderRadius: '16px',
   border: 'none',
   fontWeight: '800',
@@ -1638,7 +1639,7 @@ const listArea: any = {
   borderRadius: '24px',
   border: '1px solid var(--border)',
   overflow: 'hidden',
-  boxShadow: 'var(--shadow)',
+  boxShadow: 'var(--shadow, 0 10px 24px rgba(0,0,0,0.12))',
 }
 
 const rankingHeader: any = {
@@ -1671,9 +1672,9 @@ const categoryBadge: any = {
   display: 'inline-block',
   textTransform: 'uppercase',
   background: 'var(--surfaceSolid)',
-  color: colors.accentOrange,
+  color: 'var(--accentOrange)',
 }
-const turnoverText: any = { fontSize: '16px', fontWeight: '800', color: colors.accentGreen, margin: 0 }
+const turnoverText: any = { fontSize: '16px', fontWeight: '800', color: 'var(--accentGreen)', margin: 0 }
 const infoRow: any = { display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--muted)' }
 const infoText: any = { fontSize: '11px', fontWeight: '800', margin: 0, color: 'var(--muted)' }
 
@@ -1681,7 +1682,7 @@ const editingPill: any = {
   marginLeft: 10,
   fontSize: 11,
   fontWeight: 800,
-  color: colors.accentBlue,
+  color: 'var(--accentBlue)',
   background: 'var(--surfaceSolid)',
   border: '1px solid var(--border)',
   padding: '6px 10px',
@@ -1712,6 +1713,7 @@ const detailsWrap: any = {
   background: 'var(--surfaceSolid)',
   border: '1px solid var(--border)',
   width: 'auto',
+  boxShadow: 'var(--shadowStrong, var(--shadow, 0 10px 24px rgba(0,0,0,0.18)))',
 }
 
 const detailsHeader: any = {
@@ -1747,7 +1749,7 @@ const miniPill: any = {
   alignItems: 'center',
   gap: 8,
   background: 'var(--surface)',
-  border: `1px solid ${colors.border}`,
+  border: '1px solid var(--border)',
   borderRadius: 14,
   padding: '8px 10px',
 }
@@ -1844,7 +1846,7 @@ const txNote: any = {
 const txAmount: any = {
   fontSize: '12px',
   fontWeight: '950',
-  color: colors.accentOrange,
+  color: 'var(--accentOrange)',
   whiteSpace: 'nowrap',
 }
 
@@ -1887,7 +1889,7 @@ const delBtn: any = {
   flex: 1,
   padding: '10px',
   background: 'var(--surfaceSolid)',
-  color: colors.accentRed,
+  color: 'var(--accentRed)',
   border: 'none',
   borderRadius: '10px',
   fontWeight: '700',
@@ -1924,7 +1926,7 @@ const segBtn: any = {
   cursor: 'pointer',
   fontSize: 16,
   fontWeight: 900,
-  boxShadow: '0 8px 18px rgba(15, 23, 42, 0.06)',
+  boxShadow: 'var(--shadow, 0 8px 18px rgba(0,0,0,0.06))',
   userSelect: 'none',
 }
 
