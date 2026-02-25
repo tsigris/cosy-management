@@ -8,14 +8,14 @@ import Link from 'next/link'
 import { toast, Toaster } from 'sonner'
 
 const colors = {
-  primaryDark: '#1e293b',
-  secondaryText: '#64748b',
+  primaryDark: 'var(--text)',
+  secondaryText: 'var(--muted)',
   accentRed: '#dc2626',
   accentBlue: '#2563eb',
   accentGreen: '#059669',
-  bgLight: '#f8fafc',
-  border: '#e2e8f0',
-  white: '#ffffff',
+  bgLight: 'var(--bg)',
+  border: 'var(--border)',
+  white: 'var(--surfaceSolid)',
   modalBackdrop: 'rgba(2,6,23,0.6)',
 }
 
@@ -1546,7 +1546,7 @@ const checkboxBox: any = {
   width: 20,
   height: 20,
   borderRadius: 6,
-  border: '2px solid #cbd5e1',
+  border: '2px solid var(--muted)',
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
@@ -1566,7 +1566,7 @@ const smartSaveBtn: any = {
   border: 'none',
   borderRadius: 16,
   cursor: 'pointer',
-  boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+  boxShadow: 'var(--shadow)',
   fontSize: 16,
 }
 
@@ -1619,7 +1619,7 @@ const resultsPanel: any = {
   background: colors.white,
   maxHeight: 360,
   overflowY: 'auto',
-  boxShadow: '0 10px 30px rgba(0,0,0,0.12)',
+  boxShadow: 'var(--shadow)',
 }
 
 const groupHeader: any = {
@@ -1697,7 +1697,7 @@ const modalCard: any = {
   borderRadius: 18,
   border: `1px solid ${colors.border}`,
   padding: 16,
-  boxShadow: '0 20px 60px rgba(0,0,0,0.25)',
+  boxShadow: 'var(--shadow)',
 }
 
 const modalCloseBtn: any = {

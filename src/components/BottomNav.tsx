@@ -2,15 +2,16 @@
 import React, { Suspense, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
-import { getSupabase } from '@/lib/supabase'
+import { getSupabase } from '@/lib/supabase';
+import { ui } from '@/lib/uiTheme';
 
 const colors = {
-  primary: '#0f172a',    
-  secondary: '#94a3b8',
-  indigo: '#6366f1',
-  background: 'rgba(255, 255, 255, 0.90)',
-  border: '#f1f5f9'
-}
+  primary: ui.text,
+  secondary: ui.muted,
+  indigo: '#6366f1', // Accent color remains
+  background: ui.surface,
+  border: ui.border,
+};
 
 // ✅ Επαναφορά των Emojis και προσθήκη του ⚙️ για τη Διαχείριση
 const navItems = [
@@ -107,7 +108,7 @@ function NavContent() {
           <Link key={item.path} href={fullPath} style={navLink} className="nav-item">
             <div style={{
               ...iconBox,
-              backgroundColor: isActive ? '#f1f5f9' : 'transparent',
+              backgroundColor: isActive ? 'var(--surfaceSolid)' : 'transparent',
             }}>
               <span style={{ 
                 fontSize: '22px', 
@@ -115,7 +116,8 @@ function NavContent() {
                 opacity: isActive ? 1 : 0.5,
                 transform: isActive ? 'scale(1.15)' : 'scale(1)',
                 transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                display: 'block'
+                display: 'block',
+                color: isActive ? 'var(--text)' : 'var(--muted)',
               }}>
                 {item.icon}
               </span>
@@ -123,7 +125,7 @@ function NavContent() {
             <span style={{ 
               fontSize: '10px', 
               fontWeight: isActive ? '800' : '600', 
-              color: isActive ? colors.primary : colors.secondary,
+              color: isActive ? 'var(--text)' : 'var(--muted)',
               fontFamily: "'Plus Jakarta Sans', sans-serif",
               marginTop: '4px',
               letterSpacing: '0.02em'
@@ -153,16 +155,16 @@ const navWrapper: React.CSSProperties = {
   left: 0, 
   right: 0, 
   height: '85px', 
-  backgroundColor: colors.background, 
+  backgroundColor: 'var(--surface)', 
   backdropFilter: 'blur(15px)', 
   WebkitBackdropFilter: 'blur(15px)', 
-  borderTop: `1px solid ${colors.border}`, 
+  borderTop: `1px solid var(--border)`, 
   display: 'flex', 
   justifyContent: 'space-around', 
   alignItems: 'center', 
   paddingBottom: '20px', 
   zIndex: 1000, 
-  boxShadow: '0 -10px 30px rgba(0,0,0,0.03)' 
+  boxShadow: 'var(--shadow)' 
 };
 
 const navLink: React.CSSProperties = { 

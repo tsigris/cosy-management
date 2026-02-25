@@ -59,10 +59,10 @@ const tabsStickyWrap: CSSProperties = {
   marginBottom: 14,
   padding: 8,
   borderRadius: 18,
-  border: '1px solid #e2e8f0',
+  border: '1px solid var(--border)',
   background: 'rgba(255,255,255,0.92)',
   backdropFilter: 'blur(10px)',
-  boxShadow: '0 10px 22px rgba(15, 23, 42, 0.06)',
+  boxShadow: 'var(--shadow)',
 }
 
 const tabsScroller: CSSProperties = {
@@ -79,9 +79,9 @@ const tabBtn: CSSProperties = {
   flex: '0 0 auto',
   textDecoration: 'none',
   borderRadius: 999,
-  border: '1px solid #e2e8f0',
-  background: '#ffffff',
-  color: '#0f172a',
+  border: '1px solid var(--border)',
+  background: 'var(--surfaceSolid)',
+  color: 'var(--text)',
   padding: '10px 14px',
   fontSize: 13,
   fontWeight: 900,
@@ -89,8 +89,8 @@ const tabBtn: CSSProperties = {
 }
 
 const tabBtnActive: CSSProperties = {
-  background: '#0f172a',
-  color: '#ffffff',
-  border: '1px solid #0f172a',
-  boxShadow: '0 8px 16px rgba(15, 23, 42, 0.2)',
+  background: 'var(--text)',
+  color: 'var(--surfaceSolid)',
+  border: '1px solid var(--text)',
+  boxShadow: 'var(--shadow)',
 }

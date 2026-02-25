@@ -448,7 +448,7 @@ export default function ManageUsersPage() {
                         <p style={userEmailStyle}>{user.user_email || user.user_id}</p>
                         {!user.user_email ? <p style={unknownEmailStyle}>Email άγνωστο (παλιή εγγραφή)</p> : null}
                       </div>
-                      <span style={{ ...roleBadgeStyle, background: isAdmin ? '#dcfce7' : '#e2e8f0', color: isAdmin ? '#166534' : '#334155' }}>
+                      <span style={{ ...roleBadgeStyle, background: isAdmin ? '#dcfce7' : 'var(--border)', color: isAdmin ? '#166534' : '#334155' }}>
                         {displayRole}
                       </span>
                     </div>
@@ -525,7 +525,7 @@ export default function ManageUsersPage() {
 
 const pageStyle: React.CSSProperties = {
   minHeight: '100vh',
-  background: '#f8fafc',
+  background: 'var(--bg)',
   padding: '20px 14px 40px',
 }
 
@@ -543,24 +543,24 @@ const headerStyle: React.CSSProperties = {
 
 const titleStyle: React.CSSProperties = {
   margin: 0,
-  color: '#0f172a',
+  color: 'var(--text)',
   fontWeight: 900,
   fontSize: '22px',
 }
 
 const backStyle: React.CSSProperties = {
   textDecoration: 'none',
-  color: '#0f172a',
-  background: '#fff',
-  border: '1px solid #e2e8f0',
+  color: 'var(--text)',
+  background: 'var(--surfaceSolid)',
+  border: '1px solid var(--border)',
   borderRadius: '10px',
   padding: '8px 12px',
   fontWeight: 700,
 }
 
 const cardStyle: React.CSSProperties = {
-  background: '#fff',
-  border: '1px solid #e2e8f0',
+  background: 'var(--surfaceSolid)',
+  border: '1px solid var(--border)',
   borderRadius: '20px',
   padding: '16px',
   display: 'flex',
@@ -571,33 +571,33 @@ const cardStyle: React.CSSProperties = {
 
 const sectionTitleStyle: React.CSSProperties = {
   margin: 0,
-  color: '#0f172a',
+  color: 'var(--text)',
   fontWeight: 900,
   fontSize: '16px',
 }
 
 const helperTextStyle: React.CSSProperties = {
   margin: 0,
-  color: '#64748b',
+  color: 'var(--muted)',
   fontWeight: 600,
   fontSize: '12px',
 }
 
 const labelStyle: React.CSSProperties = {
   fontSize: '13px',
-  color: '#334155',
+  color: 'var(--muted)',
   fontWeight: 700,
   marginTop: '6px',
 }
 
 const inputStyle: React.CSSProperties = {
   width: '100%',
-  border: '1px solid #cbd5e1',
+  border: '1px solid var(--muted)',
   borderRadius: '12px',
   padding: '12px',
   fontSize: '14px',
   outline: 'none',
-  color: '#0f172a',
+  color: 'var(--text)',
 }
 
 const checkboxRowStyle: React.CSSProperties = {
@@ -606,7 +606,7 @@ const checkboxRowStyle: React.CSSProperties = {
   gap: '8px',
   fontSize: '13px',
   fontWeight: 600,
-  color: '#334155',
+  color: 'var(--muted)',
   marginTop: '6px',
 }
 
@@ -616,19 +616,19 @@ const primaryBtnStyle: React.CSSProperties = {
   border: 'none',
   borderRadius: '12px',
   padding: '12px',
-  background: '#0f172a',
-  color: '#fff',
+  background: 'var(--text)',
+  color: 'var(--surfaceSolid)',
   fontWeight: 800,
   cursor: 'pointer',
 }
 
 const secondaryBtnStyle: React.CSSProperties = {
   width: '100%',
-  border: '1px solid #cbd5e1',
+  border: '1px solid var(--muted)',
   borderRadius: '12px',
   padding: '12px',
-  background: '#fff',
-  color: '#0f172a',
+  background: 'var(--surfaceSolid)',
+  color: 'var(--text)',
   fontWeight: 800,
   cursor: 'pointer',
 }
@@ -705,13 +705,13 @@ const clearBtnStyle: React.CSSProperties = {
 }
 
 const userRowStyle: React.CSSProperties = {
-  border: '1px solid #e2e8f0',
+  border: '1px solid var(--border)',
   borderRadius: '14px',
   padding: '12px',
   display: 'flex',
   flexDirection: 'column',
   gap: '10px',
-  background: '#f8fafc',
+  background: 'var(--bg)',
 }
 
 const userRowTopStyle: React.CSSProperties = {
@@ -727,7 +727,7 @@ const userIdentityStyle: React.CSSProperties = {
 
 const userEmailStyle: React.CSSProperties = {
   margin: 0,
-  color: '#0f172a',
+  color: 'var(--text)',
   fontWeight: 700,
   fontSize: '14px',
   wordBreak: 'break-word',
@@ -758,9 +758,9 @@ const rowActionsStyle: React.CSSProperties = {
 }
 
 const rowBtnStyle: React.CSSProperties = {
-  border: '1px solid #cbd5e1',
-  background: '#fff',
-  color: '#0f172a',
+  border: '1px solid var(--muted)',
+  background: 'var(--surfaceSolid)',
+  color: 'var(--text)',
   borderRadius: '10px',
   padding: '9px 8px',
   fontWeight: 700,
@@ -769,9 +769,9 @@ const rowBtnStyle: React.CSSProperties = {
 }
 
 const rowSelectStyle: React.CSSProperties = {
-  border: '1px solid #cbd5e1',
-  background: '#fff',
-  color: '#0f172a',
+  border: '1px solid var(--muted)',
+  background: 'var(--surfaceSolid)',
+  color: 'var(--text)',
   borderRadius: '10px',
   padding: '9px 8px',
   fontWeight: 700,
@@ -799,11 +799,11 @@ const paginationRowStyle: React.CSSProperties = {
 }
 
 const paginationBtnStyle: React.CSSProperties = {
-  border: '1px solid #cbd5e1',
+  border: '1px solid var(--muted)',
   borderRadius: '10px',
   padding: '9px 10px',
-  background: '#fff',
-  color: '#0f172a',
+  background: 'var(--surfaceSolid)',
+  color: 'var(--text)',
   fontWeight: 700,
   fontSize: '12px',
   cursor: 'pointer',

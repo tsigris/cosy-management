@@ -31,14 +31,14 @@ import {
 
 // --- ΧΡΩΜΑΤΑ & ΣΤΥΛ (SaaS UI) ---
 const colors = {
-  primaryDark: '#1e293b',
-  secondaryText: '#64748b',
+  primaryDark: 'var(--text)',
+  secondaryText: 'var(--muted)',
   accentBlue: '#2563eb',
   accentGreen: '#059669',
   accentRed: '#dc2626',
-  bgLight: '#f8fafc',
-  border: '#e2e8f0',
-  white: '#ffffff',
+  bgLight: 'var(--bg)',
+  border: 'var(--border)',
+  white: 'var(--surfaceSolid)',
   modalBackdrop: 'rgba(2,6,23,0.6)',
   warningBg: '#fffbeb',
   warningText: '#92400e',
@@ -623,7 +623,7 @@ function GoalsContent() {
         {/* Goals List */}
         {goals.length === 0 ? (
           <div style={emptyStateStyle}>
-            <PiggyBank size={36} color="#cbd5e1" />
+            <PiggyBank size={36} color="var(--muted)" />
             <p style={{ margin: '8px 0 0', fontWeight: 800, color: colors.secondaryText }}>Δεν έχεις δημιουργήσει στόχους.</p>
           </div>
         ) : (
@@ -662,7 +662,7 @@ function GoalsContent() {
                 >
                   <div style={goalTileRingWrap}>
                     <svg width="84" height="84" viewBox="0 0 84 84" style={{ transform: 'rotate(-90deg)' }}>
-                      <circle cx="42" cy="42" r={ringRadius} stroke="#e2e8f0" strokeWidth="8" fill="none" />
+                      <circle cx="42" cy="42" r={ringRadius} stroke="var(--border)" strokeWidth="8" fill="none" />
                       <circle
                         cx="42"
                         cy="42"
@@ -906,7 +906,7 @@ function GoalsContent() {
                         setOpenHistoryModal(false)
                         startTransaction(selectedGoal, 'deposit')
                       }}
-                      style={{ ...txBtnStyle, background: colors.primaryDark, color: '#fff' }}
+                      style={{ ...txBtnStyle, background: colors.primaryDark, color: 'var(--surfaceSolid)' }}
                     >
                       <TrendingUp size={16} /> Κατάθεση
                     </button>
@@ -1035,7 +1035,7 @@ function GoalsContent() {
                         )}
 
                         {!!t.created_by_name && (
-                          <div style={{ marginTop: 6, fontSize: 12, fontWeight: 800, color: '#94a3b8' }}>
+                          <div style={{ marginTop: 6, fontSize: 12, fontWeight: 800, color: 'var(--muted)' }}>
                             by {t.created_by_name}
                           </div>
                         )}
@@ -1116,7 +1116,7 @@ const summaryCardStyle: CSSProperties = {
   alignItems: 'center',
   color: colors.white,
   marginBottom: '12px',
-  boxShadow: '0 8px 20px rgba(37,99,235,0.2)',
+  boxShadow: 'var(--shadow)',
 }
 const summaryLabelStyle: CSSProperties = { margin: 0, opacity: 0.85, fontWeight: 900, fontSize: '11px', letterSpacing: 0.6 }
 const summaryValueStyle: CSSProperties = { margin: '2px 0 0', fontWeight: 950, fontSize: '22px' }
@@ -1130,7 +1130,7 @@ const chipStyle: CSSProperties = {
   background: 'rgba(255,255,255,0.14)',
   fontSize: 11,
   fontWeight: 900,
-  color: '#fff',
+  color: 'var(--surfaceSolid)',
 }
 
 const newBtnStyle: CSSProperties = {
@@ -1157,7 +1157,7 @@ const goalsGridStyle: CSSProperties = {
 
 const goalTileStyle: CSSProperties = {
   border: `1px solid ${colors.border}`,
-  background: '#fff',
+  background: 'var(--surfaceSolid)',
   borderRadius: 20,
   padding: 12,
   minHeight: 210,
@@ -1266,8 +1266,8 @@ const dateBadgeStyle: CSSProperties = {
   border: '1px solid rgba(99,102,241,0.25)',
 }
 
-const actionIconBtn: CSSProperties = { background: '#fff', border: `1px solid ${colors.border}`, color: colors.secondaryText, cursor: 'pointer', padding: 8, borderRadius: 12 }
-const progressTrackStyle: CSSProperties = { height: '10px', background: '#e2e8f0', borderRadius: '999px', overflow: 'hidden' }
+const actionIconBtn: CSSProperties = { background: 'var(--surfaceSolid)', border: `1px solid var(--border)`, color: 'var(--muted)', cursor: 'pointer', padding: 8, borderRadius: 12 }
+const progressTrackStyle: CSSProperties = { height: '10px', background: 'var(--border)', borderRadius: '999px', overflow: 'hidden' }
 const progressFillStyle: CSSProperties = { height: '100%', borderRadius: '999px', transition: 'width 0.4s ease' }
 
 const txBtnStyle: CSSProperties = {
@@ -1295,7 +1295,7 @@ const planBox: CSSProperties = {
   padding: 12,
   borderRadius: 14,
   border: `1px solid ${colors.border}`,
-  background: 'linear-gradient(180deg, #f8fafc, #ffffff)',
+  background: 'var(--bg-grad)',
 }
 
 const tinyBtnWarn: CSSProperties = {
@@ -1317,20 +1317,20 @@ const miniChip: CSSProperties = {
   padding: '8px 10px',
   borderRadius: 999,
   border: '1px solid rgba(15,23,42,0.08)',
-  background: '#fff',
+  background: 'var(--surfaceSolid)',
   fontSize: 12,
   fontWeight: 950,
 }
 
 const modalBackdropStyle: CSSProperties = { position: 'fixed', inset: 0, background: colors.modalBackdrop, zIndex: 120, display: 'grid', placeItems: 'center', padding: '16px' }
-const modalCardStyle: CSSProperties = { width: '100%', maxWidth: '420px', background: colors.white, borderRadius: '20px', padding: '18px', boxShadow: '0 20px 40px rgba(0,0,0,0.2)' }
+const modalCardStyle: CSSProperties = { width: '100%', maxWidth: '420px', background: 'var(--surfaceSolid)', borderRadius: '20px', padding: '18px', boxShadow: 'var(--shadow)' }
 const modalHeaderStyle: CSSProperties = { display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '14px', gap: 10 }
 const iconCloseBtnStyle: CSSProperties = { width: '32px', height: '32px', borderRadius: '10px', background: colors.bgLight, border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }
 const labelStyle: CSSProperties = { fontSize: '12px', fontWeight: 900, color: colors.secondaryText, marginBottom: 6, display: 'block' }
 const inputStyle: CSSProperties = { width: '100%', border: `1px solid ${colors.border}`, borderRadius: '12px', padding: '12px', fontSize: '16px', fontWeight: 900, background: colors.bgLight, outline: 'none' }
 const saveBtnStyle: CSSProperties = { width: '100%', marginTop: '18px', border: 'none', borderRadius: '12px', padding: '14px', background: colors.accentBlue, color: colors.white, fontWeight: 950, cursor: 'pointer' }
 
-const hintTiny: CSSProperties = { marginTop: 6, fontSize: 11, fontWeight: 850, color: '#94a3b8' }
+const hintTiny: CSSProperties = { marginTop: 6, fontSize: 11, fontWeight: 850, color: 'var(--muted)' }
 
 const dateRow: CSSProperties = { display: 'flex', alignItems: 'center', gap: 10 }
 const dateIcon: CSSProperties = { width: 44, height: 44, borderRadius: 12, border: `1px solid ${colors.border}`, background: '#eef2ff', display: 'flex', alignItems: 'center', justifyContent: 'center', color: colors.indigo }
@@ -1339,7 +1339,7 @@ const dateInput: CSSProperties = { flex: 1, height: 44, borderRadius: 12, border
 const methodGrid: CSSProperties = { display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }
 const methodBtn: CSSProperties = {
   border: `1px solid ${colors.border}`,
-  background: '#fff',
+  background: 'var(--surfaceSolid)',
   padding: '12px 10px',
   borderRadius: 12,
   fontWeight: 950,
@@ -1359,7 +1359,7 @@ const methodBtnActive: CSSProperties = {
 
 const presetBtn: CSSProperties = {
   border: `1px solid ${colors.border}`,
-  background: '#fff',
+  background: 'var(--surfaceSolid)',
   padding: '8px 10px',
   borderRadius: 999,
   fontWeight: 950,
@@ -1373,16 +1373,16 @@ const hintBox: CSSProperties = { padding: 14, borderRadius: 16, backgroundColor:
 // History styles
 const historyFilters: CSSProperties = { padding: 12, borderRadius: 16, border: `1px solid ${colors.border}`, background: colors.bgLight, display: 'grid', gap: 10 }
 const historyFilterRow: CSSProperties = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }
-const historyDateBox: CSSProperties = { background: '#fff', border: `1px solid ${colors.border}`, borderRadius: 14, padding: 10 }
+const historyDateBox: CSSProperties = { background: 'var(--surfaceSolid)', border: `1px solid var(--border)`, borderRadius: 14, padding: 10 }
 const historyDateLabel: CSSProperties = { fontSize: 11, fontWeight: 950, color: colors.secondaryText, marginBottom: 6 }
 const historyDateInput: CSSProperties = { width: '100%', height: 40, borderRadius: 12, border: `1px solid ${colors.border}`, background: colors.bgLight, padding: '0 10px', fontWeight: 950, outline: 'none' }
-const historySelect: CSSProperties = { flex: 1, height: 44, borderRadius: 12, border: `1px solid ${colors.border}`, background: '#fff', padding: '0 10px', fontWeight: 950, outline: 'none' }
+const historySelect: CSSProperties = { flex: 1, height: 44, borderRadius: 12, border: `1px solid var(--border)`, background: 'var(--surfaceSolid)', padding: '0 10px', fontWeight: 950, outline: 'none' }
 const historySearchBtn: CSSProperties = {
   height: 44,
   borderRadius: 12,
   border: 'none',
   background: colors.primaryDark,
-  color: '#fff',
+  color: 'var(--surfaceSolid)',
   fontWeight: 950,
   padding: '0 14px',
   cursor: 'pointer',
@@ -1394,7 +1394,7 @@ const historySearchBtn: CSSProperties = {
 const historyRow: CSSProperties = { padding: 14, borderRadius: 16, background: colors.bgLight, border: `1px solid ${colors.border}` }
 const historyPill: CSSProperties = { padding: '8px 12px', borderRadius: 999, border: '1px solid', fontSize: 14, fontWeight: 950, whiteSpace: 'nowrap' }
 const historyPager: CSSProperties = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, marginTop: 14 }
-const pagerBtn: CSSProperties = { border: `1px solid ${colors.border}`, background: '#fff', borderRadius: 12, padding: '10px 12px', fontWeight: 950, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 8, color: colors.primaryDark }
+const pagerBtn: CSSProperties = { border: `1px solid var(--border)`, background: 'var(--surfaceSolid)', borderRadius: 12, padding: '10px 12px', fontWeight: 950, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 8, color: 'var(--text)' }
 
 export default function GoalsPage() {
   return (

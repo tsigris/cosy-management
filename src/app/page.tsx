@@ -14,14 +14,14 @@ import ErrorBoundary from '@/components/ErrorBoundary'
 
 // --- MODERN PREMIUM PALETTE ---
 const colors = {
-  primaryDark: '#0f172a',
-  secondaryText: '#64748b',
+  primaryDark: 'var(--text)',
+  secondaryText: 'var(--muted)',
   accentRed: '#f43f5e',
   accentBlue: '#6366f1',
   accentGreen: '#10b981',
-  bgLight: '#f8fafc',
-  border: '#e2e8f0',
-  white: '#ffffff',
+  bgLight: 'var(--bg)',
+  border: 'var(--border)',
+  white: 'var(--surfaceSolid)',
   warning: '#fffbeb',
   warningText: '#92400e',
 }
@@ -771,7 +771,7 @@ function DashboardContent() {
                     </p>
 
                     {!isZMaster && t?.description && (
-                      <p style={{ fontSize: '11px', fontWeight: 800, color: '#64748b', margin: '4px 0 2px 0' }}>
+                      <p style={{ fontSize: '11px', fontWeight: 800, color: 'var(--muted)', margin: '4px 0 2px 0' }}>
                         {t.description}
                       </p>
                     )}
@@ -994,7 +994,7 @@ const dropdownStyle: any = {
   background: 'white',
   minWidth: '220px',
   borderRadius: '18px',
-  boxShadow: '0 15px 35px rgba(0,0,0,0.1)',
+  boxShadow: 'var(--shadow)',
   padding: '10px',
   zIndex: 100,
   border: `1px solid ${colors.border}`,
@@ -1041,7 +1041,7 @@ const heroCardStyle: any = {
   padding: '30px 20px',
   borderRadius: '28px',
   color: 'white',
-  boxShadow: '0 20px 40px rgba(15, 23, 42, 0.2)',
+  boxShadow: 'var(--shadow)',
   marginBottom: '30px',
   textAlign: 'center',
 }
@@ -1097,7 +1097,7 @@ const actionBtn: any = {
   textAlign: 'center',
   fontWeight: '800',
   fontSize: '14px',
-  boxShadow: '0 8px 15px rgba(0,0,0,0.08)',
+  boxShadow: 'var(--shadow)',
 }
 const zBtnStyle: any = { flex: 'unset', width: '100%', maxWidth: '260px' }
 
@@ -1123,7 +1123,7 @@ const actionPanel: any = { display: 'flex', gap: '10px', padding: '15px', backgr
 const editRowBtn: any = { flex: 1, padding: '10px', backgroundColor: colors.bgLight, color: colors.primaryDark, border: `1px solid ${colors.border}`, borderRadius: '10px', fontWeight: '700', fontSize: '12px', minWidth: '140px', cursor: 'pointer' }
 const deleteRowBtn: any = { flex: 1, padding: '10px', backgroundColor: '#fee2e2', color: colors.accentRed, border: 'none', borderRadius: '10px', fontWeight: '700', fontSize: '12px', minWidth: '120px', cursor: 'pointer' }
 
-const ytdCard: any = { width: '100%', padding: '14px', borderRadius: '16px', border: `1px solid ${colors.border}`, background: '#f8fafc', marginTop: '10px' }
+const ytdCard: any = { width: '100%', padding: '14px', borderRadius: '16px', border: `1px solid var(--border)`, background: 'var(--bg)', marginTop: '10px' }
 const ytdTitle: any = { margin: 0, fontSize: '10px', fontWeight: '900', color: colors.secondaryText, letterSpacing: '0.8px' }
 const ytdSubTitle: any = { margin: '6px 0 0 0', fontSize: '10px', fontWeight: '800', color: colors.secondaryText, opacity: 0.85 }
 const ytdRow: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', marginTop: '10px' }
@@ -1134,7 +1134,7 @@ const ytdValueRed: any = { fontSize: '12px', fontWeight: '900', color: colors.ac
 const ytdHint: any = { margin: '10px 0 0 0', fontSize: '10px', fontWeight: '800', color: colors.secondaryText }
 const ytdLoading: any = { margin: '10px 0 0 0', fontSize: '12px', fontWeight: '800', color: colors.secondaryText }
 
-const zBreakdownCard: any = { width: '100%', padding: '14px', borderRadius: '16px', border: `1px solid ${colors.border}`, background: '#f8fafc' }
+const zBreakdownCard: any = { width: '100%', padding: '14px', borderRadius: '16px', border: `1px solid var(--border)`, background: 'var(--bg)' }
 const zBreakdownRow: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', marginTop: '10px' }
 
 const emptyStateStyle: any = { textAlign: 'center', padding: '40px 20px', color: colors.secondaryText, fontWeight: '600', fontSize: '13px' }

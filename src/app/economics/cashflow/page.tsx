@@ -92,15 +92,15 @@ export default function EconomicsCashflowPage() {
       isDark,
       bg:
         isDark
-          ? 'radial-gradient(1200px 600px at 20% -10%, rgba(99,102,241,0.18) 0%, rgba(99,102,241,0) 55%), radial-gradient(1200px 600px at 90% 0%, rgba(16,185,129,0.14) 0%, rgba(16,185,129,0) 55%), #0b1220'
-          : 'radial-gradient(1200px 600px at 20% -10%, #eef2ff 0%, rgba(238,242,255,0) 55%), radial-gradient(1200px 600px at 90% 0%, #ecfdf5 0%, rgba(236,253,245,0) 55%), #f8fafc',
+          ? 'var(--bg-grad)'
+          : 'var(--bg-grad)',
       surface: isDark ? 'rgba(15,23,42,0.72)' : 'rgba(255,255,255,0.92)',
       card: isDark ? 'rgba(15,23,42,0.78)' : 'rgba(255,255,255,0.92)',
-      solidCard: isDark ? '#0f172a' : '#ffffff',
-      border: isDark ? 'rgba(148,163,184,0.22)' : '#e2e8f0',
-      text: isDark ? '#e5e7eb' : '#0f172a',
-      muted: isDark ? '#94a3b8' : '#64748b',
-      muted2: isDark ? '#cbd5e1' : '#475569',
+      solidCard: 'var(--surfaceSolid)',
+      border: 'var(--border)',
+      text: 'var(--text)',
+      muted: 'var(--muted)',
+      muted2: 'var(--muted)',
       indigo: '#6366f1',
       green: '#10b981',
       red: '#f43f5e',
@@ -801,12 +801,12 @@ function makeStyles(t: {
     borderRadius: 14,
     border: `1px solid ${t.indigo}`,
     background: t.indigo,
-    color: '#fff',
+    color: 'var(--surfaceSolid)',
     fontWeight: 900,
     fontSize: 12,
     padding: '10px 12px',
     cursor: 'pointer',
-    boxShadow: '0 10px 18px rgba(99,102,241,0.18)',
+    boxShadow: 'var(--shadow)',
   }
 
   const secondaryBtn: CSSProperties = {
@@ -889,7 +889,7 @@ function makeStyles(t: {
     gridTemplateColumns: '120px 120px 1fr 1fr 160px 140px',
     gap: 0,
     padding: '10px 12px',
-    background: t.isDark ? 'rgba(2,6,23,0.65)' : '#f8fafc',
+    background: 'var(--bg)',
     borderBottom: `1px solid ${t.border}`,
     position: 'sticky',
     top: 0,
@@ -911,9 +911,9 @@ function makeStyles(t: {
   const td: CSSProperties = { fontSize: 12, fontWeight: 800, color: t.text, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }
   const tdRight: CSSProperties = { ...td, textAlign: 'right' }
 
-  const typePill: CSSProperties = { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: 999, border: `1px solid ${t.border}`, padding: '6px 10px', fontSize: 11, fontWeight: 900, background: t.isDark ? 'rgba(148,163,184,0.06)' : '#fff' }
+  const typePill: CSSProperties = { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: 999, border: `1px solid var(--border)`, padding: '6px 10px', fontSize: 11, fontWeight: 900, background: 'var(--surfaceSolid)' }
 
-  const statusPill: CSSProperties = { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: 999, border: `1px solid ${t.border}`, padding: '6px 10px', fontSize: 11, fontWeight: 900, background: t.isDark ? 'rgba(148,163,184,0.06)' : '#fff' }
+  const statusPill: CSSProperties = { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: 999, border: `1px solid var(--border)`, padding: '6px 10px', fontSize: 11, fontWeight: 900, background: 'var(--surfaceSolid)' }
   const statusOk: CSSProperties = { borderColor: 'rgba(16,185,129,0.45)', color: t.green }
   const statusWarn: CSSProperties = { borderColor: 'rgba(245,158,11,0.55)', color: t.amber }
   const statusBad: CSSProperties = { borderColor: 'rgba(244,63,94,0.55)', color: t.red }
