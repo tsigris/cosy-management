@@ -706,11 +706,11 @@ function DashboardContent() {
       <div style={actionGrid}>
         <div style={actionRow}>
           <NextLink href={`/add-income?date=${selectedDate}&store=${storeIdFromUrl}`} style={{ ...actionBtn, backgroundColor: colors.accentGreen }}>
-            + Έσοδο
+            + Έσοδα
           </NextLink>
 
           <NextLink href={`/add-expense?date=${selectedDate}&store=${storeIdFromUrl}`} style={{ ...actionBtn, backgroundColor: colors.accentRed }}>
-            - Έξοδο
+            - Έξοδα
           </NextLink>
         </div>
 
