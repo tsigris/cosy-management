@@ -1,4 +1,9 @@
-/* Manage Lists search input: hide native browser search/cancel icons */
+@import "tailwindcss";
+
+/* ----------------------------------------- */
+/* Manage Lists search input: hide native icons */
+/* ----------------------------------------- */
+
 .searchInputNoNativeIcons {
   -webkit-appearance: none;
   appearance: none;
@@ -10,93 +15,222 @@
 .searchInputNoNativeIcons::-webkit-search-results-decoration {
   display: none;
 }
-@import "tailwindcss";
+
+
+/* ----------------------------------------- */
+/* THEME SYSTEM (Light / Dark) */
+/* ----------------------------------------- */
 
 :root {
-  --background: #f8fafc;
-  --foreground: #1e293b;
+
+  /* BACKGROUND */
+  --bg: #f8fafc;
+
+  /* SURFACES */
+  --surface: rgba(255, 255, 255, 0.92);
+  --surfaceSolid: #ffffff;
+
+  /* TEXT */
+  --text: #0f172a;
+  --muted: #64748b;
+
+  /* BORDERS */
+  --border: #e2e8f0;
+
+  /* SHADOW */
+  --shadow: 0 10px 22px rgba(15, 23, 42, 0.05);
+
+  /* LEGACY SUPPORT */
+  --background: var(--bg);
+  --foreground: var(--text);
+  --border-color: var(--border);
   --accent-blue: #3b82f6;
-  --border-color: #e2e8f0;
 }
 
-/* ΔΙΟΡΘΩΣΗ: Καθαρό scrolling χωρίς περιορισμούς ύψους */
-html, body {
+
+/* DARK MODE */
+
+html[data-theme='dark'] {
+
+  --bg: #0b1220;
+
+  --surface: rgba(15, 23, 42, 0.72);
+  --surfaceSolid: #0f172a;
+
+  --text: #e5e7eb;
+  --muted: #94a3b8;
+
+  --border: rgba(148, 163, 184, 0.22);
+
+  --shadow: 0 10px 22px rgba(0, 0, 0, 0.35);
+
+  /* legacy sync */
+  --background: var(--bg);
+  --foreground: var(--text);
+  --border-color: var(--border);
+}
+
+
+/* ----------------------------------------- */
+/* BASE LAYOUT */
+/* ----------------------------------------- */
+
+html,
+body {
+
   height: auto;
   min-height: 100vh;
+
   width: 100%;
+
   margin: 0;
   padding: 0;
-  background-color: var(--background);
-  color: var(--foreground);
+
+  background: var(--bg);
+  color: var(--text);
+
   font-family: system-ui, -apple-system, sans-serif;
+
   -webkit-font-smoothing: antialiased;
-  
-  /* Ενεργοποίηση φυσικού scroll */
+
   overflow-x: hidden;
   overflow-y: auto !important;
+
   display: block;
-  
-  /* ΑΦΑΙΡΕΘΗΚΕ ΤΟ overscroll-behavior-y: none ΠΟΥ ΜΠΛΟΚΑΡΕ ΤΟ SCROLL */
+
   -webkit-overflow-scrolling: touch;
 }
 
-/* ΠΕΔΙΑ: 16px font-size για να μην κάνει zoom το Redmi/iPhone */
-input, select, textarea {
-  background-color: #ffffff !important;
+
+/* ----------------------------------------- */
+/* INPUT FIELDS */
+/* ----------------------------------------- */
+
+input,
+select,
+textarea {
+
+  background-color: var(--surfaceSolid) !important;
+
   border: 1px solid var(--border-color) !important;
-  color: var(--foreground) !important;
+
+  color: var(--text) !important;
+
   border-radius: 12px !important;
+
   padding: 12px 16px !important;
-  font-size: 16px !important; 
+
+  font-size: 16px !important;
+
   font-weight: 600 !important;
+
   outline: none;
+
   transition: all 0.2s ease-in-out;
+
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+
   width: 100%;
 }
 
-input:focus, select:focus, textarea:focus {
+
+input:focus,
+select:focus,
+textarea:focus {
+
   border-color: var(--accent-blue) !important;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1) !important;
+
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15) !important;
 }
 
+
+/* ----------------------------------------- */
+/* LABELS */
+/* ----------------------------------------- */
+
 label {
-  color: #64748b !important;
+
+  color: var(--muted) !important;
+
   font-size: 11px !important;
+
   font-weight: 700 !important;
+
   text-transform: uppercase;
+
   letter-spacing: 0.5px;
+
   margin-bottom: 6px;
+
   display: block;
 }
 
+
+/* ----------------------------------------- */
+/* BUTTONS */
+/* ----------------------------------------- */
+
 button {
+
   font-weight: 700;
+
   transition: transform 0.1s ease, background-color 0.2s ease;
+
   cursor: pointer;
 }
 
 button:active {
+
   transform: scale(0.98);
 }
 
+
+/* ----------------------------------------- */
+/* MAIN */
+/* ----------------------------------------- */
+
 main {
+
   min-height: 100vh;
+
   display: block;
+
   padding-bottom: calc(100px + env(safe-area-inset-bottom));
 }
 
-/* Custom Scrollbar για PC */
+
+/* ----------------------------------------- */
+/* SCROLLBAR */
+/* ----------------------------------------- */
+
 ::-webkit-scrollbar {
+
   width: 8px;
 }
+
 ::-webkit-scrollbar-track {
-  background: var(--background);
+
+  background: var(--bg);
 }
+
 ::-webkit-scrollbar-thumb {
+
   background: #cbd5e1;
+
   border-radius: 10px;
 }
+
+html[data-theme='dark'] ::-webkit-scrollbar-thumb {
+
+  background: #334155;
+}
+
 ::-webkit-scrollbar-thumb:hover {
+
   background: #94a3b8;
+}
+
+html[data-theme='dark'] ::-webkit-scrollbar-thumb:hover {
+
+  background: #475569;
 }

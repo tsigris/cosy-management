@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic'
 
 import { useEffect, useState, Suspense, useCallback, useRef, type Dispatch, type SetStateAction, type ReactNode, type CSSProperties } from 'react'
 import { getSupabase } from '@/lib/supabase'
+import { getTheme, setTheme } from '@/lib/theme'
 import PermissionGuard from '@/components/PermissionGuard'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
@@ -185,6 +186,7 @@ function SettingsContent() {
 
   const [zEnabled, setZEnabled] = useState<boolean>(true)
   const [zSaving, setZSaving] = useState(false)
+  const [theme, setThemeState] = useState<'light' | 'dark'>('light')
 
   const [formData, setFormData] = useState({
     name: '',
@@ -311,6 +313,10 @@ function SettingsContent() {
     fetchStoreSettings()
   }, [fetchStoreSettings])
 
+  useEffect(() => {
+    setThemeState(getTheme())
+  }, [])
+
   // Toggle Z (instant save)
   const handleToggleZ = async () => {
     if (!storeId) return
@@ -328,6 +334,12 @@ function SettingsContent() {
     } finally {
       setZSaving(false)
     }
+  }
+
+  const handleToggleTheme = () => {
+    const next = theme === 'light' ? 'dark' : 'light'
+    setThemeState(next)
+    setTheme(next)
   }
 
   async function handleSaveStore() {
@@ -495,6 +507,33 @@ function SettingsContent() {
             </div>
 
             <div style={featureFootNote}>(Όταν είναι OFF, το Z εξαφανίζεται από την αρχική.)</div>
+          </div>
+
+          <div style={{ ...featureCard, marginTop: 12 }}>
+            <div style={featureInnerCard}>
+              <div style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
+                <div style={shieldPill}>
+                  <Monitor size={22} color="#2563eb" />
+                </div>
+
+                <div style={{ flex: 1 }}>
+                  <div style={featureMainTitle}>Θέμα εφαρμογής</div>
+                  <div style={featureMainSub}>Επιλογή Light ή Dark mode</div>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <div style={onPill(theme === 'dark')}>{theme === 'dark' ? 'ON' : 'OFF'}</div>
+                  <button
+                    type="button"
+                    onClick={handleToggleTheme}
+                    style={iosSwitch(theme === 'dark')}
+                    aria-label="toggle theme"
+                  >
+                    <div style={iosKnob()} />
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
         </SectionCard>
 
