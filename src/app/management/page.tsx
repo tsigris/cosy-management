@@ -16,6 +16,7 @@ import {
   Info,
   ChevronDown,
   ChevronUp,
+  Home,
 } from 'lucide-react'
 
 /* ---------------- CONFIG ---------------- */
@@ -57,8 +58,17 @@ function ManagementContent() {
       {({ isAdmin }) => (
         <div style={container}>
           <div style={header}>
-            <h1 style={headerTitle}>Διαχείριση</h1>
-            <p style={headerSub}>Κεντρικός έλεγχος καταστήματος</p>
+            <div style={headerRow}>
+              <div>
+                <h1 style={headerTitle}>Διαχείριση</h1>
+                <p style={headerSub}>Κεντρικός έλεγχος καταστήματος</p>
+              </div>
+
+              <Link href={withStore('/')} style={homeBtn} aria-label="Αρχική">
+                <Home size={18} />
+                Αρχική
+              </Link>
+            </div>
           </div>
 
           <div style={content}>
@@ -146,7 +156,11 @@ function ManagementContent() {
                     </div>
 
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      {economicsOpen ? <ChevronUp size={18} color={colors.secondary} /> : <ChevronDown size={18} color={colors.secondary} />}
+                      {economicsOpen ? (
+                        <ChevronUp size={18} color={colors.secondary} />
+                      ) : (
+                        <ChevronDown size={18} color={colors.secondary} />
+                      )}
                     </div>
                   </div>
                 </button>
@@ -237,9 +251,32 @@ const container: React.CSSProperties = {
 }
 
 const header: React.CSSProperties = {
-  padding: '40px 20px 24px 20px',
+  padding: '34px 20px 22px 20px',
   background: colors.surface,
   borderBottom: `1px solid ${colors.border}`,
+}
+
+const headerRow: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'flex-start',
+  justifyContent: 'space-between',
+  gap: 12,
+}
+
+const homeBtn: React.CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 8,
+  padding: '10px 12px',
+  borderRadius: 14,
+  border: `1px solid ${colors.border}`,
+  background: '#fff',
+  color: colors.primary,
+  textDecoration: 'none',
+  fontWeight: 900,
+  fontSize: 13,
+  whiteSpace: 'nowrap',
+  boxShadow: '0 2px 4px rgba(0,0,0,0.02)',
 }
 
 const headerTitle: React.CSSProperties = {
