@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic'
 
 import { useEffect, useState, Suspense, useCallback, useRef, type Dispatch, type SetStateAction, type ReactNode, type CSSProperties } from 'react'
 import { getSupabase } from '@/lib/supabase'
-import { getTheme, setTheme } from '@/lib/theme'
+import { useTheme } from '@/components/theme/ThemeProvider'
 import PermissionGuard from '@/components/PermissionGuard'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
@@ -162,6 +162,7 @@ function AnimatedBody({ open, children }: { open: boolean; children: ReactNode }
 
 function SettingsContent() {
   const supabase = getSupabase()
+  const { theme, toggleTheme } = useTheme()
   const searchParams = useSearchParams()
   const storeId = searchParams.get('store')
 
@@ -186,7 +187,6 @@ function SettingsContent() {
 
   const [zEnabled, setZEnabled] = useState<boolean>(true)
   const [zSaving, setZSaving] = useState(false)
-  const [theme, setThemeState] = useState<'light' | 'dark'>('light')
 
   const [formData, setFormData] = useState({
     name: '',
@@ -313,10 +313,6 @@ function SettingsContent() {
     fetchStoreSettings()
   }, [fetchStoreSettings])
 
-  useEffect(() => {
-    setThemeState(getTheme())
-  }, [])
-
   // Toggle Z (instant save)
   const handleToggleZ = async () => {
     if (!storeId) return
@@ -337,9 +333,7 @@ function SettingsContent() {
   }
 
   const handleToggleTheme = () => {
-    const next = theme === 'light' ? 'dark' : 'light'
-    setThemeState(next)
-    setTheme(next)
+    toggleTheme()
   }
 
   async function handleSaveStore() {
