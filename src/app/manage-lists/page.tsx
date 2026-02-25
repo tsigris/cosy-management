@@ -1504,8 +1504,8 @@ function ManageListsContent() {
 /* ---------------- STYLES ---------------- */
 
 const containerStyle: any = {
-  backgroundColor: colors.bgLight,
-  minHeight: '100%',
+  background: 'var(--bg-grad)',
+  minHeight: '100vh',
   width: '100%',
   padding: '20px',
   touchAction: 'pan-y',
@@ -1514,27 +1514,27 @@ const containerStyle: any = {
 const contentWrapper: any = { maxWidth: '560px', margin: '0 auto', paddingBottom: '120px' }
 
 const headerStyle: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px' }
-const titleStyle: any = { fontSize: '22px', fontWeight: '800', color: colors.primaryDark, margin: 0 }
-const subtitleStyle: any = { fontSize: '10px', fontWeight: '800', color: colors.secondaryText, marginTop: '4px' }
+const titleStyle: any = { fontSize: '22px', fontWeight: '800', color: 'var(--text)', margin: 0 }
+const subtitleStyle: any = { fontSize: '10px', fontWeight: '800', color: 'var(--muted)', marginTop: '4px' }
 
 const closeBtn: any = {
   padding: '8px',
-  background: 'white',
+  background: 'var(--surface)',
   borderRadius: '12px',
-  border: `1px solid ${colors.border}`,
-  color: colors.primaryDark,
+  border: '1px solid var(--border)',
+  color: 'var(--text)',
   textDecoration: 'none',
   display: 'flex',
 }
 
 /* ✅ HERO */
 const heroCard: any = {
-  background: colors.primaryDark,
-  color: 'white',
+  background: 'var(--surface)',
+  color: 'var(--text)',
   padding: '18px',
   borderRadius: '22px',
-  border: `1px solid rgba(255,255,255,0.08)`,
-  boxShadow: '0 18px 50px rgba(15,23,42,0.18)',
+  border: '1px solid var(--border)',
+  boxShadow: 'var(--shadow)',
   marginBottom: '14px',
 }
 
@@ -1545,9 +1545,9 @@ const heroYearLabel: any = { fontSize: 10, fontWeight: 900, opacity: 0.9, letter
 const heroSelect: any = {
   padding: '10px 12px',
   borderRadius: 14,
-  border: '1px solid rgba(255,255,255,0.18)',
-  background: 'rgba(255,255,255,0.08)',
-  color: 'white',
+  border: '1px solid var(--border)',
+  background: 'var(--surface)',
+  color: 'var(--text)',
   fontWeight: 900,
   outline: 'none',
 }
