@@ -34,12 +34,12 @@ import {
 } from 'lucide-react'
 
 const colors = {
-  primaryDark: '#1e293b',
-  secondaryText: '#64748b',
+  primaryDark: 'var(--text)',
+  secondaryText: 'var(--muted)',
   accentOrange: '#f97316',
-  bgLight: '#f8fafc',
-  border: '#e2e8f0',
-  white: '#ffffff',
+  bgLight: 'var(--bg)',
+  border: 'var(--border)',
+  white: 'var(--surfaceSolid)',
   accentBlue: '#2563eb',
   accentRed: '#dc2626',
   accentGreen: '#10b981',
@@ -1504,7 +1504,7 @@ function ManageListsContent() {
 /* ---------------- STYLES ---------------- */
 
 const containerStyle: any = {
-  background: 'var(--bg-grad)',
+  background: 'var(--bg)',
   minHeight: '100vh',
   width: '100%',
   padding: '20px',
@@ -1529,7 +1529,7 @@ const closeBtn: any = {
 
 /* ✅ HERO */
 const heroCard: any = {
-  background: 'var(--surface)',
+  background: 'var(--bg-grad)',
   color: 'var(--text)',
   padding: '18px',
   borderRadius: '22px',
@@ -1554,8 +1554,8 @@ const heroSelect: any = {
 
 const addBtn: any = {
   width: '100%',
-  backgroundColor: colors.primaryDark,
-  color: 'white',
+  backgroundColor: 'var(--surfaceSolid)',
+  color: 'var(--text)',
   padding: '16px',
   borderRadius: '16px',
   fontWeight: '800',
@@ -1588,12 +1588,12 @@ const miniCancel: any = {
 }
 
 const formCard: any = {
-  background: 'var(--surface)',
+  background: 'var(--surfaceSolid)',
   padding: '24px',
   borderRadius: '24px',
   marginBottom: '16px',
-  border: `1px solid ${colors.border}`,
-  boxShadow: '0 4px 20px rgba(0,0,0,0.05)',
+  border: '1px solid var(--border)',
+  boxShadow: 'var(--shadow)',
 }
 
 const inputGroup: any = { marginBottom: '15px' }
@@ -1601,7 +1601,7 @@ const inputGroup: any = { marginBottom: '15px' }
 const labelStyle: any = {
   fontSize: '10px',
   fontWeight: '800',
-  color: colors.secondaryText,
+  color: 'var(--muted)',
   marginBottom: '6px',
   display: 'flex',
   alignItems: 'center',
@@ -1612,11 +1612,12 @@ const inputStyle: any = {
   width: '100%',
   padding: '14px',
   borderRadius: '12px',
-  border: `1px solid ${colors.border}`,
+  border: '1px solid var(--border)',
   fontSize: '16px',
   fontWeight: '600',
   outline: 'none',
-  backgroundColor: colors.bgLight,
+  background: 'var(--surfaceSolid)',
+  color: 'var(--text)',
 }
 
 const saveBtn: any = {
@@ -1635,33 +1636,33 @@ const saveBtn: any = {
 const listArea: any = {
   background: 'var(--surface)',
   borderRadius: '24px',
-  border: `1px solid ${colors.border}`,
+  border: '1px solid var(--border)',
   overflow: 'hidden',
-  boxShadow: '0 4px 20px rgba(0,0,0,0.05)',
+  boxShadow: 'var(--shadow)',
 }
 
 const rankingHeader: any = {
   padding: '14px 20px',
-  backgroundColor: colors.bgLight,
+  background: 'var(--surfaceSolid)',
   fontSize: '10px',
   fontWeight: '800',
-  color: colors.secondaryText,
+  color: 'var(--muted)',
   display: 'flex',
   alignItems: 'center',
   gap: '8px',
 }
 
 const supplierCardStyle: any = {
-  backgroundColor: 'var(--surface)',
+  background: 'var(--surface)',
   borderRadius: '20px',
   display: 'flex',
   flexDirection: 'column',
-  border: `1px solid ${colors.border}`,
+  border: '1px solid var(--border)',
 }
 
 const rowWrapper: any = { display: 'flex', padding: '16px', alignItems: 'center', cursor: 'pointer', gap: 10 }
-const rankNumber: any = { width: '30px', fontWeight: '800', color: colors.secondaryText, fontSize: '14px' }
-const rowName: any = { fontSize: '15px', fontWeight: '800', margin: 0, color: colors.primaryDark }
+const rankNumber: any = { width: '30px', fontWeight: '800', color: 'var(--muted)', fontSize: '14px' }
+const rowName: any = { fontSize: '15px', fontWeight: '800', margin: 0, color: 'var(--text)' }
 const categoryBadge: any = {
   fontSize: '9px',
   fontWeight: '950',
@@ -1669,19 +1670,19 @@ const categoryBadge: any = {
   borderRadius: '8px',
   display: 'inline-block',
   textTransform: 'uppercase',
-  backgroundColor: 'var(--surfaceSolid)',
+  background: 'var(--surfaceSolid)',
   color: colors.accentOrange,
 }
 const turnoverText: any = { fontSize: '16px', fontWeight: '800', color: colors.accentGreen, margin: 0 }
-const infoRow: any = { display: 'flex', alignItems: 'center', gap: '6px', color: colors.secondaryText }
-const infoText: any = { fontSize: '11px', fontWeight: '800', margin: 0 }
+const infoRow: any = { display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--muted)' }
+const infoText: any = { fontSize: '11px', fontWeight: '800', margin: 0, color: 'var(--muted)' }
 
 const editingPill: any = {
   marginLeft: 10,
   fontSize: 11,
   fontWeight: 800,
   color: colors.accentBlue,
-  backgroundColor: 'var(--surfaceSolid)',
+  background: 'var(--surfaceSolid)',
   border: '1px solid var(--border)',
   padding: '6px 10px',
   borderRadius: 999,
@@ -1695,8 +1696,8 @@ const copyCodeBtn: any = {
   minWidth: 34,
   height: 34,
   borderRadius: 10,
-  border: `1px solid ${colors.border}`,
-  backgroundColor: 'var(--surface)',
+  border: '1px solid var(--border)',
+  background: 'var(--surface)',
   color: 'var(--text)',
   display: 'inline-flex',
   alignItems: 'center',
@@ -1709,7 +1710,7 @@ const detailsWrap: any = {
   padding: '14px',
   borderRadius: '18px',
   background: 'var(--surfaceSolid)',
-  border: `1px solid ${colors.border}`,
+  border: '1px solid var(--border)',
   width: 'auto',
 }
 
@@ -1718,11 +1719,11 @@ const detailsHeader: any = {
   alignItems: 'center',
   justifyContent: 'space-between',
   marginBottom: '10px',
-  color: colors.primaryDark,
+  color: 'var(--text)',
 }
 
 const closeMiniBtn: any = {
-  border: `1px solid ${colors.border}`,
+  border: '1px solid var(--border)',
   background: 'var(--surface)',
   borderRadius: '12px',
   width: '36px',
@@ -1731,7 +1732,7 @@ const closeMiniBtn: any = {
   alignItems: 'center',
   justifyContent: 'center',
   cursor: 'pointer',
-  color: colors.secondaryText,
+  color: 'var(--muted)',
 }
 
 const miniSummaryRow: any = {
@@ -1754,7 +1755,7 @@ const miniPill: any = {
 const miniPillLabel: any = {
   fontSize: 10,
   fontWeight: 950,
-  color: colors.secondaryText,
+  color: 'var(--muted)',
   textTransform: 'uppercase',
   letterSpacing: 0.4,
 }
@@ -1762,7 +1763,7 @@ const miniPillLabel: any = {
 const miniPillValue: any = {
   fontSize: 10,
   fontWeight: 950,
-  color: colors.primaryDark,
+  color: 'var(--text)',
 }
 
 const miniAmountChip: any = {
@@ -1770,9 +1771,9 @@ const miniAmountChip: any = {
   fontWeight: 950,
   padding: '4px 10px',
   borderRadius: 999,
-  border: `1px solid ${colors.border}`,
+  border: '1px solid var(--border)',
   background: 'var(--surfaceSolid)',
-  color: colors.primaryDark,
+  color: 'var(--text)',
   letterSpacing: 0.2,
 }
 
@@ -1789,16 +1790,16 @@ const rfIbanRow: any = {
   justifyContent: 'space-between',
   gap: 8,
   background: 'var(--surface)',
-  border: `1px solid ${colors.border}`,
+  border: '1px solid var(--border)',
   borderRadius: 12,
   padding: '8px 10px',
 }
 
-const rfIbanLabel: any = { fontSize: 10, fontWeight: 950, color: colors.secondaryText, minWidth: 34 }
+const rfIbanLabel: any = { fontSize: 10, fontWeight: 950, color: 'var(--muted)', minWidth: 34 }
 const rfIbanValue: any = {
   fontSize: 12,
   fontWeight: 900,
-  color: colors.primaryDark,
+  color: 'var(--text)',
   fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
   overflowWrap: 'anywhere',
   flex: 1,
@@ -1807,7 +1808,7 @@ const rfIbanValue: any = {
 const sectionTitle: any = {
   fontSize: '11px',
   fontWeight: '950',
-  color: colors.primaryDark,
+  color: 'var(--text)',
   letterSpacing: '0.4px',
   marginBottom: '8px',
   textTransform: 'uppercase',
@@ -1820,20 +1821,20 @@ const txRow: any = {
   gap: '12px',
   padding: '10px',
   background: 'var(--surface)',
-  border: `1px solid ${colors.border}`,
+  border: '1px solid var(--border)',
   borderRadius: '16px',
 }
 
 const txDate: any = {
   fontSize: '11px',
   fontWeight: '950',
-  color: colors.primaryDark,
+  color: 'var(--text)',
 }
 
 const txNote: any = {
   fontSize: '11px',
   fontWeight: '800',
-  color: colors.secondaryText,
+  color: 'var(--muted)',
   overflow: 'hidden',
   textOverflow: 'ellipsis',
   whiteSpace: 'nowrap',
@@ -1850,7 +1851,7 @@ const txAmount: any = {
 const rowMuted: any = {
   fontSize: '11px',
   fontWeight: '800',
-  color: colors.secondaryText,
+  color: 'var(--muted)',
   padding: '6px 2px',
 }
 
@@ -1859,9 +1860,9 @@ const tinyChip: any = {
   fontWeight: 950,
   padding: '3px 8px',
   borderRadius: 999,
-  border: `1px solid ${colors.border}`,
+  border: '1px solid var(--border)',
   background: 'var(--surfaceSolid)',
-  color: colors.secondaryText,
+  color: 'var(--muted)',
   textTransform: 'uppercase',
   letterSpacing: 0.2,
 }
@@ -1914,7 +1915,7 @@ const debtActionCompactBtn: any = {
   textDecoration: 'none',
 }
 
-const emptyText: any = { padding: '40px', textAlign: 'center', color: colors.secondaryText, fontSize: '13px', fontWeight: '600' }
+const emptyText: any = { padding: '40px', textAlign: 'center', color: 'var(--muted)', fontSize: '13px', fontWeight: '600' }
 
 const segBtn: any = {
   borderRadius: 14,
