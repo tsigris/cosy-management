@@ -1,12 +1,20 @@
 'use client'
 export const dynamic = 'force-dynamic'
 
-import { useEffect, useState, Suspense, useCallback, useRef, type Dispatch, type SetStateAction, type ReactNode, type CSSProperties } from 'react'
-import { getSupabase } from '@/lib/supabase'
-import { useTheme } from '@/components/theme/ThemeProvider'
-import PermissionGuard from '@/components/PermissionGuard'
-import { useSearchParams } from 'next/navigation'
+import React, {
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type Dispatch,
+  type ReactNode,
+  type SetStateAction,
+} from 'react'
 import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
 import * as XLSX from 'xlsx'
 import { toast, Toaster } from 'sonner'
 import {
@@ -24,6 +32,10 @@ import {
   ChevronDown,
   ChevronUp,
 } from 'lucide-react'
+
+import { getSupabase } from '@/lib/supabase'
+import PermissionGuard from '@/components/PermissionGuard'
+import { useTheme } from '@/components/theme/ThemeProvider'
 
 type SectionId = 'profile' | 'business' | 'appearance' | 'backup' | 'support'
 
@@ -97,6 +109,7 @@ function SectionCard({
             <div style={sectionSub}>{subtitle}</div>
           </div>
         </div>
+
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           {chipRight}
           {open ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
@@ -163,10 +176,11 @@ function AnimatedBody({ open, children }: { open: boolean; children: ReactNode }
 function SettingsContent() {
   const supabase = getSupabase()
   const { theme, toggleTheme } = useTheme()
+
   const searchParams = useSearchParams()
   const storeId = searchParams.get('store')
 
-  // --- Personal Profile State ---
+  // --- Profile State ---
   const [profileLoading, setProfileLoading] = useState(true)
   const [profileName, setProfileName] = useState('')
   const [profileSaveLoading, setProfileSaveLoading] = useState(false)
@@ -197,24 +211,30 @@ function SettingsContent() {
     email: '',
   })
 
-  // ✅ IMPORTANT: no section open by default
+  // ✅ no section open by default
   const [openSection, setOpenSection] = useState<SectionId | null>(null)
 
-  const loadProfileRecord = useCallback(async (uid: string): Promise<ProfileRecord | null> => {
-    const { data, error } = await supabase.from('profiles').select('id, username').eq('id', uid).maybeSingle()
-    if (error) throw error
-    return data
-  }, [supabase])
+  const loadProfileRecord = useCallback(
+    async (uid: string): Promise<ProfileRecord | null> => {
+      const { data, error } = await supabase.from('profiles').select('id, username').eq('id', uid).maybeSingle()
+      if (error) throw error
+      return data
+    },
+    [supabase]
+  )
 
-  const ensureProfileRow = useCallback(async (uid: string): Promise<ProfileRecord | null> => {
-    const profile = await loadProfileRecord(uid)
-    if (profile) return profile
+  const ensureProfileRow = useCallback(
+    async (uid: string): Promise<ProfileRecord | null> => {
+      const profile = await loadProfileRecord(uid)
+      if (profile) return profile
 
-    const createById = await supabase.from('profiles').upsert({ id: uid, username: '' }, { onConflict: 'id' })
-    if (createById.error) throw createById.error
+      const createById = await supabase.from('profiles').upsert({ id: uid, username: '' }, { onConflict: 'id' })
+      if (createById.error) throw createById.error
 
-    return await loadProfileRecord(uid)
-  }, [supabase, loadProfileRecord])
+      return await loadProfileRecord(uid)
+    },
+    [supabase, loadProfileRecord]
+  )
 
   // Fetch profile
   useEffect(() => {
@@ -254,11 +274,7 @@ function SettingsContent() {
     try {
       const clean = profileName.trim()
 
-      const { error: updateError } = await supabase
-        .from('profiles')
-        .update({ username: clean })
-        .eq('id', userId)
-
+      const { error: updateError } = await supabase.from('profiles').update({ username: clean }).eq('id', userId)
       if (updateError) throw updateError
 
       const { data: profile, error: profileError } = await supabase
@@ -307,7 +323,7 @@ function SettingsContent() {
     } finally {
       setLoading(false)
     }
-  }, [storeId])
+  }, [storeId, supabase])
 
   useEffect(() => {
     fetchStoreSettings()
@@ -363,11 +379,13 @@ function SettingsContent() {
   const handleExportAll = async () => {
     if (!storeId) return toast.error('Δεν βρέθηκε ID καταστήματος')
     setIsExporting(true)
+
     try {
       let transQuery = supabase
         .from('transactions')
         .select('id, created_at, amount, type, category, description:notes, method, date, supplier_id, fixed_asset_id')
         .eq('store_id', storeId)
+
       if (!exportAllData) transQuery = transQuery.gte('date', startDate).lte('date', endDate)
 
       const [trans, sups, assets, emps, fixedAssetsLookup] = await Promise.all([
@@ -386,18 +404,17 @@ function SettingsContent() {
       const assetMap = Object.fromEntries(assetsData.map((a) => [a.id, a.name]))
       const fixedAssetEmployeeMap = Object.fromEntries(fixedAssetsData.map((a) => [a.id, a.name]))
 
-      const formattedTransactions =
-        (trans.data ?? []).map((t) => {
-          const row = t as ExportTransactionRow
-          return {
+      const formattedTransactions = (trans.data ?? []).map((t) => {
+        const row = t as ExportTransactionRow
+        return {
           Ημερομηνία: typeof row.date === 'string' ? row.date : new Date(row.date).toISOString().split('T')[0],
           'Ποσό (€)': t.amount,
           Τύπος: row.type === 'expense' ? 'Έξοδο' : 'Έσοδο',
           Κατηγορία: row.category,
           Μέθοδος: row.method,
-          Προμηθευτής: row.supplier_id ? (supplierMap[row.supplier_id] || '-') : '-',
-          Πάγιο: row.fixed_asset_id ? (assetMap[row.fixed_asset_id] || '-') : '-',
-          Υπάλληλος: row.fixed_asset_id ? (fixedAssetEmployeeMap[row.fixed_asset_id] || '-') : '-',
+          Προμηθευτής: row.supplier_id ? supplierMap[row.supplier_id] || '-' : '-',
+          Πάγιο: row.fixed_asset_id ? assetMap[row.fixed_asset_id] || '-' : '-',
+          Υπάλληλος: row.fixed_asset_id ? fixedAssetEmployeeMap[row.fixed_asset_id] || '-' : '-',
           Σημειώσεις: row.description || '',
         }
       })
@@ -413,7 +430,8 @@ function SettingsContent() {
 
       XLSX.writeFile(wb, `Backup_${formData.name}_${new Date().toISOString().split('T')[0]}.xlsx`)
       toast.success('Η εξαγωγή ολοκληρώθηκε ✅')
-    } catch {
+    } catch (e) {
+      console.error(e)
       toast.error('Σφάλμα εξαγωγής')
     } finally {
       setIsExporting(false)
@@ -423,288 +441,326 @@ function SettingsContent() {
   return (
     <PermissionGuard storeId={storeId}>
       {({ isAdmin, isLoading: checkingPermission }) => (
-    <div style={pageWrap}>
-      <Toaster richColors position="top-center" />
+        <div style={pageWrap}>
+          <Toaster richColors position="top-center" />
 
-      <div style={container}>
-        {/* Top App Header */}
-        <div style={topBar}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <div style={appIcon}>
-              <SettingsIcon size={20} />
-            </div>
-            <div>
-              <div style={topTitle}>Ρυθμίσεις</div>
-              <div style={topSubtitle}>{(formData.name || 'ΚΑΤΑΣΤΗΜΑ').toUpperCase()}</div>
-            </div>
-          </div>
-
-          <Link href={`/?store=${storeId}`} style={closeBtn} aria-label="close">
-            <X size={20} />
-          </Link>
-        </div>
-
-        {!checkingPermission && !isAdmin && <div style={readOnlyBannerStyle}>Read-only access</div>}
-
-        {/* Sections */}
-        <SectionCard
-          id="appearance"
-          icon={<Monitor size={18} color="#9A3412" />}
-          title="Εμφάνιση"
-          subtitle="Dashboard Features & προβολές"
-          openSection={openSection}
-          setOpenSection={setOpenSection}
-          chipRight={<span style={chip}>Store</span>}
-        >
-          <div style={featureCard}>
-            <div style={featureHeaderRow}>
-              <div style={featureHeaderLeft}>
-                <div style={featureIconOuter}>
-                  <Monitor size={22} color="#7c2d12" />
+          <div style={container}>
+            {/* Top App Header */}
+            <div style={topBar}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div style={appIcon}>
+                  <SettingsIcon size={20} />
                 </div>
                 <div>
-                  <div style={featureKicker}>ΕΜΦΑΝΙΣΗ</div>
-                  <div style={featureTitle}>Dashboard Features</div>
+                  <div style={topTitle}>Ρυθμίσεις</div>
+                  <div style={topSubtitle}>{(formData.name || 'ΚΑΤΑΣΤΗΜΑ').toUpperCase()}</div>
                 </div>
               </div>
-              <div style={featureChip}>Store</div>
+
+              <Link href={`/?store=${storeId || ''}`} style={closeBtn} aria-label="close">
+                <X size={20} />
+              </Link>
             </div>
 
-            <div style={featureInnerCard}>
-              <div style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
-                <div style={shieldPill}>
-                  <ShieldCheck size={22} color="#16a34a" />
+            {!checkingPermission && !isAdmin && <div style={readOnlyBannerStyle}>Read-only access</div>}
+
+            {/* APPEARANCE */}
+            <SectionCard
+              id="appearance"
+              icon={<Monitor size={18} color="#9A3412" />}
+              title="Εμφάνιση"
+              subtitle="Dashboard Features & προβολές"
+              openSection={openSection}
+              setOpenSection={setOpenSection}
+              chipRight={<span style={chip}>Store</span>}
+            >
+              <div style={featureCard}>
+                <div style={featureHeaderRow}>
+                  <div style={featureHeaderLeft}>
+                    <div style={featureIconOuter}>
+                      <Monitor size={22} color="#7c2d12" />
+                    </div>
+                    <div>
+                      <div style={featureKicker}>ΕΜΦΑΝΙΣΗ</div>
+                      <div style={featureTitle}>Dashboard Features</div>
+                    </div>
+                  </div>
+                  <div style={featureChip}>Store</div>
                 </div>
 
-                <div style={{ flex: 1 }}>
-                  <div style={featureMainTitle}>Εμφάνιση Ζ στην αρχική</div>
-                  <div style={featureMainSub}>
-                    {zEnabled ? 'Το κουμπί Z φαίνεται στο Dashboard' : 'Το κουμπί Z είναι κρυφό από το Dashboard'}
+                <div style={featureInnerCard}>
+                  <div style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
+                    <div style={shieldPill}>
+                      <ShieldCheck size={22} color="#16a34a" />
+                    </div>
+
+                    <div style={{ flex: 1 }}>
+                      <div style={featureMainTitle}>Εμφάνιση Ζ στην αρχική</div>
+                      <div style={featureMainSub}>
+                        {zEnabled ? 'Το κουμπί Z φαίνεται στο Dashboard' : 'Το κουμπί Z είναι κρυφό από το Dashboard'}
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                      <div style={onPill(zEnabled)}>{zEnabled ? 'ON' : 'OFF'}</div>
+
+                      {isAdmin && (
+                        <button
+                          type="button"
+                          onClick={handleToggleZ}
+                          disabled={zSaving || loading}
+                          style={{ ...iosSwitch(zEnabled), opacity: zSaving || loading ? 0.7 : 1 }}
+                          aria-label="toggle z"
+                        >
+                          <div style={iosKnob()} />
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <div style={onPill(zEnabled)}>{zEnabled ? 'ON' : 'OFF'}</div>
-                  {isAdmin && (
-                    <button
-                      type="button"
-                      onClick={handleToggleZ}
-                      disabled={zSaving || loading}
-                      style={{ ...iosSwitch(zEnabled), opacity: zSaving || loading ? 0.7 : 1 }}
-                      aria-label="toggle z"
-                    >
-                      <div style={iosKnob()} />
-                    </button>
-                  )}
+                <div style={featureFootNote}>(Όταν είναι OFF, το Z εξαφανίζεται από την αρχική.)</div>
+              </div>
+
+              <div style={{ ...featureCard, marginTop: 12 }}>
+                <div style={featureInnerCard}>
+                  <div style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
+                    <div style={shieldPillBlue}>
+                      <Monitor size={22} color="#2563eb" />
+                    </div>
+
+                    <div style={{ flex: 1 }}>
+                      <div style={featureMainTitle}>Θέμα εφαρμογής</div>
+                      <div style={featureMainSub}>Επιλογή Light ή Dark mode</div>
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                      <div style={onPill(theme === 'dark')}>{theme === 'dark' ? 'ON' : 'OFF'}</div>
+
+                      <button
+                        type="button"
+                        onClick={handleToggleTheme}
+                        style={iosSwitch(theme === 'dark')}
+                        aria-label="toggle theme"
+                      >
+                        <div style={iosKnob()} />
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </div>
-            </div>
+            </SectionCard>
 
-            <div style={featureFootNote}>(Όταν είναι OFF, το Z εξαφανίζεται από την αρχική.)</div>
-          </div>
-
-          <div style={{ ...featureCard, marginTop: 12 }}>
-            <div style={featureInnerCard}>
-              <div style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
-                <div style={shieldPill}>
-                  <Monitor size={22} color="#2563eb" />
-                </div>
-
-                <div style={{ flex: 1 }}>
-                  <div style={featureMainTitle}>Θέμα εφαρμογής</div>
-                  <div style={featureMainSub}>Επιλογή Light ή Dark mode</div>
-                </div>
-
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <div style={onPill(theme === 'dark')}>{theme === 'dark' ? 'ON' : 'OFF'}</div>
-                  <button
-                    type="button"
-                    onClick={handleToggleTheme}
-                    style={iosSwitch(theme === 'dark')}
-                    aria-label="toggle theme"
-                  >
-                    <div style={iosKnob()} />
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </SectionCard>
-
-        <SectionCard
-          id="business"
-          icon={<Building2 size={18} color="#0f172a" />}
-          title="Επιχείρηση"
-          subtitle="Στοιχεία καταστήματος & τιμολόγησης"
-          openSection={openSection}
-          setOpenSection={setOpenSection}
-        >
-          <div style={grid2}>
-            <div style={field}>
-              <label style={label}>ΤΙΤΛΟΣ ΚΑΤΑΣΤΗΜΑΤΟΣ (ΕΜΦΑΝΙΣΗ)</label>
-              <input style={input} value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} />
-            </div>
-
-            <div style={field}>
-              <label style={label}>ΤΗΛΕΦΩΝΟ</label>
-              <input style={input} value={formData.phone} onChange={(e) => setFormData({ ...formData, phone: e.target.value })} />
-            </div>
-          </div>
-
-          <div style={field}>
-            <label style={label}>ΕΠΩΝΥΜΙΑ ΕΤΑΙΡΕΙΑΣ</label>
-            <input
-              style={input}
-              value={formData.company_name}
-              onChange={(e) => setFormData({ ...formData, company_name: e.target.value })}
-              placeholder="π.χ. ΑΦΟΙ ΠΑΠΑΔΟΠΟΥΛΟΙ Ο.Ε."
-            />
-          </div>
-
-          <div style={grid2}>
-            <div style={field}>
-              <label style={label}>Α.Φ.Μ.</label>
-              <input style={input} value={formData.afm} onChange={(e) => setFormData({ ...formData, afm: e.target.value })} />
-            </div>
-            <div style={field}>
-              <label style={label}>EMAIL (LOGGED IN)</label>
-              <input style={{ ...input, opacity: 0.8 }} value={formData.email} disabled />
-            </div>
-          </div>
-
-          <div style={field}>
-            <label style={label}>ΔΙΕΥΘΥΝΣΗ</label>
-            <textarea style={textarea} value={formData.address} onChange={(e) => setFormData({ ...formData, address: e.target.value })} />
-          </div>
-
-          {isAdmin && (
-            <button onClick={handleSaveStore} disabled={loading} style={{ ...primaryBtn, opacity: loading ? 0.7 : 1 }}>
-              <Save size={18} /> {loading ? 'ΑΠΟΘΗΚΕΥΣΗ...' : 'ΕΝΗΜΕΡΩΣΗ ΚΑΤΑΣΤΗΜΑΤΟΣ'}
-            </button>
-          )}
-        </SectionCard>
-
-        <SectionCard
-          id="profile"
-          icon={<User2 size={18} color="#0f172a" />}
-          title="Προφίλ"
-          subtitle="Όνομα χρήστη & εμφανίσεις"
-          openSection={openSection}
-          setOpenSection={setOpenSection}
-        >
-          <div style={field}>
-            <label style={label}>Το όνομά μου (username)</label>
-            <input
-              style={{ ...input, fontSize: '16px' }}
-              value={profileName}
-              onChange={(e) => setProfileName(e.target.value)}
-              disabled={profileLoading || profileSaveLoading}
-              placeholder="Το όνομά σας..."
-            />
-          </div>
-
-          {isAdmin && (
-            <button
-              onClick={handleProfileSave}
-              disabled={profileLoading || profileSaveLoading}
-              style={{ ...primaryBtn, opacity: profileLoading || profileSaveLoading ? 0.7 : 1 }}
+            {/* BUSINESS */}
+            <SectionCard
+              id="business"
+              icon={<Building2 size={18} color="var(--text)" />}
+              title="Επιχείρηση"
+              subtitle="Στοιχεία καταστήματος & τιμολόγησης"
+              openSection={openSection}
+              setOpenSection={setOpenSection}
             >
-              <Save size={18} /> {profileSaveLoading ? 'ΑΠΟΘΗΚΕΥΣΗ...' : 'ΑΠΟΘΗΚΕΥΣΗ ΟΝΟΜΑΤΟΣ'}
-            </button>
-          )}
-
-          {profileError && <div style={msgError}>{profileError}</div>}
-          {profileSuccess && <div style={msgSuccess}>{profileSuccess}</div>}
-        </SectionCard>
-
-        <SectionCard
-          id="backup"
-          icon={<Database size={18} color="#0f172a" />}
-          title="Backup"
-          subtitle="Εξαγωγή δεδομένων σε Excel"
-          openSection={openSection}
-          setOpenSection={setOpenSection}
-        >
-          <div style={backupCard}>
-            <div style={backupRow}>
-              <div>
-                <div style={backupTitle}>Εξαγωγή δεδομένων</div>
-                <div style={backupSub}>Δημιούργησε αρχείο Excel για αποθήκευση/ασφάλεια.</div>
-              </div>
-
-              <div style={backupToggleBox}>
-                <input type="checkbox" id="exportAll" checked={exportAllData} onChange={(e) => setExportAllData(e.target.checked)} />
-                <label htmlFor="exportAll" style={backupToggleLabel}>
-                  Πλήρες Backup
-                </label>
-              </div>
-            </div>
-
-            {!exportAllData && (
               <div style={grid2}>
                 <div style={field}>
-                  <label style={label}>Από</label>
-                  <input type="date" style={input} value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+                  <label style={label}>ΤΙΤΛΟΣ ΚΑΤΑΣΤΗΜΑΤΟΣ (ΕΜΦΑΝΙΣΗ)</label>
+                  <input
+                    style={input}
+                    value={formData.name}
+                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  />
                 </div>
+
                 <div style={field}>
-                  <label style={label}>Έως</label>
-                  <input type="date" style={input} value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+                  <label style={label}>ΤΗΛΕΦΩΝΟ</label>
+                  <input
+                    style={input}
+                    value={formData.phone}
+                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                  />
                 </div>
               </div>
-            )}
 
-            <button onClick={handleExportAll} disabled={isExporting} style={{ ...successBtn, opacity: isExporting ? 0.7 : 1 }}>
-              <Download size={18} /> {isExporting ? 'ΕΞΑΓΩΓΗ...' : 'ΛΗΨΗ ΑΡΧΕΙΟΥ EXCEL'}
-            </button>
-          </div>
-        </SectionCard>
-
-        <SectionCard
-          id="support"
-          icon={<Info size={18} color="#0f172a" />}
-          title="Υποστήριξη"
-          subtitle="Επικοινωνία & διαγραφή"
-          openSection={openSection}
-          setOpenSection={setOpenSection}
-        >
-          <button onClick={() => setShowContact(!showContact)} style={supportToggle}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <div style={supportIcon}>
-                <Info size={16} />
+              <div style={field}>
+                <label style={label}>ΕΠΩΝΥΜΙΑ ΕΤΑΙΡΕΙΑΣ</label>
+                <input
+                  style={input}
+                  value={formData.company_name}
+                  onChange={(e) => setFormData({ ...formData, company_name: e.target.value })}
+                  placeholder="π.χ. ΑΦΟΙ ΠΑΠΑΔΟΠΟΥΛΟΙ Ο.Ε."
+                />
               </div>
-              <div style={{ textAlign: 'left' }}>
-                <div style={supportTitle}>Υποστήριξη & Διαγραφή</div>
-                <div style={supportSub}>Άνοιξε επιλογές επικοινωνίας και ενημέρωση.</div>
-              </div>
-            </div>
-            {showContact ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
-          </button>
 
-          {showContact && (
-            <div style={supportCard}>
-              <p style={supportText}>
-                Για προβλήματα ή οριστική διαγραφή του καταστήματος <b>{formData.name}</b>, επικοινωνήστε μαζί μας.
-              </p>
-              <button onClick={() => window.open(`https://wa.me/306942216191`, '_blank')} style={waBtnStyle}>
-                <MessageCircle size={18} /> WHATSAPP SUPPORT
+              <div style={grid2}>
+                <div style={field}>
+                  <label style={label}>Α.Φ.Μ.</label>
+                  <input
+                    style={input}
+                    value={formData.afm}
+                    onChange={(e) => setFormData({ ...formData, afm: e.target.value })}
+                  />
+                </div>
+
+                <div style={field}>
+                  <label style={label}>EMAIL (LOGGED IN)</label>
+                  <input style={{ ...input, opacity: 0.85 }} value={formData.email} disabled />
+                </div>
+              </div>
+
+              <div style={field}>
+                <label style={label}>ΔΙΕΥΘΥΝΣΗ</label>
+                <textarea
+                  style={textarea}
+                  value={formData.address}
+                  onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                />
+              </div>
+
+              {isAdmin && (
+                <button onClick={handleSaveStore} disabled={loading} style={{ ...primaryBtn, opacity: loading ? 0.7 : 1 }}>
+                  <Save size={18} /> {loading ? 'ΑΠΟΘΗΚΕΥΣΗ...' : 'ΕΝΗΜΕΡΩΣΗ ΚΑΤΑΣΤΗΜΑΤΟΣ'}
+                </button>
+              )}
+            </SectionCard>
+
+            {/* PROFILE */}
+            <SectionCard
+              id="profile"
+              icon={<User2 size={18} color="var(--text)" />}
+              title="Προφίλ"
+              subtitle="Όνομα χρήστη & εμφανίσεις"
+              openSection={openSection}
+              setOpenSection={setOpenSection}
+            >
+              <div style={field}>
+                <label style={label}>Το όνομά μου (username)</label>
+                <input
+                  style={{ ...input, fontSize: 16 }}
+                  value={profileName}
+                  onChange={(e) => setProfileName(e.target.value)}
+                  disabled={profileLoading || profileSaveLoading}
+                  placeholder="Το όνομά σας..."
+                />
+              </div>
+
+              {isAdmin && (
+                <button
+                  onClick={handleProfileSave}
+                  disabled={profileLoading || profileSaveLoading}
+                  style={{ ...primaryBtn, opacity: profileLoading || profileSaveLoading ? 0.7 : 1 }}
+                >
+                  <Save size={18} /> {profileSaveLoading ? 'ΑΠΟΘΗΚΕΥΣΗ...' : 'ΑΠΟΘΗΚΕΥΣΗ ΟΝΟΜΑΤΟΣ'}
+                </button>
+              )}
+
+              {profileError && <div style={msgError}>{profileError}</div>}
+              {profileSuccess && <div style={msgSuccess}>{profileSuccess}</div>}
+            </SectionCard>
+
+            {/* BACKUP */}
+            <SectionCard
+              id="backup"
+              icon={<Database size={18} color="var(--text)" />}
+              title="Backup"
+              subtitle="Εξαγωγή δεδομένων σε Excel"
+              openSection={openSection}
+              setOpenSection={setOpenSection}
+            >
+              <div style={backupCard}>
+                <div style={backupRow}>
+                  <div>
+                    <div style={backupTitle}>Εξαγωγή δεδομένων</div>
+                    <div style={backupSub}>Δημιούργησε αρχείο Excel για αποθήκευση/ασφάλεια.</div>
+                  </div>
+
+                  <div style={backupToggleBox}>
+                    <input
+                      type="checkbox"
+                      id="exportAll"
+                      checked={exportAllData}
+                      onChange={(e) => setExportAllData(e.target.checked)}
+                    />
+                    <label htmlFor="exportAll" style={backupToggleLabel}>
+                      Πλήρες Backup
+                    </label>
+                  </div>
+                </div>
+
+                {!exportAllData && (
+                  <div style={grid2}>
+                    <div style={field}>
+                      <label style={label}>Από</label>
+                      <input type="date" style={input} value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+                    </div>
+                    <div style={field}>
+                      <label style={label}>Έως</label>
+                      <input type="date" style={input} value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+                    </div>
+                  </div>
+                )}
+
+                <button onClick={handleExportAll} disabled={isExporting} style={{ ...successBtn, opacity: isExporting ? 0.7 : 1 }}>
+                  <Download size={18} /> {isExporting ? 'ΕΞΑΓΩΓΗ...' : 'ΛΗΨΗ ΑΡΧΕΙΟΥ EXCEL'}
+                </button>
+              </div>
+            </SectionCard>
+
+            {/* SUPPORT */}
+            <SectionCard
+              id="support"
+              icon={<Info size={18} color="var(--text)" />}
+              title="Υποστήριξη"
+              subtitle="Επικοινωνία & διαγραφή"
+              openSection={openSection}
+              setOpenSection={setOpenSection}
+            >
+              <button onClick={() => setShowContact(!showContact)} style={supportToggle}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <div style={supportIcon}>
+                    <Info size={16} />
+                  </div>
+                  <div style={{ textAlign: 'left' }}>
+                    <div style={supportTitle}>Υποστήριξη & Διαγραφή</div>
+                    <div style={supportSub}>Άνοιξε επιλογές επικοινωνίας και ενημέρωση.</div>
+                  </div>
+                </div>
+                {showContact ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
               </button>
-            </div>
-          )}
-        </SectionCard>
 
-        <div style={{ height: 24 }} />
-      </div>
-    </div>
+              {showContact && (
+                <div style={supportCard}>
+                  <p style={supportText}>
+                    Για προβλήματα ή οριστική διαγραφή του καταστήματος <b>{formData.name}</b>, επικοινωνήστε μαζί μας.
+                  </p>
+                  <button onClick={() => window.open(`https://wa.me/306942216191`, '_blank')} style={waBtnStyle}>
+                    <MessageCircle size={18} /> WHATSAPP SUPPORT
+                  </button>
+                </div>
+              )}
+            </SectionCard>
+
+            <div style={{ height: 24 }} />
+          </div>
+        </div>
       )}
     </PermissionGuard>
   )
 }
 
-/* ---------------- STYLES ---------------- */
+export default function SettingsPage() {
+  return (
+    <main>
+      <Suspense fallback={null}>
+        <SettingsContent />
+      </Suspense>
+    </main>
+  )
+}
+
+/* ---------------- THEME-AWARE STYLES ---------------- */
+
 const pageWrap: CSSProperties = {
   minHeight: '100dvh',
-  background:
-    'radial-gradient(1200px 600px at 20% -10%, #eef2ff 0%, rgba(238,242,255,0) 55%), radial-gradient(1200px 600px at 90% 0%, #ecfdf5 0%, rgba(236,253,245,0) 55%), #f8fafc',
+  background: 'var(--bg)',
   padding: 18,
 }
 
@@ -716,10 +772,10 @@ const topBar: CSSProperties = {
   alignItems: 'center',
   padding: 14,
   borderRadius: 22,
-  border: '1px solid #e2e8f0',
-  background: 'rgba(255,255,255,0.92)',
+  border: '1px solid var(--border)',
+  background: 'var(--surface)',
   backdropFilter: 'blur(10px)',
-  boxShadow: '0 14px 28px rgba(15, 23, 42, 0.06)',
+  boxShadow: 'var(--shadow)',
   position: 'sticky',
   top: 12,
   zIndex: 10,
@@ -730,23 +786,24 @@ const appIcon: CSSProperties = {
   width: 44,
   height: 44,
   borderRadius: 16,
-  background: '#fff',
-  border: '1px solid #e2e8f0',
+  background: 'var(--surfaceSolid)',
+  border: '1px solid var(--border)',
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
-  color: '#0f172a',
+  color: 'var(--text)',
 }
 
-const topTitle: CSSProperties = { fontSize: 16, fontWeight: 900, color: '#0f172a', margin: 0 }
+const topTitle: CSSProperties = { fontSize: 16, fontWeight: 900, color: 'var(--text)', margin: 0 }
 const topSubtitle: CSSProperties = { fontSize: 10, fontWeight: 900, color: '#6366f1', letterSpacing: 0.6 }
+
 const readOnlyBannerStyle: CSSProperties = {
   marginBottom: 12,
   padding: '10px 12px',
   borderRadius: 12,
-  border: '1px solid #cbd5e1',
-  background: '#f8fafc',
-  color: '#475569',
+  border: '1px solid var(--border)',
+  background: 'var(--surface)',
+  color: 'var(--muted)',
   fontSize: 12,
   fontWeight: 800,
   textAlign: 'center',
@@ -756,21 +813,21 @@ const closeBtn: CSSProperties = {
   width: 44,
   height: 44,
   borderRadius: 16,
-  background: '#fff',
-  border: '1px solid #e2e8f0',
+  background: 'var(--surfaceSolid)',
+  border: '1px solid var(--border)',
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
-  color: '#94a3b8',
+  color: 'var(--muted)',
   textDecoration: 'none',
 }
 
 const sectionCard: CSSProperties = {
   marginTop: 12,
   borderRadius: 22,
-  border: '1px solid #e2e8f0',
-  background: 'rgba(255,255,255,0.92)',
-  boxShadow: '0 10px 22px rgba(15, 23, 42, 0.05)',
+  border: '1px solid var(--border)',
+  background: 'var(--surface)',
+  boxShadow: 'var(--shadow)',
   overflow: 'hidden',
 }
 
@@ -778,12 +835,12 @@ const sectionHeaderBtn: CSSProperties = {
   width: '100%',
   padding: '12px 14px',
   border: 'none',
-  background: '#ffffff',
+  background: 'var(--surfaceSolid)',
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'space-between',
   cursor: 'pointer',
-  color: '#0f172a',
+  color: 'var(--text)',
   transition: 'all 0.15s ease',
 }
 
@@ -791,50 +848,153 @@ const sectionIconWrap: CSSProperties = {
   width: 44,
   height: 44,
   borderRadius: 16,
-  background: '#fff',
-  border: '1px solid #e2e8f0',
+  background: 'var(--surfaceSolid)',
+  border: '1px solid var(--border)',
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
 }
 
-const sectionTitle: CSSProperties = { fontSize: 14, fontWeight: 900 }
-const sectionSub: CSSProperties = { fontSize: 11, fontWeight: 700, color: '#64748b', marginTop: 2 }
-const chip: CSSProperties = { padding: '6px 10px', borderRadius: 999, border: '1px solid #e2e8f0', background: '#fff', fontSize: 10, fontWeight: 900, color: '#0f172a' }
+const sectionTitle: CSSProperties = { fontSize: 14, fontWeight: 900, color: 'var(--text)' }
+const sectionSub: CSSProperties = { fontSize: 11, fontWeight: 700, color: 'var(--muted)', marginTop: 2 }
 
-const label: CSSProperties = { fontSize: 10, fontWeight: 900, color: '#94a3b8', letterSpacing: 0.6, marginBottom: 6, display: 'block' }
-const input: CSSProperties = { width: '100%', padding: 12, borderRadius: 12, border: '1px solid #e2e8f0', background: '#f8fafc', fontWeight: 800, fontSize: 14, outline: 'none' }
+const chip: CSSProperties = {
+  padding: '6px 10px',
+  borderRadius: 999,
+  border: '1px solid var(--border)',
+  background: 'var(--surfaceSolid)',
+  fontSize: 10,
+  fontWeight: 900,
+  color: 'var(--text)',
+}
+
+const label: CSSProperties = {
+  fontSize: 10,
+  fontWeight: 900,
+  color: 'var(--muted)',
+  letterSpacing: 0.6,
+  marginBottom: 6,
+  display: 'block',
+}
+
+const input: CSSProperties = {
+  width: '100%',
+  padding: 12,
+  borderRadius: 12,
+  border: '1px solid var(--border)',
+  background: 'var(--surfaceSolid)',
+  fontWeight: 800,
+  fontSize: 14,
+  outline: 'none',
+  color: 'var(--text)',
+}
+
 const textarea: CSSProperties = { ...input, height: 72, resize: 'none' }
 const field: CSSProperties = { marginBottom: 12 }
 const grid2: CSSProperties = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }
 
-const primaryBtn: CSSProperties = { width: '100%', background: '#0f172a', color: '#fff', border: 'none', padding: 16, borderRadius: 14, fontWeight: 900, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, cursor: 'pointer', boxShadow: '0 12px 18px rgba(15,23,42,0.18)' }
+const primaryBtn: CSSProperties = {
+  width: '100%',
+  background: '#0f172a',
+  color: '#fff',
+  border: 'none',
+  padding: 16,
+  borderRadius: 14,
+  fontWeight: 900,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: 10,
+  cursor: 'pointer',
+  boxShadow: '0 12px 18px rgba(15,23,42,0.18)',
+}
+
 const successBtn: CSSProperties = { ...primaryBtn, background: '#059669', boxShadow: '0 12px 18px rgba(5,150,105,0.18)' }
 
 const msgError: CSSProperties = { marginTop: 10, color: '#dc2626', fontSize: 13, fontWeight: 900 }
 const msgSuccess: CSSProperties = { marginTop: 10, color: '#059669', fontSize: 13, fontWeight: 900 }
 
-const featureCard: CSSProperties = { borderRadius: 24, border: '1px solid #e2e8f0', background: '#fff', overflow: 'hidden' }
-const featureHeaderRow: CSSProperties = { padding: 14, display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #eef2f7' }
-const featureHeaderLeft: CSSProperties = { display: 'flex', alignItems: 'center', gap: 12 }
-const featureIconOuter: CSSProperties = { width: 58, height: 58, borderRadius: 22, background: '#fff7ed', border: '1px solid #fde68a', display: 'flex', alignItems: 'center', justifyContent: 'center' }
-const featureKicker: CSSProperties = { fontSize: 12, fontWeight: 900, color: '#64748b', letterSpacing: 0.6 }
-const featureTitle: CSSProperties = { fontSize: 22, fontWeight: 900, color: '#0f172a', marginTop: 2, lineHeight: 1.1 }
-const featureChip: CSSProperties = { padding: '9px 16px', borderRadius: 999, border: '1px solid #e2e8f0', fontWeight: 900, background: '#fff' }
+const featureCard: CSSProperties = {
+  borderRadius: 24,
+  border: '1px solid var(--border)',
+  background: 'var(--surfaceSolid)',
+  overflow: 'hidden',
+}
 
-const featureInnerCard: CSSProperties = { margin: 14, padding: 16, borderRadius: 22, border: '1px solid #e2e8f0', background: '#fff' }
-const shieldPill: CSSProperties = { width: 56, height: 56, borderRadius: 18, background: '#ecfdf5', border: '1px solid #bbf7d0', display: 'flex', alignItems: 'center', justifyContent: 'center' }
-const featureMainTitle: CSSProperties = { fontSize: 20, fontWeight: 900, color: '#0f172a' }
-const featureMainSub: CSSProperties = { fontSize: 14, fontWeight: 800, color: '#64748b', marginTop: 6 }
-const featureFootNote: CSSProperties = { padding: '0 16px 14px', fontSize: 13, fontWeight: 800, color: '#94a3b8' }
+const featureHeaderRow: CSSProperties = {
+  padding: 14,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  borderBottom: '1px solid var(--border)',
+}
+
+const featureHeaderLeft: CSSProperties = { display: 'flex', alignItems: 'center', gap: 12 }
+
+const featureIconOuter: CSSProperties = {
+  width: 58,
+  height: 58,
+  borderRadius: 22,
+  background: '#fff7ed',
+  border: '1px solid #fde68a',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+}
+
+const featureKicker: CSSProperties = { fontSize: 12, fontWeight: 900, color: 'var(--muted)', letterSpacing: 0.6 }
+const featureTitle: CSSProperties = { fontSize: 22, fontWeight: 900, color: 'var(--text)', marginTop: 2, lineHeight: 1.1 }
+
+const featureChip: CSSProperties = {
+  padding: '9px 16px',
+  borderRadius: 999,
+  border: '1px solid var(--border)',
+  fontWeight: 900,
+  background: 'var(--surfaceSolid)',
+  color: 'var(--text)',
+}
+
+const featureInnerCard: CSSProperties = {
+  margin: 14,
+  padding: 16,
+  borderRadius: 22,
+  border: '1px solid var(--border)',
+  background: 'var(--surfaceSolid)',
+}
+
+const shieldPill: CSSProperties = {
+  width: 56,
+  height: 56,
+  borderRadius: 18,
+  background: '#ecfdf5',
+  border: '1px solid #bbf7d0',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+}
+
+const shieldPillBlue: CSSProperties = {
+  width: 56,
+  height: 56,
+  borderRadius: 18,
+  background: 'rgba(37,99,235,0.10)',
+  border: '1px solid rgba(37,99,235,0.25)',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+}
+
+const featureMainTitle: CSSProperties = { fontSize: 20, fontWeight: 900, color: 'var(--text)' }
+const featureMainSub: CSSProperties = { fontSize: 14, fontWeight: 800, color: 'var(--muted)', marginTop: 6 }
+const featureFootNote: CSSProperties = { padding: '0 16px 14px', fontSize: 13, fontWeight: 800, color: 'var(--muted)' }
 
 const onPill = (on: boolean): CSSProperties => ({
   padding: '9px 14px',
   borderRadius: 999,
-  border: `2px solid ${on ? '#86efac' : '#e2e8f0'}`,
+  border: `2px solid ${on ? '#86efac' : 'var(--border)'}`,
   fontWeight: 900,
-  background: '#fff',
-  color: on ? '#16a34a' : '#64748b',
+  background: 'var(--surfaceSolid)',
+  color: on ? '#16a34a' : 'var(--muted)',
   minWidth: 58,
   textAlign: 'center',
   fontSize: 14,
@@ -845,7 +1005,7 @@ const iosSwitch = (on: boolean): CSSProperties => ({
   height: 36,
   borderRadius: 999,
   background: on ? '#16a34a' : '#cbd5e1',
-  border: '1px solid #e2e8f0',
+  border: '1px solid var(--border)',
   padding: 4,
   display: 'flex',
   alignItems: 'center',
@@ -862,30 +1022,80 @@ const iosKnob = (): CSSProperties => ({
   boxShadow: '0 10px 18px rgba(15,23,42,0.22)',
 })
 
-const backupCard: CSSProperties = { border: '1px solid #e2e8f0', background: '#fff', borderRadius: 18, padding: 14 }
+const backupCard: CSSProperties = {
+  border: '1px solid var(--border)',
+  background: 'var(--surfaceSolid)',
+  borderRadius: 18,
+  padding: 14,
+}
+
 const backupRow: CSSProperties = { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 12 }
-const backupTitle: CSSProperties = { fontSize: 14, fontWeight: 900, color: '#0f172a' }
-const backupSub: CSSProperties = { fontSize: 12, fontWeight: 700, color: '#64748b', marginTop: 4 }
-const backupToggleBox: CSSProperties = { display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 14, border: '1px solid #e2e8f0', background: '#f8fafc' }
-const backupToggleLabel: CSSProperties = { fontSize: 12, fontWeight: 900, color: '#0f172a' }
+const backupTitle: CSSProperties = { fontSize: 14, fontWeight: 900, color: 'var(--text)' }
+const backupSub: CSSProperties = { fontSize: 12, fontWeight: 700, color: 'var(--muted)', marginTop: 4 }
 
-const supportToggle: CSSProperties = { width: '100%', border: '1px solid #e2e8f0', background: '#fff', borderRadius: 18, padding: 14, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }
+const backupToggleBox: CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 10,
+  padding: '10px 12px',
+  borderRadius: 14,
+  border: '1px solid var(--border)',
+  background: 'var(--surface)',
+}
 
-const supportIcon: CSSProperties = { width: 36, height: 36, borderRadius: 14, background: '#f1f5f9', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#0f172a' }
-const supportTitle: CSSProperties = { fontSize: 13, fontWeight: 900, color: '#0f172a' }
-const supportSub: CSSProperties = { fontSize: 11, fontWeight: 800, color: '#64748b', marginTop: 4 }
+const backupToggleLabel: CSSProperties = { fontSize: 12, fontWeight: 900, color: 'var(--text)' }
 
-const supportCard: CSSProperties = { marginTop: 12, padding: 16, borderRadius: 18, border: '1px solid #fee2e2', background: '#fff', textAlign: 'center' }
-const supportText: CSSProperties = { fontSize: 13, fontWeight: 800, color: '#64748b', marginBottom: 14 }
+const supportToggle: CSSProperties = {
+  width: '100%',
+  border: '1px solid var(--border)',
+  background: 'var(--surfaceSolid)',
+  borderRadius: 18,
+  padding: 14,
+  cursor: 'pointer',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  color: 'var(--text)',
+}
 
-const waBtnStyle: CSSProperties = { width: '100%', backgroundColor: '#25d366', color: 'white', padding: '14px', borderRadius: '14px', border: 'none', fontWeight: '900', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', boxShadow: '0 12px 18px rgba(37,211,102,0.18)' }
+const supportIcon: CSSProperties = {
+  width: 36,
+  height: 36,
+  borderRadius: 14,
+  background: 'var(--surface)',
+  border: '1px solid var(--border)',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  color: 'var(--text)',
+}
 
-export default function SettingsPage() {
-  return (
-    <main>
-      <Suspense fallback={null}>
-        <SettingsContent />
-      </Suspense>
-    </main>
-  )
+const supportTitle: CSSProperties = { fontSize: 13, fontWeight: 900, color: 'var(--text)' }
+const supportSub: CSSProperties = { fontSize: 11, fontWeight: 800, color: 'var(--muted)', marginTop: 4 }
+
+const supportCard: CSSProperties = {
+  marginTop: 12,
+  padding: 16,
+  borderRadius: 18,
+  border: '1px solid rgba(239,68,68,0.25)',
+  background: 'var(--surfaceSolid)',
+  textAlign: 'center',
+}
+
+const supportText: CSSProperties = { fontSize: 13, fontWeight: 800, color: 'var(--muted)', marginBottom: 14 }
+
+const waBtnStyle: CSSProperties = {
+  width: '100%',
+  backgroundColor: '#25d366',
+  color: 'white',
+  padding: '14px',
+  borderRadius: '14px',
+  border: 'none',
+  fontWeight: '900',
+  cursor: 'pointer',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: '8px',
+  boxShadow: '0 12px 18px rgba(37,211,102,0.18)',
 }
