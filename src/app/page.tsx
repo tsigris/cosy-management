@@ -245,11 +245,15 @@ function DashboardContent() {
       if (!session) return router.push('/login')
 
       // store name + settings
-      const { data: storeData, error: storeErr } = await supabase.from('stores').select('name, z_enabled').eq('id', storeIdFromUrl).maybeSingle()
+      const { data: storeData, error: storeErr } = await supabase
+        .from('stores')
+        .select('name, z_enabled')
+        .eq('id', storeIdFromUrl)
+        .maybeSingle()
 
       if (storeErr) console.error(storeErr)
       if (storeData?.name) setStoreName(storeData.name)
-      setZEnabled(storeData?.z_enabled === false ? false : true)
+      setZEnabled(storeData?.z_enabled !== false)
 
       // ✅ BUSINESS WINDOW: selectedDate 07:00 → next day 06:59:59.999 (local → ISO UTC)
       const nextDateStr = format(addDays(parseISO(selectedDate), 1), 'yyyy-MM-dd')
