@@ -406,8 +406,8 @@ function BalancesContent() {
               <Receipt size={22} color="#f97316" />
             </div>
             <div>
-              <h1 style={{ fontWeight: '900', fontSize: '20px', margin: 0, color: colors.primaryDark }}>Καρτέλες</h1>
-              <p style={{ margin: 0, fontSize: '10px', color: colors.secondaryText, fontWeight: '800', letterSpacing: '1px' }}>
+              <h1 style={{ fontWeight: '900', fontSize: '20px', margin: 0, color: 'var(--text)' }}>Καρτέλες</h1>
+              <p style={{ margin: 0, fontSize: '10px', color: 'var(--muted)', fontWeight: '800', letterSpacing: '1px' }}>
                 ΥΠΟΛΟΙΠΑ & ΙΣΤΟΡΙΚΟ ΚΙΝΗΣΕΩΝ
               </p>
             </div>
@@ -423,8 +423,8 @@ function BalancesContent() {
             onClick={() => setViewMode('expenses')}
             style={{
               ...switchBtn,
-              backgroundColor: viewMode === 'expenses' ? colors.primaryDark : colors.white,
-              color: viewMode === 'expenses' ? colors.white : colors.primaryDark,
+              background: 'var(--surface)',
+              color: 'var(--text)',
             }}
           >
             ΕΞΟΔΑ
@@ -433,8 +433,8 @@ function BalancesContent() {
             onClick={() => setViewMode('income')}
             style={{
               ...switchBtn,
-              backgroundColor: viewMode === 'income' ? colors.accentGreen : colors.white,
-              color: viewMode === 'income' ? colors.white : colors.primaryDark,
+              background: 'var(--surface)',
+              color: 'var(--text)',
             }}
           >
             ΕΣΟΔΑ
@@ -468,17 +468,17 @@ function BalancesContent() {
         </div>
 
         {/* TOTAL CARD */}
-        <div style={{ ...totalCardStyle, backgroundColor: totalCardBg }}>
+        <div style={{ ...totalCardStyle }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, opacity: 0.95 }}>
             <Wallet size={14} color="#fff" />
-            <p style={{ margin: 0, fontSize: '11px', fontWeight: '800', color: '#ffffff', letterSpacing: '1px' }}>
+            <p style={{ margin: 0, fontSize: '11px', fontWeight: '800', color: 'var(--text)', letterSpacing: '1px' }}>
               {totalLabel} ({selectedYear})
             </p>
           </div>
-          <p style={{ margin: '8px 0 0 0', fontSize: '38px', fontWeight: '950', color: '#ffffff' }}>
+          <p style={{ margin: '8px 0 0 0', fontSize: '38px', fontWeight: '950', color: 'var(--text)' }}>
             {totalDisplay.toLocaleString('el-GR', { minimumFractionDigits: 2 })}€
           </p>
-          <p style={{ margin: '8px 0 0 0', fontSize: '10px', fontWeight: '800', color: '#ffffff', opacity: 0.85 }}>
+          <p style={{ margin: '8px 0 0 0', fontSize: '10px', fontWeight: '800', color: 'var(--muted)', opacity: 0.85 }}>
             Πάτησε σε μια καρτέλα για λεπτομέρειες κινήσεων
           </p>
         </div>
@@ -510,7 +510,7 @@ function BalancesContent() {
                   style={{
                     ...supplierCardStyle,
                     cursor: 'pointer',
-                    border: isExpanded ? `1px solid ${colors.accentBlue}` : `1px solid ${colors.border}`,
+                    border: '1px solid var(--border)',
                     boxShadow: isExpanded ? '0 14px 40px rgba(15, 23, 42, 0.10)' : '0 6px 18px rgba(15, 23, 42, 0.06)',
                   }}
                   onClick={() => setExpandedId((prev) => (prev === s.id ? null : s.id))}
@@ -519,11 +519,11 @@ function BalancesContent() {
                     <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
                       <div style={{ minWidth: 0 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                          <p style={{ fontWeight: '900', margin: 0, fontSize: '15px', color: colors.primaryDark }}>
+                          <p style={{ fontWeight: '900', margin: 0, fontSize: '15px', color: 'var(--text)' }}>
                             {String(s.name || '').toUpperCase()}
                           </p>
 
-                          <span style={{ ...badgeStyle, backgroundColor: badge.bg, color: badge.color }}>
+                          <span style={{ ...badgeStyle, backgroundColor: 'var(--surface)', color: 'var(--muted)' }}>
                             {badge.text}
                           </span>
                         </div>
@@ -545,7 +545,7 @@ function BalancesContent() {
                                     background: 'transparent',
                                     border: 'none',
                                     cursor: 'pointer',
-                                    color: '#64748b',
+                                    color: 'var(--muted)',
                                     display: 'flex',
                                     alignItems: 'center',
                                     padding: '4px',
@@ -569,7 +569,7 @@ function BalancesContent() {
                         </div>
                       </div>
 
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: colors.secondaryText }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--muted)' }}>
                         {isExpanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
                       </div>
                     </div>
