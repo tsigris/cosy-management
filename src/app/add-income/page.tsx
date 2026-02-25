@@ -114,7 +114,9 @@ type RevenueSource = {
   name: string
 }
 
-type PaymentMethod = 'Μετρητά' | 'Τράπεζα' | 'Πίστωση'
+type PaymentMethod = 'Μετρητά' | 'Τράπεζα' | 'Κάρτα' | 'Πίστωση'
+
+type DocumentType = 'receipt' | 'invoice' | 'no_invoice' | 'deposit'
 
 function parseAmount(input: string) {
   const s = String(input || '')
@@ -122,6 +124,10 @@ function parseAmount(input: string) {
     .replace(/\s+/g, '')
     .replace(',', '.')
   return Number(s)
+}
+
+function isValidDocumentType(v: any): v is DocumentType {
+  return v === 'receipt' || v === 'invoice' || v === 'no_invoice' || v === 'deposit'
 }
 
 function AddIncomeForm() {
@@ -140,6 +146,8 @@ function AddIncomeForm() {
   const [notes, setNotes] = useState('')
   const [isCredit, setIsCredit] = useState(false) // Αναμονή είσπραξης
   const [isAgainstDebt, setIsAgainstDebt] = useState(mode === 'debt')
+
+  const [documentType, setDocumentType] = useState<DocumentType | null>(null)
 
   const [currentUsername, setCurrentUsername] = useState('Χρήστης')
 
@@ -218,17 +226,20 @@ function AddIncomeForm() {
 
         if (tx) {
           setAmount(Math.abs(tx.amount).toString())
-          setMethod(tx.method === 'Τράπεζα' ? 'Τράπεζα' : 'Μετρητά')
+          setMethod(tx.method === 'Τράπεζα' ? 'Τράπεζα' : tx.method === 'Κάρτα' ? 'Κάρτα' : 'Μετρητά')
           setNotes(tx.notes || '')
           setIsCredit(!!tx.is_credit)
 
-          // ✅ Canonical: for income-side debt collection we use debt_received
           setIsAgainstDebt(tx.type === 'debt_received')
 
           const txSourceId = tx.revenue_source_id ? String(tx.revenue_source_id) : ''
           setSelectedSourceId(txSourceId)
           const found = sourceRows.find((s: any) => String(s.id) === txSourceId)
           setSmartQuery(found?.name || '')
+
+          // ✅ load document_type if exists (typed safely)
+          const rawDoc = (tx as any)?.document_type
+          setDocumentType(isValidDocumentType(rawDoc) ? rawDoc : null)
         }
       } else {
         if (urlSourceId) {
@@ -335,9 +346,7 @@ function AddIncomeForm() {
 
       if (error) throw error
 
-      setSources((prev) =>
-        [...prev, data].sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''))),
-      )
+      setSources((prev) => [...prev, data].sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''))))
       setSelectedSourceId(String(data.id))
       setSmartQuery(String(data.name || nm))
       setCreateOpen(false)
@@ -354,11 +363,14 @@ function AddIncomeForm() {
     if (!amount || !Number.isFinite(amt) || amt <= 0) return toast.error('Συμπληρώστε σωστό ποσό')
     if (!selectedSourceId) return toast.error('Επιλέξτε πηγή εσόδου')
 
+    // ✅ REQUIRED: document type must be selected
+    if (!documentType) {
+      return toast.error('Διάλεξε υποχρεωτικά: Λιανική Απόδειξη / Τιμολόγιο / Χωρίς Τιμολόγιο / Προκαταβολή')
+    }
+
     // ✅ HARD RULES:
-    // - debt_received δεν μπορεί να είναι "Πίστωση"
-    // - debt_received δεν επιτρέπεται is_credit
     if (isAgainstDebt && isCredit) {
-      return toast.error('Η εξόφληση χρέους δεν μπορεί να είναι "Αναμονή είσπραξης". Βάλε Μετρητά ή Τράπεζα.')
+      return toast.error('Η εξόφληση χρέους δεν μπορεί να είναι "Αναμονή είσπραξης". Βάλε Μετρητά, Τράπεζα ή Κάρτα.')
     }
 
     setLoading(true)
@@ -368,14 +380,9 @@ function AddIncomeForm() {
       } = await supabase.auth.getSession()
       if (!session?.user?.id) throw new Error('Δεν βρέθηκε session χρήστη')
 
-      const { data: prof } = await supabase
-        .from('profiles')
-        .select('username')
-        .eq('id', session.user.id)
-        .maybeSingle()
+      const { data: prof } = await supabase.from('profiles').select('username').eq('id', session.user.id).maybeSingle()
 
-      // ✅ minimal fix: use currentUsername as fallback (no other behavior change)
-      const createdByName = (prof?.username || currentUsername || session.user.email?.split('@')[0] || 'Χρήστης').trim()
+      const createdByName = (prof?.username || session.user.email?.split('@')[0] || 'Χρήστης').trim()
 
       const activeStoreId = getActiveStoreId()
       if (!activeStoreId) {
@@ -384,13 +391,10 @@ function AddIncomeForm() {
         return
       }
 
-      // ✅ Canonical transaction type:
-      // income side debt collection = debt_received
       const txType = isAgainstDebt ? 'debt_received' : 'income'
       const finalIsCredit = txType === 'debt_received' ? false : isCredit
       const finalMethod: PaymentMethod = txType === 'debt_received' ? method : isCredit ? 'Πίστωση' : method
 
-      // ✅ Auto notes safety for debt collection
       const baseNotes = (notes || '').trim()
       const finalNotes =
         txType === 'debt_received' && !/εξοφλησ/i.test(baseNotes)
@@ -411,6 +415,7 @@ function AddIncomeForm() {
         revenue_source_id: selectedSourceId,
         created_by_name: createdByName,
         notes: finalNotes,
+        document_type: documentType,
       }
 
       const { error } = editId
@@ -447,7 +452,6 @@ function AddIncomeForm() {
                 <h1 style={{ fontWeight: 800, fontSize: 16, margin: 0 }}>
                   {editId ? 'ΔΙΟΡΘΩΣΗ ΕΣΟΔΟΥ' : 'ΝΕΟ ΕΣΟΔΟ'}
                 </h1>
-
                 {isAgainstDebt && <span style={headerBadge}>ΕΞΟΦΛΗΣΗ</span>}
               </div>
 
@@ -595,6 +599,21 @@ function AddIncomeForm() {
             >
               🏛️ Τράπεζα
             </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setMethod('Κάρτα')
+                setIsCredit(false)
+              }}
+              style={{
+                ...methodBtn,
+                backgroundColor: method === 'Κάρτα' && !isCredit ? colors.primaryDark : 'white',
+                color: method === 'Κάρτα' && !isCredit ? 'white' : colors.secondaryText,
+              }}
+            >
+              💳 Κάρτα
+            </button>
           </div>
 
           <div style={creditPanel}>
@@ -603,7 +622,6 @@ function AddIncomeForm() {
                 type="checkbox"
                 checked={isCredit}
                 onChange={(e) => {
-                  // ✅ If debt collection, forbid credit
                   if (isAgainstDebt && e.target.checked) {
                     toast.error('Η εξόφληση χρέους δεν μπορεί να είναι "Αναμονή είσπραξης".')
                     return
@@ -637,6 +655,35 @@ function AddIncomeForm() {
                 ΕΞΟΦΛΗΣΗ ΠΑΛΑΙΟΥ ΧΡΕΟΥ
               </label>
             </div>
+          </div>
+
+          <label style={{ ...labelStyle, marginTop: 20 }}>ΠΑΡΑΣΤΑΤΙΚΟ (ΥΠΟΧΡΕΩΤΙΚΟ)</label>
+
+          {/* 2 πάνω / 2 κάτω */}
+          <div style={docGrid}>
+            {[
+              { label: 'ΛΙΑΝΙΚΗ ΑΠΟΔΕΙΞΗ', value: 'receipt' as DocumentType },
+              { label: 'ΤΙΜΟΛΟΓΙΟ', value: 'invoice' as DocumentType },
+              { label: 'ΧΩΡΙΣ ΤΙΜΟΛΟΓΙΟ', value: 'no_invoice' as DocumentType },
+              { label: 'ΠΡΟΚΑΤΑΒΟΛΗ', value: 'deposit' as DocumentType },
+            ].map((d) => {
+              const active = documentType === d.value
+              return (
+                <button
+                  key={d.value}
+                  type="button"
+                  onClick={() => setDocumentType(d.value)}
+                  style={{
+                    ...docBtn,
+                    backgroundColor: active ? colors.accentBlue : colors.white,
+                    color: active ? colors.white : colors.primaryDark,
+                    border: active ? 'none' : `1px solid ${colors.border}`,
+                  }}
+                >
+                  {d.label}
+                </button>
+              )
+            })}
           </div>
 
           <label style={{ ...labelStyle, marginTop: 20 }}>ΣΗΜΕΙΩΣΕΙΣ</label>
@@ -889,6 +936,22 @@ const selectedBox: any = {
   fontSize: 14,
   fontWeight: 700,
   color: colors.accentGreen,
+}
+
+const docGrid: any = {
+  display: 'grid',
+  gridTemplateColumns: '1fr 1fr',
+  gap: 10,
+  marginTop: 8,
+}
+
+const docBtn: any = {
+  padding: '12px',
+  borderRadius: 12,
+  fontWeight: 900,
+  fontSize: 13,
+  cursor: 'pointer',
+  textAlign: 'center',
 }
 
 const modalOverlay: any = {
