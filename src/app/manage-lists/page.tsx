@@ -419,6 +419,7 @@ function ManageListsContent() {
           .from('suppliers')
           .select('id, name, phone, vat_number, bank_name, iban, is_active, created_at')
           .eq('store_id', activeStoreId)
+          .eq('is_active', true)
           .order('name'),
         supabase
           .from('fixed_assets')
@@ -426,11 +427,13 @@ function ManageListsContent() {
             'id, name, sub_category, phone, vat_number, bank_name, iban, monthly_days, monthly_salary, daily_rate, start_date, rf_code, pay_basis, created_at',
           )
           .eq('store_id', activeStoreId)
+          .eq('is_active', true)
           .order('name'),
         supabase
           .from('revenue_sources')
           .select('id, name, phone, vat_number, bank_name, iban, is_active, created_at')
           .eq('store_id', activeStoreId)
+          .eq('is_active', true)
           .order('name'),
 
         // ✅ IMPORTANT: include type + date/created_at for year filter + credit logic
@@ -796,8 +799,13 @@ function ManageListsContent() {
   }
 
   const handleDelete = async (id: string) => {
-    const ok = confirm('Οριστική διαγραφή;')
-    if (!ok) return
+    const confirmDelete = window.confirm(
+      "Είστε σίγουρος ότι θέλετε να διαγράψετε αυτό το στοιχείο?\n\n" +
+      "ΠΡΟΣΟΧΗ: Θα χαθούν όλα τα οικονομικά στοιχεία και το ιστορικό του.\n\n" +
+      "Προτείνεται να το απενεργοποιήσετε αντί να το διαγράψετε, ώστε να διατηρηθεί το ιστορικό.\n\n" +
+      "Πατήστε OK για οριστική διαγραφή ή Cancel για ακύρωση."
+    );
+    if (!confirmDelete) return;
 
     const activeStoreId =
       urlStoreId || (typeof window !== 'undefined' ? localStorage.getItem('active_store_id') : null) || storeId
