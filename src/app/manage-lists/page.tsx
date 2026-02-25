@@ -896,6 +896,42 @@ function ManageListsContent() {
   )
 
   // ---------------------- UI FORMS ----------------------
+  const [moveCategory, setMoveCategory] = useState<TabKey | ''>('');
+  const [moveSubCategory, setMoveSubCategory] = useState<string>('');
+  const [moveLoading, setMoveLoading] = useState(false);
+
+  // Move entity handler
+  const handleMoveEntity = async () => {
+    if (!editingId || !storeId || !moveCategory) return;
+    setMoveLoading(true);
+    try {
+      const fromType = activeTab;
+      const fromId = editingId;
+      const toType = moveCategory;
+      const toSubCategory =
+        moveCategory === 'maintenance' || moveCategory === 'utility' || moveCategory === 'staff' || moveCategory === 'other'
+          ? MENU.find((m) => m.key === moveCategory)?.subCategory || null
+          : null;
+      const { data, error } = await supabase.rpc('move_manage_entity', {
+        store_id: storeId,
+        from_type: fromType,
+        from_id: fromId,
+        to_type: toType,
+        to_sub_category: toSubCategory,
+      });
+      if (error) throw error;
+      toast.success('Η μεταφορά ολοκληρώθηκε!');
+      setMoveCategory('');
+      setMoveSubCategory('');
+      resetForm();
+      loadData();
+    } catch (e: any) {
+      toast.error(e?.message || 'Αποτυχία μεταφοράς');
+    } finally {
+      setMoveLoading(false);
+    }
+  };
+
   const renderSupplierLikeForm = () => (
     <div style={formCard}>
       <div style={inputGroup}>
@@ -940,6 +976,34 @@ function ManageListsContent() {
         </label>
         <input value={iban} onChange={(e) => setIban(e.target.value)} style={inputStyle} placeholder="GR..." />
       </div>
+
+      {/* Μεταφορά σε κατηγορία (μόνο σε edit mode) */}
+      {editingId && (
+        <div style={inputGroup}>
+          <label style={labelStyle}>Μεταφορά σε κατηγορία</label>
+          <select
+            value={moveCategory}
+            onChange={(e) => setMoveCategory(e.target.value as TabKey)}
+            style={inputStyle}
+            disabled={moveLoading}
+          >
+            <option value="">Επιλέξτε...</option>
+            {MENU.filter((m) => m.key !== activeTab).map((m) => (
+              <option key={m.key} value={m.key}>
+                {m.label}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            onClick={handleMoveEntity}
+            disabled={!moveCategory || moveLoading}
+            style={{ ...saveBtn, marginTop: 8, backgroundColor: '#6366f1', color: '#fff' }}
+          >
+            {moveLoading ? 'Μεταφορά...' : 'Μεταφορά'}
+          </button>
+        </div>
+      )}
 
       <button onClick={handleSave} disabled={saving || loading} style={{ ...saveBtn, backgroundColor: 'var(--surfaceSolid)' }}>
         {saving ? 'ΑΠΟΘΗΚΕΥΣΗ...' : editingId ? 'ΕΝΗΜΕΡΩΣΗ' : 'ΚΑΤΑΧΩΡΗΣΗ'}
