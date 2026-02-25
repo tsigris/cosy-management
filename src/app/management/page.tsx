@@ -21,13 +21,14 @@ import {
 
 /* ---------------- CONFIG ---------------- */
 
+// Accent colors only (do not use for neutrals)
 const colors = {
-  primary: '#0f172a',
-  secondary: '#64748b',
   indigo: '#6366f1',
-  background: '#f8fafc',
-  border: '#e2e8f0',
-  surface: '#ffffff',
+  green: '#10b981',
+  orange: '#f59e0b',
+  purple: '#7c3aed',
+  gray: '#64748b',
+  slate: '#475569',
 }
 
 /* ---------------- CONTENT ---------------- */
@@ -76,8 +77,9 @@ function ManagementContent() {
             <div style={section}>
               <h2 style={sectionTitle}>Οργάνωση Επιχείρησης</h2>
               <div style={grid}>
+
                 <Link href={withStore('/manage-lists')} style={card}>
-                  <div style={{ ...iconBox, backgroundColor: `${'#10b981'}15`, color: '#10b981' }}>
+                  <div style={{ ...iconBox, backgroundColor: `${colors.green}15`, color: colors.green }}>
                     <ListTree size={20} />
                   </div>
                   <div style={labelWrap}>
@@ -85,12 +87,12 @@ function ManagementContent() {
                       <span style={label}>Μητρώο & Συνεργάτες</span>
                       <span style={subLabelStyle}>Προμηθευτές, Πηγές Εσόδων, Λογαριασμοί, κ.α.</span>
                     </div>
-                    <ChevronRight size={16} color={colors.secondary} />
+                    <ChevronRight size={16} color="var(--muted)" />
                   </div>
                 </Link>
 
                 <Link href={withStore('/employees')} style={card}>
-                  <div style={{ ...iconBox, backgroundColor: `${'#6366f1'}15`, color: '#6366f1' }}>
+                  <div style={{ ...iconBox, backgroundColor: `${colors.indigo}15`, color: colors.indigo }}>
                     <Users size={20} />
                   </div>
                   <div style={labelWrap}>
@@ -98,7 +100,7 @@ function ManagementContent() {
                       <span style={label}>Προσωπικό</span>
                       <span style={subLabelStyle}>Διαχείριση ομάδας και πληρωμών</span>
                     </div>
-                    <ChevronRight size={16} color={colors.secondary} />
+                    <ChevronRight size={16} color="var(--muted)" />
                   </div>
                 </Link>
               </div>
@@ -109,7 +111,7 @@ function ManagementContent() {
               <h2 style={sectionTitle}>Οικονομικός Έλεγχος</h2>
               <div style={grid}>
                 <Link href={withStore('/settlements')} style={card}>
-                  <div style={{ ...iconBox, backgroundColor: `${'#f59e0b'}15`, color: '#f59e0b' }}>
+                  <div style={{ ...iconBox, backgroundColor: `${colors.orange}15`, color: colors.orange }}>
                     <Landmark size={20} />
                   </div>
                   <div style={labelWrap}>
@@ -117,12 +119,12 @@ function ManagementContent() {
                       <span style={label}>Δάνεια & Ρυθμίσεις</span>
                       <span style={subLabelStyle}>Παρακολούθηση δόσεων και διακανονισμών</span>
                     </div>
-                    <ChevronRight size={16} color={colors.secondary} />
+                    <ChevronRight size={16} color="var(--muted)" />
                   </div>
                 </Link>
 
                 <Link href={withStore('/goals')} style={card}>
-                  <div style={{ ...iconBox, backgroundColor: `${'#7c3aed'}15`, color: '#7c3aed' }}>
+                  <div style={{ ...iconBox, backgroundColor: `${colors.purple}15`, color: colors.purple }}>
                     <Target size={20} />
                   </div>
                   <div style={labelWrap}>
@@ -130,7 +132,7 @@ function ManagementContent() {
                       <span style={label}>Στόχοι & Κουμπαράδες</span>
                       <span style={subLabelStyle}>Αποταμίευση για εξοπλισμό και ανάγκες</span>
                     </div>
-                    <ChevronRight size={16} color={colors.secondary} />
+                    <ChevronRight size={16} color="var(--muted)" />
                   </div>
                 </Link>
 
@@ -145,7 +147,14 @@ function ManagementContent() {
                   }}
                   aria-expanded={economicsOpen}
                 >
-                  <div style={{ ...iconBox, backgroundColor: `${colors.primary}15`, color: colors.primary }}>
+                  <div
+                    style={{
+                      ...iconBox,
+                      backgroundColor: 'var(--surfaceSolid)',
+                      border: '1px solid var(--border)',
+                      color: 'var(--text)',
+                    }}
+                  >
                     <Wallet size={20} />
                   </div>
 
@@ -157,9 +166,9 @@ function ManagementContent() {
 
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                       {economicsOpen ? (
-                        <ChevronUp size={18} color={colors.secondary} />
+                        <ChevronUp size={18} color="var(--muted)" />
                       ) : (
-                        <ChevronDown size={18} color={colors.secondary} />
+                        <ChevronDown size={18} color="var(--muted)" />
                       )}
                     </div>
                   </div>
@@ -173,7 +182,7 @@ function ManagementContent() {
                           <span style={dropdownLabel}>{l.label}</span>
                           <span style={dropdownSubLabel}>{l.subLabel}</span>
                         </div>
-                        <ChevronRight size={16} color={colors.secondary} />
+                        <ChevronRight size={16} color="var(--muted)" />
                       </Link>
                     ))}
                   </div>
@@ -187,7 +196,7 @@ function ManagementContent() {
               <div style={grid}>
                 {isAdmin && (
                   <Link href={withStore('/admin/permissions')} style={card}>
-                    <div style={{ ...iconBox, backgroundColor: `${'#64748b'}15`, color: '#64748b' }}>
+                    <div style={{ ...iconBox, backgroundColor: `${colors.gray}15`, color: colors.gray }}>
                       <ShieldCheck size={20} />
                     </div>
                     <div style={labelWrap}>
@@ -195,13 +204,13 @@ function ManagementContent() {
                         <span style={label}>Δικαιώματα Πρόσβασης</span>
                         <span style={subLabelStyle}>Διαχείριση ρόλων Admin & User</span>
                       </div>
-                      <ChevronRight size={16} color={colors.secondary} />
+                      <ChevronRight size={16} color="var(--muted)" />
                     </div>
                   </Link>
                 )}
 
                 <Link href={withStore('/help')} style={card}>
-                  <div style={{ ...iconBox, backgroundColor: `${'#475569'}15`, color: '#475569' }}>
+                  <div style={{ ...iconBox, backgroundColor: `${colors.slate}15`, color: colors.slate }}>
                     <Info size={20} />
                   </div>
                   <div style={labelWrap}>
@@ -209,12 +218,12 @@ function ManagementContent() {
                       <span style={label}>Οδηγίες Χρήσης</span>
                       <span style={subLabelStyle}>Αναλυτικό manual εφαρμογής</span>
                     </div>
-                    <ChevronRight size={16} color={colors.secondary} />
+                    <ChevronRight size={16} color="var(--muted)" />
                   </div>
                 </Link>
 
                 <Link href={withStore('/select-store')} style={card}>
-                  <div style={{ ...iconBox, backgroundColor: `${colors.primary}15`, color: colors.primary }}>
+                  <div style={{ ...iconBox, backgroundColor: 'var(--surfaceSolid)', border: '1px solid var(--border)', color: 'var(--text)' }}>
                     <Store size={20} />
                   </div>
                   <div style={labelWrap}>
@@ -222,7 +231,7 @@ function ManagementContent() {
                       <span style={label}>Αλλαγή Καταστήματος</span>
                       <span style={subLabelStyle}>Επιλογή διαφορετικού business unit</span>
                     </div>
-                    <ChevronRight size={16} color={colors.secondary} />
+                    <ChevronRight size={16} color="var(--muted)" />
                   </div>
                 </Link>
               </div>
@@ -245,15 +254,16 @@ export default function ManagementPage() {
 /* ---------------- STYLES ---------------- */
 
 const container: React.CSSProperties = {
-  background: colors.background,
+  background: 'var(--bg)',
+  color: 'var(--text)',
   minHeight: '100vh',
   paddingBottom: '110px',
 }
 
 const header: React.CSSProperties = {
   padding: '34px 20px 22px 20px',
-  background: colors.surface,
-  borderBottom: `1px solid ${colors.border}`,
+  background: 'var(--surfaceSolid)',
+  borderBottom: '1px solid var(--border)',
 }
 
 const headerRow: React.CSSProperties = {
@@ -269,27 +279,27 @@ const homeBtn: React.CSSProperties = {
   gap: 8,
   padding: '10px 12px',
   borderRadius: 14,
-  border: `1px solid ${colors.border}`,
-  background: '#fff',
-  color: colors.primary,
+  border: '1px solid var(--border)',
+  background: 'var(--surfaceSolid)',
+  color: 'var(--text)',
   textDecoration: 'none',
   fontWeight: 900,
   fontSize: 13,
   whiteSpace: 'nowrap',
-  boxShadow: '0 2px 4px rgba(0,0,0,0.02)',
+  boxShadow: 'var(--shadow)',
 }
 
 const headerTitle: React.CSSProperties = {
   fontSize: '32px',
   fontWeight: 900,
-  color: colors.primary,
+  color: 'var(--text)',
   margin: 0,
   letterSpacing: '-0.02em',
 }
 
 const headerSub: React.CSSProperties = {
   fontSize: '15px',
-  color: colors.secondary,
+  color: 'var(--muted)',
   marginTop: '4px',
   fontWeight: 600,
 }
@@ -305,7 +315,7 @@ const section: React.CSSProperties = { marginBottom: '32px' }
 const sectionTitle: React.CSSProperties = {
   fontSize: '13px',
   fontWeight: 800,
-  color: colors.secondary,
+  color: 'var(--muted)',
   textTransform: 'uppercase',
   letterSpacing: '0.08em',
   marginBottom: '14px',
@@ -318,23 +328,23 @@ const card: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   padding: '18px',
-  background: colors.surface,
+  background: 'var(--surface)',
   borderRadius: '20px',
   textDecoration: 'none',
-  border: `1px solid ${colors.border}`,
+  border: '1px solid var(--border)',
   transition: 'all 0.2s ease',
-  boxShadow: '0 2px 4px rgba(0,0,0,0.02)',
+  boxShadow: 'var(--shadow)',
 }
 
 const cardBtn: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   padding: '18px',
-  background: colors.surface,
+  background: 'var(--surface)',
   borderRadius: '20px',
-  border: `1px solid ${colors.border}`,
+  border: '1px solid var(--border)',
   transition: 'all 0.2s ease',
-  boxShadow: '0 2px 4px rgba(0,0,0,0.02)',
+  boxShadow: 'var(--shadow)',
   cursor: 'pointer',
   textAlign: 'left',
   width: '100%',
@@ -353,15 +363,15 @@ const iconBox: React.CSSProperties = {
 
 const labelWrap: React.CSSProperties = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', flex: 1 }
 
-const label: React.CSSProperties = { fontSize: '16px', fontWeight: 800, color: colors.primary, lineHeight: 1.2 }
+const label: React.CSSProperties = { fontSize: '16px', fontWeight: 800, color: 'var(--text)', lineHeight: 1.2 }
 
-const subLabelStyle: React.CSSProperties = { fontSize: '12px', color: colors.secondary, fontWeight: 500, marginTop: '2px' }
+const subLabelStyle: React.CSSProperties = { fontSize: '12px', color: 'var(--muted)', fontWeight: 500, marginTop: '2px' }
 
 const dropdownWrap: React.CSSProperties = {
-  border: `1px solid ${colors.border}`,
+  border: '1px solid var(--border)',
   borderTop: 'none',
   borderRadius: '0 0 20px 20px',
-  background: colors.surface,
+  background: 'var(--surface)',
   overflow: 'hidden',
   marginTop: -10,
 }
@@ -372,19 +382,19 @@ const dropdownItem: React.CSSProperties = {
   alignItems: 'center',
   padding: '14px 18px',
   textDecoration: 'none',
-  color: colors.primary,
-  borderTop: `1px solid ${colors.border}`,
+  color: 'var(--text)',
+  borderTop: '1px solid var(--border)',
 }
 
 const dropdownLabel: React.CSSProperties = {
   fontSize: '14px',
   fontWeight: 900,
-  color: colors.primary,
+  color: 'var(--text)',
 }
 
 const dropdownSubLabel: React.CSSProperties = {
   fontSize: '11px',
   fontWeight: 700,
-  color: colors.secondary,
+  color: 'var(--muted)',
   marginTop: 2,
 }
