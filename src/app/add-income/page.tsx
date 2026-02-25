@@ -114,7 +114,7 @@ type RevenueSource = {
   name: string
 }
 
-type PaymentMethod = 'Μετρητά' | 'Τράπεζα' | 'Πίστωση'
+type PaymentMethod = 'Μετρητά' | 'Τράπεζα' | 'Κάρτα' | 'Πίστωση'
 
 function parseAmount(input: string) {
   const s = String(input || '')
@@ -431,6 +431,15 @@ function AddIncomeForm() {
     return sourceMap.get(selectedSourceId)?.name || ''
   }, [sourceMap, selectedSourceId])
 
+  // ...existing code...
+  // Quick notes templates
+  const quickNotes = [
+    'ΑΠΟΔΕΙΞΗ',
+    'ΤΙΜΟΛΟΓΙΟ',
+    'ΧΩΡΙΣ ΤΙΜΟΛΟΓΙΟ',
+    'ΠΡΟΚΑΤΑΒΟΛΗ',
+  ]
+
   return (
     <div style={iphoneWrapper}>
       <Toaster position="top-center" richColors />
@@ -465,26 +474,28 @@ function AddIncomeForm() {
           <label style={labelStyle}>ΠΗΓΗ ΕΣΟΔΟΥ (AIRBNB, ΠΕΛΑΤΗΣ κλπ)</label>
 
           <div ref={smartBoxRef} style={{ position: 'relative' }}>
-            <input
-              value={smartQuery}
-              onChange={(e) => {
-                setSmartQuery(e.target.value)
-                setSelectedSourceId('')
-                setSmartOpen(true)
-              }}
-              onFocus={() => setSmartOpen(true)}
-              placeholder="Αναζήτηση πηγής"
-              style={inputStyle}
-              autoCapitalize="none"
-              autoCorrect="off"
-              spellCheck={false}
-            />
-
-            {!!smartQuery && (
-              <button type="button" onClick={clearSelection} style={clearBtn} aria-label="Καθαρισμός">
-                ✕
-              </button>
-            )}
+            <div style={sourceSearchBox}>
+              <ArrowUpCircle size={20} color={colors.secondaryText} style={{ marginRight: 8, flexShrink: 0 }} />
+              <input
+                value={smartQuery}
+                onChange={(e) => {
+                  setSmartQuery(e.target.value)
+                  setSelectedSourceId('')
+                  setSmartOpen(true)
+                }}
+                onFocus={() => setSmartOpen(true)}
+                placeholder="Αναζήτηση πηγής"
+                style={sourceInput}
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+              />
+              {!!smartQuery && (
+                <button type="button" onClick={clearSelection} style={clearBtn} aria-label="Καθαρισμός">
+                  ✕
+                </button>
+              )}
+            </div>
 
             {smartOpen && smartQuery.trim() && (
               <div style={resultsPanel}>
@@ -571,8 +582,8 @@ function AddIncomeForm() {
               }}
               style={{
                 ...methodBtn,
-                backgroundColor: method === 'Μετρητά' && !isCredit ? colors.primaryDark : 'white',
-                color: method === 'Μετρητά' && !isCredit ? 'white' : colors.secondaryText,
+                backgroundColor: method === 'Μετρητά' && !isCredit ? colors.primaryDark : colors.white,
+                color: method === 'Μετρητά' && !isCredit ? 'var(--surface)' : colors.secondaryText,
               }}
             >
               💵 Μετρητά
@@ -586,11 +597,26 @@ function AddIncomeForm() {
               }}
               style={{
                 ...methodBtn,
-                backgroundColor: method === 'Τράπεζα' && !isCredit ? colors.primaryDark : 'white',
-                color: method === 'Τράπεζα' && !isCredit ? 'white' : colors.secondaryText,
+                backgroundColor: method === 'Τράπεζα' && !isCredit ? colors.primaryDark : colors.white,
+                color: method === 'Τράπεζα' && !isCredit ? 'var(--surface)' : colors.secondaryText,
               }}
             >
               🏛️ Τράπεζα
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setMethod('Κάρτα')
+                setIsCredit(false)
+              }}
+              style={{
+                ...methodBtn,
+                backgroundColor: method === 'Κάρτα' && !isCredit ? colors.primaryDark : colors.white,
+                color: method === 'Κάρτα' && !isCredit ? 'var(--surface)' : colors.secondaryText,
+              }}
+            >
+              💳 Κάρτα
             </button>
           </div>
 
@@ -637,6 +663,18 @@ function AddIncomeForm() {
           </div>
 
           <label style={{ ...labelStyle, marginTop: 20 }}>ΣΗΜΕΙΩΣΕΙΣ</label>
+          <div style={quickNotesBox}>
+            {quickNotes.map((note) => (
+              <button
+                key={note}
+                type="button"
+                style={quickNoteChip}
+                onClick={() => setNotes(note)}
+              >
+                {note}
+              </button>
+            ))}
+          </div>
           <textarea
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
@@ -713,6 +751,47 @@ function AddIncomeForm() {
 }
 
 // ---------- Styles ----------
+// ---------- Styles ----------
+const sourceSearchBox: any = {
+  display: 'flex',
+  alignItems: 'center',
+  backgroundColor: colors.white,
+  border: `2px solid ${colors.border}`,
+  boxShadow: 'var(--shadow)',
+  borderRadius: 14,
+  padding: '0 12px',
+  marginBottom: 8,
+  minHeight: 48,
+  position: 'relative',
+}
+const sourceInput: any = {
+  flex: 1,
+  border: 'none',
+  outline: 'none',
+  backgroundColor: 'transparent',
+  color: colors.primaryDark,
+  fontSize: 16,
+  fontWeight: 700,
+  padding: '14px 0',
+}
+const quickNotesBox: any = {
+  display: 'flex',
+  gap: 8,
+  marginBottom: 8,
+  marginTop: 8,
+}
+const quickNoteChip: any = {
+  padding: '6px 14px',
+  borderRadius: 999,
+  backgroundColor: colors.white,
+  border: `1px solid ${colors.border}`,
+  color: colors.secondaryText,
+  fontWeight: 900,
+  fontSize: 13,
+  boxShadow: 'var(--shadow)',
+  cursor: 'pointer',
+  transition: 'background 0.2s',
+}
 const iphoneWrapper: any = {
   backgroundColor: colors.bgLight,
   minHeight: '100dvh',
