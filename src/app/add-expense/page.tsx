@@ -13,9 +13,9 @@ const colors = {
   accentRed: '#dc2626',
   accentBlue: '#2563eb',
   accentGreen: '#059669',
-  bgLight: 'var(--bg)',
+  bgLight: 'var(--bg-grad)',
   border: 'var(--border)',
-  white: 'var(--surfaceSolid)',
+  white: 'var(--surface)',
   modalBackdrop: 'rgba(2,6,23,0.6)',
 }
 
@@ -1502,7 +1502,7 @@ const logoBoxStyle: any = {
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
-  color: 'white',
+  color: 'var(--surface)',
   fontSize: 18,
   fontWeight: 900,
 }
@@ -1510,14 +1510,14 @@ const backBtnStyle: any = {
   textDecoration: 'none',
   color: colors.secondaryText,
   padding: '10px 12px',
-  backgroundColor: 'white',
+  backgroundColor: colors.white,
   borderRadius: 10,
   border: `1px solid ${colors.border}`,
   fontSize: 16,
   fontWeight: 900,
 }
 
-const formCard: any = { backgroundColor: 'white', padding: 20, borderRadius: 24, border: `1px solid ${colors.border}` }
+const formCard: any = { backgroundColor: colors.white, padding: 20, borderRadius: 24, border: `1px solid ${colors.border}` }
 const labelStyle: any = { fontSize: 12, fontWeight: 900, color: colors.secondaryText, display: 'block', marginBottom: 8 }
 
 const inputStyle: any = {
@@ -1527,7 +1527,8 @@ const inputStyle: any = {
   border: `1px solid ${colors.border}`,
   fontSize: 16,
   fontWeight: 700,
-  backgroundColor: colors.bgLight,
+  backgroundColor: colors.white,
+  color: colors.primaryDark,
   boxSizing: 'border-box',
 }
 
@@ -1539,6 +1540,8 @@ const methodBtn: any = {
   cursor: 'pointer',
   fontWeight: 900,
   fontSize: 16,
+  backgroundColor: colors.white,
+  color: colors.primaryDark,
 }
 
 const noInvoiceToggle: any = { display: 'flex', alignItems: 'center', gap: 10, padding: 12, borderRadius: 12, cursor: 'pointer' }
@@ -1550,19 +1553,20 @@ const checkboxBox: any = {
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
-  color: 'white',
+  color: 'var(--surface)',
   fontSize: 14,
   fontWeight: 900,
+  backgroundColor: 'var(--surface)',
 }
 
-const creditPanel: any = { backgroundColor: colors.bgLight, padding: 16, borderRadius: 14, border: `1px solid ${colors.border}`, marginTop: 20 }
+const creditPanel: any = { backgroundColor: colors.white, padding: 16, borderRadius: 14, border: `1px solid ${colors.border}`, marginTop: 20 }
 const checkboxStyle: any = { width: 20, height: 20 }
 const checkLabel: any = { fontSize: 14, fontWeight: 900, color: colors.primaryDark }
 
 const smartSaveBtn: any = {
   width: '100%',
   padding: 16,
-  color: 'white',
+  color: 'var(--surface)',
   border: 'none',
   borderRadius: 16,
   cursor: 'pointer',
@@ -1572,7 +1576,7 @@ const smartSaveBtn: any = {
 
 const imageUploadContainer: any = {
   width: '100%',
-  backgroundColor: colors.bgLight,
+  backgroundColor: colors.white,
   borderRadius: 14,
   border: `2px dashed ${colors.border}`,
   overflow: 'hidden',
@@ -1584,7 +1588,7 @@ const removeImageBtn: any = {
   top: 8,
   right: 8,
   backgroundColor: 'rgba(0,0,0,0.5)',
-  color: 'white',
+  color: 'var(--surface)',
   border: 'none',
   borderRadius: 999,
   width: 30,
@@ -1626,7 +1630,7 @@ const groupHeader: any = {
   position: 'sticky',
   top: 0,
   zIndex: 2,
-  background: colors.bgLight,
+  background: colors.white,
   padding: '10px 12px',
   fontSize: 12,
   fontWeight: 900,
@@ -1647,7 +1651,7 @@ const resultRow: any = {
 const createRow: any = {
   width: '100%',
   border: 'none',
-  background: '#eef2ff',
+  background: colors.white,
   padding: 12,
   textAlign: 'left',
   cursor: 'pointer',
@@ -1659,7 +1663,7 @@ const plusPill: any = {
   height: 34,
   borderRadius: 999,
   backgroundColor: colors.accentBlue,
-  color: 'white',
+  color: 'var(--surface)',
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
@@ -1672,7 +1676,7 @@ const selectedBox: any = {
   marginTop: 12,
   padding: 12,
   borderRadius: 12,
-  backgroundColor: colors.bgLight,
+  backgroundColor: colors.white,
   border: `1px solid ${colors.border}`,
   fontSize: 14,
   fontWeight: 700,
@@ -1693,7 +1697,7 @@ const modalOverlay: any = {
 const modalCard: any = {
   width: '100%',
   maxWidth: 520,
-  background: 'white',
+  background: colors.white,
   borderRadius: 18,
   border: `1px solid ${colors.border}`,
   padding: 16,
@@ -1721,7 +1725,8 @@ const modalInput: any = {
   border: `1px solid ${colors.border}`,
   fontSize: 16,
   fontWeight: 700,
-  backgroundColor: colors.bgLight,
+  backgroundColor: colors.white,
+  color: colors.primaryDark,
   boxSizing: 'border-box',
 }
 
@@ -1733,7 +1738,7 @@ const modalPrimaryBtn: any = {
   borderRadius: 14,
   border: 'none',
   backgroundColor: colors.accentGreen,
-  color: 'white',
+  color: 'var(--surface)',
   fontWeight: 900,
   cursor: 'pointer',
   fontSize: 14,
