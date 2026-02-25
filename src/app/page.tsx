@@ -668,7 +668,7 @@ function DashboardContent() {
         </button>
       </div>
 
-      <div style={heroCardStyle}>
+      <div style={heroCardStyle as any}>
         <p style={heroLabel}>ΔΙΑΘΕΣΙΜΟ ΥΠΟΛΟΙΠΟ ΗΜΕΡΑΣ</p>
         <h2 style={heroAmountText}>{totals.balance.toFixed(2)}€</h2>
 
@@ -789,7 +789,7 @@ function DashboardContent() {
                 </div>
 
                 {expandedTx === txId && (
-                  <div style={actionPanel}>
+                  <div style={actionPanel as any}>
                     {isZMaster ? (
                       <div style={zBreakdownCard}>
                         <p style={ytdTitle}>ΑΝΑΛΥΣΗ ΚΛΕΙΣΙΜΑΤΟΣ Ζ</p>
