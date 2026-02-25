@@ -217,7 +217,8 @@ function AddExpenseForm() {
   const [notes, setNotes] = useState('')
   const [isCredit, setIsCredit] = useState(false)
   const [isAgainstDebt, setIsAgainstDebt] = useState(searchParams.get('mode') === 'debt')
-  const [noInvoice, setNoInvoice] = useState(false)
+  type DocumentType = 'Απόδειξη λιανικής' | 'Τιμολόγιο' | 'Χωρίς τιμολόγιο';
+  const [documentType, setDocumentType] = useState<DocumentType | null>(null);
 
   const [imageFile, setImageFile] = useState<File | null>(null)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
@@ -467,10 +468,16 @@ function AddExpenseForm() {
           const safeMethod: PaymentMethod = (METHOD_VALUES as readonly string[]).includes(m) ? (m as PaymentMethod) : 'Μετρητά'
           setMethod(safeMethod === 'Πίστωση' ? 'Μετρητά' : safeMethod) // UI keeps credit via checkbox
 
-          setNotes(String(tx.notes || ''))
+          const notesText = String(tx.notes || '')
+          setNotes(notesText)
           setIsCredit(!!tx.is_credit || m === 'Πίστωση')
           setIsAgainstDebt(tx.type === 'debt_payment')
-          setNoInvoice(String(tx.notes || '').includes('ΧΩΡΙΣ ΤΙΜΟΛΟΓΙΟ'))
+
+          // Set documentType from notes prefix
+          if (notesText.startsWith('Απόδειξη λιανικής')) setDocumentType('Απόδειξη λιανικής');
+          else if (notesText.startsWith('Τιμολόγιο')) setDocumentType('Τιμολόγιο');
+          else if (notesText.startsWith('Χωρίς τιμολόγιο')) setDocumentType('Χωρίς τιμολόγιο');
+          else setDocumentType(null);
 
           if (tx.supplier_id) {
             const id = String(tx.supplier_id)
@@ -803,6 +810,9 @@ function AddExpenseForm() {
     if (!amount || !Number.isFinite(amt) || amt <= 0) return toast.error('Συμπλήρωσε σωστό ποσό')
     if (amt > 1_000_000) return toast.error('Το ποσό είναι υπερβολικά μεγάλο')
     if (!selectedEntity) return toast.error('Επίλεξε δικαιούχο από την αναζήτηση')
+    if (!documentType) {
+      return toast.error('Παρακαλώ επιλέξτε τύπο παραστατικού (Απόδειξη, Τιμολόγιο ή Χωρίς)');
+    }
 
     setLoading(true)
 
@@ -883,10 +893,8 @@ function AddExpenseForm() {
             : mustDebtNote
           : baseNotes
 
-      const finalNotes = noInvoice
-        ? debtNote
-          ? `${debtNote} (ΧΩΡΙΣ ΤΙΜΟΛΟΓΙΟ)`
-          : 'ΧΩΡΙΣ ΤΙΜΟΛΟΓΙΟ'
+      const finalNotes = documentType
+        ? documentType + (debtNote ? ' | ' + debtNote : '')
         : debtNote
 
       const payload: any = {
@@ -904,8 +912,8 @@ function AddExpenseForm() {
         notes: finalNotes,
       }
 
-      // ✅ invoice upload (only for new tx, only if not noInvoice)
-      if (imageFile && !noInvoice && !editId) {
+      // ✅ invoice upload (only for new tx, only if not "Χωρίς τιμολόγιο")
+      if (imageFile && documentType !== 'Χωρίς τιμολόγιο' && !editId) {
         const safeExt = (imageFile.name.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '')
         const fileExt = safeExt || 'jpg'
         const fileName = `${session.user.id}-${Date.now()}.${fileExt}`
@@ -1117,27 +1125,27 @@ function AddExpenseForm() {
             Tip: δέχεται και <b>10,50</b>.
           </div>
 
-          <div
-            onClick={() => setNoInvoice(!noInvoice)}
-            style={{
-              ...noInvoiceToggle,
-              backgroundColor: noInvoice ? '#fee2e2' : colors.bgLight,
-              border: `1px solid ${noInvoice ? colors.accentRed : colors.border}`,
-              marginTop: 15,
-            }}
-          >
-            <div
-              style={{
-                ...checkboxBox,
-                backgroundColor: noInvoice ? colors.accentRed : 'white',
-                border: `2px solid ${noInvoice ? colors.accentRed : colors.secondaryText}`,
-              }}
-            >
-              {noInvoice && '✓'}
-            </div>
-            <span style={{ fontSize: 14, fontWeight: 900, color: noInvoice ? colors.accentRed : colors.primaryDark }}>
-              Χωρίς τιμολόγιο
-            </span>
+          <label style={{ ...labelStyle, marginTop: 20 }}>ΤΥΠΟΣ ΠΑΡΑΣΤΑΤΙΚΟΥ *</label>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 8 }}>
+            {(['Απόδειξη λιανικής', 'Τιμολόγιο', 'Χωρίς τιμολόγιο'] as DocumentType[]).map((type) => (
+              <button
+                key={type}
+                type="button"
+                onClick={() => setDocumentType(type)}
+                style={{
+                  border: documentType === type ? `2px solid ${colors.accentBlue}` : `1px solid ${colors.border}`,
+                  fontWeight: documentType === type ? 900 : 700,
+                  background: colors.white,
+                  color: colors.primaryDark,
+                  borderRadius: 10,
+                  padding: '10px',
+                  cursor: 'pointer',
+                  outline: documentType === type ? 'none' : undefined,
+                }}
+              >
+                {type}
+              </button>
+            ))}
           </div>
 
           <label style={{ ...labelStyle, marginTop: 20 }}>Μέθοδος πληρωμής</label>
@@ -1233,36 +1241,38 @@ function AddExpenseForm() {
             placeholder="π.χ. Απόδειξη, περιγραφή, αριθμός..."
           />
 
-          {!editId && !noInvoice && (
-            <div style={{ marginTop: 20 }}>
-              <label style={labelStyle}>📸 Φωτογραφία τιμολογίου</label>
-              <div style={imageUploadContainer}>
-                {imagePreview ? (
-                  <div style={{ position: 'relative', width: '100%', height: 140 }}>
-                    <img src={imagePreview} alt="Preview" style={imagePreviewStyle} />
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setImageFile(null)
-                        setImagePreview(null)
-                      }}
-                      style={removeImageBtn}
-                    >
-                      ✕
-                    </button>
-                  </div>
-                ) : (
-                  <label style={uploadPlaceholder}>
-                    <span style={{ fontSize: 14, fontWeight: 900 }}>📷 Επιλογή φωτογραφίας</span>
-                    <input type="file" accept="image/*" capture="environment" onChange={handleImageChange} style={{ display: 'none' }} />
-                  </label>
-                )}
+          {(!editId && documentType !== 'Χωρίς τιμολόγιο') ? (
+            <>
+              <div style={{ marginTop: 20 }}>
+                <label style={labelStyle}>📸 Φωτογραφία τιμολογίου</label>
+                <div style={imageUploadContainer}>
+                  {imagePreview ? (
+                    <div style={{ position: 'relative', width: '100%', height: 140 }}>
+                      <img src={imagePreview} alt="Preview" style={imagePreviewStyle} />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setImageFile(null)
+                          setImagePreview(null)
+                        }}
+                        style={removeImageBtn}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ) : (
+                    <label style={uploadPlaceholder}>
+                      <span style={{ fontSize: 14, fontWeight: 900 }}>📷 Επιλογή φωτογραφίας</span>
+                      <input type="file" accept="image/*" capture="environment" onChange={handleImageChange} style={{ display: 'none' }} />
+                    </label>
+                  )}
+                </div>
+                <div style={{ marginTop: 8, fontSize: 12, fontWeight: 800, color: colors.secondaryText }}>
+                  * Max 5MB. Δεν ανεβάζουμε αν έχεις “Χωρίς τιμολόγιο”. (Path: store/YYYY/MM)
+                </div>
               </div>
-              <div style={{ marginTop: 8, fontSize: 12, fontWeight: 800, color: colors.secondaryText }}>
-                * Max 5MB. Δεν ανεβάζουμε αν έχεις “Χωρίς τιμολόγιο”. (Path: store/YYYY/MM)
-              </div>
-            </div>
-          )}
+            </>
+          ) : null}
 
           <div style={{ marginTop: 25 }}>
             <button
@@ -1544,7 +1554,6 @@ const methodBtn: any = {
   color: colors.primaryDark,
 }
 
-const noInvoiceToggle: any = { display: 'flex', alignItems: 'center', gap: 10, padding: 12, borderRadius: 12, cursor: 'pointer' }
 const checkboxBox: any = {
   width: 20,
   height: 20,
