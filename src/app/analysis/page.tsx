@@ -854,6 +854,17 @@ function AnalysisContent() {
 
     return { loanOut, loanIn, settlementOut }
   }, [periodTx, isCreditTx])
+    // KPI: Expenses without invoice (notes === 'ΧΩΡΙΣ ΤΙΜΟΛΟΓΙΟ')
+    const expensesWithoutInvoice = useMemo(() => {
+      return periodTx
+        .filter(
+          (t) =>
+            !isCreditTx(t) &&
+            (t.type === 'expense' || t.type === 'debt_payment') &&
+            String(t.notes || '').trim() === 'ΧΩΡΙΣ ΤΙΜΟΛΟΓΙΟ'
+        )
+        .reduce((acc, t) => acc + Math.abs(Number(t.amount) || 0), 0)
+    }, [periodTx, isCreditTx])
 
   /* ---------------- SIMPLE/PRO: TRANSACTION SEARCH (paged) ---------------- */
 
@@ -1289,6 +1300,12 @@ function AnalysisContent() {
                   {drawer ? `Z: ${moneyGR(drawer.z_cash)} • Χωρίς Σήμανση: ${moneyGR(drawer.extra_cash)}` : ''}
                 </div>
               </div>
+                {/* New KPI: Expenses without invoice */}
+                <div className="print-card" style={{ ...smallKpiCard, border: '1px solid rgba(16,185,129,0.25)', background: 'linear-gradient(180deg, #f0fdf4, #ffffff)' }}>
+                  <div style={smallKpiLabel}>Έξοδα χωρίς τιμολόγιο</div>
+                  <div style={smallKpiValue}>{moneyGR(expensesWithoutInvoice)}</div>
+                  <div style={smallKpiHint}>notes === 'ΧΩΡΙΣ ΤΙΜΟΛΟΓΙΟ'</div>
+                </div>
             </>
           )}
         </div>
