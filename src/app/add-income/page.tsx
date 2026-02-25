@@ -9,13 +9,13 @@ import { toast, Toaster } from 'sonner'
 import { ArrowUpCircle } from 'lucide-react'
 
 const colors = {
-  primaryDark: '#0f172a',
-  secondaryText: '#64748b',
+  primaryDark: 'var(--text)',
+  secondaryText: 'var(--muted)',
   accentGreen: '#10b981',
   accentBlue: '#6366f1',
-  bgLight: '#f8fafc',
-  border: '#e2e8f0',
-  white: '#ffffff',
+  bgLight: 'var(--bg-grad)',
+  border: 'var(--border)',
+  white: 'var(--surface)',
   modalBackdrop: 'rgba(2,6,23,0.6)',
 }
 
@@ -745,7 +745,7 @@ const backBtnStyle: any = {
   textDecoration: 'none',
   color: colors.secondaryText,
   padding: '10px 12px',
-  backgroundColor: 'white',
+  backgroundColor: colors.white,
   borderRadius: 10,
   border: `1px solid ${colors.border}`,
   fontSize: 16,
@@ -762,11 +762,11 @@ const headerBadge: any = {
   border: '1px solid rgba(255,255,255,0.25)',
 }
 const formCard: any = {
-  backgroundColor: 'white',
+  backgroundColor: colors.white,
   padding: 20,
   borderRadius: 24,
   border: `1px solid ${colors.border}`,
-  boxShadow: '0 4px 12px rgba(0,0,0,0.03)',
+  boxShadow: 'var(--shadow)',
 }
 const labelStyle: any = {
   fontSize: 16,
@@ -782,7 +782,8 @@ const inputStyle: any = {
   border: `1px solid ${colors.border}`,
   fontSize: 16,
   fontWeight: 700,
-  backgroundColor: colors.bgLight,
+  backgroundColor: colors.white,
+  color: colors.primaryDark,
   boxSizing: 'border-box',
 }
 const amountInput: any = { ...inputStyle, fontSize: '24px', color: colors.accentGreen }
@@ -794,9 +795,11 @@ const methodBtn: any = {
   cursor: 'pointer',
   fontWeight: 900,
   fontSize: 16,
+  backgroundColor: colors.white,
+  color: colors.primaryDark,
 }
 const creditPanel: any = {
-  backgroundColor: colors.bgLight,
+  backgroundColor: colors.white,
   padding: 16,
   borderRadius: 14,
   border: `1px solid ${colors.border}`,
@@ -807,11 +810,11 @@ const checkLabel: any = { fontSize: 16, fontWeight: 900, color: colors.primaryDa
 const smartSaveBtn: any = {
   width: '100%',
   padding: 18,
-  color: 'white',
+  color: 'var(--surface)',
   border: 'none',
   borderRadius: 16,
   cursor: 'pointer',
-  boxShadow: '0 4px 12px rgba(16, 185, 129, 0.2)',
+  boxShadow: 'var(--shadow)',
 }
 
 const clearBtn: any = {
@@ -840,7 +843,7 @@ const resultsPanel: any = {
   background: colors.white,
   maxHeight: 360,
   overflowY: 'auto',
-  boxShadow: '0 10px 30px rgba(0,0,0,0.12)',
+  boxShadow: 'var(--shadow)',
 }
 
 const resultRow: any = {
@@ -856,7 +859,7 @@ const resultRow: any = {
 const createRow: any = {
   width: '100%',
   border: 'none',
-  background: '#eef2ff',
+  background: colors.white,
   padding: 12,
   textAlign: 'left',
   cursor: 'pointer',
@@ -868,7 +871,7 @@ const plusPill: any = {
   height: 34,
   borderRadius: 999,
   backgroundColor: colors.accentBlue,
-  color: 'white',
+  color: 'var(--surface)',
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
@@ -881,11 +884,11 @@ const selectedBox: any = {
   marginTop: 12,
   padding: 12,
   borderRadius: 12,
-  backgroundColor: colors.bgLight,
+  backgroundColor: colors.white,
   border: `1px solid ${colors.border}`,
   fontSize: 14,
   fontWeight: 700,
-  color: colors.accentGreen,
+  color: colors.primaryDark,
 }
 
 const modalOverlay: any = {
@@ -906,7 +909,7 @@ const modalCard: any = {
   borderRadius: 18,
   border: `1px solid ${colors.border}`,
   padding: 16,
-  boxShadow: '0 20px 60px rgba(0,0,0,0.25)',
+  boxShadow: 'var(--shadow)',
 }
 
 const modalCloseBtn: any = {
@@ -937,14 +940,15 @@ const modalInput: any = {
   fontSize: 14,
   fontWeight: 700,
   boxSizing: 'border-box',
-  background: colors.white,
+  backgroundColor: colors.white,
+  color: colors.primaryDark,
 }
 
 const modalSecondaryBtn: any = {
   flex: 1,
   borderRadius: 12,
   border: `1px solid ${colors.border}`,
-  background: colors.white,
+  backgroundColor: colors.white,
   padding: 12,
   fontWeight: 900,
   cursor: 'pointer',
@@ -954,8 +958,8 @@ const modalPrimaryBtn: any = {
   flex: 1,
   borderRadius: 12,
   border: 'none',
-  background: colors.accentGreen,
-  color: 'white',
+  backgroundColor: colors.accentGreen,
+  color: 'var(--surface)',
   padding: 12,
   fontWeight: 900,
   cursor: 'pointer',
