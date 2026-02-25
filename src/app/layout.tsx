@@ -3,18 +3,18 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { AuthLogic } from "@/components/AuthLogic";
 import BottomNav from "@/components/BottomNav";
-import { Toaster } from 'sonner';
-import { Suspense } from 'react';
-import { ThemeProvider } from '@/components/theme/ThemeProvider';
+import { Toaster } from "sonner";
+import { Suspense } from "react";
+import { ThemeProvider } from "@/components/theme/ThemeProvider";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
-  subsets: ["latin"]
+  subsets: ["latin"],
 });
 
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
-  subsets: ["latin"]
+  subsets: ["latin"],
 });
 
 const originTrialToken = process.env.NEXT_PUBLIC_ORIGIN_TRIAL_TOKEN;
@@ -32,14 +32,8 @@ export const viewport: Viewport = {
 export const metadata: Metadata = {
   title: "Cosy App",
   description: "ERP Διαχείριση Επιχείρησης",
-  appleWebApp: {
-    capable: true,
-    statusBarStyle: "default",
-    title: "Cosy App"
-  },
-  formatDetection: {
-    telephone: false
-  },
+  appleWebApp: { capable: true, statusBarStyle: "default", title: "Cosy App" },
+  formatDetection: { telephone: false },
 };
 
 export default function RootLayout({
@@ -47,16 +41,33 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-
   return (
     <html lang="el">
       <head>
-
         {/* Origin Trial token (αν υπάρχει) */}
-        {originTrialToken
-          ? <meta httpEquiv="origin-trial" content={originTrialToken} />
-          : null
-        }
+        {originTrialToken ? (
+          <meta httpEquiv="origin-trial" content={originTrialToken} />
+        ) : null}
+
+        {/* ✅ Theme init BEFORE paint (αποφεύγει flash light->dark) */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              (function() {
+                try {
+                  var saved = localStorage.getItem('theme') || localStorage.getItem('cosy_theme');
+                  if (saved === 'dark') {
+                    document.documentElement.setAttribute('data-theme', 'dark');
+                    document.documentElement.style.colorScheme = 'dark';
+                  } else {
+                    document.documentElement.setAttribute('data-theme', 'light');
+                    document.documentElement.style.colorScheme = 'light';
+                  }
+                } catch (e) {}
+              })();
+            `,
+          }}
+        />
 
         {/* Dynamic VH fix για mobile */}
         <script
@@ -72,7 +83,6 @@ export default function RootLayout({
             `,
           }}
         />
-
       </head>
 
       <body
@@ -81,65 +91,38 @@ export default function RootLayout({
           margin: 0,
           padding: 0,
 
-          /* ✅ ΤΩΡΑ ΕΛΕΓΧΕΤΑΙ ΑΠΟ THEME (Light/Dark) */
-          backgroundColor: 'var(--bg)',
+          /* ✅ controlled by theme vars */
+          backgroundColor: "var(--bg)",
 
-          minHeight: '100vh',
+          minHeight: "100vh",
 
           /* FIX για scroll στο PC */
-          display: 'block',
-          overflowY: 'auto',
-          overflowX: 'hidden'
+          display: "block",
+          overflowY: "auto",
+          overflowX: "hidden",
         }}
       >
-
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `
-              (function() {
-                try {
-                  const saved = localStorage.getItem('theme') || localStorage.getItem('cosy_theme');
-                  if (saved === 'dark') {
-                    document.documentElement.setAttribute('data-theme', 'dark');
-                    document.documentElement.style.colorScheme = 'dark';
-                  }
-                } catch (e) {}
-              })();
-            `
-          }}
-        />
-
         {/* ✅ GLOBAL THEME PROVIDER */}
         <ThemeProvider>
-
           <Suspense fallback={null}>
-
-            {/* Auth system */}
             <AuthLogic />
-
-            {/* Toast notifications */}
             <Toaster richColors position="top-center" />
 
-            {/* Main content */}
             <main
               style={{
-                width: '100%',
-                minHeight: '100vh',
-                paddingBottom: '100px',
-                position: 'relative',
-                display: 'block'
+                width: "100%",
+                minHeight: "100vh",
+                paddingBottom: "100px",
+                position: "relative",
+                display: "block",
               }}
             >
               {children}
             </main>
 
-            {/* Bottom Navigation */}
             <BottomNav />
-
           </Suspense>
-
         </ThemeProvider>
-
       </body>
     </html>
   );
