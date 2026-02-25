@@ -843,7 +843,7 @@ function EmployeesContent() {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
                 <div style={logoBoxStyle}>👥</div>
-                <h1 style={{ fontWeight: '800', fontSize: '22px', margin: 0, color: colors.primaryDark }}>Υπάλληλοι</h1>
+                <h1 style={{ fontWeight: '800', fontSize: '22px', margin: 0, color: 'var(--text)' }}>Υπάλληλοι</h1>
 
                 {/* ✅ Back link preserves SaaS context */}
                 <Link href={`/?store=${storeId}`} style={backBtnStyle}>
@@ -859,7 +859,7 @@ function EmployeesContent() {
               <div style={modalOverlay}>
                 <div style={modalCard}>
                   <h3 style={{ margin: 0, fontSize: '16px' }}>Καταγραφή Tips</h3>
-                  <p style={{ fontSize: '12px', color: colors.secondaryText }}>{tipModal.name}</p>
+                  <p style={{ fontSize: '12px', color: 'var(--muted)' }}>{tipModal.name}</p>
                   <input
                     type="number"
                     placeholder="Ποσό tips (π.χ. 10)"
@@ -894,7 +894,7 @@ function EmployeesContent() {
               <div style={modalOverlay}>
                 <div style={modalCard}>
                   <h3 style={{ margin: 0, fontSize: '16px' }}>Επεξεργασία Tips</h3>
-                  <p style={{ fontSize: '12px', color: colors.secondaryText }}>{tipEditModal.name}</p>
+                  <p style={{ fontSize: '12px', color: 'var(--muted)' }}>{tipEditModal.name}</p>
                   <input
                     type="number"
                     placeholder="Νέο ποσό tips"
@@ -926,7 +926,7 @@ function EmployeesContent() {
               <div style={modalOverlay}>
                 <div style={modalCard}>
                   <h3 style={{ margin: 0, fontSize: '16px' }}>Καταγραφή Υπερωρίας</h3>
-                  <p style={{ fontSize: '12px', color: colors.secondaryText }}>{otModal.name}</p>
+                  <p style={{ fontSize: '12px', color: 'var(--muted)' }}>{otModal.name}</p>
                   <input
                     type="number"
                     placeholder="Ώρες (π.χ. 1.5)"
@@ -987,7 +987,7 @@ function EmployeesContent() {
             {showTipsList && (
               <div style={tipsListWrap}>
                 {tipsStats.lastTips.length === 0 ? (
-                  <p style={{ margin: 0, fontSize: '12px', color: colors.secondaryText, fontWeight: 700 }}>
+                  <p style={{ margin: 0, fontSize: '12px', color: 'var(--muted)', fontWeight: 700 }}>
                     Δεν υπάρχουν tips καταγραφές για αυτόν τον μήνα.
                   </p>
                 ) : (
@@ -998,16 +998,16 @@ function EmployeesContent() {
                         <div key={t.id} style={tipsListItem}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', alignItems: 'center' }}>
                             <div style={{ display: 'flex', flexDirection: 'column' }}>
-                              <span style={{ fontWeight: 900, color: colors.primaryDark, fontSize: '12px' }}>{t.name}</span>
-                              <span style={{ fontSize: '10px', color: colors.secondaryText, fontWeight: 800 }}>
+                              <span style={{ fontWeight: 900, color: 'var(--text)', fontSize: '12px' }}>{t.name}</span>
+                              <span style={{ fontSize: '10px', color: 'var(--muted)', fontWeight: 800 }}>
                                 {/* ✅ display with business-day */}
                                 {isNaN(d.getTime()) ? '—' : formatBusinessDateShort(d)}
                               </span>
-                              <span style={{ fontSize: '10px', color: '#b45309', fontWeight: 900 }}>Tips</span>
+                              <span style={{ fontSize: '10px', color: 'var(--muted)', fontWeight: 900 }}>Tips</span>
                             </div>
 
                             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                              <span style={{ fontWeight: 900, color: '#b45309', fontSize: '12px' }}>{t.amount.toFixed(2)}€</span>
+                              <span style={{ fontWeight: 900, color: 'var(--muted)', fontSize: '12px' }}>{t.amount.toFixed(2)}€</span>
 
                               {isAdmin && (
                                 <button
@@ -1194,7 +1194,7 @@ function EmployeesContent() {
                       }}
                     >
                       <div style={{ flex: 1 }}>
-                        <p style={{ fontWeight: '700', color: colors.primaryDark, fontSize: '16px', margin: 0 }}>
+                        <p style={{ fontWeight: '700', color: 'var(--text)', fontSize: '16px', margin: 0 }}>
                           {String(emp.name || '').toUpperCase()}
                         </p>
 
@@ -1202,17 +1202,17 @@ function EmployeesContent() {
                           <span
                             style={{
                               ...badgeStyle,
-                              backgroundColor: daysLeft === 0 || daysLeft === null ? '#fef2f2' : '#eff6ff',
-                              color: daysLeft === 0 || daysLeft === null ? colors.accentRed : colors.accentBlue,
+                              backgroundColor: 'var(--surface)',
+                              color: 'var(--muted)',
                             }}
                           >
                             {daysLeft === null ? 'ΟΡΙΣΕ ΗΜ. ΠΡΟΣΛΗΨΗΣ' : daysLeft === 0 ? 'ΣΗΜΕΡΑ 💰' : `ΣΕ ${daysLeft} ΗΜΕΡΕΣ 📅`}
                           </span>
 
                           {pendingOt > 0 && (
-                            <span style={{ ...badgeStyle, backgroundColor: '#fff7ed', color: '#c2410c' }}>⏱️ {pendingOt} ΩΡΕΣ</span>
+                            <span style={{ ...badgeStyle, backgroundColor: 'var(--surface)', color: 'var(--muted)' }}>⏱️ {pendingOt} ΩΡΕΣ</span>
                           )}
-                          {isInactive && <span style={{ ...badgeStyle, backgroundColor: '#fef2f2', color: colors.accentRed }}>ΑΝΕΝΕΡΓΟΣ</span>}
+                          {isInactive && <span style={{ ...badgeStyle, backgroundColor: 'var(--surface)', color: 'var(--muted)' }}>ΑΝΕΝΕΡΓΟΣ</span>}
                         </div>
                       </div>
 
@@ -1252,23 +1252,23 @@ function EmployeesContent() {
                     </div>
 
                     {isSelected && (
-                      <div style={{ backgroundColor: '#ffffff', padding: '18px', borderTop: `1px solid ${colors.border}` }}>
+                      <div style={{ backgroundColor: 'var(--surface)', padding: '18px', borderTop: '1px solid var(--border)' }}>
                         <div
                           style={{
                             marginBottom: '20px',
                             padding: '12px',
-                            backgroundColor: colors.slate100,
+                            backgroundColor: 'var(--surface)',
                             borderRadius: '12px',
                             fontSize: '12px',
                           }}
                         >
-                          <p style={{ margin: '0 0 5px 0', fontWeight: '800', color: colors.secondaryText }}>ΣΤΟΙΧΕΙΑ ΠΛΗΡΩΜΗΣ</p>
+                          <p style={{ margin: '0 0 5px 0', fontWeight: '800', color: 'var(--muted)' }}>ΣΤΟΙΧΕΙΑ ΠΛΗΡΩΜΗΣ</p>
                           <p style={{ margin: 0, fontWeight: '700' }}>🏦 {emp.bank_name || 'Δεν ορίστηκε'}</p>
-                          <p style={{ margin: '3px 0 0 0', fontWeight: '600', color: colors.accentBlue, fontSize: '11px' }}>
+                          <p style={{ margin: '3px 0 0 0', fontWeight: '600', color: 'var(--muted)', fontSize: '11px' }}>
                             {emp.iban || 'Δεν ορίστηκε IBAN'}
                           </p>
                           {pendingOt > 0 && (
-                            <p style={{ margin: '8px 0 0 0', fontWeight: '800', color: '#c2410c', fontSize: '11px' }}>
+                            <p style={{ margin: '8px 0 0 0', fontWeight: '800', color: 'var(--muted)', fontSize: '11px' }}>
                               ⚠️ ΕΚΚΡΕΜΟΥΝ: {pendingOt} ώρες υπερωρίας
                             </p>
                           )}
@@ -1276,12 +1276,12 @@ function EmployeesContent() {
 
                         {pendingOtItems.length > 0 && (
                           <div style={pendingOtListWrap}>
-                            <p style={{ margin: '0 0 8px 0', fontWeight: 900, fontSize: '10px', color: colors.secondaryText }}>ΕΚΚΡΕΜΕΙΣ ΥΠΕΡΩΡΙΕΣ</p>
+                            <p style={{ margin: '0 0 8px 0', fontWeight: 900, fontSize: '10px', color: 'var(--muted)' }}>ΕΚΚΡΕΜΕΙΣ ΥΠΕΡΩΡΙΕΣ</p>
                             {pendingOtItems.map((ot) => (
                               <div key={ot.id} style={pendingOtRow}>
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                                  <span style={{ fontWeight: 800, fontSize: '11px', color: '#c2410c' }}>{Number(ot.hours).toFixed(2)} ώρες</span>
-                                  <span style={{ fontSize: '10px', color: colors.secondaryText, fontWeight: 700 }}>
+                                  <span style={{ fontWeight: 800, fontSize: '11px', color: 'var(--muted)' }}>{Number(ot.hours).toFixed(2)} ώρες</span>
+                                  <span style={{ fontSize: '10px', color: 'var(--muted)', fontWeight: 700 }}>
                                     {new Date(ot.date).toLocaleDateString('el-GR')}
                                   </span>
                                 </div>
