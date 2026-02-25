@@ -1450,8 +1450,8 @@ function EmployeesContent() {
 
 // --- STYLES ---
 const iphoneWrapper: any = {
-  backgroundColor: colors.bgLight,
-  minHeight: '100dvh',
+  background: 'var(--bg-grad)',
+  minHeight: '100vh',
   padding: '20px',
   overflowY: 'auto',
   position: 'absolute',
@@ -1474,7 +1474,7 @@ const logoBoxStyle: any = {
 
 const backBtnStyle: any = {
   textDecoration: 'none',
-  color: colors.secondaryText,
+  color: 'var(--muted)',
   fontSize: '18px',
   fontWeight: 'bold',
   width: '38px',
@@ -1482,9 +1482,9 @@ const backBtnStyle: any = {
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
-  backgroundColor: colors.white,
+  background: 'var(--surface)',
   borderRadius: '12px',
-  border: `1px solid ${colors.border}`,
+  border: '1px solid var(--border)',
 }
 
 const payBtnStyle: any = {
@@ -1513,12 +1513,12 @@ const addBtn: any = {
 const cancelBtn: any = { ...addBtn, backgroundColor: colors.white, color: colors.secondaryText, border: `1px solid ${colors.border}` }
 
 const formCard: any = {
-  backgroundColor: colors.white,
+  background: 'var(--surface)',
   padding: '24px',
   borderRadius: '24px',
-  border: '2px solid',
+  border: '1.5px solid var(--border)',
   marginBottom: '25px',
-  boxShadow: '0 4px 12px rgba(0,0,0,0.05)',
+  boxShadow: 'var(--shadow)',
 }
 
 const labelStyle: any = {
@@ -1609,11 +1609,12 @@ const saveBtnStyle: any = {
 }
 
 const employeeCard: any = {
-  backgroundColor: colors.white,
+  background: 'var(--surface)',
   borderRadius: '22px',
-  border: `1px solid ${colors.border}`,
+  border: '1px solid var(--border)',
   overflow: 'hidden',
   marginBottom: '12px',
+  boxShadow: 'var(--shadow)',
 }
 
 const badgeStyle: any = { fontSize: '9px', fontWeight: '700', padding: '4px 10px', borderRadius: '6px' }
@@ -1623,30 +1624,31 @@ const filterContainer: any = {
   gap: '8px',
   marginBottom: '15px',
   padding: '8px',
-  backgroundColor: colors.slate100,
+  background: 'var(--surface)',
   borderRadius: '12px',
+  boxShadow: 'var(--shadow)',
 }
 
 const filterSelect: any = {
   padding: '6px',
   borderRadius: '8px',
-  border: `1px solid ${colors.border}`,
-  backgroundColor: colors.white,
+  border: '1px solid var(--border)',
+  background: 'var(--surface)',
   fontSize: '12px',
   fontWeight: '800',
 }
 
 const statsGrid: any = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '25px' }
-const statBox: any = { padding: '15px', backgroundColor: colors.slate100, borderRadius: '16px', textAlign: 'center' }
-const statLabel: any = { margin: 0, fontSize: '8px', fontWeight: '800', color: colors.secondaryText }
-const statValue: any = { margin: '4px 0 0', fontSize: '16px', fontWeight: '900', color: colors.primaryDark }
+const statBox: any = { padding: '15px', background: 'var(--surface)', borderRadius: '16px', textAlign: 'center', boxShadow: 'var(--shadow)' }
+const statLabel: any = { margin: 0, fontSize: '8px', fontWeight: '800', color: 'var(--muted)' }
+const statValue: any = { margin: '4px 0 0', fontSize: '16px', fontWeight: '900', color: 'var(--text)' }
 
-const historyTitle: any = { fontSize: '9px', fontWeight: '800', color: colors.secondaryText, marginBottom: '12px', textTransform: 'uppercase' }
+const historyTitle: any = { fontSize: '9px', fontWeight: '800', color: 'var(--muted)', marginBottom: '12px', textTransform: 'uppercase' }
 const historyItemExtended: any = {
   padding: '12px',
   borderRadius: '14px',
-  border: `1px solid ${colors.border}`,
-  backgroundColor: colors.bgLight,
+  border: '1px solid var(--border)',
+  background: 'var(--surface)',
   marginBottom: '8px',
 }
 const transDeleteBtn: any = { background: 'none', border: 'none', cursor: 'pointer', fontSize: '12px', opacity: 0.5 }
