@@ -938,8 +938,8 @@ function DashboardContent() {
 }
 
 // --- STYLES ---
-const iphoneWrapper: any = {
-  backgroundColor: colors.bgLight,
+const iphoneWrapper = {
+  background: 'var(--bg-grad)',
   minHeight: '100%',
   width: '100%',
   padding: '20px',
@@ -1023,25 +1023,26 @@ const logoutBtnStyle: any = {
   cursor: 'pointer',
 }
 
-const dateCard: any = {
-  backgroundColor: colors.white,
+const dateCard = {
+  background: 'var(--surface)',
   padding: '10px',
   borderRadius: '16px',
   display: 'flex',
   justifyContent: 'space-between',
   alignItems: 'center',
   marginBottom: '25px',
-  border: `1px solid ${colors.border}`,
+  border: '1px solid var(--border)',
+  boxShadow: 'var(--shadow)',
 }
 const dateText = { fontSize: '13px', fontWeight: '800', color: colors.primaryDark, margin: 0 }
 const businessHint: any = { margin: '6px 0 0 0', fontSize: '10px', fontWeight: '800', color: colors.secondaryText, opacity: 0.9 }
 const dateNavBtn = { background: 'none', border: 'none', color: colors.secondaryText, cursor: 'pointer', display: 'flex', alignItems: 'center' }
 
-const heroCardStyle: any = {
-  background: colors.surfaceSolid,
+const heroCardStyle = {
+  background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
   padding: '30px 20px',
   borderRadius: '28px',
-  color: colors.primaryDark,
+  color: 'white',
   boxShadow: 'var(--shadow)',
   marginBottom: '30px',
   textAlign: 'center',
@@ -1104,7 +1105,16 @@ const zBtnStyle: any = { flex: 'unset', width: '100%', maxWidth: '260px' }
 
 const listContainer = { backgroundColor: 'transparent' }
 const listHeader = { fontSize: '11px', fontWeight: '900', color: colors.secondaryText, marginBottom: '15px', letterSpacing: '0.5px' }
-const txRow: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px', backgroundColor: colors.white, border: `1px solid ${colors.border}`, cursor: 'pointer' }
+const txRow = {
+  display: 'flex',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+  padding: '16px',
+  background: 'var(--surface)',
+  border: '1px solid var(--border)',
+  cursor: 'pointer',
+  boxShadow: 'var(--shadow)',
+}
 const txIconContainer = (isInc: boolean): any => ({
   width: '42px',
   height: '42px',
@@ -1120,7 +1130,17 @@ const txMeta = { fontSize: '11px', color: colors.secondaryText, margin: 0, fontW
 const txAmount = { fontWeight: '900', fontSize: '16px' }
 const creditBadgeStyle = { fontSize: '8px', marginLeft: '6px', color: colors.accentBlue, background: '#eef2ff', padding: '2px 5px', borderRadius: '4px' }
 
-const actionPanel: any = { display: 'flex', gap: '10px', padding: '15px', backgroundColor: colors.white, border: `1px solid ${colors.border}`, borderTop: 'none', borderRadius: '0 0 20px 20px', alignItems: 'stretch', flexWrap: 'wrap' }
+const actionPanel = {
+  display: 'flex',
+  gap: '10px',
+  padding: '15px',
+  background: 'var(--surface)',
+  border: '1px solid var(--border)',
+  borderTop: 'none',
+  borderRadius: '0 0 20px 20px',
+  alignItems: 'stretch',
+  flexWrap: 'wrap',
+}
 const editRowBtn: any = { flex: 1, padding: '10px', backgroundColor: colors.bgLight, color: colors.primaryDark, border: `1px solid ${colors.border}`, borderRadius: '10px', fontWeight: '700', fontSize: '12px', minWidth: '140px', cursor: 'pointer' }
 const deleteRowBtn: any = { flex: 1, padding: '10px', backgroundColor: '#fee2e2', color: colors.accentRed, border: 'none', borderRadius: '10px', fontWeight: '700', fontSize: '12px', minWidth: '120px', cursor: 'pointer' }
 
