@@ -9,13 +9,13 @@ import { toast, Toaster } from 'sonner'
 import { ArrowUpCircle } from 'lucide-react'
 
 const colors = {
-  primaryDark: 'var(--text)',
-  secondaryText: 'var(--muted)',
+  primaryDark: '#0f172a',
+  secondaryText: '#64748b',
   accentGreen: '#10b981',
   accentBlue: '#6366f1',
-  bgLight: 'var(--bg-grad)',
-  border: 'var(--border)',
-  white: 'var(--surface)',
+  bgLight: '#f8fafc',
+  border: '#e2e8f0',
+  white: '#ffffff',
   modalBackdrop: 'rgba(2,6,23,0.6)',
 }
 
@@ -114,7 +114,7 @@ type RevenueSource = {
   name: string
 }
 
-type PaymentMethod = 'Μετρητά' | 'Τράπεζα' | 'Κάρτα' | 'Πίστωση'
+type PaymentMethod = 'Μετρητά' | 'Τράπεζα' | 'Πίστωση'
 
 function parseAmount(input: string) {
   const s = String(input || '')
@@ -250,7 +250,7 @@ function AddIncomeForm() {
     } finally {
       setLoading(false)
     }
-  }, [editId, router, urlSourceId, mode, getActiveStoreId])
+  }, [editId, router, urlSourceId, mode, getActiveStoreId, supabase])
 
   useEffect(() => {
     loadFormData()
@@ -374,7 +374,8 @@ function AddIncomeForm() {
         .eq('id', session.user.id)
         .maybeSingle()
 
-      const createdByName = (prof?.username || session.user.email?.split('@')[0] || 'Χρήστης').trim()
+      // ✅ minimal fix: use currentUsername as fallback (no other behavior change)
+      const createdByName = (prof?.username || currentUsername || session.user.email?.split('@')[0] || 'Χρήστης').trim()
 
       const activeStoreId = getActiveStoreId()
       if (!activeStoreId) {
@@ -431,15 +432,6 @@ function AddIncomeForm() {
     return sourceMap.get(selectedSourceId)?.name || ''
   }, [sourceMap, selectedSourceId])
 
-  // ...existing code...
-  // Quick notes templates
-  const quickNotes = [
-    'ΑΠΟΔΕΙΞΗ',
-    'ΤΙΜΟΛΟΓΙΟ',
-    'ΧΩΡΙΣ ΤΙΜΟΛΟΓΙΟ',
-    'ΠΡΟΚΑΤΑΒΟΛΗ',
-  ]
-
   return (
     <div style={iphoneWrapper}>
       <Toaster position="top-center" richColors />
@@ -474,28 +466,26 @@ function AddIncomeForm() {
           <label style={labelStyle}>ΠΗΓΗ ΕΣΟΔΟΥ (AIRBNB, ΠΕΛΑΤΗΣ κλπ)</label>
 
           <div ref={smartBoxRef} style={{ position: 'relative' }}>
-            <div style={sourceSearchBox}>
-              <ArrowUpCircle size={20} color={colors.secondaryText} style={{ marginRight: 8, flexShrink: 0 }} />
-              <input
-                value={smartQuery}
-                onChange={(e) => {
-                  setSmartQuery(e.target.value)
-                  setSelectedSourceId('')
-                  setSmartOpen(true)
-                }}
-                onFocus={() => setSmartOpen(true)}
-                placeholder="Αναζήτηση πηγής"
-                style={sourceInput}
-                autoCapitalize="none"
-                autoCorrect="off"
-                spellCheck={false}
-              />
-              {!!smartQuery && (
-                <button type="button" onClick={clearSelection} style={clearBtn} aria-label="Καθαρισμός">
-                  ✕
-                </button>
-              )}
-            </div>
+            <input
+              value={smartQuery}
+              onChange={(e) => {
+                setSmartQuery(e.target.value)
+                setSelectedSourceId('')
+                setSmartOpen(true)
+              }}
+              onFocus={() => setSmartOpen(true)}
+              placeholder="Αναζήτηση πηγής"
+              style={inputStyle}
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
+            />
+
+            {!!smartQuery && (
+              <button type="button" onClick={clearSelection} style={clearBtn} aria-label="Καθαρισμός">
+                ✕
+              </button>
+            )}
 
             {smartOpen && smartQuery.trim() && (
               <div style={resultsPanel}>
@@ -514,7 +504,9 @@ function AddIncomeForm() {
                         <div style={{ fontSize: 15, fontWeight: 900, color: colors.primaryDark }}>
                           Δεν βρέθηκε: <span style={{ color: colors.accentBlue }}>{smartQuery.trim()}</span>
                         </div>
-                        <div style={{ fontSize: 12, fontWeight: 700, color: colors.secondaryText }}>Πάτα για καταχώρηση</div>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: colors.secondaryText }}>
+                          Πάτα για καταχώρηση
+                        </div>
                       </div>
                       <div style={plusPill}>＋</div>
                     </div>
@@ -582,8 +574,8 @@ function AddIncomeForm() {
               }}
               style={{
                 ...methodBtn,
-                backgroundColor: method === 'Μετρητά' && !isCredit ? colors.primaryDark : colors.white,
-                color: method === 'Μετρητά' && !isCredit ? 'var(--surface)' : colors.secondaryText,
+                backgroundColor: method === 'Μετρητά' && !isCredit ? colors.primaryDark : 'white',
+                color: method === 'Μετρητά' && !isCredit ? 'white' : colors.secondaryText,
               }}
             >
               💵 Μετρητά
@@ -597,26 +589,11 @@ function AddIncomeForm() {
               }}
               style={{
                 ...methodBtn,
-                backgroundColor: method === 'Τράπεζα' && !isCredit ? colors.primaryDark : colors.white,
-                color: method === 'Τράπεζα' && !isCredit ? 'var(--surface)' : colors.secondaryText,
+                backgroundColor: method === 'Τράπεζα' && !isCredit ? colors.primaryDark : 'white',
+                color: method === 'Τράπεζα' && !isCredit ? 'white' : colors.secondaryText,
               }}
             >
               🏛️ Τράπεζα
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                setMethod('Κάρτα')
-                setIsCredit(false)
-              }}
-              style={{
-                ...methodBtn,
-                backgroundColor: method === 'Κάρτα' && !isCredit ? colors.primaryDark : colors.white,
-                color: method === 'Κάρτα' && !isCredit ? 'var(--surface)' : colors.secondaryText,
-              }}
-            >
-              💳 Κάρτα
             </button>
           </div>
 
@@ -663,18 +640,6 @@ function AddIncomeForm() {
           </div>
 
           <label style={{ ...labelStyle, marginTop: 20 }}>ΣΗΜΕΙΩΣΕΙΣ</label>
-          <div style={quickNotesBox}>
-            {quickNotes.map((note) => (
-              <button
-                key={note}
-                type="button"
-                style={quickNoteChip}
-                onClick={() => setNotes(note)}
-              >
-                {note}
-              </button>
-            ))}
-          </div>
           <textarea
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
@@ -751,47 +716,6 @@ function AddIncomeForm() {
 }
 
 // ---------- Styles ----------
-// ---------- Styles ----------
-const sourceSearchBox: any = {
-  display: 'flex',
-  alignItems: 'center',
-  backgroundColor: colors.white,
-  border: `2px solid ${colors.border}`,
-  boxShadow: 'var(--shadow)',
-  borderRadius: 14,
-  padding: '0 12px',
-  marginBottom: 8,
-  minHeight: 48,
-  position: 'relative',
-}
-const sourceInput: any = {
-  flex: 1,
-  border: 'none',
-  outline: 'none',
-  backgroundColor: 'transparent',
-  color: colors.primaryDark,
-  fontSize: 16,
-  fontWeight: 700,
-  padding: '14px 0',
-}
-const quickNotesBox: any = {
-  display: 'flex',
-  gap: 8,
-  marginBottom: 8,
-  marginTop: 8,
-}
-const quickNoteChip: any = {
-  padding: '6px 14px',
-  borderRadius: 999,
-  backgroundColor: colors.white,
-  border: `1px solid ${colors.border}`,
-  color: colors.secondaryText,
-  fontWeight: 900,
-  fontSize: 13,
-  boxShadow: 'var(--shadow)',
-  cursor: 'pointer',
-  transition: 'background 0.2s',
-}
 const iphoneWrapper: any = {
   backgroundColor: colors.bgLight,
   minHeight: '100dvh',
@@ -824,7 +748,7 @@ const backBtnStyle: any = {
   textDecoration: 'none',
   color: colors.secondaryText,
   padding: '10px 12px',
-  backgroundColor: colors.white,
+  backgroundColor: 'white',
   borderRadius: 10,
   border: `1px solid ${colors.border}`,
   fontSize: 16,
@@ -841,11 +765,11 @@ const headerBadge: any = {
   border: '1px solid rgba(255,255,255,0.25)',
 }
 const formCard: any = {
-  backgroundColor: colors.white,
+  backgroundColor: 'white',
   padding: 20,
   borderRadius: 24,
   border: `1px solid ${colors.border}`,
-  boxShadow: 'var(--shadow)',
+  boxShadow: '0 4px 12px rgba(0,0,0,0.03)',
 }
 const labelStyle: any = {
   fontSize: 16,
@@ -861,8 +785,7 @@ const inputStyle: any = {
   border: `1px solid ${colors.border}`,
   fontSize: 16,
   fontWeight: 700,
-  backgroundColor: colors.white,
-  color: colors.primaryDark,
+  backgroundColor: colors.bgLight,
   boxSizing: 'border-box',
 }
 const amountInput: any = { ...inputStyle, fontSize: '24px', color: colors.accentGreen }
@@ -874,11 +797,9 @@ const methodBtn: any = {
   cursor: 'pointer',
   fontWeight: 900,
   fontSize: 16,
-  backgroundColor: colors.white,
-  color: colors.primaryDark,
 }
 const creditPanel: any = {
-  backgroundColor: colors.white,
+  backgroundColor: colors.bgLight,
   padding: 16,
   borderRadius: 14,
   border: `1px solid ${colors.border}`,
@@ -889,11 +810,11 @@ const checkLabel: any = { fontSize: 16, fontWeight: 900, color: colors.primaryDa
 const smartSaveBtn: any = {
   width: '100%',
   padding: 18,
-  color: 'var(--surface)',
+  color: 'white',
   border: 'none',
   borderRadius: 16,
   cursor: 'pointer',
-  boxShadow: 'var(--shadow)',
+  boxShadow: '0 4px 12px rgba(16, 185, 129, 0.2)',
 }
 
 const clearBtn: any = {
@@ -922,7 +843,7 @@ const resultsPanel: any = {
   background: colors.white,
   maxHeight: 360,
   overflowY: 'auto',
-  boxShadow: 'var(--shadow)',
+  boxShadow: '0 10px 30px rgba(0,0,0,0.12)',
 }
 
 const resultRow: any = {
@@ -938,7 +859,7 @@ const resultRow: any = {
 const createRow: any = {
   width: '100%',
   border: 'none',
-  background: colors.white,
+  background: '#eef2ff',
   padding: 12,
   textAlign: 'left',
   cursor: 'pointer',
@@ -950,7 +871,7 @@ const plusPill: any = {
   height: 34,
   borderRadius: 999,
   backgroundColor: colors.accentBlue,
-  color: 'var(--surface)',
+  color: 'white',
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
@@ -963,11 +884,11 @@ const selectedBox: any = {
   marginTop: 12,
   padding: 12,
   borderRadius: 12,
-  backgroundColor: colors.white,
+  backgroundColor: colors.bgLight,
   border: `1px solid ${colors.border}`,
   fontSize: 14,
   fontWeight: 700,
-  color: colors.primaryDark,
+  color: colors.accentGreen,
 }
 
 const modalOverlay: any = {
@@ -988,7 +909,7 @@ const modalCard: any = {
   borderRadius: 18,
   border: `1px solid ${colors.border}`,
   padding: 16,
-  boxShadow: 'var(--shadow)',
+  boxShadow: '0 20px 60px rgba(0,0,0,0.25)',
 }
 
 const modalCloseBtn: any = {
@@ -1019,15 +940,14 @@ const modalInput: any = {
   fontSize: 14,
   fontWeight: 700,
   boxSizing: 'border-box',
-  backgroundColor: colors.white,
-  color: colors.primaryDark,
+  background: colors.white,
 }
 
 const modalSecondaryBtn: any = {
   flex: 1,
   borderRadius: 12,
   border: `1px solid ${colors.border}`,
-  backgroundColor: colors.white,
+  background: colors.white,
   padding: 12,
   fontWeight: 900,
   cursor: 'pointer',
@@ -1037,8 +957,8 @@ const modalPrimaryBtn: any = {
   flex: 1,
   borderRadius: 12,
   border: 'none',
-  backgroundColor: colors.accentGreen,
-  color: 'var(--surface)',
+  background: colors.accentGreen,
+  color: 'white',
   padding: 12,
   fontWeight: 900,
   cursor: 'pointer',

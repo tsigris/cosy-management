@@ -854,17 +854,6 @@ function AnalysisContent() {
 
     return { loanOut, loanIn, settlementOut }
   }, [periodTx, isCreditTx])
-    // KPI: Expenses without invoice (notes === 'ΧΩΡΙΣ ΤΙΜΟΛΟΓΙΟ')
-    const expensesWithoutInvoice = useMemo(() => {
-      return periodTx
-        .filter(
-          (t) =>
-            !isCreditTx(t) &&
-            (t.type === 'expense' || t.type === 'debt_payment') &&
-            String(t.notes || '').trim() === 'ΧΩΡΙΣ ΤΙΜΟΛΟΓΙΟ'
-        )
-        .reduce((acc, t) => acc + Math.abs(Number(t.amount) || 0), 0)
-    }, [periodTx, isCreditTx])
 
   /* ---------------- SIMPLE/PRO: TRANSACTION SEARCH (paged) ---------------- */
 
@@ -1300,12 +1289,6 @@ function AnalysisContent() {
                   {drawer ? `Z: ${moneyGR(drawer.z_cash)} • Χωρίς Σήμανση: ${moneyGR(drawer.extra_cash)}` : ''}
                 </div>
               </div>
-                {/* New KPI: Expenses without invoice */}
-                <div className="print-card" style={{ ...smallKpiCard, border: '1px solid rgba(16,185,129,0.25)', background: 'linear-gradient(180deg, #f0fdf4, #ffffff)' }}>
-                  <div style={smallKpiLabel}>Έξοδα χωρίς τιμολόγιο</div>
-                  <div style={smallKpiValue}>{moneyGR(expensesWithoutInvoice)}</div>
-                  <div style={smallKpiHint}>notes === 'ΧΩΡΙΣ ΤΙΜΟΛΟΓΙΟ'</div>
-                </div>
             </>
           )}
         </div>
@@ -1800,10 +1783,10 @@ function AnalysisContent() {
 /* ---------------- STYLES ---------------- */
 
 const iphoneWrapper: any = {
-  background: 'var(--bg-grad)',
-  minHeight: '100vh',
-  padding: 20,
-  paddingBottom: 120,
+  background:
+    'radial-gradient(1200px 600px at 20% -10%, #eef2ff 0%, rgba(238,242,255,0) 55%), radial-gradient(1200px 600px at 90% 0%, #ecfdf5 0%, rgba(236,253,245,0) 55%), #f8fafc',
+  minHeight: '100%',
+  padding: 18,
   position: 'absolute',
   top: 0,
   left: 0,
@@ -1821,10 +1804,10 @@ const headerCard: any = {
   alignItems: 'center',
   padding: 16,
   borderRadius: 26,
-  border: '1px solid var(--border)',
-  background: 'var(--surface)',
+  border: `1px solid ${colors.border}`,
+  background: 'rgba(255,255,255,0.92)',
   backdropFilter: 'blur(10px)',
-  boxShadow: 'var(--shadow)',
+  boxShadow: '0 18px 34px rgba(15,23,42,0.08)',
 }
 
 const headerIconBox: any = {
@@ -1873,9 +1856,9 @@ const filterCard: any = {
   marginTop: 12,
   padding: 14,
   borderRadius: 26,
-  border: '1px solid var(--border)',
-  background: 'var(--surface)',
-  boxShadow: 'var(--shadow)',
+  border: `1px solid ${colors.border}`,
+  background: 'rgba(255,255,255,0.9)',
+  boxShadow: '0 14px 26px rgba(15,23,42,0.06)',
 }
 
 const filtersStack: any = { display: 'flex', flexDirection: 'column', gap: 12 }
@@ -1925,7 +1908,7 @@ const tileControl: any = {
 const rangeHint: any = { marginTop: 2, fontSize: 13, fontWeight: 850, color: colors.secondary }
 
 const kpiGrid: any = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 14 }
-const kpiCard: any = { borderRadius: 22, border: '1px solid var(--border)', padding: 14, background: 'var(--surface)', boxShadow: 'var(--shadow)', overflow: 'hidden' }
+const kpiCard: any = { borderRadius: 22, border: `1px solid ${colors.border}`, padding: 14, background: '#fff', boxShadow: '0 12px 22px rgba(15,23,42,0.06)', overflow: 'hidden' }
 const kpiTopRow: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }
 const kpiLabel: any = { fontSize: 14, fontWeight: 950 }
 const kpiSign: any = { fontSize: 16, fontWeight: 950 }
@@ -1935,12 +1918,12 @@ const kpiTrack: any = { marginTop: 12, height: 8, borderRadius: 999, background:
 const kpiFill: any = { height: 8, borderRadius: 999 }
 
 const balancesGrid: any = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 12 }
-const smallKpiCard: any = { background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 18, padding: 14, boxShadow: 'var(--shadow)' }
-const smallKpiLabel: any = { fontSize: 12, fontWeight: 900, color: 'var(--muted)', letterSpacing: 0.4, textTransform: 'uppercase' }
+const smallKpiCard: any = { background: '#ffffff', border: '1px solid rgba(15, 23, 42, 0.08)', borderRadius: 18, padding: 14, boxShadow: '0 10px 24px rgba(15, 23, 42, 0.06)' }
+const smallKpiLabel: any = { fontSize: 12, fontWeight: 900, color: '#64748b', letterSpacing: 0.4, textTransform: 'uppercase' }
 const smallKpiValue: any = { fontSize: 20, fontWeight: 1000, color: '#0f172a', marginTop: 8 }
 const smallKpiHint: any = { fontSize: 12, color: '#94a3b8', marginTop: 6, fontWeight: 700 }
 
-const sectionCard: any = { marginTop: 14, borderRadius: 26, border: '1px solid var(--border)', padding: 16, background: 'var(--surface)', boxShadow: 'var(--shadow)' }
+const sectionCard: any = { marginTop: 14, borderRadius: 26, border: `1px solid ${colors.border}`, padding: 16, background: 'rgba(255,255,255,0.92)', boxShadow: '0 14px 26px rgba(15,23,42,0.06)' }
 const sectionTitleRow: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, marginBottom: 12 }
 const sectionTitle: any = { margin: 0, fontSize: 18, fontWeight: 950, color: colors.primary }
 const sectionSub: any = { marginTop: 4, fontSize: 12, fontWeight: 850, color: colors.secondary }
@@ -1989,9 +1972,9 @@ const navBtn: any = {
   width: '100%',
   padding: 14,
   borderRadius: 14,
-  background: 'var(--surfaceSolid)',
-  color: 'var(--text)',
-  border: '1px solid var(--border)',
+  background: '#fff',
+  color: colors.primary,
+  border: `1px solid ${colors.border}`,
   fontWeight: 950,
   cursor: 'pointer',
   display: 'inline-flex',
