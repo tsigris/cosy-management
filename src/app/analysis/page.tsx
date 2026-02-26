@@ -484,16 +484,19 @@ function AnalysisContent() {
     return null
   }, [])
 
+  // Organic transactions: exclude 'Μεταφορά Κεφαλαίου' for stats/charts
   const periodTx = useMemo(() => transactions.filter((t) => t.date >= startDate && t.date <= endDate), [transactions, startDate, endDate])
+  const organicTransactions = useMemo(() => periodTx.filter(t => t.category !== 'Μεταφορά Κεφαλαίου'), [periodTx])
 
   const prevPeriodTx = useMemo(() => {
     const { prevStart, prevEnd } = getPrevRange()
     return prevTransactions.filter((t) => t.date >= prevStart && t.date <= prevEnd)
   }, [prevTransactions, getPrevRange])
 
+  // Use organicTransactions for stats/charts, but not for the transaction list
   const filteredTx = useMemo(() => {
     const key = filterAToKey(filterA)
-    return periodTx.filter((t) => {
+    return organicTransactions.filter((t) => {
       if (filterA === 'Έσοδα' && !['income', 'income_collection', 'debt_received'].includes(t.type)) return false
       if (filterA !== 'Όλες' && filterA !== 'Έσοδα' && normalizeExpenseCategory(t) !== key) return false
 
@@ -504,7 +507,7 @@ function AnalysisContent() {
 
       return true
     })
-  }, [periodTx, filterA, detailMode, detailId, filterAToKey, normalizeExpenseCategory])
+  }, [organicTransactions, filterA, detailMode, detailId, filterAToKey, normalizeExpenseCategory])
 
   /* ---------------- KPI / BALANCES ---------------- */
 
@@ -537,8 +540,10 @@ function AnalysisContent() {
     [isCreditTx]
   )
 
-  const kpis = useMemo(() => computeKpis(filteredTx), [filteredTx, computeKpis])
-  const kpisPrev = useMemo(() => computeKpis(prevPeriodTx), [prevPeriodTx, computeKpis])
+  // KPIs: use organicTransactions for current period, prevPeriodTx for previous (filtered for organic)
+  const kpis = useMemo(() => computeKpis(organicTransactions), [organicTransactions, computeKpis])
+  const prevOrganicTransactions = useMemo(() => prevPeriodTx.filter(t => t.category !== 'Μεταφορά Κεφαλαίου'), [prevPeriodTx])
+  const kpisPrev = useMemo(() => computeKpis(prevOrganicTransactions), [prevOrganicTransactions, computeKpis])
 
   const variance = useMemo(
     () => ({
@@ -975,8 +980,9 @@ function AnalysisContent() {
 
   /* ---------------- CATEGORY BREAKDOWN ---------------- */
 
+  // Pie/Bar charts: use organicTransactions
   const categoryBreakdown = useMemo(() => {
-    const expenseTx = filteredTx
+    const expenseTx = organicTransactions
       .filter((t) => t.type === 'expense' || t.type === 'debt_payment')
       .filter((t) => !isCreditTx(t))
 
@@ -992,7 +998,7 @@ function AnalysisContent() {
 
     for (const c of CATEGORY_META) result[c.key] = result[c.key] || 0
     return { result, total }
-  }, [filteredTx, normalizeExpenseCategory, isCreditTx])
+  }, [organicTransactions, normalizeExpenseCategory, isCreditTx])
 
   /* ---------------- STAFF PAYROLL (CURRENT MONTH) ---------------- */
 
