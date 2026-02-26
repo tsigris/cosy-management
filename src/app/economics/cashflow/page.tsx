@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState, type CSSProperties } from 'react'
+import { useEffect, useMemo, useState, type CSSProperties, useCallback } from 'react'
 import { useSearchParams } from 'next/navigation'
 import EconomicsTabs from '@/components/EconomicsTabs'
 import { getSupabase } from '@/lib/supabase'
@@ -22,6 +22,9 @@ type TxRow = {
 }
 
 type ThemeName = 'light' | 'dark'
+
+const INCOME_TYPES = new Set(['income', 'income_collection', 'debt_received'])
+const EXPENSE_TYPES = new Set(['expense', 'debt_payment'])
 
 function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n))
@@ -90,10 +93,7 @@ export default function EconomicsCashflowPage() {
     const isDark = theme === 'dark'
     return {
       isDark,
-      bg:
-        isDark
-          ? 'var(--bg-grad)'
-          : 'var(--bg-grad)',
+      bg: isDark ? 'var(--bg-grad)' : 'var(--bg-grad)',
       surface: isDark ? 'rgba(15,23,42,0.72)' : 'rgba(255,255,255,0.92)',
       card: isDark ? 'rgba(15,23,42,0.78)' : 'rgba(255,255,255,0.92)',
       solidCard: 'var(--surfaceSolid)',
@@ -125,6 +125,12 @@ export default function EconomicsCashflowPage() {
   const [filterType, setFilterType] = useState<'all' | 'income' | 'expense'>('all')
   const [filterCategory, setFilterCategory] = useState('')
   const [filterMethod, setFilterMethod] = useState('')
+
+  // Canonical transfer detection (safe greek substring + english)
+  const isTransfer = useCallback((r: TxRow) => {
+    const c = (r.category || '').toLowerCase()
+    return c.includes('μεταφορ') || c.includes('transfer')
+  }, [])
 
   // Load transactions (safe: store_id required)
   useEffect(() => {
@@ -188,8 +194,36 @@ export default function EconomicsCashflowPage() {
     }
   }, [storeId])
 
+  // Transfers + Organic split (canonical for SaaS)
+  const internalTransfers = useMemo(() => rows.filter(isTransfer), [rows, isTransfer])
+
+  const organicIncome = useMemo(
+    () => rows.filter((r) => INCOME_TYPES.has(r.type) && !isTransfer(r)),
+    [rows, isTransfer],
+  )
+
+  const organicExpense = useMemo(
+    () => rows.filter((r) => EXPENSE_TYPES.has(r.type) && !isTransfer(r)),
+    [rows, isTransfer],
+  )
+
+  const internalTransfersIn = useMemo(
+    () => internalTransfers.filter((r) => r.amount > 0).reduce((a, r) => a + r.amount, 0),
+    [internalTransfers],
+  )
+
+  const internalTransfersOut = useMemo(
+    () => internalTransfers.filter((r) => r.amount < 0).reduce((a, r) => a + r.amount, 0),
+    [internalTransfers],
+  )
+
+  const internalTransfersTotal = useMemo(() => internalTransfers.reduce((a, r) => a + r.amount, 0), [internalTransfers])
+
   const amountFormatter = useMemo(() => new Intl.NumberFormat('el-GR', { style: 'currency', currency: 'EUR' }), [])
-  const dateFormatter = useMemo(() => new Intl.DateTimeFormat('el-GR', { day: '2-digit', month: '2-digit', year: 'numeric' }), [])
+  const dateFormatter = useMemo(
+    () => new Intl.DateTimeFormat('el-GR', { day: '2-digit', month: '2-digit', year: 'numeric' }),
+    [],
+  )
 
   const formatDate = (dateValue: string) => {
     const [year, month, day] = (dateValue || '').split('-').map(Number)
@@ -197,12 +231,8 @@ export default function EconomicsCashflowPage() {
     return dateFormatter.format(new Date(year, month - 1, day))
   }
 
-  // NOTE: We mirror the Dashboard idea of "income vs expense" using known types.
-  // If your app uses extra types, tell me and I’ll align exactly to your canonical list.
+  // KPI (canonical, consistent across stores)
   const KPI = useMemo(() => {
-    const INCOME_TYPES = new Set(['income', 'income_collection', 'debt_received'])
-    const EXPENSE_TYPES = new Set(['expense', 'debt_payment'])
-
     const now = new Date()
     const monthStart = startOfMonthStr(now)
     const monthEnd = endOfMonthStr(now)
@@ -218,22 +248,18 @@ export default function EconomicsCashflowPage() {
       const abs = Math.abs(amt)
       const isInMonth = r.date >= monthStart && r.date <= monthEnd
 
-      // Available balance (best-effort): incomes minus (cash expenses + debt payment)
+      // Available balance (best-effort): incomes - expenses
       if (INCOME_TYPES.has(r.type)) {
         availableBalance += amt
         if (isInMonth) monthIncome += amt
       } else if (EXPENSE_TYPES.has(r.type)) {
-        // dashboard treated expenses as absolute; here we assume amount may be negative or positive, so normalize.
-        // We reduce balance by abs for expenses.
         availableBalance -= abs
         if (isInMonth) monthExpense += abs
-      } else {
-        // Unknown types: do nothing (safer than guessing).
       }
 
-      // Expected income & scheduled expenses via is_credit flag
-      if (r.is_credit === true && r.type === 'income') expectedIncome += abs
-      if (r.is_credit === true && r.type === 'expense') scheduledExpense += abs
+      // Expected/scheduled via credit flag
+      if (r.is_credit === true && INCOME_TYPES.has(r.type)) expectedIncome += abs
+      if (r.is_credit === true && EXPENSE_TYPES.has(r.type)) scheduledExpense += abs
     }
 
     const netMonth = monthIncome - monthExpense
@@ -252,9 +278,6 @@ export default function EconomicsCashflowPage() {
 
   // Chart data: last 6 months + optional future 3 months
   const chart = useMemo(() => {
-    const INCOME_TYPES = new Set(['income', 'income_collection', 'debt_received'])
-    const EXPENSE_TYPES = new Set(['expense', 'debt_payment'])
-
     // determine last 6 months keys
     const base = new Date()
     base.setDate(1)
@@ -264,8 +287,8 @@ export default function EconomicsCashflowPage() {
       months.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`)
     }
 
-    const incomeBy = Object.fromEntries(months.map((m) => [m, 0]))
-    const expenseBy = Object.fromEntries(months.map((m) => [m, 0]))
+    const incomeBy: Record<string, number> = Object.fromEntries(months.map((m) => [m, 0]))
+    const expenseBy: Record<string, number> = Object.fromEntries(months.map((m) => [m, 0]))
 
     for (const r of rows) {
       const key = ymKey(r.date)
@@ -354,7 +377,11 @@ export default function EconomicsCashflowPage() {
 
     return rows.filter((r) => {
       if (r.date < from || r.date > to) return false
-      if (filterType !== 'all' && r.type !== filterType) return false
+
+      // ✅ Canonical filter: income = INCOME_TYPES, expense = EXPENSE_TYPES
+      if (filterType === 'income' && !INCOME_TYPES.has(r.type)) return false
+      if (filterType === 'expense' && !EXPENSE_TYPES.has(r.type)) return false
+
       if (cat && String(r.category || '').toLowerCase() !== cat.toLowerCase()) return false
       if (met && String(r.method || '').toLowerCase() !== met.toLowerCase()) return false
       return true
@@ -368,6 +395,7 @@ export default function EconomicsCashflowPage() {
     // - overdue: credit + past date
     const isCredit = r.is_credit === true
     if (!isCredit) return { label: 'Εξοφλημένη', tone: 'ok' as const }
+
     const dOk = !!r.date && /^\d{4}-\d{2}-\d{2}$/.test(r.date)
     if (dOk) {
       const [y, m, da] = r.date.split('-').map(Number)
@@ -473,14 +501,47 @@ export default function EconomicsCashflowPage() {
             <div
               style={{
                 ...styles.kpiValue,
-                color: KPI.netMonth >= 0 ? t.green : t.red,
+                color: KPI.netMonth + internalTransfersTotal >= 0 ? t.green : t.red,
               }}
             >
-              {loading ? '—' : amountFormatter.format(KPI.netMonth)}
+              {loading ? '—' : amountFormatter.format(KPI.netMonth + internalTransfersTotal)}
             </div>
             <div style={styles.kpiHint}>
-              {KPI.monthStart} → {KPI.monthEnd}
+              {KPI.monthStart} → {KPI.monthEnd} (incl. transfers)
             </div>
+          </div>
+
+          {/* Νέα κάρτα: Εσωτερικές Μεταφορές */}
+          <div
+            style={{
+              ...styles.kpiCard,
+              border: `2px dashed ${t.indigo}`,
+              background: t.isDark ? 'rgba(99,102,241,0.10)' : 'rgba(99,102,241,0.07)',
+            }}
+          >
+            <div style={{ ...styles.kpiLabel, color: t.indigo }}>Εσωτερικές Μεταφορές</div>
+            <div style={{ ...styles.kpiValue, color: t.indigo }}>{loading ? '—' : amountFormatter.format(internalTransfersTotal)}</div>
+            <div style={styles.kpiHint}>
+              Εισροές: <span style={{ color: t.green }}>{amountFormatter.format(internalTransfersIn)}</span> • Εκροές:{' '}
+              <span style={{ color: t.red }}>{amountFormatter.format(Math.abs(internalTransfersOut))}</span>
+            </div>
+          </div>
+
+          {/* Οργανικά Έσοδα/Έξοδα */}
+          <div style={styles.kpiCard}>
+            <div style={styles.kpiLabel}>Οργανικά Έσοδα</div>
+            <div style={{ ...styles.kpiValue, color: t.green }}>
+              {loading ? '—' : amountFormatter.format(organicIncome.reduce((a, r) => a + r.amount, 0))}
+            </div>
+            <div style={styles.kpiHint}>Χωρίς Μεταφορές Κεφαλαίου</div>
+          </div>
+
+          <div style={styles.kpiCard}>
+            <div style={styles.kpiLabel}>Οργανικά Έξοδα</div>
+            <div style={{ ...styles.kpiValue, color: t.red }}>
+              {loading ? '—' : amountFormatter.format(organicExpense.reduce((a, r) => a + Math.abs(r.amount), 0))}
+            </div>
+            <div style={styles.kpiHint}>Χωρίς Μεταφορές Κεφαλαίου</div>
           </div>
         </section>
 
@@ -520,7 +581,14 @@ export default function EconomicsCashflowPage() {
             <div style={styles.chartScroller}>
               <svg width={chartWidth} height={chartHeight} style={{ display: 'block' }}>
                 {/* baseline */}
-                <line x1={paddingX} y1={paddingY + innerH} x2={paddingX + innerW} y2={paddingY + innerH} stroke={t.border} strokeWidth="1" />
+                <line
+                  x1={paddingX}
+                  y1={paddingY + innerH}
+                  x2={paddingX + innerW}
+                  y2={paddingY + innerH}
+                  stroke={t.border}
+                  strokeWidth="1"
+                />
 
                 {/* bars */}
                 {chart.data.map((p, idx) => {
@@ -538,24 +606,8 @@ export default function EconomicsCashflowPage() {
 
                   return (
                     <g key={p.ym}>
-                      <rect
-                        x={incomeX}
-                        y={yIncome}
-                        width={barW}
-                        height={incomeH}
-                        rx="6"
-                        fill={t.green}
-                        opacity={isProj ? 0.25 : 0.85}
-                      />
-                      <rect
-                        x={expenseX}
-                        y={yExpense}
-                        width={barW}
-                        height={expenseH}
-                        rx="6"
-                        fill={t.red}
-                        opacity={isProj ? 0.25 : 0.85}
-                      />
+                      <rect x={incomeX} y={yIncome} width={barW} height={incomeH} rx="6" fill={t.green} opacity={isProj ? 0.25 : 0.85} />
+                      <rect x={expenseX} y={yExpense} width={barW} height={expenseH} rx="6" fill={t.red} opacity={isProj ? 0.25 : 0.85} />
                     </g>
                   )
                 })}
@@ -571,14 +623,7 @@ export default function EconomicsCashflowPage() {
                   return (
                     <g key={`${p.ym}-pt`}>
                       <circle cx={x} cy={y} r={isProj ? 3 : 3.5} fill={t.indigo} opacity={isProj ? 0.35 : 0.95} />
-                      <text
-                        x={x}
-                        y={chartHeight - 6}
-                        textAnchor="middle"
-                        fontSize="11"
-                        fontWeight="800"
-                        fill={t.muted}
-                      >
+                      <text x={x} y={chartHeight - 6} textAnchor="middle" fontSize="11" fontWeight="800" fill={t.muted}>
                         {prettyMonthLabel(p.ym)}
                       </text>
                     </g>
@@ -661,7 +706,6 @@ export default function EconomicsCashflowPage() {
 
           {loading && <p style={styles.mutedText}>Φόρτωση κινήσεων...</p>}
           {!loading && errorMessage && <p style={styles.errorText}>{errorMessage}</p>}
-
           {!loading && !errorMessage && filteredLedger.length === 0 && <p style={styles.mutedText}>Δεν υπάρχουν κινήσεις με αυτά τα φίλτρα.</p>}
 
           {!loading && !errorMessage && filteredLedger.length > 0 && (
@@ -678,27 +722,60 @@ export default function EconomicsCashflowPage() {
 
                 {filteredLedger.map((r) => {
                   const st = statusOf(r)
-                  const isIncome = r.type === 'income'
+                  const transferRow = isTransfer(r)
+
+                  const isIncome = INCOME_TYPES.has(r.type)
+                  const isExpense = EXPENSE_TYPES.has(r.type)
+
                   const amt = Number(r.amount) || 0
                   const abs = Math.abs(amt)
-                  const sign = isIncome ? '+' : '-'
+
+                  const sign = transferRow ? (amt >= 0 ? '+' : '-') : isIncome ? '+' : isExpense ? '-' : amt >= 0 ? '+' : '-'
 
                   return (
-                    <div key={r.id} style={styles.tr}>
+                    <div
+                      key={r.id}
+                      style={{
+                        ...styles.tr,
+                        ...(transferRow
+                          ? {
+                              borderLeft: `6px solid ${t.indigo}`,
+                              background: t.isDark ? 'rgba(99,102,241,0.13)' : 'rgba(99,102,241,0.08)',
+                            }
+                          : {}),
+                      }}
+                    >
                       <div style={styles.td}>{formatDate(r.date)}</div>
+
                       <div style={styles.td}>
-                        <span style={{ ...styles.typePill, borderColor: isIncome ? t.green : t.red, color: isIncome ? t.green : t.red }}>
-                          {isIncome ? 'Έσοδο' : 'Έξοδο'}
-                        </span>
+                        {transferRow ? (
+                          <span
+                            style={{
+                              ...styles.typePill,
+                              borderColor: t.indigo,
+                              color: t.indigo,
+                              background: t.isDark ? 'rgba(99,102,241,0.18)' : 'rgba(99,102,241,0.10)',
+                            }}
+                          >
+                            🔄 Transfer
+                          </span>
+                        ) : (
+                          <span style={{ ...styles.typePill, borderColor: isIncome ? t.green : t.red, color: isIncome ? t.green : t.red }}>
+                            {isIncome ? 'Income' : 'Expense'}
+                          </span>
+                        )}
                       </div>
+
                       <div style={styles.td}>{r.category || '—'}</div>
                       <div style={styles.td}>{r.method || '—'}</div>
+
                       <div style={styles.tdRight}>
-                        <span style={{ fontWeight: 900, color: isIncome ? t.green : t.red }}>
+                        <span style={{ fontWeight: 900, color: transferRow ? t.indigo : isIncome ? t.green : t.red }}>
                           {sign}
                           {amountFormatter.format(abs)}
                         </span>
                       </div>
+
                       <div style={styles.td}>
                         <span
                           style={{
@@ -843,9 +920,26 @@ function makeStyles(t: {
 
   const chartWrap: CSSProperties = { marginTop: 12 }
   const chartLegend: CSSProperties = { display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }
-  const legendPill: CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 8, borderRadius: 999, border: `1px solid ${t.border}`, padding: '6px 10px', fontSize: 11, fontWeight: 900, color: t.muted, background: t.solidCard }
+  const legendPill: CSSProperties = {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 8,
+    borderRadius: 999,
+    border: `1px solid ${t.border}`,
+    padding: '6px 10px',
+    fontSize: 11,
+    fontWeight: 900,
+    color: t.muted,
+    background: t.solidCard,
+  }
   const legendDot: CSSProperties = { width: 10, height: 10, borderRadius: 999 }
-  const chartScroller: CSSProperties = { overflowX: 'auto', WebkitOverflowScrolling: 'touch', borderRadius: 18, border: `1px solid ${t.border}`, background: t.solidCard }
+  const chartScroller: CSSProperties = {
+    overflowX: 'auto',
+    WebkitOverflowScrolling: 'touch',
+    borderRadius: 18,
+    border: `1px solid ${t.border}`,
+    background: t.solidCard,
+  }
 
   const projectionHint: CSSProperties = { marginTop: 12, color: t.muted, fontSize: 12, fontWeight: 800 }
 
@@ -908,20 +1002,45 @@ function makeStyles(t: {
     alignItems: 'center',
   }
 
-  const td: CSSProperties = { fontSize: 12, fontWeight: 800, color: t.text, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }
+  const td: CSSProperties = {
+    fontSize: 12,
+    fontWeight: 800,
+    color: t.text,
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  }
   const tdRight: CSSProperties = { ...td, textAlign: 'right' }
 
-  const typePill: CSSProperties = { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: 999, border: `1px solid var(--border)`, padding: '6px 10px', fontSize: 11, fontWeight: 900, background: 'var(--surfaceSolid)' }
+  const typePill: CSSProperties = {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 999,
+    border: `1px solid var(--border)`,
+    padding: '6px 10px',
+    fontSize: 11,
+    fontWeight: 900,
+    background: 'var(--surfaceSolid)',
+  }
 
-  const statusPill: CSSProperties = { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: 999, border: `1px solid var(--border)`, padding: '6px 10px', fontSize: 11, fontWeight: 900, background: 'var(--surfaceSolid)' }
+  const statusPill: CSSProperties = {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 999,
+    border: `1px solid var(--border)`,
+    padding: '6px 10px',
+    fontSize: 11,
+    fontWeight: 900,
+    background: 'var(--surfaceSolid)',
+  }
   const statusOk: CSSProperties = { borderColor: 'rgba(16,185,129,0.45)', color: t.green }
   const statusWarn: CSSProperties = { borderColor: 'rgba(245,158,11,0.55)', color: t.amber }
   const statusBad: CSSProperties = { borderColor: 'rgba(244,63,94,0.55)', color: t.red }
 
   // Responsive tweaks (inline-style only approach)
-  // We keep it simple: on small screens, the KPI grid collapses to 2 columns
-  // without relying on CSS media queries (since we’re in inline styles).
-  // This is best-effort; if you want perfect responsiveness, we can move to CSS/Tailwind later.
   if (typeof window !== 'undefined') {
     const w = window.innerWidth
     if (w < 880) {
@@ -929,7 +1048,6 @@ function makeStyles(t: {
       ;(filtersWrap as any).gridTemplateColumns = 'repeat(2, minmax(0, 1fr))'
       ;(thead as any).gridTemplateColumns = '110px 90px 1fr 120px'
       ;(tr as any).gridTemplateColumns = '110px 90px 1fr 120px'
-      // hide some columns by letting text overflow; still readable
     }
   }
 
