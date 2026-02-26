@@ -11,13 +11,16 @@ import TransferFundsModal from '@/components/TransferFundsModal'
 
 function SelectStorePage() {
   const supabase = getSupabase()
+
   const [userStores, setUserStores] = useState<StoreCard[]>([])
-    const [showTransferModal, setShowTransferModal] = useState(false)
-    const [transferLoading, setTransferLoading] = useState(false)
+  const [showTransferModal, setShowTransferModal] = useState(false)
+  const [transferLoading, setTransferLoading] = useState(false)
+
   const [loading, setLoading] = useState(true)
   const [isRetrying, setIsRetrying] = useState(false)
   const [showRetryButton, setShowRetryButton] = useState(false)
   const [retryNonce, setRetryNonce] = useState(0)
+
   const hasAutoRedirected = useRef(false)
   const router = useRouter()
 
@@ -111,15 +114,21 @@ function SelectStorePage() {
         return
       }
 
-     // 2) Φέρνουμε stores (με retry για RLS/replication delay)
-let stores = await fetchStoresForUser(session.user.id)
+      if (!session?.user?.id) {
+        toast.error('Δεν βρέθηκε ενεργός χρήστης. Επιστροφή στο Login.')
+        router.replace('/login')
+        return
+      }
 
-// Αν δεν βρει τίποτα, κάνουμε ένα μικρό retry μετά από λίγο
-if (!stores || stores.length === 0) {
-  setIsRetrying(true)
-  await new Promise((r) => setTimeout(r, 1200))
-  stores = await fetchStoresForUser(session.user.id)
-}
+      // 2) Φέρνουμε stores (με retry για RLS/replication delay)
+      let stores = await fetchStoresForUser(session.user.id)
+
+      // Αν δεν βρει τίποτα, κάνουμε ένα μικρό retry μετά από λίγο
+      if (!stores || stores.length === 0) {
+        setIsRetrying(true)
+        await new Promise((r) => setTimeout(r, 1200))
+        stores = await fetchStoresForUser(session.user.id)
+      }
 
       setUserStores(stores || [])
       setIsRetrying(false)
@@ -139,6 +148,7 @@ if (!stores || stores.length === 0) {
     void fetchStores()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router, maybeAutoRedirectSingleStore, retryNonce, supabase])
+
   // Μεταφορά Κεφαλαίου
   const handleTransferFunds = async (
     fromId: string,
@@ -303,7 +313,6 @@ if (!stores || stores.length === 0) {
         </button>
       )}
 
-
       <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
         <button
           onClick={() => setShowTransferModal(true)}
@@ -323,17 +332,16 @@ if (!stores || stores.length === 0) {
         >
           <ArrowLeftRight size={20} /> Μεταφορά Κεφαλαίου
         </button>
-        <button
-          onClick={() => router.push('/stores/new')}
-          style={{ ...addBtnStyle, width: '50%' }}
-        >
+
+        <button onClick={() => router.push('/stores/new')} style={{ ...addBtnStyle, width: '50%' }}>
           <Plus size={20} /> Προσθήκη Νέου Καταστήματος
         </button>
       </div>
+
       <TransferFundsModal
         open={showTransferModal}
         onClose={() => setShowTransferModal(false)}
-        stores={userStores.map(s => ({ id: s.id, name: s.name }))}
+        stores={userStores.map((s) => ({ id: s.id, name: s.name }))}
         onTransfer={async (fromId, toId, amount, description) =>
           handleTransferFunds(fromId, toId, amount, description, fetchStores)
         }
