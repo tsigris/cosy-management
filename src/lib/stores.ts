@@ -9,15 +9,7 @@ export type StoreCard = {
   lastUpdated?: string | null
 }
 
-/**
- * SAFE multi-tenant store list:
- * Reads ONLY stores the current authenticated user has access to
- * via view: public.v_my_store_stats (uses auth.uid()).
- *
- * Note: In Supabase SQL Editor this view may return 0 rows because auth.uid() is null there.
- * In the app (logged-in user) it works.
- */
-export async function fetchStoresForUser(_userId?: string): Promise<StoreCard[]> {
+export async function fetchStoresForUser(): Promise<StoreCard[]> {
   const supabase = getSupabase()
 
   const { data, error } = await supabase
@@ -26,7 +18,7 @@ export async function fetchStoresForUser(_userId?: string): Promise<StoreCard[]>
     .order('name')
 
   if (error) {
-    console.error('fetchStoresForUser (v_my_store_stats) error:', error)
+    console.error('fetchStoresForUser error:', error)
     throw error
   }
 
