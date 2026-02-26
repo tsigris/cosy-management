@@ -26,6 +26,10 @@ function RegisterForm() {
   const [emailConfirmationPending, setEmailConfirmationPending] = useState(false)
   const [resendLoading, setResendLoading] = useState(false)
 
+  /* ---------------- HELPERS ---------------- */
+
+  const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
+
   /* ---------------- RESEND EMAIL ---------------- */
 
   const handleResendConfirmationEmail = async () => {
@@ -67,7 +71,7 @@ function RegisterForm() {
       setLoading(true)
 
       // ✅ ΜΟΝΟ signup εδώ.
-      // Τα stores / store_access / profiles πλέον δημιουργούνται από DB trigger (handle_new_user).
+      // Τα stores / store_access / profiles δημιουργούνται από DB trigger (handle_new_user).
       const { data: authData, error: signUpError } = await supabase.auth.signUp({
         email: email.trim(),
         password, // ⚠️ no trim
@@ -104,12 +108,11 @@ function RegisterForm() {
 
       // ✅ Τώρα ο χρήστης είναι logged in.
       // Περιμένουμε λίγο να ολοκληρώσει ο trigger τη δημιουργία profile/store_access
-      // και μετά παίρνουμε store_id από profiles.
-      const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
-
+      // και μετά παίρνουμε store_id.
       let storeId: string | null = null
 
-      for (let i = 0; i < 8; i++) {
+      // 1) προσπάθησε από profiles.store_id (το πιο σωστό)
+      for (let i = 0; i < 10; i++) {
         const { data: profile, error: profileErr } = await supabase
           .from('profiles')
           .select('store_id')
@@ -124,18 +127,18 @@ function RegisterForm() {
         await wait(250)
       }
 
+      // 2) fallback: πάρε store από stores.owner_id (σίγουρο με βάση το trigger)
       if (!storeId) {
-        // fallback: αν δεν έχει περαστεί στο profile, δοκίμασε από store_access
-        for (let i = 0; i < 8; i++) {
-          const { data: sa, error: saErr } = await supabase
-            .from('store_access')
-            .select('store_id')
-            .eq('user_id', user.id)
-            .order('created_at', { ascending: false })
+        for (let i = 0; i < 10; i++) {
+          const { data: store, error: storeErr } = await supabase
+            .from('stores')
+            .select('id')
+            .eq('owner_id', user.id)
             .limit(1)
+            .maybeSingle()
 
-          if (!saErr && sa && sa[0]?.store_id) {
-            storeId = sa[0].store_id
+          if (!storeErr && store?.id) {
+            storeId = store.id
             break
           }
 
@@ -144,7 +147,7 @@ function RegisterForm() {
       }
 
       if (!storeId) {
-        toast.error('Ο λογαριασμός δημιουργήθηκε, αλλά δεν βρέθηκε κατάστημα. Δοκίμασε refresh ή login.')
+        toast.error('Ο λογαριασμός δημιουργήθηκε, αλλά δεν βρέθηκε κατάστημα. Κάνε login ξανά.')
         router.push('/login')
         return
       }
@@ -190,12 +193,7 @@ function RegisterForm() {
         </div>
       ) : (
         <form onSubmit={handleSignUp} style={formStyle}>
-          <input
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            placeholder="Username"
-            style={inputStyle}
-          />
+          <input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="Username" style={inputStyle} />
 
           <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email" style={inputStyle} required />
 
