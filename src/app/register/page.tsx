@@ -8,7 +8,9 @@ import { toast, Toaster } from 'sonner'
 import { Mail } from 'lucide-react'
 
 const getEmailRedirectUrl = () => {
-  const envUrl = process.env.NEXT_PUBLIC_SITE_URL || process.env.NEXT_PUBLIC_APP_URL
+  const envUrl =
+    process.env.NEXT_PUBLIC_SITE_URL ||
+    process.env.NEXT_PUBLIC_APP_URL
 
   if (envUrl) {
     return `${envUrl.replace(/\/$/, '')}/login`
@@ -22,24 +24,34 @@ const getEmailRedirectUrl = () => {
 }
 
 function RegisterForm() {
+
   const supabase = getSupabase()
+  const router = useRouter()
+
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [username, setUsername] = useState('')
+
   const [loading, setLoading] = useState(false)
-  const [resendLoading, setResendLoading] = useState(false)
   const [emailConfirmationPending, setEmailConfirmationPending] = useState(false)
-  const router = useRouter()
+  const [resendLoading, setResendLoading] = useState(false)
+
   const loginHref = '/login'
 
+
+  /* ---------------- RESEND EMAIL ---------------- */
+
   const handleResendConfirmationEmail = async () => {
+
     if (!email) {
-      toast.error('Συμπλήρωσε πρώτα το email σου.')
+      toast.error('Συμπλήρωσε πρώτα το email.')
       return
     }
 
-    setResendLoading(true)
     try {
+
+      setResendLoading(true)
+
       const { error } = await supabase.auth.resend({
         type: 'signup',
         email: email.trim(),
@@ -49,238 +61,419 @@ function RegisterForm() {
       })
 
       if (error) throw error
+
       toast.success('Στάλθηκε νέο email επιβεβαίωσης.')
-    } catch (error: any) {
-      toast.error(error.message || 'Αποτυχία επαναποστολής email.')
+
+    } catch (e: any) {
+
+      toast.error(e.message || 'Σφάλμα επαναποστολής')
+
     } finally {
+
       setResendLoading(false)
+
     }
+
   }
 
+
+  /* ---------------- SIGNUP ---------------- */
+
   const handleSignUp = async (e: React.FormEvent) => {
+
     e.preventDefault()
-    
+
     if (!email || password.length < 6) {
-      toast.error('Email και κωδικός τουλάχιστον 6 χαρακτήρων.')
+
+      toast.error('Email και password τουλάχιστον 6 χαρακτήρες.')
       return
+
     }
 
-    setLoading(true)
-
     try {
-      // 1. ΕΓΓΡΑΦΗ ΧΡΗΣΤΗ ΣΤΟ AUTH
-      const { data: authData, error: authError } = await supabase.auth.signUp({
+
+      setLoading(true)
+
+      /* -------- CREATE AUTH USER -------- */
+
+      const {
+        data: authData,
+        error: signUpError
+      } = await supabase.auth.signUp({
+
         email: email.trim(),
-        password: password.trim(),
+
+        password: password, // ⚠️ IMPORTANT: no trim
+
         options: {
+
           emailRedirectTo: getEmailRedirectUrl(),
-          data: { username: username || email.split('@')[0] }
+
+          data: {
+            username: username || email.split('@')[0]
+          }
+
         }
+
       })
 
-      if (authError) {
-        if (/user already registered/i.test(authError.message)) {
-          const { error: resendError } = await supabase.auth.resend({
-            type: 'signup',
+      if (signUpError) throw signUpError
+
+      const user = authData.user
+
+      if (!user) throw new Error('Signup failed')
+
+
+      /* -------- CHECK EMAIL CONFIRM -------- */
+
+      const isEmailConfirmed =
+        !!user.email_confirmed_at ||
+        !!(user as any).confirmed_at
+
+
+      let session = authData.session
+
+
+      /* -------- AUTO LOGIN IF NO SESSION -------- */
+
+      if (!session && isEmailConfirmed) {
+
+        const loginRes =
+          await supabase.auth.signInWithPassword({
+
             email: email.trim(),
-            options: {
-              emailRedirectTo: getEmailRedirectUrl()
-            }
+            password: password
+
           })
 
-          if (!resendError) {
-            setEmailConfirmationPending(true)
-            toast.success('Ο λογαριασμός υπάρχει ήδη αλλά δεν έχει επιβεβαιωθεί. Στείλαμε νέο email επιβεβαίωσης.')
-            return
-          }
-        }
+        if (loginRes.error)
+          throw loginRes.error
 
-        throw authError
+        session = loginRes.data.session
+
       }
-      
-      const user = authData.user
-      if (!user) throw new Error('Η εγγραφή απέτυχε. Δοκιμάστε ξανά.')
 
-      let finalStoreId = ''
 
-      // 2. ΝΕΟΣ ΙΔΙΟΚΤΗΤΗΣ (ADMIN)
-      const { data: newStore, error: storeErr } = await supabase
+      /* -------- EMAIL CONFIRM REQUIRED -------- */
+
+      if (!session && !isEmailConfirmed) {
+
+        setEmailConfirmationPending(true)
+
+        toast.success(
+          'Η εγγραφή έγινε. Ελέγξτε το email για επιβεβαίωση.'
+        )
+
+        return
+
+      }
+
+
+      /* -------- CREATE STORE -------- */
+
+      const {
+        data: store,
+        error: storeError
+      } = await supabase
         .from('stores')
-        .insert([{ 
-          name: `ΚΑΤΑΣΤΗΜΑ ${username.toUpperCase() || 'ΜΟΥ'}`, 
-          owner_id: user.id 
-        }])
+        .insert({
+
+          name:
+            `ΚΑΤΑΣΤΗΜΑ ${
+              username?.toUpperCase() ||
+              email.split('@')[0].toUpperCase()
+            }`,
+
+          owner_id: user.id
+
+        })
         .select()
         .single()
 
-      if (storeErr) throw storeErr
-      finalStoreId = newStore.id
+      if (storeError) throw storeError
 
-      const { error: adminAccessError } = await supabase.from('store_access').insert([{
-        user_id: user.id,
-        store_id: finalStoreId,
-        role: 'admin'
-      }])
-      if (adminAccessError) throw adminAccessError
+      const storeId = store.id
 
-      const { error: profileStoreRoleError } = await supabase
+
+      /* -------- STORE ACCESS -------- */
+
+      await supabase
+        .from('store_access')
+        .insert({
+
+          user_id: user.id,
+          store_id: storeId,
+          role: 'admin'
+
+        })
+
+
+      /* -------- PROFILE UPDATE -------- */
+
+      await supabase
         .from('profiles')
-        .update({ store_id: finalStoreId, role: 'admin' })
+        .update({
+
+          store_id: storeId,
+          role: 'admin'
+
+        })
         .eq('id', user.id)
-      if (profileStoreRoleError) throw profileStoreRoleError
 
-      const defaultAssets = [
-        { name: 'ΕΝΟΙΚΙΟ', store_id: finalStoreId },
-        { name: 'ΛΟΓΙΣΤΗΣ', store_id: finalStoreId },
-        { name: 'ΔΕΗ / ΡΕΥΜΑ', store_id: finalStoreId }
-      ]
-      const { error: assetsError } = await supabase.from('fixed_assets').insert(defaultAssets)
-      if (assetsError) throw assetsError
 
-      // 3. ΕΛΕΓΧΟΣ EMAIL CONFIRMATION
-      const requiresEmailConfirmation = authData.session === null
+      /* -------- DEFAULT ASSETS -------- */
 
-      if (requiresEmailConfirmation) {
-        setEmailConfirmationPending(true)
-        toast.success('Η εγγραφή έγινε! Παρακαλώ ελέγξτε το email σας για να ενεργοποιήσετε το λογαριασμό σας.')
-        return
-      }
+      await supabase
+        .from('fixed_assets')
+        .insert([
+          {
+            name: 'ΕΝΟΙΚΙΟ',
+            store_id: storeId
+          },
+          {
+            name: 'ΛΟΓΙΣΤΗΣ',
+            store_id: storeId
+          },
+          {
+            name: 'ΔΕΗ / ΡΕΥΜΑ',
+            store_id: storeId
+          }
+        ])
 
-      // 4. ΟΛΟΚΛΗΡΩΣΗ & REDIRECT
+
+      /* -------- SUCCESS -------- */
+
       toast.success('Η εγγραφή ολοκληρώθηκε!')
 
-      // Αποθηκεύουμε το active store για να ξέρει το dashboard τι να δείξει
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('active_store_id', finalStoreId)
-      }
 
-      // Ανακατεύθυνση στο Dashboard
-      router.push(`/?store=${finalStoreId}`)
+      localStorage.setItem(
+        'active_store_id',
+        storeId
+      )
+
+
+      router.push(`/?store=${storeId}`)
+
       router.refresh()
 
-    } catch (error: any) {
-      console.error(error)
-      toast.error(error.message || 'Σφάλμα κατά την εγγραφή')
+
+    } catch (e: any) {
+
+      console.error(e)
+
+      toast.error(
+        e.message || 'Signup error'
+      )
+
     } finally {
+
       setLoading(false)
+
     }
+
   }
 
+
+  /* ---------------- UI ---------------- */
+
   return (
+
     <div style={cardStyle}>
-      <Toaster richColors position="top-center" />
+
+      <Toaster position="top-center" richColors />
+
       <div style={headerStyle}>
-        <h1 style={brandStyle}>COSY APP</h1>
-        <div style={dividerStyle} />
-        <p style={instructionStyle}>ΔΗΜΙΟΥΡΓΙΑ ΛΟΓΑΡΙΑΣΜΟΥ</p>
+
+        <h1 style={brandStyle}>
+          COSY APP
+        </h1>
+
+        <div style={dividerStyle}/>
+
+        <p style={instructionStyle}>
+          ΔΗΜΙΟΥΡΓΙΑ ΛΟΓΑΡΙΑΣΜΟΥ
+        </p>
+
       </div>
-      
+
+
       {emailConfirmationPending ? (
+
         <div style={confirmationWrapStyle}>
-          <div style={confirmationIconWrapStyle}>
-            <Mail size={26} color="#0f172a" strokeWidth={2.2} />
-          </div>
+
+          <Mail size={28}/>
+
           <p style={confirmationTextStyle}>
-            Η εγγραφή ολοκληρώθηκε. Επιβεβαιώστε το email σας και μετά συνδεθείτε.
+            Επιβεβαιώστε το email σας.
           </p>
+
           <button
-            type="button"
             onClick={handleResendConfirmationEmail}
             disabled={resendLoading}
-            style={{ ...resendBtnStyle, opacity: resendLoading ? 0.7 : 1 }}
+            style={resendBtnStyle}
           >
-            {resendLoading ? 'ΓΙΝΕΤΑΙ ΑΠΟΣΤΟΛΗ...' : 'ΕΠΑΝΑΠΟΣΤΟΛΗ EMAIL'}
+            ΕΠΑΝΑΠΟΣΤΟΛΗ EMAIL
           </button>
-          <Link href={loginHref} style={confirmLoginBtnStyle}>ΜΕΤΑΒΑΣΗ ΣΤΟ LOGIN</Link>
+
+          <Link
+            href="/login"
+            style={confirmLoginBtnStyle}
+          >
+            LOGIN
+          </Link>
+
         </div>
+
       ) : (
-        <form onSubmit={handleSignUp} style={formStyle}>
-          <div>
-            <label style={labelStyle}>ΟΝΟΜΑ ΧΡΗΣΤΗ</label>
-            <input 
-              id="register-username"
-              type="text" 
-              name="username"
-              autoComplete="username"
-              value={username} 
-              onChange={e => setUsername(e.target.value)} 
-              style={inputStyle} 
-              placeholder="π.χ. Γιάννης" 
-            />
-          </div>
 
-          <div>
-            <label style={labelStyle}>EMAIL</label>
-            <input 
-              id="register-email"
-              type="email" 
-              name="email"
-              autoComplete="email"
-              value={email} 
-              onChange={e => setEmail(e.target.value)} 
-              style={inputStyle} 
-              placeholder="email@example.com" 
-              required 
-            />
-          </div>
+        <form
+          onSubmit={handleSignUp}
+          style={formStyle}
+        >
 
-          <div>
-            <label style={labelStyle}>ΚΩΔΙΚΟΣ ΠΡΟΣΒΑΣΗΣ</label>
-            <input 
-              id="register-password"
-              type="password" 
-              name="password"
-              autoComplete="new-password"
-              value={password} 
-              onChange={e => setPassword(e.target.value)} 
-              style={inputStyle} 
-              placeholder="6+ χαρακτήρες" 
-              required 
-            />
-          </div>
+          <input
+            value={username}
+            onChange={(e)=>setUsername(e.target.value)}
+            placeholder="Username"
+            style={inputStyle}
+          />
 
-          <button 
-            type="submit" 
-            disabled={loading} 
-            style={{...submitBtnStyle, backgroundColor: loading ? '#94a3b8' : '#0f172a'}}
+          <input
+            value={email}
+            onChange={(e)=>setEmail(e.target.value)}
+            placeholder="Email"
+            style={inputStyle}
+            required
+          />
+
+          <input
+            type="password"
+            value={password}
+            onChange={(e)=>setPassword(e.target.value)}
+            placeholder="Password"
+            style={inputStyle}
+            required
+          />
+
+          <button
+            disabled={loading}
+            style={submitBtnStyle}
           >
-            {loading ? 'ΓΙΝΕΤΑΙ ΕΓΓΡΑΦΗ...' : 'ΔΗΜΙΟΥΡΓΙΑ ΛΟΓΑΡΙΑΣΜΟΥ'}
+            {loading
+              ? 'Creating...'
+              : 'Create Account'}
           </button>
+
         </form>
+
       )}
 
       <div style={footerStyle}>
-        <Link href={loginHref} style={linkStyle}>← ΕΧΩ ΗΔΗ ΛΟΓΑΡΙΑΣΜΟ</Link>
+        <Link href="/login">
+          ← LOGIN
+        </Link>
       </div>
+
     </div>
+
   )
+
 }
+
+
+/* ---------------- PAGE ---------------- */
 
 export default function RegisterPage() {
+
   return (
+
     <main style={containerStyle}>
-      <Suspense fallback={<div>Φόρτωση...</div>}>
-        <RegisterForm />
+
+      <Suspense fallback={<div>Loading...</div>}>
+
+        <RegisterForm/>
+
       </Suspense>
+
     </main>
+
   )
+
 }
 
-// --- STYLES ---
-const containerStyle: any = { minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#f8fafc', padding: '20px' };
-const cardStyle: any = { backgroundColor: 'var(--surfaceSolid)', width: '100%', maxWidth: '400px', padding: '40px', borderRadius: '24px', boxShadow: 'var(--shadow)', border: '1px solid var(--border)' };
-const headerStyle: any = { textAlign: 'center', marginBottom: '30px' };
-const brandStyle: any = { fontSize: '26px', fontWeight: '900', color: 'var(--text)', letterSpacing: '-1px', margin: 0 };
-const dividerStyle: any = { height: '4px', width: '40px', backgroundColor: '#6366f1', margin: '12px auto', borderRadius: '10px' };
-const instructionStyle: any = { fontSize: '11px', color: 'var(--muted)', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '1px', margin: 0 };
-const formStyle: any = { display: 'flex', flexDirection: 'column', gap: '20px' };
-const labelStyle: any = { fontSize: '10px', fontWeight: '800', color: 'var(--muted)', marginBottom: '6px', display: 'block' };
-const inputStyle: any = { width: '100%', padding: '14px', borderRadius: '12px', border: '1px solid var(--border)', fontSize: '15px', outline: 'none', backgroundColor: 'var(--bg)', boxSizing: 'border-box' };
-const submitBtnStyle: any = { color: 'var(--surfaceSolid)', padding: '16px', borderRadius: '14px', border: 'none', fontWeight: '800', cursor: 'pointer', fontSize: '15px' };
-const confirmationWrapStyle: any = { backgroundColor: 'var(--bg)', border: '1px solid var(--border)', borderRadius: '14px', padding: '16px', textAlign: 'center' };
-const confirmationIconWrapStyle: any = { width: '52px', height: '52px', margin: '0 auto 10px auto', borderRadius: '999px', backgroundColor: 'var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center' };
-const confirmationTextStyle: any = { margin: '0 0 14px 0', color: 'var(--muted)', fontSize: '14px', lineHeight: '1.5' };
-const resendBtnStyle: any = { display: 'block', width: '100%', margin: '0 0 10px 0', color: 'var(--text)', backgroundColor: 'var(--surfaceSolid)', padding: '12px 16px', borderRadius: '12px', border: '1px solid var(--border)', fontWeight: '800', fontSize: '13px', cursor: 'pointer' };
-const confirmLoginBtnStyle: any = { display: 'inline-block', color: 'var(--surfaceSolid)', backgroundColor: 'var(--text)', padding: '12px 16px', borderRadius: '12px', textDecoration: 'none', fontWeight: '800', fontSize: '13px' };
-const footerStyle: any = { marginTop: '25px', textAlign: 'center', paddingTop: '20px', borderTop: '1px solid #f1f5f9' };
-const linkStyle: any = { color: 'var(--muted)', fontWeight: '700', textDecoration: 'none', fontSize: '12px' };
+
+/* ---------------- STYLES ---------------- */
+
+const containerStyle:any={
+  minHeight:'100vh',
+  display:'flex',
+  alignItems:'center',
+  justifyContent:'center'
+}
+
+const cardStyle:any={
+  width:400,
+  padding:30,
+  borderRadius:20,
+  background:'#fff'
+}
+
+const headerStyle:any={textAlign:'center'}
+
+const brandStyle:any={fontSize:24,fontWeight:900}
+
+const dividerStyle:any={
+  height:4,
+  width:40,
+  background:'#6366f1',
+  margin:'10px auto'
+}
+
+const instructionStyle:any={
+  fontSize:12,
+  fontWeight:700
+}
+
+const formStyle:any={
+  display:'flex',
+  flexDirection:'column',
+  gap:15
+}
+
+const inputStyle:any={
+  padding:12,
+  borderRadius:10,
+  border:'1px solid #ccc'
+}
+
+const submitBtnStyle:any={
+  padding:14,
+  borderRadius:10,
+  background:'#0f172a',
+  color:'#fff',
+  border:'none',
+  fontWeight:800
+}
+
+const confirmationWrapStyle:any={
+  textAlign:'center'
+}
+
+const confirmationTextStyle:any={
+  marginTop:10
+}
+
+const resendBtnStyle:any={
+  marginTop:10,
+  padding:10
+}
+
+const confirmLoginBtnStyle:any={
+  display:'block',
+  marginTop:10
+}
+
+const footerStyle:any={
+  marginTop:20,
+  textAlign:'center'
+}
