@@ -18,8 +18,12 @@ function getServiceRoleKey() {
   return process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SERVICE_ROLE_KEY
 }
 
+function getAnonKey() {
+  return process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+}
+
 function randomPassword(length = 20) {
-  const charset = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%^&*()_-+=' 
+  const charset = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%^&*()_-+='
   const bytes = crypto.getRandomValues(new Uint8Array(length))
   return Array.from(bytes, (value) => charset[value % charset.length]).join('')
 }
@@ -49,10 +53,6 @@ function mapErrorMessage(error: unknown) {
   }
 
   return { status: 500, message: 'Αποτυχία δημιουργίας χρήστη.' }
-}
-
-function getAnonKey() {
-  return process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 }
 
 async function getCallerFromHeader(request: NextRequest) {
@@ -153,9 +153,7 @@ export async function POST(request: NextRequest) {
       .eq('store_id', storeId)
       .maybeSingle()
 
-    if (callerAccessError) {
-      throw callerAccessError
-    }
+    if (callerAccessError) throw callerAccessError
 
     if (!callerAccess || callerAccess.role !== 'admin') {
       return NextResponse.json({ ok: false, error: 'Δεν έχετε δικαιώματα admin για αυτό το κατάστημα.' }, { status: 403 })
@@ -164,12 +162,24 @@ export async function POST(request: NextRequest) {
     let userId = ''
     let existingUser = await findUserByEmail(adminClient, email)
 
+    // ✅ IMPORTANT FIX:
+    // Αν δημιουργούμε ΝΕΟ auth user από admin panel, βάζουμε metadata "invited_store_id"
+    // ώστε ο DB trigger (handle_new_user) να ΜΗΝ φτιάξει νέο store για αυτόν.
     if (!existingUser) {
       const passwordToUse = tempPassword || randomPassword()
+
       const { data: created, error: createError } = await adminClient.auth.admin.createUser({
         email,
         password: passwordToUse,
         email_confirm: true,
+
+        // ✅ metadata για να ξεχωρίζει από normal signup
+        user_metadata: {
+          invited_store_id: storeId,
+          role,
+          invited_by: caller.id,
+          invite_flow: true,
+        },
       })
 
       if (createError) {
@@ -192,6 +202,22 @@ export async function POST(request: NextRequest) {
       userId = created?.user?.id || existingUser?.id || ''
     } else {
       userId = existingUser.id
+
+      // ✅ Optional: αν ο user υπήρχε ήδη, ενημερώνουμε metadata (δεν ξανατρέχει trigger, αλλά κρατάμε trace)
+      // (Αν δεν το θες, μπορείς να το σβήσεις)
+      try {
+        await adminClient.auth.admin.updateUserById(userId, {
+          user_metadata: {
+            ...(existingUser.user_metadata || {}),
+            invited_store_id: storeId,
+            role,
+            invited_by: caller.id,
+            invite_flow: true,
+          },
+        })
+      } catch {
+        // ignore metadata update failures
+      }
     }
 
     if (!userId) {
@@ -219,14 +245,10 @@ export async function POST(request: NextRequest) {
         role,
         ...defaultPermissions,
       },
-      {
-        onConflict: 'user_id,store_id',
-      }
+      { onConflict: 'user_id,store_id' }
     )
 
-    if (accessUpsertError) {
-      throw accessUpsertError
-    }
+    if (accessUpsertError) throw accessUpsertError
 
     return NextResponse.json({ ok: true, userId, storeId })
   } catch (error) {
