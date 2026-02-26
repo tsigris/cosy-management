@@ -9,22 +9,27 @@ export type StoreCard = {
   lastUpdated?: string | null
 }
 
-export async function fetchStoresForUser(): Promise<StoreCard[]> {
+export async function fetchStoresForUser(userId: string): Promise<StoreCard[]> {
+  // Το userId πλέον δεν χρησιμοποιείται για filtering στη βάση (το κάνει το auth.uid() μέσω view),
+  // αλλά το κρατάμε για να μην πειράξουμε τα calls στο project.
+  if (!userId) return []
+
   const supabase = getSupabase()
 
+  // ✅ Ασφαλές: το view επιστρέφει ΜΟΝΟ stores που έχει ο τρέχων χρήστης (auth.uid()) από store_access
   const { data, error } = await supabase
     .from('v_my_store_stats')
     .select('id, name, income, expenses, profit, last_updated')
-    .order('name')
+    .order('name', { ascending: true })
 
   if (error) {
-    console.error('fetchStoresForUser error:', error)
+    console.error('fetchStoresForUser v_my_store_stats error:', error)
     throw error
   }
 
   return (data ?? []).map((row: any) => ({
     id: String(row.id),
-    name: row.name,
+    name: String(row.name || ''),
     income: Number(row.income) || 0,
     expenses: Number(row.expenses) || 0,
     profit: Number(row.profit) || 0,

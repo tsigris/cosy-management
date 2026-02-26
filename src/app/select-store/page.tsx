@@ -111,15 +111,15 @@ function SelectStorePage() {
         return
       }
 
-      // 2) Φέρνουμε stores (με retry για RLS/replication delay)
-      let stores = await fetchStoresForUser()
+     // 2) Φέρνουμε stores (με retry για RLS/replication delay)
+let stores = await fetchStoresForUser(session.user.id)
 
-      // Αν δεν βρει τίποτα, κάνουμε ένα μικρό retry μετά από λίγο
-      if (!stores || stores.length === 0) {
-        setIsRetrying(true)
-        await new Promise((r) => setTimeout(r, 1200))
-        stores = await fetchStoresForUser()
-      }
+// Αν δεν βρει τίποτα, κάνουμε ένα μικρό retry μετά από λίγο
+if (!stores || stores.length === 0) {
+  setIsRetrying(true)
+  await new Promise((r) => setTimeout(r, 1200))
+  stores = await fetchStoresForUser(session.user.id)
+}
 
       setUserStores(stores || [])
       setIsRetrying(false)
