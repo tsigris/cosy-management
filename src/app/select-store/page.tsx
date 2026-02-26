@@ -2,15 +2,18 @@
 
 import { useEffect, useState, useMemo, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { LogOut, Plus, ArrowRight, RefreshCw, Store as StoreIcon } from 'lucide-react'
+import { LogOut, Plus, ArrowRight, RefreshCw, Store as StoreIcon, ArrowLeftRight } from 'lucide-react'
 import { toast, Toaster } from 'sonner'
 
 import { getSupabase } from '@/lib/supabase'
 import { fetchStoresForUser, type StoreCard } from '@/lib/stores'
+import TransferFundsModal from '@/components/TransferFundsModal'
 
 function SelectStorePage() {
   const supabase = getSupabase()
   const [userStores, setUserStores] = useState<StoreCard[]>([])
+    const [showTransferModal, setShowTransferModal] = useState(false)
+    const [transferLoading, setTransferLoading] = useState(false)
   const [loading, setLoading] = useState(true)
   const [isRetrying, setIsRetrying] = useState(false)
   const [showRetryButton, setShowRetryButton] = useState(false)
@@ -144,7 +147,37 @@ function SelectStorePage() {
     return () => {
       isMounted = false
     }
+      // eslint-disable-next-line
+      // @ts-ignore
+      // expose for refresh after transfer
+      window.__refreshStores = loadStores
   }, [router, maybeAutoRedirectSingleStore, retryNonce, supabase])
+  // Μεταφορά Κεφαλαίου
+  const handleTransferFunds = async (fromId: string, toId: string, amount: number, description: string) => {
+    setTransferLoading(true)
+    try {
+      const { error } = await supabase.rpc('transfer_funds', {
+        p_from_store_id: fromId,
+        p_to_store_id: toId,
+        p_amount: amount,
+        p_description: description || 'Μεταφορά Κεφαλαίου',
+      })
+      if (error) {
+        toast.error('Αποτυχία μεταφοράς: ' + (error.message || 'Άγνωστο σφάλμα'))
+        return
+      }
+      toast.success('Η μεταφορά ολοκληρώθηκε!')
+      setShowTransferModal(false)
+      // Refresh stores
+      if (typeof window !== 'undefined' && typeof window.__refreshStores === 'function') {
+        await window.__refreshStores()
+      }
+    } catch (err: any) {
+      toast.error('Αποτυχία μεταφοράς: ' + (err?.message || 'Άγνωστο σφάλμα'))
+    } finally {
+      setTransferLoading(false)
+    }
+  }
 
   const globalStats = useMemo(() => {
     const safe = Array.isArray(userStores) ? userStores : []
@@ -280,9 +313,40 @@ function SelectStorePage() {
         </button>
       )}
 
-      <button onClick={() => router.push('/stores/new')} style={addBtnStyle}>
-        <Plus size={20} /> ΠΡΟΣΘΗΚΗ ΝΕΟΥ ΚΑΤΑΣΤΗΜΑΤΟΣ
-      </button>
+
+      <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
+        <button
+          onClick={() => setShowTransferModal(true)}
+          style={{
+            ...addBtnStyle,
+            width: '50%',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            border: '2px dashed #334155',
+            background: '#1e293b',
+            color: '#f1f5f9',
+            fontWeight: 800,
+            fontSize: 16,
+            gap: 8,
+          }}
+        >
+          <ArrowLeftRight size={20} /> Μεταφορά Κεφαλαίου
+        </button>
+        <button
+          onClick={() => router.push('/stores/new')}
+          style={{ ...addBtnStyle, width: '50%' }}
+        >
+          <Plus size={20} /> Προσθήκη Νέου Καταστήματος
+        </button>
+      </div>
+      <TransferFundsModal
+        open={showTransferModal}
+        onClose={() => setShowTransferModal(false)}
+        stores={userStores.map(s => ({ id: s.id, name: s.name }))}
+        onTransfer={handleTransferFunds}
+        loading={transferLoading}
+      />
 
       <button onClick={handleLogout} style={logoutBtnStyle}>
         <LogOut size={16} /> ΑΠΟΣΥΝΔΕΣΗ ΧΡΗΣΤΗ
