@@ -5,12 +5,13 @@ interface StoreOption {
   name: string;
 }
 
-interface TransferFundsModalProps {
+export interface TransferFundsModalProps {
   open: boolean;
   onClose: () => void;
   stores: StoreOption[];
   onTransfer: (fromId: string, toId: string, amount: number, description: string) => Promise<void>;
   loading: boolean;
+  onRefresh?: () => Promise<void>;
 }
 
 const modalBg: React.CSSProperties = {
@@ -75,7 +76,7 @@ const errorStyle: React.CSSProperties = {
   fontSize: 14,
 };
 
-export default function TransferFundsModal({ open, onClose, stores, onTransfer, loading }: TransferFundsModalProps) {
+export default function TransferFundsModal({ open, onClose, stores, onTransfer, loading, onRefresh }: TransferFundsModalProps) {
   const [fromId, setFromId] = useState('');
   const [toId, setToId] = useState('');
   const [amount, setAmount] = useState('');
@@ -100,6 +101,7 @@ export default function TransferFundsModal({ open, onClose, stores, onTransfer, 
       return;
     }
     await onTransfer(fromId, toId, Number(amount), desc);
+    if (onRefresh) await onRefresh();
   };
 
   return (

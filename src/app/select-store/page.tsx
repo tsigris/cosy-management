@@ -80,80 +80,73 @@ function SelectStorePage() {
     [handleSelect]
   )
 
-  useEffect(() => {
-    let isMounted = true
+  // Refactored: fetchStores function for refresh
+  const fetchStores = async () => {
+    try {
+      setLoading(true)
+      setShowRetryButton(false)
+      setIsRetrying(false)
 
-    const loadStores = async () => {
-      try {
-        setLoading(true)
-        setShowRetryButton(false)
-        setIsRetrying(false)
+      // 1) Session (με retry για mobile browsers)
+      let { data: s1 } = await supabase.auth.getSession()
+      let session = s1.session
 
-        // 1) Session (με retry για mobile browsers)
-        let { data: s1 } = await supabase.auth.getSession()
-        let session = s1.session
-
-        if (!session) {
-          setIsRetrying(true)
-          await new Promise((r) => setTimeout(r, 900))
-          const s2 = await supabase.auth.getSession()
-          session = s2.data.session
-        }
-
-        if (!session) {
-          // extra nudge
-          await supabase.auth.getUser()
-          const s3 = await supabase.auth.getSession()
-          session = s3.data.session
-        }
-
-        if (!session) {
-          if (isMounted) {
-            toast.error('Δεν βρέθηκε ενεργή σύνδεση. Επιστροφή στο Login.')
-            router.replace('/login')
-          }
-          return
-        }
-
-        // 2) Φέρνουμε stores (με retry για RLS/replication delay)
-        let stores = await fetchStoresForUser(session.user.id)
-
-        // Αν δεν βρει τίποτα, κάνουμε ένα μικρό retry μετά από λίγο
-        if (!stores || stores.length === 0) {
-          setIsRetrying(true)
-          await new Promise((r) => setTimeout(r, 1200))
-          stores = await fetchStoresForUser(session.user.id)
-        }
-
-        if (!isMounted) return
-
-        setUserStores(stores || [])
-        setIsRetrying(false)
-        setShowRetryButton(false)
-
-        maybeAutoRedirectSingleStore(stores || [])
-      } catch (err: any) {
-        console.error('Fetch error:', err)
-        if (isMounted) {
-          toast.error('Πρόβλημα σύνδεσης με τη βάση δεδομένων')
-          setShowRetryButton(true)
-        }
-      } finally {
-        if (isMounted) setLoading(false)
+      if (!session) {
+        setIsRetrying(true)
+        await new Promise((r) => setTimeout(r, 900))
+        const s2 = await supabase.auth.getSession()
+        session = s2.data.session
       }
-    }
 
-    void loadStores()
-    return () => {
-      isMounted = false
+      if (!session) {
+        // extra nudge
+        await supabase.auth.getUser()
+        const s3 = await supabase.auth.getSession()
+        session = s3.data.session
+      }
+
+      if (!session) {
+        toast.error('Δεν βρέθηκε ενεργή σύνδεση. Επιστροφή στο Login.')
+        router.replace('/login')
+        return
+      }
+
+      // 2) Φέρνουμε stores (με retry για RLS/replication delay)
+      let stores = await fetchStoresForUser(session.user.id)
+
+      // Αν δεν βρει τίποτα, κάνουμε ένα μικρό retry μετά από λίγο
+      if (!stores || stores.length === 0) {
+        setIsRetrying(true)
+        await new Promise((r) => setTimeout(r, 1200))
+        stores = await fetchStoresForUser(session.user.id)
+      }
+
+      setUserStores(stores || [])
+      setIsRetrying(false)
+      setShowRetryButton(false)
+
+      maybeAutoRedirectSingleStore(stores || [])
+    } catch (err: any) {
+      console.error('Fetch error:', err)
+      toast.error('Πρόβλημα σύνδεσης με τη βάση δεδομένων')
+      setShowRetryButton(true)
+    } finally {
+      setLoading(false)
     }
-      // eslint-disable-next-line
-      // @ts-ignore
-      // expose for refresh after transfer
-      window.__refreshStores = loadStores
+  }
+
+  useEffect(() => {
+    void fetchStores()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router, maybeAutoRedirectSingleStore, retryNonce, supabase])
   // Μεταφορά Κεφαλαίου
-  const handleTransferFunds = async (fromId: string, toId: string, amount: number, description: string) => {
+  const handleTransferFunds = async (
+    fromId: string,
+    toId: string,
+    amount: number,
+    description: string,
+    onRefresh?: () => Promise<void>
+  ) => {
     setTransferLoading(true)
     try {
       const { error } = await supabase.rpc('transfer_funds', {
@@ -168,10 +161,7 @@ function SelectStorePage() {
       }
       toast.success('Η μεταφορά ολοκληρώθηκε!')
       setShowTransferModal(false)
-      // Refresh stores
-      if (typeof window !== 'undefined' && typeof window.__refreshStores === 'function') {
-        await window.__refreshStores()
-      }
+      if (onRefresh) await onRefresh()
     } catch (err: any) {
       toast.error('Αποτυχία μεταφοράς: ' + (err?.message || 'Άγνωστο σφάλμα'))
     } finally {
@@ -344,8 +334,11 @@ function SelectStorePage() {
         open={showTransferModal}
         onClose={() => setShowTransferModal(false)}
         stores={userStores.map(s => ({ id: s.id, name: s.name }))}
-        onTransfer={handleTransferFunds}
+        onTransfer={async (fromId, toId, amount, description) =>
+          handleTransferFunds(fromId, toId, amount, description, fetchStores)
+        }
         loading={transferLoading}
+        onRefresh={fetchStores}
       />
 
       <button onClick={handleLogout} style={logoutBtnStyle}>
