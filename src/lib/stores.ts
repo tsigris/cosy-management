@@ -9,40 +9,24 @@ export type StoreCard = {
   lastUpdated?: string | null
 }
 
-export async function fetchStoresForUser(userId: string): Promise<StoreCard[]> {
-  if (!userId) return []
-
+/**
+ * SAFE multi-tenant store list:
+ * Reads ONLY stores the current authenticated user has access to
+ * via view: public.v_my_store_stats (uses auth.uid()).
+ *
+ * Note: In Supabase SQL Editor this view may return 0 rows because auth.uid() is null there.
+ * In the app (logged-in user) it works.
+ */
+export async function fetchStoresForUser(_userId?: string): Promise<StoreCard[]> {
   const supabase = getSupabase()
 
-  // Canonical mapping user -> stores
-  const { data: accessRows, error: accessError } = await supabase
-    .from('store_access')
-    .select('store_id')
-    .eq('user_id', userId)
-
-  if (accessError) {
-    console.error('fetchStoresForUser access error:', accessError)
-    throw accessError
-  }
-
-  const accessStoreIds = Array.from(
-    new Set((accessRows ?? []).map((r: any) => String(r.store_id)).filter(Boolean))
-  )
-
-  if (accessStoreIds.length === 0) {
-    return []
-  }
-
-  const query = supabase
-    .from('v_store_stats')
+  const { data, error } = await supabase
+    .from('v_my_store_stats')
     .select('id, name, income, expenses, profit, last_updated')
-    .in('id', accessStoreIds)
     .order('name')
 
-  const { data, error } = await query
-
   if (error) {
-    console.error('fetchStoresForUser stats error:', error)
+    console.error('fetchStoresForUser (v_my_store_stats) error:', error)
     throw error
   }
 
