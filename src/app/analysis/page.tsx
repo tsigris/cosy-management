@@ -111,6 +111,12 @@ function getPaymentMethod(tx: any): string {
   return String(tx?.payment_method ?? tx?.method ?? '').trim()
 }
 
+// ✅ NEW: robust detection (Κεφαλαίων / Κεφαλαίου)
+function isCapitalTransferTx(t: any) {
+  const c = String(t?.category ?? '').trim().toLowerCase()
+  return c === 'μεταφορά κεφαλαίων' || c === 'μεταφορά κεφαλαίου'
+}
+
 function AnalysisContent() {
   const supabase = getSupabase()
   const router = useRouter()
@@ -448,7 +454,7 @@ function AnalysisContent() {
     } finally {
       setLoading(false)
     }
-  }, [router, storeId, startDate, endDate, getPrevRange, isCreditTx])
+  }, [router, storeId, startDate, endDate, getPrevRange, isCreditTx, supabase])
 
   useEffect(() => {
     loadData()
@@ -484,9 +490,12 @@ function AnalysisContent() {
     return null
   }, [])
 
-  // Organic transactions: exclude 'Μεταφορά Κεφαλαίου' for stats/charts
-  const periodTx = useMemo(() => transactions.filter((t) => t.date >= startDate && t.date <= endDate), [transactions, startDate, endDate])
-  const organicTransactions = useMemo(() => periodTx.filter(t => t.category !== 'Μεταφορά Κεφαλαίου'), [periodTx])
+  // ✅ Organic transactions: exclude BOTH spellings of "Μεταφορά Κεφαλαίων/Κεφαλαίου"
+  const periodTx = useMemo(
+    () => transactions.filter((t) => t.date >= startDate && t.date <= endDate),
+    [transactions, startDate, endDate]
+  )
+  const organicTransactions = useMemo(() => periodTx.filter((t) => !isCapitalTransferTx(t)), [periodTx])
 
   const prevPeriodTx = useMemo(() => {
     const { prevStart, prevEnd } = getPrevRange()
@@ -540,9 +549,9 @@ function AnalysisContent() {
     [isCreditTx]
   )
 
-  // KPIs: use organicTransactions for current period, prevPeriodTx for previous (filtered for organic)
+  // KPIs: use organicTransactions for current period, prevPeriodTx for previous (also organic)
   const kpis = useMemo(() => computeKpis(organicTransactions), [organicTransactions, computeKpis])
-  const prevOrganicTransactions = useMemo(() => prevPeriodTx.filter(t => t.category !== 'Μεταφορά Κεφαλαίου'), [prevPeriodTx])
+  const prevOrganicTransactions = useMemo(() => prevPeriodTx.filter((t) => !isCapitalTransferTx(t)), [prevPeriodTx])
   const kpisPrev = useMemo(() => computeKpis(prevOrganicTransactions), [prevOrganicTransactions, computeKpis])
 
   const variance = useMemo(
@@ -569,7 +578,8 @@ function AnalysisContent() {
 
         if (credit) {
           if (t.type === 'expense' || t.type === 'debt_payment') creditOutstanding += Math.abs(amt)
-          if (t.type === 'income' || t.type === 'income_collection' || t.type === 'debt_received') creditIncoming += Math.abs(amt)
+          if (t.type === 'income' || t.type === 'income_collection' || t.type === 'debt_received')
+            creditIncoming += Math.abs(amt)
           continue
         }
 
@@ -619,7 +629,13 @@ function AnalysisContent() {
       .reduce((a, r) => a + r.amount, 0)
 
     const totalTurnover = zCash + zPos + blackCash
-    return { zCash, zPos, blackCash, totalTurnover, blackPct: totalTurnover > 0 ? (blackCash / totalTurnover) * 100 : 0 }
+    return {
+      zCash,
+      zPos,
+      blackCash,
+      totalTurnover,
+      blackPct: totalTurnover > 0 ? (blackCash / totalTurnover) * 100 : 0,
+    }
   }, [isZReport, periodTx, getMethod])
 
   const cashExpensesToday = useMemo(() => {
@@ -672,19 +688,15 @@ function AnalysisContent() {
       filterA === 'Εμπορεύματα'
         ? 'supplier'
         : filterA === 'Προσωπικό'
-        ? 'staff'
-        : filterA === 'Συντήρηση'
-        ? 'maintenance'
-        : 'none'
+          ? 'staff'
+          : filterA === 'Συντήρηση'
+            ? 'maintenance'
+            : 'none'
 
     // If no entity filter chosen, show breakdown by category instead (top categories).
     if (pickMode === 'none') {
       const map: Record<string, { name: string; total: number; paid: number; credit: number }> = {}
       for (const t of rows) {
-        if (filterA !== 'Όλες' && filterA !== 'Λογαριασμοί' && filterA !== 'Λοιπά' && filterA !== 'Έσοδα') {
-          // for other filters we handle via pickMode above
-        }
-        // apply category filter if needed
         if (filterA === 'Λογαριασμοί' && normalizeExpenseCategory(t) !== 'Utilities') continue
         if (filterA === 'Λοιπά' && normalizeExpenseCategory(t) !== 'Other') continue
         if (filterA === 'Έσοδα') continue
@@ -794,12 +806,12 @@ function AnalysisContent() {
       detailMode === 'supplier'
         ? suppliers.find((s) => String(s.id) === String(detailId))?.name
         : detailMode === 'staff'
-        ? staff.find((s) => String(s.id) === String(detailId))?.name
-        : detailMode === 'maintenance'
-        ? maintenanceWorkers.find((m) => String(m.id) === String(detailId))?.name
-        : detailMode === 'revenue_source'
-        ? revenueSources.find((r) => String(r.id) === String(detailId))?.name
-        : '—'
+          ? staff.find((s) => String(s.id) === String(detailId))?.name
+          : detailMode === 'maintenance'
+            ? maintenanceWorkers.find((m) => String(m.id) === String(detailId))?.name
+            : detailMode === 'revenue_source'
+              ? revenueSources.find((r) => String(r.id) === String(detailId))?.name
+              : '—'
 
     return {
       name: String(name || '').trim() || '—',
@@ -860,6 +872,69 @@ function AnalysisContent() {
     return { loanOut, loanIn, settlementOut }
   }, [periodTx, isCreditTx])
 
+  /* ---------------- ✅ NEW: PRO CARDS (Expense Docs + Capital Transfers) ---------------- */
+
+  const proExpenseDocs = useMemo(() => {
+    const rows = periodTx
+      .filter((t) => (t.type === 'expense' || t.type === 'debt_payment'))
+      .filter((t) => !isCreditTx(t))
+      .filter((t) => !isCapitalTransferTx(t))
+
+    const detect = (t: any) => {
+      const n = String(t?.notes || '').trim().toLowerCase()
+      if (n.startsWith('απόδειξη λιανικής')) return 'retail'
+      if (n.startsWith('τιμολόγιο')) return 'invoice'
+      if (n.startsWith('χωρίς τιμολόγιο')) return 'no_invoice'
+      return 'unknown'
+    }
+
+    let total = 0
+    const buckets: Record<string, { amount: number; count: number }> = {
+      retail: { amount: 0, count: 0 },
+      invoice: { amount: 0, count: 0 },
+      no_invoice: { amount: 0, count: 0 },
+      unknown: { amount: 0, count: 0 },
+    }
+
+    for (const t of rows) {
+      const amt = Math.abs(Number(t.amount) || 0)
+      total += amt
+      const key = detect(t)
+      buckets[key].amount += amt
+      buckets[key].count += 1
+    }
+
+    const pct = (x: number) => (total > 0 ? (x / total) * 100 : 0)
+
+    return {
+      total,
+      retail: { ...buckets.retail, pct: pct(buckets.retail.amount) },
+      invoice: { ...buckets.invoice, pct: pct(buckets.invoice.amount) },
+      no_invoice: { ...buckets.no_invoice, pct: pct(buckets.no_invoice.amount) },
+      unknown: { ...buckets.unknown, pct: pct(buckets.unknown.amount) },
+    }
+  }, [periodTx, isCreditTx])
+
+  const proCapitalTransfers = useMemo(() => {
+    const rows = periodTx
+      .filter((t) => !isCreditTx(t))
+      .filter((t) => isCapitalTransferTx(t))
+
+    const outRows = rows.filter((t) => t.type === 'expense' || t.type === 'debt_payment')
+    const inRows = rows.filter((t) => t.type === 'income' || t.type === 'income_collection' || t.type === 'debt_received')
+
+    const out = outRows.reduce((a, t) => a + Math.abs(Number(t.amount) || 0), 0)
+    const inn = inRows.reduce((a, t) => a + Math.abs(Number(t.amount) || 0), 0)
+
+    return {
+      out,
+      in: inn,
+      net: inn - out,
+      countOut: outRows.length,
+      countIn: inRows.length,
+    }
+  }, [periodTx, isCreditTx])
+
   /* ---------------- SIMPLE/PRO: TRANSACTION SEARCH (paged) ---------------- */
 
   const runTxSearch = useCallback(
@@ -881,11 +956,9 @@ function AnalysisContent() {
           .gte('date', from)
           .lte('date', to)
           .order('date', { ascending: false })
-          .range(offset, offset + limit) // inclusive range; we’ll still detect hasMore via length === limit+1? (supabase range is inclusive)
+          .range(offset, offset + limit) // inclusive range: returns limit+1
         if (error) throw error
 
-        // Supabase range is inclusive; to keep it simple, we just check if we got "limit+1" by asking range(offset, offset+limit)
-        // That returns limit+1 rows. If > pageSize => hasMore.
         const rows = data || []
         const hasMore = rows.length > pageSize
         const sliced = rows.slice(0, pageSize)
@@ -899,7 +972,7 @@ function AnalysisContent() {
         setSearchLoading(false)
       }
     },
-    [storeId, searchFrom, searchTo, pageSize]
+    [storeId, searchFrom, searchTo, pageSize, supabase]
   )
 
   /* ---------------- PARTY NAME FOR LISTS ---------------- */
@@ -910,7 +983,11 @@ function AnalysisContent() {
       if (t.type === 'savings_withdrawal') return 'ΑΝΑΛΗΨΗ ΑΠΟ ΚΟΥΜΠΑΡΑ'
 
       if (t.revenue_source_id || t.revenue_sources?.name)
-        return t.revenue_sources?.name || revenueSources.find((r) => String(r.id) === String(t.revenue_source_id))?.name || 'Πηγή Εσόδων'
+        return (
+          t.revenue_sources?.name ||
+          revenueSources.find((r) => String(r.id) === String(t.revenue_source_id))?.name ||
+          'Πηγή Εσόδων'
+        )
 
       if (String(t.fixed_assets?.sub_category || '').toLowerCase() === 'staff')
         return t.fixed_assets?.name || staff.find((s) => String(s.id) === String(t.fixed_asset_id))?.name || 'Υπάλληλος'
@@ -959,7 +1036,10 @@ function AnalysisContent() {
 
         if (method === 'Μετρητά (Z)') zCash += rowAmount
         if (method === 'Κάρτα') zPos += rowAmount
-        if (method !== 'Μετρητά (Z)' && (notes === 'ΧΩΡΙΣ ΣΗΜΑΝΣΗ' || method === 'Μετρητά' || method === 'Χωρίς Απόδειξη'))
+        if (
+          method !== 'Μετρητά (Z)' &&
+          (notes === 'ΧΩΡΙΣ ΣΗΜΑΝΣΗ' || method === 'Μετρητά' || method === 'Χωρίς Απόδειξη')
+        )
           withoutMarking += rowAmount
       }
 
@@ -1011,9 +1091,7 @@ function AnalysisContent() {
     const byStaff: Record<string, number> = {}
     for (const t of staffTxs) {
       const name =
-        t.fixed_assets?.name ||
-        staff.find((s) => String(s.id) === String(t.fixed_asset_id))?.name ||
-        'Άγνωστος'
+        t.fixed_assets?.name || staff.find((s) => String(s.id) === String(t.fixed_asset_id))?.name || 'Άγνωστος'
       byStaff[name] = (byStaff[name] || 0) + Math.abs(Number(t.amount) || 0)
     }
 
@@ -1109,7 +1187,7 @@ function AnalysisContent() {
           </div>
         </div>
 
-        {/* SIMPLE: TOP “ΑΠΟ/ΕΩΣ” PILL (όπως ζήτησες) */}
+        {/* SIMPLE: TOP “ΑΠΟ/ΕΩΣ” PILL */}
         <div style={rangePill} className="no-print">
           {startDate} → {endDate}
         </div>
@@ -1147,12 +1225,16 @@ function AnalysisContent() {
               </div>
             </div>
 
-            {/* SIMPLE + PRO: Category filter always visible */}
             <div style={tile} className="analysis-filter-tile">
               <div style={tileIcon} className="analysis-filter-icon">⛃</div>
               <div style={tileBody} className="analysis-filter-body">
                 <div style={tileLabel}>ΦΙΛΤΡΟ</div>
-                <select value={filterA} onChange={(e) => setFilterA(e.target.value as FilterA)} style={tileControl} className="analysis-filter-control">
+                <select
+                  value={filterA}
+                  onChange={(e) => setFilterA(e.target.value as FilterA)}
+                  style={tileControl}
+                  className="analysis-filter-control"
+                >
                   <option value="Όλες">Όλες</option>
                   <option value="Έσοδα">Έσοδα</option>
                   <option value="Εμπορεύματα">Εμπορεύματα</option>
@@ -1164,13 +1246,17 @@ function AnalysisContent() {
               </div>
             </div>
 
-            {/* Drill-down detail */}
             {detailMode !== 'none' && (
               <div style={tile} className="analysis-filter-tile">
                 <div style={tileIcon} className="analysis-filter-icon">≡</div>
                 <div style={tileBody} className="analysis-filter-body">
                   <div style={tileLabel}>ΛΕΠΤΟΜΕΡΕΙΑ</div>
-                  <select value={detailId} onChange={(e) => setDetailId(e.target.value)} style={tileControl} className="analysis-filter-control">
+                  <select
+                    value={detailId}
+                    onChange={(e) => setDetailId(e.target.value)}
+                    style={tileControl}
+                    className="analysis-filter-control"
+                  >
                     <option value="all">Όλοι</option>
                     {detailOptions.map((x: any) => (
                       <option key={x.id} value={x.id}>
@@ -1188,46 +1274,81 @@ function AnalysisContent() {
 
         {/* KPI GRID (always) */}
         <div style={kpiGrid} data-print-section="true" className="kpi-grid-print">
-          <div className="print-card" style={{ ...kpiCard, borderColor: '#d1fae5', background: 'linear-gradient(180deg, #ecfdf5, #ffffff)' }}>
+          <div
+            className="print-card"
+            style={{
+              ...kpiCard,
+              borderColor: '#d1fae5',
+              background: 'linear-gradient(180deg, #ecfdf5, #ffffff)',
+            }}
+          >
             <div style={kpiTopRow}>
               <div style={{ ...kpiLabel, color: colors.success }}>
                 Έσοδα <span style={kpiDelta}>{fmtPct(variance.income)} vs prev</span>
               </div>
               <div style={{ ...kpiSign, color: colors.success }}>+</div>
             </div>
-            <div className="print-amount-positive" style={{ ...kpiValue, color: colors.success }}>+ {moneyGR(kpis.income)}</div>
+            <div className="print-amount-positive" style={{ ...kpiValue, color: colors.success }}>
+              + {moneyGR(kpis.income)}
+            </div>
             <div className="kpi-track-print-hide" style={kpiTrack}>
               <div style={{ ...kpiFill, width: '70%', background: colors.success }} />
             </div>
           </div>
 
-          <div className="print-card" style={{ ...kpiCard, borderColor: '#ffe4e6', background: 'linear-gradient(180deg, #fff1f2, #ffffff)' }}>
+          <div
+            className="print-card"
+            style={{
+              ...kpiCard,
+              borderColor: '#ffe4e6',
+              background: 'linear-gradient(180deg, #fff1f2, #ffffff)',
+            }}
+          >
             <div style={kpiTopRow}>
               <div style={{ ...kpiLabel, color: colors.danger }}>
                 Έξοδα <span style={kpiDelta}>{fmtPct(variance.expenses)} vs prev</span>
               </div>
               <div style={{ ...kpiSign, color: colors.danger }}>-</div>
             </div>
-            <div className="print-amount-negative" style={{ ...kpiValue, color: colors.danger }}>- {moneyGR(kpis.expenses)}</div>
+            <div className="print-amount-negative" style={{ ...kpiValue, color: colors.danger }}>
+              - {moneyGR(kpis.expenses)}
+            </div>
             <div className="kpi-track-print-hide" style={kpiTrack}>
               <div style={{ ...kpiFill, width: '70%', background: colors.danger }} />
             </div>
           </div>
 
-          <div className="print-card" style={{ ...kpiCard, borderColor: '#fde68a', background: 'linear-gradient(180deg, #fffbeb, #ffffff)' }}>
+          <div
+            className="print-card"
+            style={{
+              ...kpiCard,
+              borderColor: '#fde68a',
+              background: 'linear-gradient(180deg, #fffbeb, #ffffff)',
+            }}
+          >
             <div style={kpiTopRow}>
               <div style={{ ...kpiLabel, color: '#b45309' }}>
                 Tips <span style={kpiDelta}>{fmtPct(variance.tips)} vs prev</span>
               </div>
               <div style={{ ...kpiSign, color: '#b45309' }}>+</div>
             </div>
-            <div className="print-amount-positive" style={{ ...kpiValue, color: '#b45309' }}>+ {moneyGR(kpis.tips)}</div>
+            <div className="print-amount-positive" style={{ ...kpiValue, color: '#b45309' }}>
+              + {moneyGR(kpis.tips)}
+            </div>
             <div className="kpi-track-print-hide" style={kpiTrack}>
               <div style={{ ...kpiFill, width: '70%', background: colors.amber }} />
             </div>
           </div>
 
-          <div className="print-card" style={{ ...kpiCard, borderColor: '#111827', background: 'linear-gradient(180deg, #0b1220, #111827)', color: '#fff' }}>
+          <div
+            className="print-card"
+            style={{
+              ...kpiCard,
+              borderColor: '#111827',
+              background: 'linear-gradient(180deg, #0b1220, #111827)',
+              color: '#fff',
+            }}
+          >
             <div style={kpiTopRow}>
               <div style={{ ...kpiLabel, color: '#fff' }}>
                 {isZReport ? 'Καθαρό Ταμείο Ημέρας' : 'Καθαρό Κέρδος'}{' '}
@@ -1235,16 +1356,30 @@ function AnalysisContent() {
               </div>
               <div style={{ ...kpiSign, color: '#fff' }}>{bigKpiValue >= 0 ? '▲' : '▼'}</div>
             </div>
-            <div className={bigKpiValue >= 0 ? 'print-amount-positive' : 'print-amount-negative'} style={{ ...kpiValue, color: '#fff' }}>{moneyGR(bigKpiValue)}</div>
+            <div
+              className={bigKpiValue >= 0 ? 'print-amount-positive' : 'print-amount-negative'}
+              style={{ ...kpiValue, color: '#fff' }}
+            >
+              {moneyGR(bigKpiValue)}
+            </div>
             <div style={{ fontSize: 13, fontWeight: 800, opacity: 0.85, marginTop: 6 }}>
-              {isZReport ? 'Μετρητά (Z) + Χωρίς Σήμανση - Επιχειρ. Έξοδα Μετρητών' : 'Έσοδα - Έξοδα (χωρίς Πίστωση)'}
+              {isZReport
+                ? 'Μετρητά (Z) + Χωρίς Σήμανση - Επιχειρ. Έξοδα Μετρητών'
+                : 'Έσοδα - Έξοδα (χωρίς Πίστωση)'}
             </div>
           </div>
         </div>
 
         {/* BALANCES GRID */}
         <div style={balancesGrid} data-print-section="true" className="balances-grid-print">
-          <div className="print-card" style={{ ...smallKpiCard, border: '1px solid rgba(139,92,246,0.30)', background: 'linear-gradient(180deg, #f5f3ff, #ffffff)' }}>
+          <div
+            className="print-card"
+            style={{
+              ...smallKpiCard,
+              border: '1px solid rgba(139,92,246,0.30)',
+              background: 'linear-gradient(180deg, #f5f3ff, #ffffff)',
+            }}
+          >
             <div style={smallKpiLabel}>Κινήσεις Κουμπαρά</div>
             <div className="print-amount-positive" style={{ ...smallKpiValue, color: colors.purple }}>
               {moneyGR(kpis.savingsDeposits - kpis.savingsWithdrawals)}
@@ -1266,31 +1401,60 @@ function AnalysisContent() {
             <div style={smallKpiHint}>Κάρτα + Τράπεζα (χωρίς Πίστωση)</div>
           </div>
 
-          <div className="print-card" style={{ ...smallKpiCard, border: '1px solid rgba(16,185,129,0.20)', background: 'linear-gradient(180deg, #ecfdf5, #ffffff)' }}>
+          <div
+            className="print-card"
+            style={{
+              ...smallKpiCard,
+              border: '1px solid rgba(16,185,129,0.20)',
+              background: 'linear-gradient(180deg, #ecfdf5, #ffffff)',
+            }}
+          >
             <div style={smallKpiLabel}>Σύνολο Ρευστό</div>
-            <div className="print-amount-positive" style={{ ...smallKpiValue, color: colors.success }}>{moneyGR(calcBalances?.total_balance || 0)}</div>
+            <div className="print-amount-positive" style={{ ...smallKpiValue, color: colors.success }}>
+              {moneyGR(calcBalances?.total_balance || 0)}
+            </div>
             <div style={smallKpiHint}>Cash + Bank (χωρίς Πίστωση)</div>
           </div>
 
           {/* PRO extras only */}
           {uiMode === 'pro' && (
             <>
-              <div className="print-card" style={{ ...smallKpiCard, border: '1px solid rgba(244,63,94,0.25)', background: 'linear-gradient(180deg, #fff1f2, #ffffff)' }}>
+              <div
+                className="print-card"
+                style={{
+                  ...smallKpiCard,
+                  border: '1px solid rgba(244,63,94,0.25)',
+                  background: 'linear-gradient(180deg, #fff1f2, #ffffff)',
+                }}
+              >
                 <div style={smallKpiLabel}>Υπόλοιπο Πιστώσεων</div>
-                <div className="print-amount-negative" style={{ ...smallKpiValue, color: colors.danger }}>{moneyGR(calcBalances?.credit_outstanding || 0)}</div>
+                <div className="print-amount-negative" style={{ ...smallKpiValue, color: colors.danger }}>
+                  {moneyGR(calcBalances?.credit_outstanding || 0)}
+                </div>
                 <div style={smallKpiHint}>Έξοδα σε Πίστωση (δεν μειώνουν Cash/Bank)</div>
               </div>
 
-              <div className="print-card" style={{ ...smallKpiCard, border: '1px solid rgba(99,102,241,0.20)', background: 'linear-gradient(180deg, #eef2ff, #ffffff)' }}>
+              <div
+                className="print-card"
+                style={{
+                  ...smallKpiCard,
+                  border: '1px solid rgba(99,102,241,0.20)',
+                  background: 'linear-gradient(180deg, #eef2ff, #ffffff)',
+                }}
+              >
                 <div style={smallKpiLabel}>Expected Outflows (30d)</div>
-                <div className="print-amount-negative" style={{ ...smallKpiValue, color: colors.indigo }}>{moneyGR(expectedOutflows30d)}</div>
+                <div className="print-amount-negative" style={{ ...smallKpiValue, color: colors.indigo }}>
+                  {moneyGR(expectedOutflows30d)}
+                </div>
                 <div style={smallKpiHint}>Μελλοντικά έξοδα (future dated). Χωρίς Πίστωση.</div>
               </div>
 
               <div className="print-card" style={smallKpiCard}>
                 <div style={smallKpiLabel}>Ταμείο Ημέρας (Z View)</div>
                 <div style={smallKpiValue}>{drawer ? moneyGR(drawer.total_cash_drawer) : '—'}</div>
-                <div style={smallKpiHint}>{drawer ? `Ημερομηνία Ζ: ${drawer.date}` : `Δεν βρέθηκε Ζ έως: ${endDate}`}</div>
+                <div style={smallKpiHint}>
+                  {drawer ? `Ημερομηνία Ζ: ${drawer.date}` : `Δεν βρέθηκε Ζ έως: ${endDate}`}
+                </div>
                 <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', marginTop: 4 }}>
                   {drawer ? `Z: ${moneyGR(drawer.z_cash)} • Χωρίς Σήμανση: ${moneyGR(drawer.extra_cash)}` : ''}
                 </div>
@@ -1299,7 +1463,7 @@ function AnalysisContent() {
           )}
         </div>
 
-        {/* ---------------- SIMPLE MODE: “έξοδα ανά οντότητα” αντί για λίστα κινήσεων ---------------- */}
+        {/* ---------------- SIMPLE MODE: “έξοδα ανά οντότητα” ---------------- */}
         {uiMode === 'simple' && (
           <div style={sectionCard} data-print-section="true">
             <div style={sectionTitleRow}>
@@ -1308,10 +1472,10 @@ function AnalysisContent() {
                   {filterA === 'Εμπορεύματα'
                     ? 'Έξοδα ανά Προμηθευτή'
                     : filterA === 'Προσωπικό'
-                    ? 'Έξοδα ανά Υπάλληλο'
-                    : filterA === 'Συντήρηση'
-                    ? 'Έξοδα ανά Μάστορα'
-                    : 'Σύνοψη Εξόδων'}
+                      ? 'Έξοδα ανά Υπάλληλο'
+                      : filterA === 'Συντήρηση'
+                        ? 'Έξοδα ανά Μάστορα'
+                        : 'Σύνοψη Εξόδων'}
                 </h3>
                 <div style={sectionSub}>Περίοδος: {rangeText} • Δεν φορτώνουμε χιλιάδες κινήσεις</div>
               </div>
@@ -1329,7 +1493,6 @@ function AnalysisContent() {
                     key={x.id}
                     type="button"
                     onClick={() => {
-                      // Quick drill-down for simple:
                       if (filterA === 'Εμπορεύματα') {
                         setFilterA('Εμπορεύματα')
                         setDetailId(String(x.id))
@@ -1340,7 +1503,6 @@ function AnalysisContent() {
                         setFilterA('Συντήρηση')
                         setDetailId(String(x.id))
                       }
-                      // If it's category summary, just keep it.
                     }}
                     style={{
                       ...rowItem,
@@ -1351,7 +1513,16 @@ function AnalysisContent() {
                     }}
                   >
                     <div style={{ minWidth: 0 }}>
-                      <div style={{ fontSize: 15, fontWeight: 950, color: colors.primary, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      <div
+                        style={{
+                          fontSize: 15,
+                          fontWeight: 950,
+                          color: colors.primary,
+                          whiteSpace: 'nowrap',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                        }}
+                      >
                         {String(x.name || '').toUpperCase()}
                       </div>
                       <div style={{ fontSize: 12, fontWeight: 850, color: colors.secondary, marginTop: 6 }}>
@@ -1369,7 +1540,7 @@ function AnalysisContent() {
           </div>
         )}
 
-        {/* ---------------- PRO MODE: Detail card when selecting entity (π.χ. Τζηλιος) ---------------- */}
+        {/* ---------------- PRO MODE: Detail card when selecting entity ---------------- */}
         {uiMode === 'pro' && proDetailSummary && (
           <div style={sectionCard} data-print-section="true">
             <div style={sectionTitleRow}>
@@ -1392,14 +1563,19 @@ function AnalysisContent() {
                 </div>
               </div>
 
-              <div style={{ ...smallKpiCard, border: '1px solid rgba(244,63,94,0.25)', background: 'linear-gradient(180deg, #fff1f2, #ffffff)' }}>
+              <div
+                style={{
+                  ...smallKpiCard,
+                  border: '1px solid rgba(244,63,94,0.25)',
+                  background: 'linear-gradient(180deg, #fff1f2, #ffffff)',
+                }}
+              >
                 <div style={smallKpiLabel}>ΥΠΟΛΟΙΠΟ ΠΙΣΤΩΣΗΣ</div>
                 <div style={{ ...smallKpiValue, color: colors.danger }}>{moneyGR(proDetailSummary.creditTotal)}</div>
                 <div style={smallKpiHint}>({proDetailSummary.countCredit} κινήσεις σε πίστωση)</div>
               </div>
             </div>
 
-            {/* δείξε τις πιο πρόσφατες κινήσεις πίστωσης (και προαιρετικά paid) */}
             <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 10 }} className="print-table-wrap">
               {proDetailSummary.creditRows.length === 0 ? (
                 <div style={hintBox}>Δεν υπάρχουν κινήσεις σε πίστωση για την περίοδο.</div>
@@ -1418,7 +1594,9 @@ function AnalysisContent() {
                       <div className="print-row-compact">
                         <div className="print-row-date">{t.date}</div>
                         <div className="print-row-notes">{String(t.notes || t.category || '').trim() || '—'}</div>
-                        <div className="print-row-amount print-amount-negative">{moneyGR(Math.abs(Number(t.amount) || 0))}</div>
+                        <div className="print-row-amount print-amount-negative">
+                          {moneyGR(Math.abs(Number(t.amount) || 0))}
+                        </div>
                       </div>
                       <div className="screen-row" style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
                         <div style={{ minWidth: 0 }}>
@@ -1477,6 +1655,86 @@ function AnalysisContent() {
           </div>
         )}
 
+        {/* ✅ NEW: PRO “Παραστατικά & Μεταφορές” */}
+        {uiMode === 'pro' && (
+          <div style={sectionCard} data-print-section="true">
+            <div style={sectionTitleRow}>
+              <div>
+                <h3 style={sectionTitle}>Παραστατικά & Μεταφορές</h3>
+                <div style={sectionSub}>
+                  Παραστατικά εξόδων + μεταφορές κεφαλαίων • Περίοδος: {rangeText}
+                </div>
+              </div>
+              <div style={sectionPill}>PRO</div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div style={smallKpiCard}>
+                <div style={smallKpiLabel}>ΑΠΟΔΕΙΞΗ ΛΙΑΝΙΚΗΣ</div>
+                <div style={{ ...smallKpiValue, color: colors.indigo }}>{moneyGR(proExpenseDocs.retail.amount)}</div>
+                <div style={smallKpiHint}>
+                  {proExpenseDocs.retail.count} κινήσεις • {proExpenseDocs.retail.pct.toFixed(0)}% των εξόδων
+                </div>
+              </div>
+
+              <div style={smallKpiCard}>
+                <div style={smallKpiLabel}>ΤΙΜΟΛΟΓΙΟ</div>
+                <div style={{ ...smallKpiValue, color: colors.success }}>{moneyGR(proExpenseDocs.invoice.amount)}</div>
+                <div style={smallKpiHint}>
+                  {proExpenseDocs.invoice.count} κινήσεις • {proExpenseDocs.invoice.pct.toFixed(0)}% των εξόδων
+                </div>
+              </div>
+
+              <div
+                style={{
+                  ...smallKpiCard,
+                  border: '1px solid rgba(244,63,94,0.20)',
+                  background: 'linear-gradient(180deg, #fff1f2, #ffffff)',
+                }}
+              >
+                <div style={smallKpiLabel}>ΧΩΡΙΣ ΤΙΜΟΛΟΓΙΟ</div>
+                <div style={{ ...smallKpiValue, color: colors.danger }}>{moneyGR(proExpenseDocs.no_invoice.amount)}</div>
+                <div style={smallKpiHint}>
+                  {proExpenseDocs.no_invoice.count} κινήσεις • {proExpenseDocs.no_invoice.pct.toFixed(0)}% των εξόδων
+                </div>
+              </div>
+
+              <div style={smallKpiCard}>
+                <div style={smallKpiLabel}>ΜΗ ΑΝΑΓΝΩΡΙΣΜΕΝΟ</div>
+                <div style={{ ...smallKpiValue, color: colors.secondary }}>{moneyGR(proExpenseDocs.unknown.amount)}</div>
+                <div style={smallKpiHint}>
+                  {proExpenseDocs.unknown.count} κινήσεις • {proExpenseDocs.unknown.pct.toFixed(0)}%
+                </div>
+              </div>
+
+              <div style={smallKpiCard}>
+                <div style={smallKpiLabel}>ΜΕΤΑΦΟΡΑ ΚΕΦΑΛΑΙΩΝ (OUT)</div>
+                <div style={{ ...smallKpiValue, color: colors.danger }}>{moneyGR(proCapitalTransfers.out)}</div>
+                <div style={smallKpiHint}>{proCapitalTransfers.countOut} κινήσεις</div>
+              </div>
+
+              <div style={smallKpiCard}>
+                <div style={smallKpiLabel}>ΜΕΤΑΦΟΡΑ ΚΕΦΑΛΑΙΩΝ (IN)</div>
+                <div style={{ ...smallKpiValue, color: colors.success }}>{moneyGR(proCapitalTransfers.in)}</div>
+                <div style={smallKpiHint}>{proCapitalTransfers.countIn} κινήσεις</div>
+              </div>
+
+              <div style={{ ...smallKpiCard, gridColumn: 'span 2' }}>
+                <div style={smallKpiLabel}>ΜΕΤΑΦΟΡΑ ΚΕΦΑΛΑΙΩΝ (NET)</div>
+                <div
+                  style={{
+                    ...smallKpiValue,
+                    color: proCapitalTransfers.net >= 0 ? colors.success : colors.danger,
+                  }}
+                >
+                  {moneyGR(proCapitalTransfers.net)}
+                </div>
+                <div style={smallKpiHint}>IN − OUT (για το συγκεκριμένο store)</div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* ---------------- SIMPLE + PRO: “Αναζήτηση Κινήσεων” card (paged) ---------------- */}
         <div style={sectionCard} className="no-print">
           <div style={sectionTitleRow}>
@@ -1520,12 +1778,7 @@ function AnalysisContent() {
           </div>
 
           <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: '1fr 50px 50px', gap: 10 }}>
-            <button
-              type="button"
-              onClick={() => runTxSearch(0)}
-              style={searchBtn}
-              disabled={searchLoading}
-            >
+            <button type="button" onClick={() => runTxSearch(0)} style={searchBtn} disabled={searchLoading}>
               <Search size={18} /> {searchLoading ? 'Ψάχνω...' : 'Αναζήτηση'}
             </button>
 
@@ -1567,7 +1820,17 @@ function AnalysisContent() {
                       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
                         <div style={{ minWidth: 0 }}>
                           <div style={{ fontSize: 13, fontWeight: 950, color: colors.primary }}>{t.date}</div>
-                          <div style={{ marginTop: 6, fontSize: 14, fontWeight: 950, color: colors.primary, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          <div
+                            style={{
+                              marginTop: 6,
+                              fontSize: 14,
+                              fontWeight: 950,
+                              color: colors.primary,
+                              whiteSpace: 'nowrap',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                            }}
+                          >
                             {String(getPartyName(t) || '').toUpperCase()}
                           </div>
                           {!!t.notes && (
@@ -1655,7 +1918,16 @@ function AnalysisContent() {
                 {staffDetailsThisMonth.map((s) => (
                   <div key={s.name} style={rowItem}>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
-                      <div style={{ fontSize: 16, fontWeight: 900, color: colors.primary, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      <div
+                        style={{
+                          fontSize: 16,
+                          fontWeight: 900,
+                          color: colors.primary,
+                          whiteSpace: 'nowrap',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                        }}
+                      >
                         {String(s.name || '').toUpperCase()}
                       </div>
                       <div style={{ fontSize: 13, fontWeight: 800, color: colors.secondary }}>Καταβλήθηκε</div>
@@ -1723,14 +1995,27 @@ function AnalysisContent() {
                           {!!t.notes && <div>{String(t.notes)}</div>}
                           {!!pm && <div>Μέθοδος: {pm}{credit ? ' • ΠΙΣΤΩΣΗ' : ''}</div>}
                         </div>
-                        <div className={`print-row-amount ${isInc || isTip ? 'print-amount-positive' : isExp ? 'print-amount-negative' : ''}`}>
+                        <div
+                          className={`print-row-amount ${isInc || isTip ? 'print-amount-positive' : isExp ? 'print-amount-negative' : ''}`}
+                        >
                           {sign}{absAmt.toLocaleString('el-GR')}€
                         </div>
                       </div>
                       <div className="screen-row" style={{ display: 'flex', flexDirection: 'column', gap: 8, minWidth: 0 }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
                           <div style={{ fontSize: 14, fontWeight: 900, color: colors.primary, whiteSpace: 'nowrap' }}>{t.date}</div>
-                          <div style={{ padding: '8px 12px', borderRadius: 999, backgroundColor: pillBg, border: `1px solid ${pillBr}`, fontSize: 16, fontWeight: 900, color: pillTx, whiteSpace: 'nowrap' }}>
+                          <div
+                            style={{
+                              padding: '8px 12px',
+                              borderRadius: 999,
+                              backgroundColor: pillBg,
+                              border: `1px solid ${pillBr}`,
+                              fontSize: 16,
+                              fontWeight: 900,
+                              color: pillTx,
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
                             {sign}{absAmt.toLocaleString('el-GR')}€
                           </div>
                         </div>
@@ -1767,10 +2052,18 @@ function AnalysisContent() {
         {/* PRINT MODE SWITCH */}
         <div className="no-print" style={printWrap}>
           <div style={printModeSwitchWrap}>
-            <button type="button" onClick={() => setPrintMode('summary')} style={{ ...printModeBtn, ...(printMode === 'summary' ? printModeBtnActive : {}) }}>
+            <button
+              type="button"
+              onClick={() => setPrintMode('summary')}
+              style={{ ...printModeBtn, ...(printMode === 'summary' ? printModeBtnActive : {}) }}
+            >
               Σύνοψη
             </button>
-            <button type="button" onClick={() => setPrintMode('full')} style={{ ...printModeBtn, ...(printMode === 'full' ? printModeBtnActive : {}) }}>
+            <button
+              type="button"
+              onClick={() => setPrintMode('full')}
+              style={{ ...printModeBtn, ...(printMode === 'full' ? printModeBtnActive : {}) }}
+            >
               Πλήρες
             </button>
           </div>
@@ -1894,7 +2187,14 @@ const tileIcon: any = {
 }
 
 const tileBody: any = { flex: 1, minWidth: 0 }
-const tileLabel: any = { fontSize: 12, fontWeight: 950, color: colors.secondary, letterSpacing: 0.7, marginBottom: 8, textTransform: 'uppercase' }
+const tileLabel: any = {
+  fontSize: 12,
+  fontWeight: 950,
+  color: colors.secondary,
+  letterSpacing: 0.7,
+  marginBottom: 8,
+  textTransform: 'uppercase',
+}
 
 const tileControl: any = {
   width: '100%',
@@ -1914,7 +2214,14 @@ const tileControl: any = {
 const rangeHint: any = { marginTop: 2, fontSize: 13, fontWeight: 850, color: colors.secondary }
 
 const kpiGrid: any = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 14 }
-const kpiCard: any = { borderRadius: 22, border: `1px solid ${colors.border}`, padding: 14, background: '#fff', boxShadow: '0 12px 22px rgba(15,23,42,0.06)', overflow: 'hidden' }
+const kpiCard: any = {
+  borderRadius: 22,
+  border: `1px solid ${colors.border}`,
+  padding: 14,
+  background: '#fff',
+  boxShadow: '0 12px 22px rgba(15,23,42,0.06)',
+  overflow: 'hidden',
+}
 const kpiTopRow: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }
 const kpiLabel: any = { fontSize: 14, fontWeight: 950 }
 const kpiSign: any = { fontSize: 16, fontWeight: 950 }
@@ -1924,22 +2231,69 @@ const kpiTrack: any = { marginTop: 12, height: 8, borderRadius: 999, background:
 const kpiFill: any = { height: 8, borderRadius: 999 }
 
 const balancesGrid: any = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 12 }
-const smallKpiCard: any = { background: '#ffffff', border: '1px solid rgba(15, 23, 42, 0.08)', borderRadius: 18, padding: 14, boxShadow: '0 10px 24px rgba(15, 23, 42, 0.06)' }
-const smallKpiLabel: any = { fontSize: 12, fontWeight: 900, color: '#64748b', letterSpacing: 0.4, textTransform: 'uppercase' }
+const smallKpiCard: any = {
+  background: '#ffffff',
+  border: '1px solid rgba(15, 23, 42, 0.08)',
+  borderRadius: 18,
+  padding: 14,
+  boxShadow: '0 10px 24px rgba(15, 23, 42, 0.06)',
+}
+const smallKpiLabel: any = {
+  fontSize: 12,
+  fontWeight: 900,
+  color: '#64748b',
+  letterSpacing: 0.4,
+  textTransform: 'uppercase',
+}
 const smallKpiValue: any = { fontSize: 20, fontWeight: 1000, color: '#0f172a', marginTop: 8 }
 const smallKpiHint: any = { fontSize: 12, color: '#94a3b8', marginTop: 6, fontWeight: 700 }
 
-const sectionCard: any = { marginTop: 14, borderRadius: 26, border: `1px solid ${colors.border}`, padding: 16, background: 'rgba(255,255,255,0.92)', boxShadow: '0 14px 26px rgba(15,23,42,0.06)' }
+const sectionCard: any = {
+  marginTop: 14,
+  borderRadius: 26,
+  border: `1px solid ${colors.border}`,
+  padding: 16,
+  background: 'rgba(255,255,255,0.92)',
+  boxShadow: '0 14px 26px rgba(15,23,42,0.06)',
+}
 const sectionTitleRow: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, marginBottom: 12 }
 const sectionTitle: any = { margin: 0, fontSize: 18, fontWeight: 950, color: colors.primary }
 const sectionSub: any = { marginTop: 4, fontSize: 12, fontWeight: 850, color: colors.secondary }
-const sectionPill: any = { padding: '10px 14px', borderRadius: 999, border: `1px solid ${colors.border}`, background: '#fff', fontSize: 13, fontWeight: 950, color: colors.primary, whiteSpace: 'nowrap' }
+const sectionPill: any = {
+  padding: '10px 14px',
+  borderRadius: 999,
+  border: `1px solid ${colors.border}`,
+  background: '#fff',
+  fontSize: 13,
+  fontWeight: 950,
+  color: colors.primary,
+  whiteSpace: 'nowrap',
+}
 
-const hintBox: any = { padding: 14, borderRadius: 16, backgroundColor: colors.background, border: `1px solid ${colors.border}`, fontSize: 14, fontWeight: 850, color: colors.secondary }
+const hintBox: any = {
+  padding: 14,
+  borderRadius: 16,
+  backgroundColor: colors.background,
+  border: `1px solid ${colors.border}`,
+  fontSize: 14,
+  fontWeight: 850,
+  color: colors.secondary,
+}
 
 const catRow: any = { display: 'grid', gridTemplateColumns: '1fr 120px 110px', alignItems: 'center', gap: 12 }
 const catLeft: any = { display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }
-const catIconWrap: any = { width: 44, height: 44, borderRadius: 16, background: '#f1f5f9', border: `1px solid ${colors.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: colors.primary, flex: '0 0 44px' }
+const catIconWrap: any = {
+  width: 44,
+  height: 44,
+  borderRadius: 16,
+  background: '#f1f5f9',
+  border: `1px solid ${colors.border}`,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  color: colors.primary,
+  flex: '0 0 44px',
+}
 const catLabelWrap: any = { minWidth: 0 }
 const catLabel: any = { fontSize: 16, fontWeight: 950, color: colors.primary, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }
 const catMid: any = { display: 'flex', alignItems: 'center', gap: 10, justifyContent: 'flex-end' }
@@ -1948,14 +2302,55 @@ const catTrack: any = { flex: 1, height: 10, borderRadius: 999, background: '#e5
 const catFill: any = { height: 10, borderRadius: 999 }
 const catValue: any = { textAlign: 'right', fontSize: 16, fontWeight: 950, whiteSpace: 'nowrap' }
 
-const rowItem: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 14, borderRadius: 18, backgroundColor: colors.background, border: `1px solid ${colors.border}` }
+const rowItem: any = {
+  display: 'flex',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+  padding: 14,
+  borderRadius: 18,
+  backgroundColor: colors.background,
+  border: `1px solid ${colors.border}`,
+}
 const listRow: any = { padding: 14, borderRadius: 18, backgroundColor: colors.background, border: `1px solid ${colors.border}` }
 
-const printWrap: any = { marginTop: 18, padding: 14, borderRadius: 18, backgroundColor: colors.surface, border: `1px solid ${colors.border}`, display: 'flex', flexDirection: 'column', gap: 10 }
+const printWrap: any = {
+  marginTop: 18,
+  padding: 14,
+  borderRadius: 18,
+  backgroundColor: colors.surface,
+  border: `1px solid ${colors.border}`,
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 10,
+}
 const printModeSwitchWrap: any = { display: 'flex', backgroundColor: '#e2e8f0', padding: 4, borderRadius: 14, gap: 6 }
-const printModeBtn: any = { flex: 1, padding: 12, borderRadius: 10, border: 'none', fontWeight: 950, fontSize: 16, cursor: 'pointer', backgroundColor: 'transparent', color: colors.primary }
+const printModeBtn: any = {
+  flex: 1,
+  padding: 12,
+  borderRadius: 10,
+  border: 'none',
+  fontWeight: 950,
+  fontSize: 16,
+  cursor: 'pointer',
+  backgroundColor: 'transparent',
+  color: colors.primary,
+}
 const printModeBtnActive: any = { backgroundColor: colors.indigo, color: '#fff' }
-const printBtn: any = { width: '100%', padding: 14, borderRadius: 14, border: 'none', cursor: 'pointer', fontSize: 16, fontWeight: 950, backgroundColor: colors.indigo, color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 10 }
+const printBtn: any = {
+  width: '100%',
+  padding: 14,
+  borderRadius: 14,
+  border: 'none',
+  cursor: 'pointer',
+  fontSize: 16,
+  fontWeight: 950,
+  backgroundColor: colors.indigo,
+  color: '#fff',
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: 10,
+}
 const printHint: any = { fontSize: 13, fontWeight: 850, color: colors.secondary, textAlign: 'center' }
 
 const searchBtn: any = {
