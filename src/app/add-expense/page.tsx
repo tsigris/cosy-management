@@ -28,16 +28,12 @@ type PaymentMethod = (typeof METHOD_VALUES)[number]
 type SmartKind = 'supplier' | 'asset'
 type AssetGroup = 'staff' | 'maintenance' | 'utility' | 'other'
 
+type ProfileRole = 'admin' | 'user' | 'super_admin' | string
+
 type SmartItem = {
   kind: SmartKind
   id: string
   name: string
-
-  // ✅ precomputed search keys (performance)
-  name_norm: string
-  name_latin: string
-  name_fuzzy: string
-
   sub_category?: string | null
   group?: AssetGroup
   rf_code?: string | null
@@ -51,6 +47,11 @@ type SmartItem = {
   daily_rate?: number | null
   monthly_days?: number | null
   start_date?: string | null
+
+  // ✅ precomputed search keys
+  name_norm: string
+  name_latin: string
+  name_fuzzy: string
 }
 
 type SelectedEntity = { kind: SmartKind; id: string } | null
@@ -127,23 +128,6 @@ function fuzzyIHI(str: string) {
     .replace(/ei/g, 'i')
     .replace(/oi/g, 'i')
     .replace(/yi/g, 'i')
-}
-
-function smartMatch(name: string, query: string) {
-  const q = normalizeGreek(query)
-  if (!q) return false
-
-  const n = normalizeGreek(name)
-  if (n.includes(q)) return true
-
-  const nLatin = greekToGreeklish(name)
-  if (nLatin.includes(q)) return true
-
-  const qF = fuzzyIHI(q)
-  const nF = fuzzyIHI(nLatin)
-  if (nF.includes(qF)) return true
-
-  return false
 }
 
 function groupTitle(group: AssetGroup | 'suppliers') {
@@ -249,6 +233,10 @@ function AddExpenseForm() {
   const smartBeneficiaryInputRef = useRef<HTMLInputElement | null>(null)
   const amountInputRef = useRef<HTMLInputElement | null>(null)
 
+  // ✅ Role (SaaS)
+  const [role, setRole] = useState<ProfileRole>('user')
+  const canCreate = useMemo(() => ['admin', 'user', 'super_admin'].includes(String(role)), [role])
+
   // ✅ Smart "Create new" modal
   const [createOpen, setCreateOpen] = useState(false)
   const [createSaving, setCreateSaving] = useState(false)
@@ -285,7 +273,7 @@ function AddExpenseForm() {
     setCStartDate('')
   }, [smartQuery])
 
-  // ✅ debounce search input (150ms)
+  // ✅ Debounce search
   useEffect(() => {
     const t = setTimeout(() => {
       setDebouncedQuery(smartQuery.trim())
@@ -293,14 +281,25 @@ function AddExpenseForm() {
     return () => clearTimeout(t)
   }, [smartQuery])
 
-  // ✅ auto-focus beneficiary search when form is ready and create modal is closed
+  // ✅ Auto focus on beneficiary input when ready
   useEffect(() => {
-    if (!loading && !createOpen) {
-      requestAnimationFrame(() => {
-        smartBeneficiaryInputRef.current?.focus()
-      })
-    }
+    if (loading) return
+    if (createOpen) return
+    requestAnimationFrame(() => {
+      smartBeneficiaryInputRef.current?.focus()
+    })
   }, [loading, createOpen])
+
+  // ✅ Make beneficiary field stand out (guided UX)
+  const beneficiaryInputStyle = useMemo(() => {
+    const empty = !smartQuery.trim() && !selectedEntity
+    return {
+      ...inputStyle,
+      border: empty ? `2px solid ${colors.accentBlue}` : inputStyle.border,
+      backgroundColor: empty ? 'rgba(37, 99, 235, 0.06)' : inputStyle.backgroundColor,
+      boxShadow: empty ? '0 6px 18px rgba(37, 99, 235, 0.10)' : undefined,
+    }
+  }, [smartQuery, selectedEntity])
 
   // close dropdown on outside
   useEffect(() => {
@@ -312,6 +311,13 @@ function AddExpenseForm() {
     document.addEventListener('pointerdown', handler, true)
     return () => document.removeEventListener('pointerdown', handler, true)
   }, [])
+
+  // ✅ Memory cleanup for image preview (revoke object URL)
+  useEffect(() => {
+    return () => {
+      if (imagePreview) URL.revokeObjectURL(imagePreview)
+    }
+  }, [imagePreview])
 
   useEffect(() => {
     if (typeof window === 'undefined' || typeof document === 'undefined') return
@@ -439,8 +445,15 @@ function AddExpenseForm() {
 
       setStoreId(activeStoreId)
 
-      const { data: profile } = await supabase.from('profiles').select('username').eq('id', session.user.id).maybeSingle()
-      if (profile) setCurrentUsername(profile.username || 'Admin')
+      // ✅ fetch username + role together
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('username, role')
+        .eq('id', session.user.id)
+        .maybeSingle()
+
+      if (profile?.username) setCurrentUsername(profile.username || 'Χρήστης')
+      setRole((profile?.role as ProfileRole) || 'user')
 
       const [sRes, fRes, tRes] = await Promise.all([
         supabase.from('suppliers').select('id, name, phone, vat_number, bank_name, iban').eq('store_id', activeStoreId).order('name'),
@@ -570,13 +583,13 @@ function AddExpenseForm() {
           kind: 'supplier',
           id: String(s.id),
           name,
-          name_norm: norm,
-          name_latin: latin,
-          name_fuzzy: fuzzy,
           phone: s.phone ?? null,
           vat_number: s.vat_number ?? null,
           bank_name: s.bank_name ?? null,
           iban: s.iban ?? null,
+          name_norm: norm,
+          name_latin: latin,
+          name_fuzzy: fuzzy,
         }
       }) || []
 
@@ -590,9 +603,6 @@ function AddExpenseForm() {
           kind: 'asset',
           id: String(a.id),
           name,
-          name_norm: norm,
-          name_latin: latin,
-          name_fuzzy: fuzzy,
           sub_category: a.sub_category,
           group: groupFromSubCategory(a.sub_category),
           phone: a.phone ?? null,
@@ -605,6 +615,9 @@ function AddExpenseForm() {
           daily_rate: a.daily_rate ?? null,
           monthly_days: a.monthly_days ?? null,
           start_date: a.start_date ?? null,
+          name_norm: norm,
+          name_latin: latin,
+          name_fuzzy: fuzzy,
         }
       }) || []
 
@@ -621,16 +634,17 @@ function AddExpenseForm() {
   }, [smartItems])
 
   const filtered = useMemo(() => {
-    const qRaw = debouncedQuery.trim()
-    if (!qRaw) return []
+    const raw = debouncedQuery.trim()
+    if (!raw) return []
 
-    const q = normalizeGreek(qRaw)
-    if (!q) return []
-
+    const q = normalizeGreek(raw)
     const qF = fuzzyIHI(q)
 
     return smartItems
-      .filter((item) => item.name_norm.includes(q) || item.name_latin.includes(q) || item.name_fuzzy.includes(qF))
+      .filter((item) => {
+        // ✅ no re-normalize per keystroke (uses precomputed keys)
+        return item.name_norm.includes(q) || item.name_latin.includes(q) || item.name_fuzzy.includes(qF)
+      })
       .slice(0, 80)
   }, [debouncedQuery, smartItems])
 
@@ -675,11 +689,19 @@ function AddExpenseForm() {
         return
       }
       setImageFile(file)
+
+      // ✅ revoke old preview before setting new one
+      if (imagePreview) URL.revokeObjectURL(imagePreview)
       setImagePreview(URL.createObjectURL(file))
     }
   }
 
   const openCreateModal = () => {
+    if (!canCreate) {
+      toast.error('Δεν έχεις δικαίωμα δημιουργίας νέου δικαιούχου')
+      return
+    }
+
     const q = normalizeGreek(smartQuery)
     const suggest: CreateTab =
       q.includes('δεη') || q.includes('deh') || q.includes('dei') || q.includes('ενοικ') || q.includes('rf')
@@ -873,7 +895,7 @@ function AddExpenseForm() {
     if (amt > 1_000_000) return toast.error('Το ποσό είναι υπερβολικά μεγάλο')
     if (!selectedEntity) return toast.error('Επίλεξε δικαιούχο από την αναζήτηση')
     if (!documentType) {
-      return toast.error('Παρακαλώ επιλέξτε τύπο παραστατικού (Απόδειξη, Τιμολόγιο ή Χωρίς)')
+      return toast.error('Παρακαλώ επιλέξτε τύπο παραστατικού (Απόδειξη, Τιμολόγιο ή Χωρίς);')
     }
 
     setLoading(true)
@@ -1029,11 +1051,12 @@ function AddExpenseForm() {
 
   const showCreateInline = useMemo(() => {
     const q = smartQuery.trim()
+    if (!canCreate) return false
     if (!smartOpen) return false
     if (!q) return false
     if (filtered.length > 0) return false
     return true
-  }, [smartOpen, smartQuery, filtered.length])
+  }, [canCreate, smartOpen, smartQuery, filtered.length])
 
   return (
     <div style={iphoneWrapper}>
@@ -1071,7 +1094,7 @@ function AddExpenseForm() {
               }}
               onFocus={() => setSmartOpen(true)}
               placeholder="Αναζήτηση"
-              style={inputStyle}
+              style={beneficiaryInputStyle}
               autoCapitalize="none"
               autoCorrect="off"
               spellCheck={false}
@@ -1306,6 +1329,7 @@ function AddExpenseForm() {
                       <button
                         type="button"
                         onClick={() => {
+                          if (imagePreview) URL.revokeObjectURL(imagePreview)
                           setImageFile(null)
                           setImagePreview(null)
                         }}
@@ -1341,7 +1365,9 @@ function AddExpenseForm() {
             >
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
                 <span style={{ fontSize: 14, fontWeight: 900 }}>{loading ? 'Αποθήκευση...' : editId ? 'Ενημέρωση' : 'Καταχώρηση'}</span>
-                <span style={{ fontSize: 14, opacity: 0.85, fontWeight: 800, marginTop: 6 }}>Καθαρό ταμείο: {currentBalance.toFixed(2)}€</span>
+                <span style={{ fontSize: 14, opacity: 0.85, fontWeight: 800, marginTop: 6 }}>
+                  Καθαρό ταμείο: {currentBalance.toFixed(2)}€
+                </span>
               </div>
             </button>
           </div>
@@ -1352,8 +1378,8 @@ function AddExpenseForm() {
         </div>
       </div>
 
-      {/* ✅ CREATE MODAL */}
-      {createOpen && (
+      {/* ✅ CREATE MODAL (allowed for admin/user/super_admin) */}
+      {createOpen && canCreate && (
         <div style={modalOverlay} onMouseDown={() => !createSaving && setCreateOpen(false)}>
           <div style={modalCard} onMouseDown={(e) => e.stopPropagation()}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
@@ -1386,14 +1412,7 @@ function AddExpenseForm() {
 
             <div style={{ marginTop: 12 }}>
               <label style={modalLabel}>{createTab === 'staff' ? 'Ονοματεπώνυμο' : 'Όνομα'}</label>
-              <input
-                value={cName}
-                onChange={(e) => setCName(e.target.value)}
-                style={modalInput}
-                placeholder="π.χ. Τζήλιος"
-                disabled={createSaving}
-                maxLength={80}
-              />
+              <input value={cName} onChange={(e) => setCName(e.target.value)} style={modalInput} placeholder="π.χ. Τζήλιος" disabled={createSaving} maxLength={80} />
             </div>
 
             {(createTab === 'suppliers' || createTab === 'maintenance' || createTab === 'other') && (
@@ -1423,7 +1442,14 @@ function AddExpenseForm() {
 
                 <div style={{ marginTop: 10 }}>
                   <label style={modalLabel}>IBAN</label>
-                  <input value={cIban} onChange={(e) => setCIban(e.target.value)} style={modalInput} placeholder="GR..." disabled={createSaving} maxLength={40} />
+                  <input
+                    value={cIban}
+                    onChange={(e) => setCIban(e.target.value.replace(/\s+/g, '').toUpperCase())} // ✅ strip spaces + uppercase
+                    style={modalInput}
+                    placeholder="GR..."
+                    disabled={createSaving}
+                    maxLength={40}
+                  />
                 </div>
                 <div style={{ marginTop: 8, fontSize: 12, fontWeight: 800, color: colors.secondaryText }}>* IBAN αποθηκεύεται με ΚΕΦΑΛΑΙΑ.</div>
               </>
@@ -1433,7 +1459,14 @@ function AddExpenseForm() {
               <>
                 <div style={{ marginTop: 10 }}>
                   <label style={modalLabel}>Κωδικός RF</label>
-                  <input value={cRf} onChange={(e) => setCRf(e.target.value)} style={modalInput} placeholder="RF..." disabled={createSaving} maxLength={60} />
+                  <input
+                    value={cRf}
+                    onChange={(e) => setCRf(e.target.value.replace(/\s+/g, '').toUpperCase())} // ✅ strip spaces + uppercase
+                    style={modalInput}
+                    placeholder="RF..."
+                    disabled={createSaving}
+                    maxLength={60}
+                  />
                 </div>
 
                 <div style={{ marginTop: 10 }}>
@@ -1521,7 +1554,14 @@ function AddExpenseForm() {
 
                 <div style={{ marginTop: 10 }}>
                   <label style={modalLabel}>IBAN</label>
-                  <input value={cIban} onChange={(e) => setCIban(e.target.value)} style={modalInput} placeholder="GR..." disabled={createSaving} maxLength={40} />
+                  <input
+                    value={cIban}
+                    onChange={(e) => setCIban(e.target.value.replace(/\s+/g, '').toUpperCase())} // ✅ strip spaces + uppercase
+                    style={modalInput}
+                    placeholder="GR..."
+                    disabled={createSaving}
+                    maxLength={40}
+                  />
                 </div>
               </>
             )}
