@@ -239,6 +239,8 @@ function AddExpenseForm() {
   const [smartQuery, setSmartQuery] = useState('')
   const [smartOpen, setSmartOpen] = useState(false)
   const smartBoxRef = useRef<HTMLDivElement | null>(null)
+  const smartBeneficiaryInputRef = useRef<HTMLInputElement | null>(null)
+  const amountInputRef = useRef<HTMLInputElement | null>(null)
 
   // ✅ Smart "Create new" modal
   const [createOpen, setCreateOpen] = useState(false)
@@ -600,12 +602,18 @@ function AddExpenseForm() {
     setSelectedEntity({ kind: item.kind, id: item.id })
     setSmartQuery(item.name)
     setSmartOpen(false)
+    requestAnimationFrame(() => {
+      amountInputRef.current?.focus()
+    })
   }
 
   const clearSelection = () => {
     setSelectedEntity(null)
     setSmartQuery('')
     setSmartOpen(true)
+    requestAnimationFrame(() => {
+      smartBeneficiaryInputRef.current?.focus()
+    })
   }
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1006,6 +1014,7 @@ function AddExpenseForm() {
 
           <div ref={smartBoxRef} style={{ position: 'relative' }}>
             <input
+              ref={smartBeneficiaryInputRef}
               value={smartQuery}
               onChange={(e) => {
                 setSmartQuery(e.target.value)
@@ -1114,6 +1123,7 @@ function AddExpenseForm() {
 
           <label style={{ ...labelStyle, marginTop: 20 }}>Ποσό (€)</label>
           <input
+            ref={amountInputRef}
             type="text"
             inputMode="decimal"
             value={amount}
