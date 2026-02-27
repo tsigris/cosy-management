@@ -32,6 +32,12 @@ type SmartItem = {
   kind: SmartKind
   id: string
   name: string
+
+  // ✅ precomputed search keys (performance)
+  name_norm: string
+  name_latin: string
+  name_fuzzy: string
+
   sub_category?: string | null
   group?: AssetGroup
   rf_code?: string | null
@@ -217,8 +223,8 @@ function AddExpenseForm() {
   const [notes, setNotes] = useState('')
   const [isCredit, setIsCredit] = useState(false)
   const [isAgainstDebt, setIsAgainstDebt] = useState(searchParams.get('mode') === 'debt')
-  type DocumentType = 'Απόδειξη λιανικής' | 'Τιμολόγιο' | 'Χωρίς τιμολόγιο';
-  const [documentType, setDocumentType] = useState<DocumentType | null>(null);
+  type DocumentType = 'Απόδειξη λιανικής' | 'Τιμολόγιο' | 'Χωρίς τιμολόγιο'
+  const [documentType, setDocumentType] = useState<DocumentType | null>(null)
 
   const [imageFile, setImageFile] = useState<File | null>(null)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
@@ -237,6 +243,7 @@ function AddExpenseForm() {
   const [selectedEntity, setSelectedEntity] = useState<SelectedEntity>(null)
 
   const [smartQuery, setSmartQuery] = useState('')
+  const [debouncedQuery, setDebouncedQuery] = useState('') // ✅ debounce
   const [smartOpen, setSmartOpen] = useState(false)
   const smartBoxRef = useRef<HTMLDivElement | null>(null)
   const smartBeneficiaryInputRef = useRef<HTMLInputElement | null>(null)
@@ -277,6 +284,23 @@ function AddExpenseForm() {
     setCMonthlyDays('')
     setCStartDate('')
   }, [smartQuery])
+
+  // ✅ debounce search input (150ms)
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setDebouncedQuery(smartQuery.trim())
+    }, 150)
+    return () => clearTimeout(t)
+  }, [smartQuery])
+
+  // ✅ auto-focus beneficiary search when form is ready and create modal is closed
+  useEffect(() => {
+    if (!loading && !createOpen) {
+      requestAnimationFrame(() => {
+        smartBeneficiaryInputRef.current?.focus()
+      })
+    }
+  }, [loading, createOpen])
 
   // close dropdown on outside
   useEffect(() => {
@@ -476,10 +500,10 @@ function AddExpenseForm() {
           setIsAgainstDebt(tx.type === 'debt_payment')
 
           // Set documentType from notes prefix
-          if (notesText.startsWith('Απόδειξη λιανικής')) setDocumentType('Απόδειξη λιανικής');
-          else if (notesText.startsWith('Τιμολόγιο')) setDocumentType('Τιμολόγιο');
-          else if (notesText.startsWith('Χωρίς τιμολόγιο')) setDocumentType('Χωρίς τιμολόγιο');
-          else setDocumentType(null);
+          if (notesText.startsWith('Απόδειξη λιανικής')) setDocumentType('Απόδειξη λιανικής')
+          else if (notesText.startsWith('Τιμολόγιο')) setDocumentType('Τιμολόγιο')
+          else if (notesText.startsWith('Χωρίς τιμολόγιο')) setDocumentType('Χωρίς τιμολόγιο')
+          else setDocumentType(null)
 
           if (tx.supplier_id) {
             const id = String(tx.supplier_id)
@@ -527,7 +551,7 @@ function AddExpenseForm() {
     } finally {
       setLoading(false)
     }
-  }, [editId, router, selectedDate, urlSupId, urlAssetId, searchParams, getActiveStoreId])
+  }, [editId, router, selectedDate, urlSupId, urlAssetId, searchParams, getActiveStoreId, supabase])
 
   useEffect(() => {
     loadFormData()
@@ -537,34 +561,52 @@ function AddExpenseForm() {
 
   const smartItems = useMemo<SmartItem[]>(() => {
     const sList: SmartItem[] =
-      suppliers?.map((s: any) => ({
-        kind: 'supplier',
-        id: String(s.id),
-        name: String(s.name || ''),
-        phone: s.phone ?? null,
-        vat_number: s.vat_number ?? null,
-        bank_name: s.bank_name ?? null,
-        iban: s.iban ?? null,
-      })) || []
+      suppliers?.map((s: any) => {
+        const name = String(s.name || '')
+        const norm = normalizeGreek(name)
+        const latin = greekToGreeklish(name)
+        const fuzzy = fuzzyIHI(latin)
+        return {
+          kind: 'supplier',
+          id: String(s.id),
+          name,
+          name_norm: norm,
+          name_latin: latin,
+          name_fuzzy: fuzzy,
+          phone: s.phone ?? null,
+          vat_number: s.vat_number ?? null,
+          bank_name: s.bank_name ?? null,
+          iban: s.iban ?? null,
+        }
+      }) || []
 
     const aList: SmartItem[] =
-      fixedAssets?.map((a: any) => ({
-        kind: 'asset',
-        id: String(a.id),
-        name: String(a.name || ''),
-        sub_category: a.sub_category,
-        group: groupFromSubCategory(a.sub_category),
-        phone: a.phone ?? null,
-        vat_number: a.vat_number ?? null,
-        bank_name: a.bank_name ?? null,
-        iban: a.iban ?? null,
-        rf_code: a.rf_code ?? null,
-        pay_basis: a.pay_basis ?? null,
-        monthly_salary: a.monthly_salary ?? null,
-        daily_rate: a.daily_rate ?? null,
-        monthly_days: a.monthly_days ?? null,
-        start_date: a.start_date ?? null,
-      })) || []
+      fixedAssets?.map((a: any) => {
+        const name = String(a.name || '')
+        const norm = normalizeGreek(name)
+        const latin = greekToGreeklish(name)
+        const fuzzy = fuzzyIHI(latin)
+        return {
+          kind: 'asset',
+          id: String(a.id),
+          name,
+          name_norm: norm,
+          name_latin: latin,
+          name_fuzzy: fuzzy,
+          sub_category: a.sub_category,
+          group: groupFromSubCategory(a.sub_category),
+          phone: a.phone ?? null,
+          vat_number: a.vat_number ?? null,
+          bank_name: a.bank_name ?? null,
+          iban: a.iban ?? null,
+          rf_code: a.rf_code ?? null,
+          pay_basis: a.pay_basis ?? null,
+          monthly_salary: a.monthly_salary ?? null,
+          daily_rate: a.daily_rate ?? null,
+          monthly_days: a.monthly_days ?? null,
+          start_date: a.start_date ?? null,
+        }
+      }) || []
 
     return [...sList, ...aList]
   }, [suppliers, fixedAssets])
@@ -579,10 +621,18 @@ function AddExpenseForm() {
   }, [smartItems])
 
   const filtered = useMemo(() => {
-    const q = smartQuery.trim()
+    const qRaw = debouncedQuery.trim()
+    if (!qRaw) return []
+
+    const q = normalizeGreek(qRaw)
     if (!q) return []
-    return smartItems.filter((i) => smartMatch(i.name, q)).slice(0, 80)
-  }, [smartQuery, smartItems])
+
+    const qF = fuzzyIHI(q)
+
+    return smartItems
+      .filter((item) => item.name_norm.includes(q) || item.name_latin.includes(q) || item.name_fuzzy.includes(qF))
+      .slice(0, 80)
+  }, [debouncedQuery, smartItems])
 
   const groupedResultsSafe = useMemo(() => {
     const groups: Record<string, SmartItem[]> = {}
@@ -675,7 +725,11 @@ function AddExpenseForm() {
           store_id: activeStoreId,
         }
 
-        const { data, error } = await supabase.from('suppliers').insert([payload]).select('id, name, phone, vat_number, bank_name, iban').single()
+        const { data, error } = await supabase
+          .from('suppliers')
+          .insert([payload])
+          .select('id, name, phone, vat_number, bank_name, iban')
+          .single()
         if (error) throw error
 
         setSuppliers((prev) => [...prev, data].sort((a, b) => String(a.name).localeCompare(String(b.name))))
@@ -819,7 +873,7 @@ function AddExpenseForm() {
     if (amt > 1_000_000) return toast.error('Το ποσό είναι υπερβολικά μεγάλο')
     if (!selectedEntity) return toast.error('Επίλεξε δικαιούχο από την αναζήτηση')
     if (!documentType) {
-      return toast.error('Παρακαλώ επιλέξτε τύπο παραστατικού (Απόδειξη, Τιμολόγιο ή Χωρίς)');
+      return toast.error('Παρακαλώ επιλέξτε τύπο παραστατικού (Απόδειξη, Τιμολόγιο ή Χωρίς)')
     }
 
     setLoading(true)
@@ -834,11 +888,7 @@ function AddExpenseForm() {
         return router.push('/login')
       }
 
-      const { data: prof } = await supabase
-        .from('profiles')
-        .select('username')
-        .eq('id', session.user.id)
-        .maybeSingle()
+      const { data: prof } = await supabase.from('profiles').select('username').eq('id', session.user.id).maybeSingle()
 
       const createdByName = (prof?.username || session.user.email?.split('@')[0] || 'Χρήστης').trim()
 
@@ -901,9 +951,7 @@ function AddExpenseForm() {
             : mustDebtNote
           : baseNotes
 
-      const finalNotes = documentType
-        ? documentType + (debtNote ? ' | ' + debtNote : '')
-        : debtNote
+      const finalNotes = documentType ? documentType + (debtNote ? ' | ' + debtNote : '') : debtNote
 
       const payload: any = {
         amount: -Math.abs(amt), // ✅ expenses negative
@@ -1064,9 +1112,7 @@ function AddExpenseForm() {
 
                 {Object.keys(groupedResultsSafe).length === 0 ? (
                   !showCreateInline ? (
-                    <div style={{ padding: 14, fontSize: 14, fontWeight: 700, color: colors.secondaryText }}>
-                      Δεν βρέθηκε αποτέλεσμα
-                    </div>
+                    <div style={{ padding: 14, fontSize: 14, fontWeight: 700, color: colors.secondaryText }}>Δεν βρέθηκε αποτέλεσμα</div>
                   ) : null
                 ) : (
                   Object.entries(groupedResultsSafe).map(([group, items]) => (
@@ -1115,9 +1161,7 @@ function AddExpenseForm() {
           {!!selectedEntity && (
             <div style={selectedBox}>
               Επιλογή: <span style={{ fontWeight: 900 }}>{selectedLabel}</span>
-              {!!selectedMeta && (
-                <span style={{ marginLeft: 8, color: colors.secondaryText, fontWeight: 800 }}>({selectedMeta})</span>
-              )}
+              {!!selectedMeta && <span style={{ marginLeft: 8, color: colors.secondaryText, fontWeight: 800 }}>({selectedMeta})</span>}
             </div>
           )}
 
@@ -1251,7 +1295,7 @@ function AddExpenseForm() {
             placeholder="π.χ. Απόδειξη, περιγραφή, αριθμός..."
           />
 
-          {(!editId && documentType !== 'Χωρίς τιμολόγιο') ? (
+          {!editId && documentType !== 'Χωρίς τιμολόγιο' ? (
             <>
               <div style={{ marginTop: 20 }}>
                 <label style={labelStyle}>📸 Φωτογραφία τιμολογίου</label>
@@ -1296,12 +1340,8 @@ function AddExpenseForm() {
               }}
             >
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                <span style={{ fontSize: 14, fontWeight: 900 }}>
-                  {loading ? 'Αποθήκευση...' : editId ? 'Ενημέρωση' : 'Καταχώρηση'}
-                </span>
-                <span style={{ fontSize: 14, opacity: 0.85, fontWeight: 800, marginTop: 6 }}>
-                  Καθαρό ταμείο: {currentBalance.toFixed(2)}€
-                </span>
+                <span style={{ fontSize: 14, fontWeight: 900 }}>{loading ? 'Αποθήκευση...' : editId ? 'Ενημέρωση' : 'Καταχώρηση'}</span>
+                <span style={{ fontSize: 14, opacity: 0.85, fontWeight: 800, marginTop: 6 }}>Καθαρό ταμείο: {currentBalance.toFixed(2)}€</span>
               </div>
             </button>
           </div>
@@ -1346,7 +1386,14 @@ function AddExpenseForm() {
 
             <div style={{ marginTop: 12 }}>
               <label style={modalLabel}>{createTab === 'staff' ? 'Ονοματεπώνυμο' : 'Όνομα'}</label>
-              <input value={cName} onChange={(e) => setCName(e.target.value)} style={modalInput} placeholder="π.χ. Τζήλιος" disabled={createSaving} maxLength={80} />
+              <input
+                value={cName}
+                onChange={(e) => setCName(e.target.value)}
+                style={modalInput}
+                placeholder="π.χ. Τζήλιος"
+                disabled={createSaving}
+                maxLength={80}
+              />
             </div>
 
             {(createTab === 'suppliers' || createTab === 'maintenance' || createTab === 'other') && (
@@ -1378,9 +1425,7 @@ function AddExpenseForm() {
                   <label style={modalLabel}>IBAN</label>
                   <input value={cIban} onChange={(e) => setCIban(e.target.value)} style={modalInput} placeholder="GR..." disabled={createSaving} maxLength={40} />
                 </div>
-                <div style={{ marginTop: 8, fontSize: 12, fontWeight: 800, color: colors.secondaryText }}>
-                  * IBAN αποθηκεύεται με ΚΕΦΑΛΑΙΑ.
-                </div>
+                <div style={{ marginTop: 8, fontSize: 12, fontWeight: 800, color: colors.secondaryText }}>* IBAN αποθηκεύεται με ΚΕΦΑΛΑΙΑ.</div>
               </>
             )}
 
@@ -1403,9 +1448,7 @@ function AddExpenseForm() {
                   </select>
                 </div>
 
-                <div style={{ marginTop: 8, fontSize: 12, fontWeight: 800, color: colors.secondaryText }}>
-                  * RF αποθηκεύεται με ΚΕΦΑΛΑΙΑ.
-                </div>
+                <div style={{ marginTop: 8, fontSize: 12, fontWeight: 800, color: colors.secondaryText }}>* RF αποθηκεύεται με ΚΕΦΑΛΑΙΑ.</div>
               </>
             )}
 
