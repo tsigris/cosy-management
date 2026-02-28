@@ -1,22 +1,20 @@
 'use client'
 
+export const dynamic = 'force-dynamic'
+
 import type { CSSProperties } from 'react'
-import { useEffect, useMemo, useState } from 'react'
-import { useSearchParams } from 'next/navigation'
-import { createClient } from '@supabase/supabase-js'
+import { useEffect, useMemo, useState, useCallback } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { getSupabase } from '@/lib/supabase'
 import EconomicsTabs from '@/components/EconomicsTabs'
 
-/** Supabase (browser safe) */
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
-const supabase = createClient(supabaseUrl, supabaseAnonKey)
+/* ---------------- TYPES ---------------- */
 
-/** Types */
 type ExpenseRow = {
   id: string
   date: string
   amount: number
-  type: 'expense' | 'debt_payment' | string
+  type: string
   method?: string | null
   category?: string | null
   is_credit?: boolean | null
@@ -27,231 +25,235 @@ type ExpenseRow = {
 
 type DrilldownFilter = { type: 'beneficiary' | 'category' | 'method'; value: string } | null
 
-type ViewMode = 'movements' | 'beneficiary' | 'category' | 'method'
+type GroupBase = {
+  key: string
+  total: number
+  count: number
+  rows: ExpenseRow[]
+}
 
-const VIEW_MODES: Array<{ key: ViewMode; label: string }> = [
+type BeneficiaryGroup = GroupBase & {
+  label: string
+}
+
+/* ---------------- HELPERS ---------------- */
+
+const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '')
+
+function groupByMethod(rows: ExpenseRow[]): GroupBase[] {
+  const map = new Map<string, GroupBase>()
+  for (const r of rows) {
+    const key = (r.method || 'Άλλη Μέθοδος').trim() || 'Άλλη Μέθοδος'
+    if (!map.has(key)) map.set(key, { key, total: 0, count: 0, rows: [] })
+    const entry = map.get(key)!
+    if (r.type === 'expense' || r.type === 'debt_payment') entry.total += Math.abs(Number(r.amount) || 0)
+    entry.count += 1
+    entry.rows.push(r)
+  }
+  return Array.from(map.values()).sort((a, b) => b.total - a.total)
+}
+
+function filterGroupsByKey<T extends { key: string }>(groups: T[], q: string): T[] {
+  if (!q.trim()) return groups
+  const qn = norm(q.trim())
+  return groups.filter((g) => norm(String(g.key)).includes(qn))
+}
+
+function groupByCategory(rows: ExpenseRow[]): GroupBase[] {
+  const map = new Map<string, GroupBase>()
+  for (const r of rows) {
+    const key = (r.category || 'Άλλη Κατηγορία').trim() || 'Άλλη Κατηγορία'
+    if (!map.has(key)) map.set(key, { key, total: 0, count: 0, rows: [] })
+    const entry = map.get(key)!
+    if (r.type === 'expense' || r.type === 'debt_payment') entry.total += Math.abs(Number(r.amount) || 0)
+    entry.count += 1
+    entry.rows.push(r)
+  }
+  return Array.from(map.values()).sort((a, b) => b.total - a.total)
+}
+
+function groupByBeneficiary(rows: ExpenseRow[]): BeneficiaryGroup[] {
+  const map = new Map<string, BeneficiaryGroup>()
+  for (const r of rows) {
+    const key = (r.suppliers?.name || r.fixed_assets?.name || 'Άλλο').trim() || 'Άλλο'
+
+    let label = 'Λοιπά'
+    if (r.suppliers?.name) label = 'Προμηθευτής'
+    else if (r.fixed_assets?.sub_category) {
+      const sub = String(r.fixed_assets.sub_category).trim().toLowerCase()
+      if (sub === 'staff') label = 'Προσωπικό'
+      else if (sub === 'maintenance' || sub === 'worker') label = 'Συντήρηση'
+      else if (sub === 'utility' || sub === 'utilities') label = 'Λογαριασμός'
+    }
+
+    if (!map.has(key)) map.set(key, { key, label, total: 0, count: 0, rows: [] })
+    const entry = map.get(key)!
+    if (r.type === 'expense' || r.type === 'debt_payment') entry.total += Math.abs(Number(r.amount) || 0)
+    entry.count += 1
+    entry.rows.push(r)
+  }
+  return Array.from(map.values()).sort((a, b) => b.total - a.total)
+}
+
+function filterBeneficiaries(groups: BeneficiaryGroup[], q: string): BeneficiaryGroup[] {
+  if (!q.trim()) return groups
+  const qn = norm(q.trim())
+  return groups.filter((g) => norm(g.key).includes(qn) || norm(g.label).includes(qn))
+}
+
+/* ---------------- UI CONFIG ---------------- */
+
+const VIEW_MODES = [
   { key: 'movements', label: 'Κινήσεις' },
   { key: 'beneficiary', label: 'Ανά Δικαιούχο' },
   { key: 'category', label: 'Ανά Κατηγορία' },
   { key: 'method', label: 'Ανά Μέθοδο' },
-]
+] as const
 
-/** Helpers */
-function stripDiacritics(str: string) {
-  return str.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-}
-function norm(s: string) {
-  return stripDiacritics(String(s || '')).toLowerCase().trim()
-}
+type ViewMode = (typeof VIEW_MODES)[number]['key']
 
-function getBeneficiaryKey(r: ExpenseRow) {
-  return (r.suppliers?.name || r.fixed_assets?.name || 'Άλλο').trim()
-}
-
-function mapAssetLabel(sub?: string | null) {
-  const sc = String(sub || '').toLowerCase().trim()
-  if (sc === 'staff') return 'Προσωπικό'
-  if (sc === 'maintenance' || sc === 'worker') return 'Συντήρηση'
-  if (sc === 'utility' || sc === 'utilities') return 'Λογαριασμός'
-  return 'Λοιπά'
-}
-
-function groupByBeneficiary(rows: ExpenseRow[]) {
-  const map = new Map<string, { key: string; label: string; total: number; count: number }>()
-  for (const r of rows) {
-    const key = getBeneficiaryKey(r)
-    let label = 'Λοιπά'
-    if (r.suppliers?.name) label = 'Προμηθευτής'
-    else if (r.fixed_assets?.sub_category) label = mapAssetLabel(r.fixed_assets.sub_category)
-
-    if (!map.has(key)) map.set(key, { key, label, total: 0, count: 0 })
-    const entry = map.get(key)!
-    if (r.type === 'expense') entry.total += Math.abs(Number(r.amount) || 0)
-    entry.count += 1
-  }
-  return Array.from(map.values()).sort((a, b) => b.total - a.total)
-}
-
-function groupByCategory(rows: ExpenseRow[]) {
-  const map = new Map<string, { key: string; total: number; count: number }>()
-  for (const r of rows) {
-    const key = (r.category || 'Άλλη Κατηγορία').trim()
-    if (!map.has(key)) map.set(key, { key, total: 0, count: 0 })
-    const entry = map.get(key)!
-    if (r.type === 'expense') entry.total += Math.abs(Number(r.amount) || 0)
-    entry.count += 1
-  }
-  return Array.from(map.values()).sort((a, b) => b.total - a.total)
-}
-
-function groupByMethod(rows: ExpenseRow[]) {
-  const map = new Map<string, { key: string; total: number; count: number }>()
-  for (const r of rows) {
-    const key = (r.method || 'Άλλη Μέθοδος').trim()
-    if (!map.has(key)) map.set(key, { key, total: 0, count: 0 })
-    const entry = map.get(key)!
-    if (r.type === 'expense') entry.total += Math.abs(Number(r.amount) || 0)
-    entry.count += 1
-  }
-  return Array.from(map.values()).sort((a, b) => b.total - a.total)
-}
-
-function filterBySearch<T extends { key: string; label?: string }>(groups: T[], q: string) {
-  const qq = norm(q)
-  if (!qq) return groups
-  return groups.filter((g) => norm(g.key).includes(qq) || (g.label ? norm(g.label).includes(qq) : false))
-}
-
-function monthRangeFromDate(dateStr: string) {
-  // expects YYYY-MM-DD
-  const d = new Date(dateStr + 'T00:00:00')
-  const y = d.getFullYear()
-  const m = d.getMonth()
-  const start = new Date(y, m, 1)
-  const end = new Date(y, m + 1, 0)
-
-  const toISO = (x: Date) => x.toISOString().slice(0, 10)
-  return { start: toISO(start), end: toISO(end) }
-}
-
-function formatEUR(n: number) {
-  return n.toLocaleString('el-GR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '€'
-}
+/* ---------------- PAGE ---------------- */
 
 export default function EconomicsExpensesPage() {
+  const supabase = getSupabase()
+  const router = useRouter()
   const searchParams = useSearchParams()
-  const selectedDate = searchParams.get('date') || new Date().toISOString().slice(0, 10)
+  const storeId = searchParams.get('store')
 
   const [viewMode, setViewMode] = useState<ViewMode>('movements')
   const [loading, setLoading] = useState(false)
   const [rows, setRows] = useState<ExpenseRow[]>([])
   const [search, setSearch] = useState('')
   const [activeFilter, setActiveFilter] = useState<DrilldownFilter>(null)
-  const [errorMsg, setErrorMsg] = useState<string | null>(null)
 
-  // reset search when switching view
   useEffect(() => {
-    setSearch('')
-  }, [viewMode])
+    if (!storeId || storeId === 'null') router.replace('/select-store')
+  }, [storeId, router])
 
-  // Fetch monthly expenses/debt payments
+  // Fetch expenses when view mode changes (and reset search)
   useEffect(() => {
-    const run = async () => {
-      setLoading(true)
-      setErrorMsg(null)
+    let isMounted = true
 
-      const storeId = (typeof window !== 'undefined' ? localStorage.getItem('active_store_id') : '')?.trim()
-      if (!storeId) {
+    const load = async () => {
+      try {
+        if (!storeId || storeId === 'null') return
+        setLoading(true)
+
+        const { data: sessionData } = await supabase.auth.getSession()
+        if (!sessionData?.session) {
+          router.push('/login')
+          return
+        }
+
+        const { data, error } = await supabase
+          .from('transactions')
+          .select(
+            'id, date, amount, type, method, category, is_credit, created_at, suppliers:suppliers(name), fixed_assets:fixed_assets(name, sub_category)'
+          )
+          .eq('store_id', storeId)
+          .in('type', ['expense', 'debt_payment'])
+          .order('date', { ascending: false })
+
+        if (!isMounted) return
+        if (error) throw error
+
+        const safeData: ExpenseRow[] = Array.isArray(data)
+          ? (data as any[]).map((row) => ({
+              ...row,
+              suppliers: Array.isArray(row.suppliers) ? row.suppliers[0] : row.suppliers,
+              fixed_assets: Array.isArray(row.fixed_assets) ? row.fixed_assets[0] : row.fixed_assets,
+            }))
+          : []
+
+        setRows(safeData)
+      } catch (e) {
+        console.error(e)
+        if (!isMounted) return
         setRows([])
+      } finally {
+        if (!isMounted) return
         setLoading(false)
-        setErrorMsg('Δεν βρέθηκε active_store_id')
-        return
       }
-
-      const { start, end } = monthRangeFromDate(selectedDate)
-
-      const { data, error } = await supabase
-        .from('transactions')
-        .select(
-          `
-          id, date, amount, type, method, category, is_credit, created_at,
-          suppliers:suppliers(name),
-          fixed_assets:fixed_assets(name, sub_category)
-        `,
-        )
-        .eq('store_id', storeId)
-        .gte('date', start)
-        .lte('date', end)
-        .in('type', ['expense', 'debt_payment'])
-        .order('date', { ascending: false })
-
-      if (error) {
-        setRows([])
-        setLoading(false)
-        setErrorMsg(error.message || 'Σφάλμα φόρτωσης')
-        return
-      }
-
-      // normalize joins (sometimes array, sometimes object depending on relationship)
-      const safe = Array.isArray(data)
-        ? (data as any[]).map((r) => ({
-            ...r,
-            suppliers: Array.isArray(r.suppliers) ? r.suppliers[0] : r.suppliers,
-            fixed_assets: Array.isArray(r.fixed_assets) ? r.fixed_assets[0] : r.fixed_assets,
-          }))
-        : []
-
-      setRows(safe)
-      setLoading(false)
     }
 
-    run()
-  }, [selectedDate])
+    // Μόνο για τα συγκεκριμένα modes
+    if (['beneficiary', 'category', 'method', 'movements'].includes(viewMode)) {
+      setSearch('')
+      load()
+    }
 
-  const monthLabel = useMemo(() => {
-    const d = new Date(selectedDate + 'T00:00:00')
-    return d.toLocaleDateString('el-GR', { month: 'long', year: 'numeric' })
-  }, [selectedDate])
+    return () => {
+      isMounted = false
+    }
+  }, [viewMode, storeId, supabase, router])
 
-  // Drilldown movements
+  const beneficiaryGroups = useMemo(() => groupByBeneficiary(rows), [rows])
+  const filteredBeneficiaries = useMemo(() => filterBeneficiaries(beneficiaryGroups, search), [beneficiaryGroups, search])
+
+  const categoryGroups = useMemo(() => groupByCategory(rows), [rows])
+  const filteredCategories = useMemo(() => filterGroupsByKey(categoryGroups, search), [categoryGroups, search])
+
+  const methodGroups = useMemo(() => groupByMethod(rows), [rows])
+  const filteredMethods = useMemo(() => filterGroupsByKey(methodGroups, search), [methodGroups, search])
+
   const filteredMovements = useMemo(() => {
-    let out = rows
+    let filtered = rows
 
     if (activeFilter) {
       if (activeFilter.type === 'beneficiary') {
-        out = out.filter((r) => getBeneficiaryKey(r) === activeFilter.value)
+        filtered = filtered.filter((r) => {
+          const key = (r.suppliers?.name || r.fixed_assets?.name || 'Άλλο').trim() || 'Άλλο'
+          return key === activeFilter.value
+        })
       } else if (activeFilter.type === 'category') {
-        out = out.filter((r) => (r.category || 'Άλλη Κατηγορία').trim() === activeFilter.value)
+        filtered = filtered.filter((r) => ((r.category || 'Άλλη Κατηγορία').trim() || 'Άλλη Κατηγορία') === activeFilter.value)
       } else if (activeFilter.type === 'method') {
-        out = out.filter((r) => (r.method || 'Άλλη Μέθοδος').trim() === activeFilter.value)
+        filtered = filtered.filter((r) => ((r.method || 'Άλλη Μέθοδος').trim() || 'Άλλη Μέθοδος') === activeFilter.value)
       }
     }
 
-    return out
+    return filtered
   }, [rows, activeFilter])
 
-  // Grouped views
-  const beneficiaryGroups = useMemo(() => groupByBeneficiary(rows), [rows])
-  const categoryGroups = useMemo(() => groupByCategory(rows), [rows])
-  const methodGroups = useMemo(() => groupByMethod(rows), [rows])
-
-  const filteredBeneficiaries = useMemo(() => filterBySearch(beneficiaryGroups, search), [beneficiaryGroups, search])
-  const filteredCategories = useMemo(() => filterBySearch(categoryGroups, search), [categoryGroups, search])
-  const filteredMethods = useMemo(() => filterBySearch(methodGroups, search), [methodGroups, search])
-
-  const activeFilterLabel = useMemo(() => {
-    if (!activeFilter) return ''
-    if (activeFilter.type === 'beneficiary') return 'Δικαιούχος'
-    if (activeFilter.type === 'category') return 'Κατηγορία'
-    return 'Μέθοδος'
-  }, [activeFilter])
+  const clearFilterAndGoMovements = useCallback(() => {
+    setActiveFilter(null)
+    setViewMode('movements')
+  }, [])
 
   return (
     <main style={pageWrap}>
       <div style={container}>
         <div style={headerCard}>
-          <h1 style={title}>Οικονομικό Κέντρο</h1>
-          <p style={subtitle}>Δαπάνες • {monthLabel}</p>
+          <div>
+            <h1 style={title}>Οικονομικό Κέντρο</h1>
+            <p style={subtitle}>Έξοδα</p>
+          </div>
+
+          {activeFilter && (
+            <button type="button" onClick={clearFilterAndGoMovements} style={clearBtn}>
+              Καθαρισμός
+            </button>
+          )}
         </div>
 
         <EconomicsTabs />
 
-        {/* Segmented control */}
+        {/* Segmented */}
         <div style={segmentedWrap}>
-          {VIEW_MODES.map((m) => (
+          {VIEW_MODES.map((mode) => (
             <button
-              key={m.key}
+              key={mode.key}
               type="button"
-              onClick={() => setViewMode(m.key)}
+              onClick={() => setViewMode(mode.key)}
               style={{
                 ...segBtn,
-                background: viewMode === m.key ? 'var(--text)' : 'rgba(255,255,255,0.92)',
-                color: viewMode === m.key ? 'white' : 'var(--text)',
-                borderColor: viewMode === m.key ? 'var(--text)' : 'var(--border)',
-                fontWeight: viewMode === m.key ? 900 : 800,
+                background: viewMode === mode.key ? 'var(--text)' : 'rgba(255,255,255,0.92)',
+                color: viewMode === mode.key ? 'white' : 'var(--text)',
+                borderColor: viewMode === mode.key ? 'var(--text)' : 'var(--border)',
+                fontWeight: viewMode === mode.key ? 900 : 800,
               }}
             >
-              {m.label}
+              {mode.label}
             </button>
           ))}
         </div>
@@ -260,7 +262,12 @@ export default function EconomicsExpensesPage() {
         {activeFilter && (
           <div style={chipWrap}>
             <span style={chip}>
-              Φίλτρο: {activeFilterLabel}
+              Φίλτρο:{' '}
+              {activeFilter.type === 'beneficiary'
+                ? 'Δικαιούχος'
+                : activeFilter.type === 'category'
+                  ? 'Κατηγορία'
+                  : 'Μέθοδος'}
               <b style={{ marginLeft: 6 }}>{activeFilter.value}</b>
               <button style={chipX} onClick={() => setActiveFilter(null)} aria-label="Καθαρισμός φίλτρου">
                 ✕
@@ -269,40 +276,39 @@ export default function EconomicsExpensesPage() {
           </div>
         )}
 
-        {/* Error */}
-        {errorMsg && (
-          <section style={card}>
-            <h2 style={cardTitle}>Σφάλμα</h2>
-            <div style={{ marginTop: 10, fontWeight: 800, color: 'var(--muted)' }}>{errorMsg}</div>
-          </section>
-        )}
-
         {/* Views */}
         {viewMode === 'beneficiary' ? (
           <section style={card}>
             <h2 style={cardTitle}>Ανά Δικαιούχο</h2>
-            <input style={searchInput} placeholder="Αναζήτηση δικαιούχου..." value={search} onChange={(e) => setSearch(e.target.value)} />
+            <input
+              style={searchInput}
+              placeholder="Αναζήτηση δικαιούχου..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
 
             {loading ? (
-              <div style={emptyState}>Φόρτωση...</div>
+              <div style={centerText}>Φόρτωση...</div>
             ) : filteredBeneficiaries.length === 0 ? (
-              <div style={emptyStateMuted}>Δεν βρέθηκαν δικαιούχοι</div>
+              <div style={emptyText}>Δεν βρέθηκαν δικαιούχοι</div>
             ) : (
-              <div style={listCol}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                 {filteredBeneficiaries.map((g) => (
                   <button
                     key={g.key}
                     type="button"
-                    style={beneficiaryCardBtn}
+                    style={beneficiaryCard}
                     onClick={() => {
                       setActiveFilter({ type: 'beneficiary', value: g.key })
                       setViewMode('movements')
                     }}
                   >
-                    <div style={{ fontWeight: 900, fontSize: 16, color: 'var(--text)' }}>{g.key}</div>
-                    <div style={{ color: 'var(--muted)', fontWeight: 900, fontSize: 13 }}>{g.label}</div>
-                    <div style={{ marginTop: 6, fontWeight: 900, fontSize: 18, color: 'var(--text)' }}>{formatEUR(g.total)}</div>
-                    <div style={{ fontSize: 13, color: 'var(--muted)', fontWeight: 800 }}>Κινήσεις: {g.count}</div>
+                    <div style={{ fontWeight: 950, fontSize: 16, color: 'var(--text)' }}>{g.key}</div>
+                    <div style={{ color: 'var(--muted)', fontWeight: 850, fontSize: 13 }}>{g.label}</div>
+                    <div style={{ marginTop: 6, fontWeight: 950, fontSize: 18, color: 'var(--text)' }}>
+                      {Number(g.total).toLocaleString('el-GR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}€
+                    </div>
+                    <div style={{ fontSize: 13, color: 'var(--muted)', fontWeight: 800 }}>Κινήσεις: {Number(g.count)}</div>
                   </button>
                 ))}
               </div>
@@ -311,27 +317,34 @@ export default function EconomicsExpensesPage() {
         ) : viewMode === 'category' ? (
           <section style={card}>
             <h2 style={cardTitle}>Ανά Κατηγορία</h2>
-            <input style={searchInput} placeholder="Αναζήτηση κατηγορίας..." value={search} onChange={(e) => setSearch(e.target.value)} />
+            <input
+              style={searchInput}
+              placeholder="Αναζήτηση κατηγορίας..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
 
             {loading ? (
-              <div style={emptyState}>Φόρτωση...</div>
+              <div style={centerText}>Φόρτωση...</div>
             ) : filteredCategories.length === 0 ? (
-              <div style={emptyStateMuted}>Δεν βρέθηκαν κατηγορίες</div>
+              <div style={emptyText}>Δεν βρέθηκαν κατηγορίες</div>
             ) : (
-              <div style={listCol}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                 {filteredCategories.map((g) => (
                   <button
                     key={g.key}
                     type="button"
-                    style={beneficiaryCardBtn}
+                    style={beneficiaryCard}
                     onClick={() => {
                       setActiveFilter({ type: 'category', value: g.key })
                       setViewMode('movements')
                     }}
                   >
-                    <div style={{ fontWeight: 900, fontSize: 16, color: 'var(--text)' }}>{g.key}</div>
-                    <div style={{ marginTop: 6, fontWeight: 900, fontSize: 18, color: 'var(--text)' }}>{formatEUR(g.total)}</div>
-                    <div style={{ fontSize: 13, color: 'var(--muted)', fontWeight: 800 }}>Κινήσεις: {g.count}</div>
+                    <div style={{ fontWeight: 950, fontSize: 16, color: 'var(--text)' }}>{g.key}</div>
+                    <div style={{ marginTop: 6, fontWeight: 950, fontSize: 18, color: 'var(--text)' }}>
+                      {Number(g.total).toLocaleString('el-GR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}€
+                    </div>
+                    <div style={{ fontSize: 13, color: 'var(--muted)', fontWeight: 800 }}>Κινήσεις: {Number(g.count)}</div>
                   </button>
                 ))}
               </div>
@@ -340,27 +353,34 @@ export default function EconomicsExpensesPage() {
         ) : viewMode === 'method' ? (
           <section style={card}>
             <h2 style={cardTitle}>Ανά Μέθοδο</h2>
-            <input style={searchInput} placeholder="Αναζήτηση μεθόδου..." value={search} onChange={(e) => setSearch(e.target.value)} />
+            <input
+              style={searchInput}
+              placeholder="Αναζήτηση μεθόδου..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
 
             {loading ? (
-              <div style={emptyState}>Φόρτωση...</div>
+              <div style={centerText}>Φόρτωση...</div>
             ) : filteredMethods.length === 0 ? (
-              <div style={emptyStateMuted}>Δεν βρέθηκαν μέθοδοι</div>
+              <div style={emptyText}>Δεν βρέθηκαν μέθοδοι</div>
             ) : (
-              <div style={listCol}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                 {filteredMethods.map((g) => (
                   <button
                     key={g.key}
                     type="button"
-                    style={beneficiaryCardBtn}
+                    style={beneficiaryCard}
                     onClick={() => {
                       setActiveFilter({ type: 'method', value: g.key })
                       setViewMode('movements')
                     }}
                   >
-                    <div style={{ fontWeight: 900, fontSize: 16, color: 'var(--text)' }}>{g.key}</div>
-                    <div style={{ marginTop: 6, fontWeight: 900, fontSize: 18, color: 'var(--text)' }}>{formatEUR(g.total)}</div>
-                    <div style={{ fontSize: 13, color: 'var(--muted)', fontWeight: 800 }}>Κινήσεις: {g.count}</div>
+                    <div style={{ fontWeight: 950, fontSize: 16, color: 'var(--text)' }}>{g.key}</div>
+                    <div style={{ marginTop: 6, fontWeight: 950, fontSize: 18, color: 'var(--text)' }}>
+                      {Number(g.total).toLocaleString('el-GR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}€
+                    </div>
+                    <div style={{ fontSize: 13, color: 'var(--muted)', fontWeight: 800 }}>Κινήσεις: {Number(g.count)}</div>
                   </button>
                 ))}
               </div>
@@ -371,19 +391,23 @@ export default function EconomicsExpensesPage() {
             <h2 style={cardTitle}>Λίστα Κινήσεων</h2>
 
             {loading ? (
-              <div style={emptyState}>Φόρτωση...</div>
+              <div style={centerText}>Φόρτωση...</div>
+            ) : activeFilter && filteredMovements.length === 0 ? (
+              <div style={emptyText}>Δεν βρέθηκαν κινήσεις</div>
             ) : filteredMovements.length === 0 ? (
-              <div style={emptyStateMuted}>Δεν βρέθηκαν κινήσεις</div>
+              <div style={emptyText}>Δεν υπάρχουν κινήσεις</div>
             ) : (
-              <div style={listColTight}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 {filteredMovements.map((r) => (
                   <div key={r.id} style={movementCard}>
-                    <div style={{ fontWeight: 900, fontSize: 15, color: 'var(--text)' }}>{getBeneficiaryKey(r)}</div>
-                    <div style={{ color: 'var(--muted)', fontWeight: 800, fontSize: 12 }}>
-                      {(r.category || '—').trim()} • {(r.method || '—').trim()} • {r.type === 'debt_payment' ? 'Εξόφληση' : 'Δαπάνη'}
+                    <div style={{ fontWeight: 950, fontSize: 15, color: 'var(--text)' }}>
+                      {r.suppliers?.name || r.fixed_assets?.name || 'Άλλο'}
                     </div>
-                    <div style={{ fontWeight: 900, fontSize: 16, color: 'var(--text)', marginTop: 4 }}>
-                      {formatEUR(Math.abs(Number(r.amount) || 0))}
+                    <div style={{ color: 'var(--muted)', fontWeight: 800, fontSize: 12 }}>
+                      {r.category || '—'} • {r.method || '—'} {r.is_credit ? ' • ⚠️ ΠΙΣΤΩΣΗ' : ''}
+                    </div>
+                    <div style={{ fontWeight: 950, fontSize: 16, color: 'var(--text)', marginTop: 4 }}>
+                      {Math.abs(Number(r.amount) || 0).toLocaleString('el-GR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}€
                     </div>
                     <div style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 800 }}>{r.date}</div>
                   </div>
@@ -397,16 +421,25 @@ export default function EconomicsExpensesPage() {
   )
 }
 
-/* -------------------- STYLES -------------------- */
+/* ---------------- STYLES ---------------- */
 
+// CSS vars fallback (αν δεν έχεις global vars)
 const pageWrap: CSSProperties = {
-  minHeight: '100dvh',
-  background: 'var(--bg-grad)',
-  padding: 18,
+  // @ts-ignore
+  '--text': '#0f172a',
+  // @ts-ignore
+  '--muted': '#64748b',
+  // @ts-ignore
+  '--border': '#e2e8f0',
+  // @ts-ignore
+  '--shadow': '0 12px 24px rgba(15,23,42,0.06)',
+  minHeight: '100%',
+  background: '#f8fafc',
+  padding: 16,
 }
 
 const container: CSSProperties = {
-  maxWidth: 720,
+  maxWidth: 560,
   margin: '0 auto',
   paddingBottom: 120,
 }
@@ -417,39 +450,51 @@ const headerCard: CSSProperties = {
   background: 'rgba(255,255,255,0.92)',
   boxShadow: 'var(--shadow)',
   padding: 16,
-  marginBottom: 12,
+  display: 'flex',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+  gap: 12,
 }
 
 const title: CSSProperties = {
   margin: 0,
   color: 'var(--text)',
-  fontSize: 24,
-  fontWeight: 900,
+  fontSize: 22,
+  fontWeight: 950,
+  lineHeight: 1.1,
 }
 
 const subtitle: CSSProperties = {
   margin: '6px 0 0 0',
   color: 'var(--muted)',
   fontSize: 13,
-  fontWeight: 800,
+  fontWeight: 850,
+}
+
+const clearBtn: CSSProperties = {
+  borderRadius: 14,
+  border: '1px solid var(--border)',
+  background: '#fff',
+  padding: '10px 12px',
+  fontWeight: 900,
+  cursor: 'pointer',
 }
 
 const segmentedWrap: CSSProperties = {
   display: 'flex',
   gap: 8,
-  marginTop: 10,
-  marginBottom: 12,
+  marginTop: 12,
+  flexWrap: 'wrap',
 }
 
 const segBtn: CSSProperties = {
-  flex: 1,
-  padding: '12px 10px',
+  flex: '1 1 auto',
+  minWidth: 120,
+  padding: '10px 12px',
   borderRadius: 14,
   border: '1px solid var(--border)',
   cursor: 'pointer',
   fontSize: 14,
-  userSelect: 'none',
-  boxShadow: 'var(--shadow)',
 }
 
 const card: CSSProperties = {
@@ -458,18 +503,18 @@ const card: CSSProperties = {
   border: '1px solid var(--border)',
   background: 'rgba(255,255,255,0.92)',
   boxShadow: 'var(--shadow)',
-  padding: 18,
+  padding: 16,
 }
 
 const cardTitle: CSSProperties = {
   margin: 0,
   color: 'var(--text)',
   fontSize: 18,
-  fontWeight: 900,
+  fontWeight: 950,
 }
 
 const chipWrap: CSSProperties = {
-  margin: '10px 0 0 0',
+  margin: '12px 0 0 0',
   display: 'flex',
   gap: 8,
 }
@@ -477,12 +522,12 @@ const chipWrap: CSSProperties = {
 const chip: CSSProperties = {
   display: 'inline-flex',
   alignItems: 'center',
-  background: 'var(--text)',
+  background: 'var(--muted)',
   color: 'white',
   borderRadius: 16,
   padding: '6px 12px',
   fontWeight: 900,
-  fontSize: 13,
+  fontSize: 14,
   gap: 6,
 }
 
@@ -498,32 +543,18 @@ const chipX: CSSProperties = {
 
 const searchInput: CSSProperties = {
   width: '100%',
-  margin: '12px 0 16px 0',
+  margin: '12px 0 18px 0',
   padding: '12px 14px',
-  borderRadius: 12,
+  borderRadius: 10,
   border: '1px solid var(--border)',
   fontSize: 15,
   fontWeight: 800,
   background: 'rgba(255,255,255,0.95)',
   color: 'var(--text)',
-  boxSizing: 'border-box',
+  outline: 'none',
 }
 
-const listCol: CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
-  gap: 12,
-}
-
-const listColTight: CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
-  gap: 10,
-  marginTop: 12,
-}
-
-const beneficiaryCardBtn: CSSProperties = {
-  textAlign: 'left',
+const beneficiaryCard: CSSProperties = {
   borderRadius: 18,
   border: '1px solid var(--border)',
   background: 'rgba(255,255,255,0.97)',
@@ -532,6 +563,7 @@ const beneficiaryCardBtn: CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
   gap: 2,
+  textAlign: 'left',
   cursor: 'pointer',
 }
 
@@ -546,16 +578,5 @@ const movementCard: CSSProperties = {
   gap: 2,
 }
 
-const emptyState: CSSProperties = {
-  padding: 24,
-  textAlign: 'center',
-  fontWeight: 900,
-  color: 'var(--text)',
-}
-
-const emptyStateMuted: CSSProperties = {
-  padding: 24,
-  textAlign: 'center',
-  fontWeight: 900,
-  color: 'var(--muted)',
-}
+const centerText: CSSProperties = { padding: 24, textAlign: 'center', fontWeight: 850, color: 'var(--text)' }
+const emptyText: CSSProperties = { padding: 24, textAlign: 'center', fontWeight: 850, color: 'var(--muted)' }
