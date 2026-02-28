@@ -633,6 +633,38 @@ function AddExpenseForm() {
     return m
   }, [smartItems])
 
+  // ✅ NEW: dropdown list options (grouped)
+  const dropdownGroups = useMemo(() => {
+    const groups: Record<string, SmartItem[]> = {
+      Προμηθευτές: [],
+      Συντήρηση: [],
+      Προσωπικό: [],
+      'Λογαριασμοί': [],
+      Λοιπά: [],
+    }
+
+    for (const it of smartItems) {
+      if (it.kind === 'supplier') {
+        groups['Προμηθευτές'].push(it)
+      } else {
+        const g = it.group || 'other'
+        const title = g === 'maintenance' ? 'Συντήρηση' : g === 'staff' ? 'Προσωπικό' : g === 'utility' ? 'Λογαριασμοί' : 'Λοιπά'
+        groups[title].push(it)
+      }
+    }
+
+    for (const k of Object.keys(groups)) {
+      groups[k] = groups[k].sort((a, b) => String(a.name).localeCompare(String(b.name)))
+    }
+
+    return groups
+  }, [smartItems])
+
+  const selectedDropdownValue = useMemo(() => {
+    if (!selectedEntity) return ''
+    return `${selectedEntity.kind}:${selectedEntity.id}`
+  }, [selectedEntity])
+
   const filtered = useMemo(() => {
     const raw = debouncedQuery.trim()
     if (!raw) return []
@@ -641,10 +673,7 @@ function AddExpenseForm() {
     const qF = fuzzyIHI(q)
 
     return smartItems
-      .filter((item) => {
-        // ✅ no re-normalize per keystroke (uses precomputed keys)
-        return item.name_norm.includes(q) || item.name_latin.includes(q) || item.name_fuzzy.includes(qF)
-      })
+      .filter((item) => item.name_norm.includes(q) || item.name_latin.includes(q) || item.name_fuzzy.includes(qF))
       .slice(0, 80)
   }, [debouncedQuery, smartItems])
 
@@ -678,6 +707,19 @@ function AddExpenseForm() {
     requestAnimationFrame(() => {
       smartBeneficiaryInputRef.current?.focus()
     })
+  }
+
+  const handleDropdownSelect = (val: string) => {
+    if (!val) {
+      clearSelection()
+      return
+    }
+    const [kindRaw, idRaw] = val.split(':')
+    const kind = (kindRaw as SmartKind) || 'supplier'
+    const id = String(idRaw || '')
+    const it = smartItemMap.get(`${kind}:${id}`)
+    if (!it) return
+    pickSmartItem(it)
   }
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -894,9 +936,7 @@ function AddExpenseForm() {
     if (!amount || !Number.isFinite(amt) || amt <= 0) return toast.error('Συμπλήρωσε σωστό ποσό')
     if (amt > 1_000_000) return toast.error('Το ποσό είναι υπερβολικά μεγάλο')
     if (!selectedEntity) return toast.error('Επίλεξε δικαιούχο από την αναζήτηση')
-    if (!documentType) {
-      return toast.error('Παρακαλώ επιλέξτε τύπο παραστατικού (Απόδειξη, Τιμολόγιο ή Χωρίς);')
-    }
+    if (!documentType) return toast.error('Παρακαλώ επιλέξτε τύπο παραστατικού (Απόδειξη, Τιμολόγιο ή Χωρίς);')
 
     setLoading(true)
 
@@ -911,7 +951,6 @@ function AddExpenseForm() {
       }
 
       const { data: prof } = await supabase.from('profiles').select('username').eq('id', session.user.id).maybeSingle()
-
       const createdByName = (prof?.username || session.user.email?.split('@')[0] || 'Χρήστης').trim()
 
       const activeStoreId = getActiveStoreId()
@@ -936,9 +975,6 @@ function AddExpenseForm() {
       const txType: 'expense' | 'debt_payment' = isAgainstDebt ? 'debt_payment' : 'expense'
 
       // ✅ HARD RULES:
-      // 1) debt_payment cannot be credit
-      // 2) if credit -> method stored as "Πίστωση"
-      // 3) method must be one of METHOD_VALUES
       const finalIsCredit = txType === 'debt_payment' ? false : !!isCredit
       const chosenMethod: PaymentMethod = method === 'Πίστωση' ? 'Μετρητά' : method
       const finalMethod: PaymentMethod = finalIsCredit ? 'Πίστωση' : chosenMethod
@@ -948,7 +984,7 @@ function AddExpenseForm() {
         return toast.error('Μη αποδεκτή μέθοδος πληρωμής')
       }
 
-      // ✅ Duplicate detection confirm (only for new saves OR edits too—kept for both)
+      // ✅ Duplicate detection confirm
       const dup = await checkPossibleDuplicate(txType, amt)
       if (dup && dup.length > 0) {
         const label = smartQuery || 'Δικαιούχο'
@@ -977,7 +1013,7 @@ function AddExpenseForm() {
 
       const payload: any = {
         amount: -Math.abs(amt), // ✅ expenses negative
-        method: finalMethod, // ✅ method column (exists in Supabase)
+        method: finalMethod,
         is_credit: finalIsCredit,
         type: txType,
         date: selectedDate,
@@ -1060,7 +1096,6 @@ function AddExpenseForm() {
 
   return (
     <div style={iphoneWrapper}>
-      {/* ✅ Toasts above modal */}
       <Toaster position="top-center" richColors toastOptions={{ style: { zIndex: 3000 } }} />
 
       <div style={{ maxWidth: '500px', margin: '0 auto', paddingBottom: '120px' }}>
@@ -1181,6 +1216,30 @@ function AddExpenseForm() {
             )}
           </div>
 
+          {/* ✅ NEW: Dropdown list of all active beneficiaries */}
+          <label style={{ ...labelStyle, marginTop: 12 }}>Ή επιλογή από λίστα</label>
+          <select
+            value={selectedDropdownValue}
+            onChange={(e) => handleDropdownSelect(e.target.value)}
+            style={selectStyle}
+            disabled={loading || smartItems.length === 0}
+          >
+            <option value="">{smartItems.length === 0 ? 'Φόρτωση λίστας...' : '— Επιλογή από λίστα —'}</option>
+
+            {Object.entries(dropdownGroups).map(([group, items]) => {
+              if (!items || items.length === 0) return null
+              return (
+                <optgroup key={group} label={group}>
+                  {items.map((it) => (
+                    <option key={`${it.kind}:${it.id}`} value={`${it.kind}:${it.id}`}>
+                      {it.name}
+                    </option>
+                  ))}
+                </optgroup>
+              )
+            })}
+          </select>
+
           {!!selectedEntity && (
             <div style={selectedBox}>
               Επιλογή: <span style={{ fontWeight: 900 }}>{selectedLabel}</span>
@@ -1281,7 +1340,7 @@ function AddExpenseForm() {
                 onChange={(e) => {
                   const checked = e.target.checked
                   setIsCredit(checked)
-                  if (checked) setIsAgainstDebt(false) // ✅ cannot both
+                  if (checked) setIsAgainstDebt(false)
                 }}
                 id="credit"
                 style={checkboxStyle}
@@ -1298,7 +1357,7 @@ function AddExpenseForm() {
                 onChange={(e) => {
                   const checked = e.target.checked
                   setIsAgainstDebt(checked)
-                  if (checked) setIsCredit(false) // ✅ cannot both
+                  if (checked) setIsCredit(false)
                 }}
                 id="against"
                 style={checkboxStyle}
@@ -1444,7 +1503,7 @@ function AddExpenseForm() {
                   <label style={modalLabel}>IBAN</label>
                   <input
                     value={cIban}
-                    onChange={(e) => setCIban(e.target.value.replace(/\s+/g, '').toUpperCase())} // ✅ strip spaces + uppercase
+                    onChange={(e) => setCIban(e.target.value.replace(/\s+/g, '').toUpperCase())}
                     style={modalInput}
                     placeholder="GR..."
                     disabled={createSaving}
@@ -1461,7 +1520,7 @@ function AddExpenseForm() {
                   <label style={modalLabel}>Κωδικός RF</label>
                   <input
                     value={cRf}
-                    onChange={(e) => setCRf(e.target.value.replace(/\s+/g, '').toUpperCase())} // ✅ strip spaces + uppercase
+                    onChange={(e) => setCRf(e.target.value.replace(/\s+/g, '').toUpperCase())}
                     style={modalInput}
                     placeholder="RF..."
                     disabled={createSaving}
@@ -1556,7 +1615,7 @@ function AddExpenseForm() {
                   <label style={modalLabel}>IBAN</label>
                   <input
                     value={cIban}
-                    onChange={(e) => setCIban(e.target.value.replace(/\s+/g, '').toUpperCase())} // ✅ strip spaces + uppercase
+                    onChange={(e) => setCIban(e.target.value.replace(/\s+/g, '').toUpperCase())}
                     style={modalInput}
                     placeholder="GR..."
                     disabled={createSaving}
@@ -1635,6 +1694,18 @@ const inputStyle: any = {
   boxSizing: 'border-box',
 }
 
+const selectStyle: any = {
+  width: '100%',
+  padding: 14,
+  borderRadius: 12,
+  border: `1px solid ${colors.border}`,
+  fontSize: 16,
+  fontWeight: 800,
+  backgroundColor: colors.white,
+  color: colors.primaryDark,
+  boxSizing: 'border-box',
+}
+
 const methodBtn: any = {
   flex: 1,
   padding: 14,
@@ -1645,20 +1716,6 @@ const methodBtn: any = {
   fontSize: 16,
   backgroundColor: colors.white,
   color: colors.primaryDark,
-}
-
-const checkboxBox: any = {
-  width: 20,
-  height: 20,
-  borderRadius: 6,
-  border: '2px solid var(--muted)',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  color: 'var(--surface)',
-  fontSize: 14,
-  fontWeight: 900,
-  backgroundColor: 'var(--surface)',
 }
 
 const creditPanel: any = { backgroundColor: colors.white, padding: 16, borderRadius: 14, border: `1px solid ${colors.border}`, marginTop: 20 }
