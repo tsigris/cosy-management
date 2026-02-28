@@ -290,16 +290,48 @@ function AddExpenseForm() {
     })
   }, [loading, createOpen])
 
-  // ✅ Make beneficiary field stand out (guided UX)
+  // ✅ More “color” + emphasis for beneficiary + amount blocks
+  const beneficiarySectionStyle = useMemo(
+    () => ({
+      borderRadius: 18,
+      border: `1px solid rgba(37, 99, 235, 0.25)`,
+      background: 'linear-gradient(180deg, rgba(37,99,235,0.10) 0%, rgba(37,99,235,0.03) 100%)',
+      padding: 14,
+    }),
+    [],
+  )
+
+  const amountSectionStyle = useMemo(
+    () => ({
+      borderRadius: 18,
+      border: `1px solid rgba(220, 38, 38, 0.20)`,
+      background: 'linear-gradient(180deg, rgba(220,38,38,0.08) 0%, rgba(220,38,38,0.02) 100%)',
+      padding: 14,
+      marginTop: 14,
+    }),
+    [],
+  )
+
+  // ✅ Make beneficiary input stand out when empty
   const beneficiaryInputStyle = useMemo(() => {
     const empty = !smartQuery.trim() && !selectedEntity
     return {
       ...inputStyle,
-      border: empty ? `2px solid ${colors.accentBlue}` : inputStyle.border,
-      backgroundColor: empty ? 'rgba(37, 99, 235, 0.06)' : inputStyle.backgroundColor,
-      boxShadow: empty ? '0 6px 18px rgba(37, 99, 235, 0.10)' : undefined,
+      border: empty ? `2px solid ${colors.accentBlue}` : `1px solid rgba(37,99,235,0.35)`,
+      backgroundColor: empty ? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.95)',
+      boxShadow: empty ? '0 10px 24px rgba(37, 99, 235, 0.12)' : '0 8px 20px rgba(2,6,23,0.04)',
     }
   }, [smartQuery, selectedEntity])
+
+  const amountInputStyle = useMemo(() => {
+    const empty = !amount.trim()
+    return {
+      ...inputStyle,
+      border: empty ? `2px solid ${colors.accentRed}` : `1px solid rgba(220,38,38,0.35)`,
+      backgroundColor: 'rgba(255,255,255,0.95)',
+      boxShadow: empty ? '0 10px 24px rgba(220, 38, 38, 0.10)' : '0 8px 20px rgba(2,6,23,0.04)',
+    }
+  }, [amount])
 
   // close dropdown on outside
   useEffect(() => {
@@ -312,7 +344,7 @@ function AddExpenseForm() {
     return () => document.removeEventListener('pointerdown', handler, true)
   }, [])
 
-  // ✅ Memory cleanup for image preview (revoke object URL)
+  // ✅ Memory cleanup for image preview
   useEffect(() => {
     return () => {
       if (imagePreview) URL.revokeObjectURL(imagePreview)
@@ -445,7 +477,6 @@ function AddExpenseForm() {
 
       setStoreId(activeStoreId)
 
-      // ✅ fetch username + role together
       const { data: profile } = await supabase
         .from('profiles')
         .select('username, role')
@@ -467,7 +498,6 @@ function AddExpenseForm() {
 
       const supData = sRes.data || []
       const faAll = fRes.data || []
-
       const faData = faAll.filter((x: any) => {
         const g = groupFromSubCategory(x.sub_category)
         return g === 'staff' || g === 'maintenance' || g === 'utility' || g === 'other'
@@ -488,7 +518,6 @@ function AddExpenseForm() {
         setDayStats({ income: inc, expenses: exp })
       }
 
-      // ✅ edit mode
       if (editId) {
         const { data: tx, error } = await supabase
           .from('transactions')
@@ -502,17 +531,15 @@ function AddExpenseForm() {
         if (tx) {
           setAmount(Math.abs(tx.amount).toString())
 
-          // ✅ Canonical method loading
           const m = String(tx.method || '').trim()
           const safeMethod: PaymentMethod = (METHOD_VALUES as readonly string[]).includes(m) ? (m as PaymentMethod) : 'Μετρητά'
-          setMethod(safeMethod === 'Πίστωση' ? 'Μετρητά' : safeMethod) // UI keeps credit via checkbox
+          setMethod(safeMethod === 'Πίστωση' ? 'Μετρητά' : safeMethod)
 
           const notesText = String(tx.notes || '')
           setNotes(notesText)
           setIsCredit(!!tx.is_credit || m === 'Πίστωση')
           setIsAgainstDebt(tx.type === 'debt_payment')
 
-          // Set documentType from notes prefix
           if (notesText.startsWith('Απόδειξη λιανικής')) setDocumentType('Απόδειξη λιανικής')
           else if (notesText.startsWith('Τιμολόγιο')) setDocumentType('Τιμολόγιο')
           else if (notesText.startsWith('Χωρίς τιμολόγιο')) setDocumentType('Χωρίς τιμολόγιο')
@@ -534,7 +561,6 @@ function AddExpenseForm() {
           }
         }
       } else {
-        // ✅ new mode pre-select
         if (urlSupId) {
           const id = String(urlSupId)
           setSelectedEntity({ kind: 'supplier', id })
@@ -550,7 +576,6 @@ function AddExpenseForm() {
           setSmartQuery('')
         }
 
-        // ✅ AUTO-NOTES για πληρωμή παλαιού χρέους (μόνο σε νέο, όχι edit)
         const isDebtMode = searchParams.get('mode') === 'debt'
         if (isDebtMode) {
           setIsAgainstDebt(true)
@@ -626,37 +651,30 @@ function AddExpenseForm() {
 
   const smartItemMap = useMemo(() => {
     const m = new Map<string, SmartItem>()
-    for (const it of smartItems) {
-      const k = `${it.kind}:${it.id}`
-      m.set(k, it)
-    }
+    for (const it of smartItems) m.set(`${it.kind}:${it.id}`, it)
     return m
   }, [smartItems])
 
-  // ✅ NEW: dropdown list options (grouped)
+  // ✅ groups for dropdown list
   const dropdownGroups = useMemo(() => {
     const groups: Record<string, SmartItem[]> = {
       Προμηθευτές: [],
       Συντήρηση: [],
       Προσωπικό: [],
-      'Λογαριασμοί': [],
+      Λογαριασμοί: [],
       Λοιπά: [],
     }
 
     for (const it of smartItems) {
-      if (it.kind === 'supplier') {
-        groups['Προμηθευτές'].push(it)
-      } else {
+      if (it.kind === 'supplier') groups['Προμηθευτές'].push(it)
+      else {
         const g = it.group || 'other'
         const title = g === 'maintenance' ? 'Συντήρηση' : g === 'staff' ? 'Προσωπικό' : g === 'utility' ? 'Λογαριασμοί' : 'Λοιπά'
         groups[title].push(it)
       }
     }
 
-    for (const k of Object.keys(groups)) {
-      groups[k] = groups[k].sort((a, b) => String(a.name).localeCompare(String(b.name)))
-    }
-
+    for (const k of Object.keys(groups)) groups[k] = groups[k].sort((a, b) => String(a.name).localeCompare(String(b.name)))
     return groups
   }, [smartItems])
 
@@ -665,6 +683,7 @@ function AddExpenseForm() {
     return `${selectedEntity.kind}:${selectedEntity.id}`
   }, [selectedEntity])
 
+  // ✅ when user types, filter list results
   const filtered = useMemo(() => {
     const raw = debouncedQuery.trim()
     if (!raw) return []
@@ -685,9 +704,7 @@ function AddExpenseForm() {
       if (!groups[title]) groups[title] = []
       groups[title].push(it)
     }
-    for (const g of Object.keys(groups)) {
-      groups[g] = groups[g].sort((a, b) => String(a.name).localeCompare(String(b.name)))
-    }
+    for (const g of Object.keys(groups)) groups[g] = groups[g].sort((a, b) => String(a.name).localeCompare(String(b.name)))
     return groups
   }, [filtered])
 
@@ -695,21 +712,21 @@ function AddExpenseForm() {
     setSelectedEntity({ kind: item.kind, id: item.id })
     setSmartQuery(item.name)
     setSmartOpen(false)
-    requestAnimationFrame(() => {
-      amountInputRef.current?.focus()
-    })
+    requestAnimationFrame(() => amountInputRef.current?.focus())
   }
 
   const clearSelection = () => {
     setSelectedEntity(null)
     setSmartQuery('')
     setSmartOpen(true)
-    requestAnimationFrame(() => {
-      smartBeneficiaryInputRef.current?.focus()
-    })
+    requestAnimationFrame(() => smartBeneficiaryInputRef.current?.focus())
   }
 
   const handleDropdownSelect = (val: string) => {
+    if (val === '__ADD_NEW__') {
+      openCreateModal()
+      return
+    }
     if (!val) {
       clearSelection()
       return
@@ -725,14 +742,11 @@ function AddExpenseForm() {
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0]
-      // ✅ basic size guard (5MB)
       if (file.size > 5 * 1024 * 1024) {
         toast.error('Η φωτογραφία είναι πολύ μεγάλη (max 5MB)')
         return
       }
       setImageFile(file)
-
-      // ✅ revoke old preview before setting new one
       if (imagePreview) URL.revokeObjectURL(imagePreview)
       setImagePreview(URL.createObjectURL(file))
     }
@@ -785,7 +799,7 @@ function AddExpenseForm() {
           phone: clampText(cPhone, 30) || null,
           vat_number: clampText(cVat, 30) || null,
           bank_name: cBank || null,
-          iban: upper(cIban) || null, // ✅ uppercase
+          iban: upper(cIban) || null,
           store_id: activeStoreId,
         }
 
@@ -818,7 +832,7 @@ function AddExpenseForm() {
       if (createTab === 'utility') {
         payload = {
           ...payload,
-          rf_code: upper(cRf), // ✅ uppercase
+          rf_code: upper(cRf),
           bank_name: cBank,
           phone: null,
           vat_number: null,
@@ -833,7 +847,7 @@ function AddExpenseForm() {
         payload = {
           ...payload,
           bank_name: cBank || null,
-          iban: upper(cIban) || null, // ✅ uppercase
+          iban: upper(cIban) || null,
           pay_basis: cPayBasis,
           monthly_days: cMonthlyDays.trim() ? Number(cMonthlyDays.trim()) : null,
           monthly_salary: cPayBasis === 'monthly' && cMonthlySalary.trim() ? Number(cMonthlySalary.trim()) : null,
@@ -849,7 +863,7 @@ function AddExpenseForm() {
           phone: clampText(cPhone, 30) || null,
           vat_number: clampText(cVat, 30) || null,
           bank_name: cBank || null,
-          iban: upper(cIban) || null, // ✅ uppercase
+          iban: upper(cIban) || null,
           rf_code: null,
           pay_basis: null,
           monthly_days: null,
@@ -879,13 +893,9 @@ function AddExpenseForm() {
     }
   }
 
-  // ✅ Balance lock: block entries before last Z date (assumes type='z_report')
   const checkBalanceLock = async () => {
     const activeStoreId = getActiveStoreId()
-    if (!activeStoreId) {
-      toast.error('Δεν βρέθηκε κατάστημα (store)')
-      return null
-    }
+    if (!activeStoreId) return null
     try {
       const { data, error } = await supabase
         .from('transactions')
@@ -894,36 +904,29 @@ function AddExpenseForm() {
         .eq('type', 'z_report')
         .order('date', { ascending: false })
         .limit(1)
-
       if (error) return null
-      const last = data?.[0]?.date ? String(data[0].date) : null
-      return last
+      return data?.[0]?.date ? String(data[0].date) : null
     } catch {
       return null
     }
   }
 
-  // ✅ Duplicate detection: same day + same amount + same receiver (+ same txType)
   const checkPossibleDuplicate = async (txType: 'expense' | 'debt_payment', amtAbs: number) => {
     const activeStoreId = getActiveStoreId()
-    if (!activeStoreId) {
-      toast.error('Δεν βρέθηκε κατάστημα (store)')
-      return null
-    }
+    if (!activeStoreId || !selectedEntity) return null
     try {
+      const col = selectedEntity.kind === 'supplier' ? 'supplier_id' : 'fixed_asset_id'
       let q = supabase
         .from('transactions')
-        .select('id, amount, date, supplier_id, fixed_asset_id, created_at')
+        .select('id')
         .eq('store_id', activeStoreId)
         .eq('date', selectedDate)
-        .in('type', [txType])
-        .eq(selectedEntity?.kind === 'supplier' ? 'supplier_id' : 'fixed_asset_id', selectedEntity?.id || '')
-        .eq('amount', -Math.abs(amtAbs)) // same signed amount (expenses negative)
+        .eq('type', txType)
+        .eq(col, selectedEntity.id)
+        .eq('amount', -Math.abs(amtAbs))
 
       if (editId) q = q.neq('id', editId)
-
-      const { data, error } = await q.limit(3)
-      if (error) return null
+      const { data } = await q.limit(1)
       return data && data.length > 0 ? data : null
     } catch {
       return null
@@ -931,12 +934,10 @@ function AddExpenseForm() {
   }
 
   const handleSave = async () => {
-    // ✅ comma-safe parsing
     const amt = parseAmount(amount)
     if (!amount || !Number.isFinite(amt) || amt <= 0) return toast.error('Συμπλήρωσε σωστό ποσό')
-    if (amt > 1_000_000) return toast.error('Το ποσό είναι υπερβολικά μεγάλο')
-    if (!selectedEntity) return toast.error('Επίλεξε δικαιούχο από την αναζήτηση')
-    if (!documentType) return toast.error('Παρακαλώ επιλέξτε τύπο παραστατικού (Απόδειξη, Τιμολόγιο ή Χωρίς);')
+    if (!selectedEntity) return toast.error('Επίλεξε δικαιούχο')
+    if (!documentType) return toast.error('Επίλεξε τύπο παραστατικού')
 
     setLoading(true)
 
@@ -944,14 +945,10 @@ function AddExpenseForm() {
       const {
         data: { session },
       } = await supabase.auth.getSession()
-
       if (!session) {
         setLoading(false)
         return router.push('/login')
       }
-
-      const { data: prof } = await supabase.from('profiles').select('username').eq('id', session.user.id).maybeSingle()
-      const createdByName = (prof?.username || session.user.email?.split('@')[0] || 'Χρήστης').trim()
 
       const activeStoreId = getActiveStoreId()
       if (!activeStoreId) {
@@ -959,45 +956,29 @@ function AddExpenseForm() {
         return toast.error('Δεν βρέθηκε κατάστημα (store)')
       }
 
-      setStoreId(activeStoreId)
-
-      // ✅ Balance lock check
       const lastZ = await checkBalanceLock()
       if (lastZ && selectedDate < lastZ) {
         setLoading(false)
-        toast.error(`Η ημερομηνία είναι κλειδωμένη λόγω Z Report (τελευταίο κλείσιμο: ${lastZ})`)
+        toast.error(`Η ημερομηνία είναι κλειδωμένη (τελευταίο Z: ${lastZ})`)
         return
       }
 
       const category = categoryFromSelection(selectedEntity, smartItemMap)
-
-      // ✅ Canonical type
       const txType: 'expense' | 'debt_payment' = isAgainstDebt ? 'debt_payment' : 'expense'
 
-      // ✅ HARD RULES:
       const finalIsCredit = txType === 'debt_payment' ? false : !!isCredit
       const chosenMethod: PaymentMethod = method === 'Πίστωση' ? 'Μετρητά' : method
       const finalMethod: PaymentMethod = finalIsCredit ? 'Πίστωση' : chosenMethod
 
-      if (!(METHOD_VALUES as readonly string[]).includes(finalMethod)) {
-        setLoading(false)
-        return toast.error('Μη αποδεκτή μέθοδος πληρωμής')
-      }
-
-      // ✅ Duplicate detection confirm
       const dup = await checkPossibleDuplicate(txType, amt)
-      if (dup && dup.length > 0) {
-        const label = smartQuery || 'Δικαιούχο'
-        const ok = window.confirm(
-          `⚠️ Πιθανό διπλό έξοδο!\n\nΒρέθηκε άλλη κίνηση την ίδια μέρα για ${amt.toFixed(2)}€ προς "${label}".\n\nΘες σίγουρα να συνεχίσεις;`,
-        )
+      if (dup) {
+        const ok = window.confirm('⚠️ Πιθανό διπλό έξοδο ίδια μέρα/ποσό/δικαιούχο. Θες να συνεχίσεις;')
         if (!ok) {
           setLoading(false)
           return
         }
       }
 
-      // ✅ notes hardening
       const baseNotes = clampText(notes, 500)
       const mustDebtNote = txType === 'debt_payment' ? 'ΕΞΟΦΛΗΣΗ ΥΠΟΛΟΙΠΟΥ ΚΑΡΤΕΛΑΣ' : ''
       const debtNote =
@@ -1011,8 +992,11 @@ function AddExpenseForm() {
 
       const finalNotes = documentType ? documentType + (debtNote ? ' | ' + debtNote : '') : debtNote
 
+      const { data: prof } = await supabase.from('profiles').select('username').eq('id', session.user.id).maybeSingle()
+      const createdByName = (prof?.username || session.user.email?.split('@')[0] || 'Χρήστης').trim()
+
       const payload: any = {
-        amount: -Math.abs(amt), // ✅ expenses negative
+        amount: -Math.abs(amt),
         method: finalMethod,
         is_credit: finalIsCredit,
         type: txType,
@@ -1026,13 +1010,10 @@ function AddExpenseForm() {
         notes: finalNotes,
       }
 
-      // ✅ invoice upload (only for new tx, only if not "Χωρίς τιμολόγιο")
       if (imageFile && documentType !== 'Χωρίς τιμολόγιο' && !editId) {
         const safeExt = (imageFile.name.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '')
         const fileExt = safeExt || 'jpg'
         const fileName = `${session.user.id}-${Date.now()}.${fileExt}`
-
-        // ✅ storage path: store/YYYY/MM/file
         const { year, month } = ymFromDate(selectedDate)
         const filePath = `${activeStoreId}/${year}/${month}/${fileName}`
 
@@ -1042,7 +1023,6 @@ function AddExpenseForm() {
           contentType: imageFile.type || undefined,
         })
         if (uploadError) throw uploadError
-
         payload.invoice_image = uploadData?.path || null
       }
 
@@ -1054,10 +1034,20 @@ function AddExpenseForm() {
         const res = await supabase.from('transactions').insert([payload])
         error = res.error
       }
-
       if (error) throw error
 
       toast.success(editId ? 'Η κίνηση ενημερώθηκε!' : 'Η κίνηση καταχωρήθηκε!')
+
+      // ✅ Form reset before redirect (better Back UX)
+      setAmount('')
+      setNotes('')
+      setImageFile(null)
+      if (imagePreview) URL.revokeObjectURL(imagePreview)
+      setImagePreview(null)
+      setSelectedEntity(null)
+      setSmartQuery('')
+      setSmartOpen(false)
+
       router.push(`/?date=${selectedDate}&store=${getActiveStoreId() || ''}`)
       router.refresh()
     } catch (error: any) {
@@ -1085,6 +1075,7 @@ function AddExpenseForm() {
     return 'Λοιπά'
   }, [selectedEntity, smartItemMap])
 
+  // ✅ Show “Add +” row inside search results when no match
   const showCreateInline = useMemo(() => {
     const q = smartQuery.trim()
     if (!canCreate) return false
@@ -1093,6 +1084,9 @@ function AddExpenseForm() {
     if (filtered.length > 0) return false
     return true
   }, [canCreate, smartOpen, smartQuery, filtered.length])
+
+  // ✅ Always show “+ Προσθήκη” as LAST option in dropdown list
+  const dropdownHasAddRow = useMemo(() => canCreate, [canCreate])
 
   return (
     <div style={iphoneWrapper}>
@@ -1116,149 +1110,164 @@ function AddExpenseForm() {
         </div>
 
         <div style={formCard}>
-          <label style={labelStyle}>Δικαιούχος</label>
+          {/* ✅ BENEFICIARY SECTION (colored) */}
+          <div style={beneficiarySectionStyle}>
+            <label style={{ ...labelStyle, color: colors.accentBlue }}>Δικαιούχος</label>
 
-          <div ref={smartBoxRef} style={{ position: 'relative' }}>
-            <input
-              ref={smartBeneficiaryInputRef}
-              value={smartQuery}
-              onChange={(e) => {
-                setSmartQuery(e.target.value)
-                setSelectedEntity(null)
-                setSmartOpen(true)
-              }}
-              onFocus={() => setSmartOpen(true)}
-              placeholder="Αναζήτηση"
-              style={beneficiaryInputStyle}
-              autoCapitalize="none"
-              autoCorrect="off"
-              spellCheck={false}
-              maxLength={80}
-            />
+            <div ref={smartBoxRef} style={{ position: 'relative' }}>
+              <input
+                ref={smartBeneficiaryInputRef}
+                value={smartQuery}
+                onChange={(e) => {
+                  setSmartQuery(e.target.value)
+                  setSelectedEntity(null)
+                  setSmartOpen(true)
+                }}
+                onFocus={() => setSmartOpen(true)}
+                placeholder="Αναζήτηση"
+                style={beneficiaryInputStyle}
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+                maxLength={80}
+              />
 
-            {!!smartQuery && (
-              <button type="button" onClick={clearSelection} style={clearBtn} aria-label="Καθαρισμός">
-                ✕
-              </button>
-            )}
+              {!!smartQuery && (
+                <button type="button" onClick={clearSelection} style={clearBtn} aria-label="Καθαρισμός">
+                  ✕
+                </button>
+              )}
 
-            {smartOpen && smartQuery.trim() && (
-              <div style={resultsPanel}>
-                {showCreateInline && (
-                  <button
-                    type="button"
-                    onPointerDown={(e) => {
-                      e.preventDefault()
-                      e.stopPropagation()
-                      openCreateModal()
-                    }}
-                    style={createRow}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-                      <div>
-                        <div style={{ fontSize: 15, fontWeight: 900, color: colors.primaryDark }}>
-                          Δεν βρέθηκε: <span style={{ color: colors.accentBlue }}>{smartQuery.trim()}</span>
-                        </div>
-                        <div style={{ fontSize: 12, fontWeight: 700, color: colors.secondaryText }}>
-                          Πάτα για καταχώρηση στη λίστα (επιλογή κατηγορίας)
-                        </div>
-                      </div>
-                      <div style={plusPill}>＋</div>
-                    </div>
-                  </button>
-                )}
-
-                {Object.keys(groupedResultsSafe).length === 0 ? (
-                  !showCreateInline ? (
-                    <div style={{ padding: 14, fontSize: 14, fontWeight: 700, color: colors.secondaryText }}>Δεν βρέθηκε αποτέλεσμα</div>
-                  ) : null
-                ) : (
-                  Object.entries(groupedResultsSafe).map(([group, items]) => (
-                    <div key={group}>
-                      <div style={groupHeader}>{group}</div>
-
-                      {items.map((item) => (
-                        <button
-                          key={`${item.kind}-${item.id}`}
-                          type="button"
-                          onPointerDown={(e) => {
-                            e.preventDefault()
-                            e.stopPropagation()
-                            pickSmartItem(item)
-                          }}
-                          onTouchStart={(e) => {
-                            e.preventDefault()
-                            e.stopPropagation()
-                            pickSmartItem(item)
-                          }}
-                          style={resultRow}
-                        >
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                            <div style={{ fontSize: 15, fontWeight: 900, color: colors.primaryDark }}>{item.name}</div>
-                            <div style={{ fontSize: 12, fontWeight: 700, color: colors.secondaryText }}>
-                              {item.kind === 'supplier'
-                                ? 'Προμηθευτής'
-                                : item.group === 'maintenance'
-                                  ? 'Συντήρηση'
-                                  : item.group === 'staff'
-                                    ? 'Προσωπικό'
-                                    : item.group === 'utility'
-                                      ? 'Λογαριασμός'
-                                      : 'Λοιπά'}
-                            </div>
+              {smartOpen && smartQuery.trim() && (
+                <div style={resultsPanel}>
+                  {showCreateInline && (
+                    <button
+                      type="button"
+                      onPointerDown={(e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        openCreateModal()
+                      }}
+                      style={createRow}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                        <div>
+                          <div style={{ fontSize: 15, fontWeight: 900, color: colors.primaryDark }}>
+                            Δεν βρέθηκε: <span style={{ color: colors.accentBlue }}>{smartQuery.trim()}</span>
                           </div>
-                        </button>
-                      ))}
-                    </div>
-                  ))
-                )}
+                          <div style={{ fontSize: 12, fontWeight: 700, color: colors.secondaryText }}>
+                            Πάτα για καταχώρηση (Προμηθευτές/Λογαριασμοί/Προσωπικό/Συντήρηση/Λοιπά)
+                          </div>
+                        </div>
+                        <div style={plusPill}>＋</div>
+                      </div>
+                    </button>
+                  )}
+
+                  {Object.keys(groupedResultsSafe).length === 0 ? (
+                    !showCreateInline ? (
+                      <div style={{ padding: 14, fontSize: 14, fontWeight: 700, color: colors.secondaryText }}>Δεν βρέθηκε αποτέλεσμα</div>
+                    ) : null
+                  ) : (
+                    Object.entries(groupedResultsSafe).map(([group, items]) => (
+                      <div key={group}>
+                        <div style={groupHeader}>{group}</div>
+
+                        {items.map((item) => (
+                          <button
+                            key={`${item.kind}-${item.id}`}
+                            type="button"
+                            onPointerDown={(e) => {
+                              e.preventDefault()
+                              e.stopPropagation()
+                              pickSmartItem(item)
+                            }}
+                            onTouchStart={(e) => {
+                              e.preventDefault()
+                              e.stopPropagation()
+                              pickSmartItem(item)
+                            }}
+                            style={resultRow}
+                          >
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                              <div style={{ fontSize: 15, fontWeight: 900, color: colors.primaryDark }}>{item.name}</div>
+                              <div style={{ fontSize: 12, fontWeight: 700, color: colors.secondaryText }}>
+                                {item.kind === 'supplier'
+                                  ? 'Προμηθευτής'
+                                  : item.group === 'maintenance'
+                                    ? 'Συντήρηση'
+                                    : item.group === 'staff'
+                                      ? 'Προσωπικό'
+                                      : item.group === 'utility'
+                                        ? 'Λογαριασμός'
+                                        : 'Λοιπά'}
+                              </div>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* ✅ DROPDOWN with ALWAYS-LAST "+" */}
+            <label style={{ ...labelStyle, marginTop: 12, color: colors.accentBlue }}>Ή επιλογή από λίστα</label>
+            <select
+              value={selectedDropdownValue}
+              onChange={(e) => handleDropdownSelect(e.target.value)}
+              style={selectStyle}
+              disabled={loading || smartItems.length === 0}
+            >
+              <option value="">{smartItems.length === 0 ? 'Φόρτωση λίστας...' : '— Επιλογή από λίστα —'}</option>
+
+              {Object.entries(dropdownGroups).map(([group, items]) => {
+                if (!items || items.length === 0) return null
+                return (
+                  <optgroup key={group} label={group}>
+                    {items.map((it) => (
+                      <option key={`${it.kind}:${it.id}`} value={`${it.kind}:${it.id}`}>
+                        {it.name}
+                      </option>
+                    ))}
+                  </optgroup>
+                )
+              })}
+
+              {dropdownHasAddRow && (
+                <>
+                  <option value="" disabled>
+                    ─────────────────
+                  </option>
+                  <option value="__ADD_NEW__">＋ Προσθήκη νέου δικαιούχου…</option>
+                </>
+              )}
+            </select>
+
+            {!!selectedEntity && (
+              <div style={selectedBox}>
+                Επιλογή: <span style={{ fontWeight: 900 }}>{selectedLabel}</span>
+                {!!selectedMeta && <span style={{ marginLeft: 8, color: colors.secondaryText, fontWeight: 800 }}>({selectedMeta})</span>}
               </div>
             )}
           </div>
 
-          {/* ✅ NEW: Dropdown list of all active beneficiaries */}
-          <label style={{ ...labelStyle, marginTop: 12 }}>Ή επιλογή από λίστα</label>
-          <select
-            value={selectedDropdownValue}
-            onChange={(e) => handleDropdownSelect(e.target.value)}
-            style={selectStyle}
-            disabled={loading || smartItems.length === 0}
-          >
-            <option value="">{smartItems.length === 0 ? 'Φόρτωση λίστας...' : '— Επιλογή από λίστα —'}</option>
-
-            {Object.entries(dropdownGroups).map(([group, items]) => {
-              if (!items || items.length === 0) return null
-              return (
-                <optgroup key={group} label={group}>
-                  {items.map((it) => (
-                    <option key={`${it.kind}:${it.id}`} value={`${it.kind}:${it.id}`}>
-                      {it.name}
-                    </option>
-                  ))}
-                </optgroup>
-              )
-            })}
-          </select>
-
-          {!!selectedEntity && (
-            <div style={selectedBox}>
-              Επιλογή: <span style={{ fontWeight: 900 }}>{selectedLabel}</span>
-              {!!selectedMeta && <span style={{ marginLeft: 8, color: colors.secondaryText, fontWeight: 800 }}>({selectedMeta})</span>}
+          {/* ✅ AMOUNT SECTION (colored) */}
+          <div style={amountSectionStyle}>
+            <label style={{ ...labelStyle, color: colors.accentRed }}>Ποσό (€)</label>
+            <input
+              ref={amountInputRef}
+              type="text"
+              inputMode="decimal"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              style={amountInputStyle}
+              placeholder="0.00"
+            />
+            <div style={{ marginTop: 6, fontSize: 12, fontWeight: 800, color: colors.secondaryText }}>
+              Tip: δέχεται και <b>10,50</b>.
             </div>
-          )}
-
-          <label style={{ ...labelStyle, marginTop: 20 }}>Ποσό (€)</label>
-          <input
-            ref={amountInputRef}
-            type="text"
-            inputMode="decimal"
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            style={inputStyle}
-            placeholder="0.00"
-          />
-          <div style={{ marginTop: 6, fontSize: 12, fontWeight: 800, color: colors.secondaryText }}>
-            Tip: δέχεται και <b>10,50</b>.
           </div>
 
           <label style={{ ...labelStyle, marginTop: 20 }}>ΤΥΠΟΣ ΠΑΡΑΣΤΑΤΙΚΟΥ *</label>
@@ -1276,7 +1285,6 @@ function AddExpenseForm() {
                   borderRadius: 10,
                   padding: '10px',
                   cursor: 'pointer',
-                  outline: documentType === type ? 'none' : undefined,
                 }}
               >
                 {type}
@@ -1405,7 +1413,7 @@ function AddExpenseForm() {
                   )}
                 </div>
                 <div style={{ marginTop: 8, fontSize: 12, fontWeight: 800, color: colors.secondaryText }}>
-                  * Max 5MB. Δεν ανεβάζουμε αν έχεις “Χωρίς τιμολόγιο”. (Path: store/YYYY/MM)
+                  * Max 5MB. Δεν ανεβάζουμε αν έχεις “Χωρίς τιμολόγιο”.
                 </div>
               </div>
             </>
@@ -1432,12 +1440,12 @@ function AddExpenseForm() {
           </div>
 
           <div style={{ marginTop: 10, fontSize: 12, fontWeight: 800, color: colors.secondaryText }}>
-            * Αποθηκεύουμε στη στήλη <b>method</b>. Για Πίστωση: <b>method="Πίστωση"</b> + <b>is_credit=true</b>.
+            * Στο dropdown έχει πάντα στο τέλος: <b>＋ Προσθήκη νέου δικαιούχου…</b>
           </div>
         </div>
       </div>
 
-      {/* ✅ CREATE MODAL (allowed for admin/user/super_admin) */}
+      {/* ✅ CREATE MODAL */}
       {createOpen && canCreate && (
         <div style={modalOverlay} onMouseDown={() => !createSaving && setCreateOpen(false)}>
           <div style={modalCard} onMouseDown={(e) => e.stopPropagation()}>
@@ -1449,7 +1457,7 @@ function AddExpenseForm() {
             </div>
 
             <p style={{ margin: '8px 0 14px', fontSize: 13, fontWeight: 700, color: colors.secondaryText }}>
-              Δεν βρέθηκε <strong>{smartQuery.trim()}</strong>. Διάλεξε κατηγορία και συμπλήρωσε τα πεδία.
+              Θα προσθέσεις: <strong>{smartQuery.trim() || cName || '—'}</strong>
             </p>
 
             <label style={modalLabel}>Κατηγορία</label>
@@ -1510,7 +1518,6 @@ function AddExpenseForm() {
                     maxLength={40}
                   />
                 </div>
-                <div style={{ marginTop: 8, fontSize: 12, fontWeight: 800, color: colors.secondaryText }}>* IBAN αποθηκεύεται με ΚΕΦΑΛΑΙΑ.</div>
               </>
             )}
 
@@ -1539,8 +1546,6 @@ function AddExpenseForm() {
                     ))}
                   </select>
                 </div>
-
-                <div style={{ marginTop: 8, fontSize: 12, fontWeight: 800, color: colors.secondaryText }}>* RF αποθηκεύεται με ΚΕΦΑΛΑΙΑ.</div>
               </>
             )}
 
@@ -1640,7 +1645,7 @@ function AddExpenseForm() {
   )
 }
 
-// STYLES
+/* STYLES */
 const iphoneWrapper: any = {
   backgroundColor: colors.bgLight,
   minHeight: '100dvh',
@@ -1698,10 +1703,10 @@ const selectStyle: any = {
   width: '100%',
   padding: 14,
   borderRadius: 12,
-  border: `1px solid ${colors.border}`,
+  border: `1px solid rgba(37,99,235,0.35)`,
   fontSize: 16,
   fontWeight: 800,
-  backgroundColor: colors.white,
+  backgroundColor: 'rgba(255,255,255,0.95)',
   color: colors.primaryDark,
   boxSizing: 'border-box',
 }
