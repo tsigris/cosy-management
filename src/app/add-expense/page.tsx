@@ -233,9 +233,11 @@ function AddExpenseForm() {
   const smartBeneficiaryInputRef = useRef<HTMLInputElement | null>(null)
   const amountInputRef = useRef<HTMLInputElement | null>(null)
 
-  // ✅ Role (SaaS)
+  // ✅ Role (SaaS) - κρατάμε το role για πληροφορία, αλλά:
   const [role, setRole] = useState<ProfileRole>('user')
-  const canCreate = useMemo(() => ['admin', 'user', 'super_admin'].includes(String(role)), [role])
+
+  // ✅ ΖΗΤΗΣΕΣ: "όλοι να μπορούν να κάνουν insert"
+  const canCreate = true
 
   // ✅ Smart "Create new" modal
   const [createOpen, setCreateOpen] = useState(false)
@@ -318,7 +320,7 @@ function AddExpenseForm() {
     return {
       ...inputStyle,
       border: empty ? `2px solid ${colors.accentBlue}` : `1px solid rgba(37,99,235,0.35)`,
-      backgroundColor: empty ? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.95)',
+      backgroundColor: 'rgba(255,255,255,0.95)',
       boxShadow: empty ? '0 10px 24px rgba(37, 99, 235, 0.12)' : '0 8px 20px rgba(2,6,23,0.04)',
     }
   }, [smartQuery, selectedEntity])
@@ -752,12 +754,8 @@ function AddExpenseForm() {
     }
   }
 
+  // ✅ ΖΗΤΗΣΕΣ: να ανοίγει πάντα η δημιουργία (χωρίς permission check)
   const openCreateModal = () => {
-    if (!canCreate) {
-      toast.error('Δεν έχεις δικαίωμα δημιουργίας νέου δικαιούχου')
-      return
-    }
-
     const q = normalizeGreek(smartQuery)
     const suggest: CreateTab =
       q.includes('δεη') || q.includes('deh') || q.includes('dei') || q.includes('ενοικ') || q.includes('rf')
@@ -1078,15 +1076,14 @@ function AddExpenseForm() {
   // ✅ Show “Add +” row inside search results when no match
   const showCreateInline = useMemo(() => {
     const q = smartQuery.trim()
-    if (!canCreate) return false
     if (!smartOpen) return false
     if (!q) return false
     if (filtered.length > 0) return false
     return true
-  }, [canCreate, smartOpen, smartQuery, filtered.length])
+  }, [smartOpen, smartQuery, filtered.length])
 
   // ✅ Always show “+ Προσθήκη” as LAST option in dropdown list
-  const dropdownHasAddRow = useMemo(() => canCreate, [canCreate])
+  const dropdownHasAddRow = true
 
   return (
     <div style={iphoneWrapper}>
@@ -1097,8 +1094,8 @@ function AddExpenseForm() {
           <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
             <div style={logoBoxStyle}>💸</div>
             <div>
-              <h1 style={{ fontWeight: 800, fontSize: 16, margin: 0 }}>{editId ? 'Διόρθωση' : 'Έξοδο'}</h1>
-              <p style={{ margin: 0, fontSize: 16, color: colors.secondaryText, fontWeight: 700 }}>
+              <h1 style={{ fontWeight: 900, fontSize: 18, margin: 0, color: 'white' }}>{editId ? 'Διόρθωση' : 'Έξοδο'}</h1>
+              <p style={{ margin: 0, fontSize: 14, color: 'rgba(255,255,255,0.85)', fontWeight: 700 }}>
                 {new Date(selectedDate).toLocaleDateString('el-GR', { day: 'numeric', month: 'long' })}
               </p>
             </div>
@@ -1660,11 +1657,23 @@ const iphoneWrapper: any = {
   touchAction: 'pan-y',
 }
 
-const headerStyle: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }
+// ✅ ΖΗΤΗΣΕΣ: κόκκινο header για να φαίνεται ότι είναι Έξοδο
+const headerStyle: any = {
+  display: 'flex',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+  marginBottom: 20,
+  padding: 18,
+  borderRadius: 20,
+  background: 'linear-gradient(135deg, #dc2626 0%, #b91c1c 100%)',
+  color: 'white',
+  boxShadow: '0 10px 30px rgba(220,38,38,0.25)',
+}
+
 const logoBoxStyle: any = {
   width: 42,
   height: 42,
-  backgroundColor: colors.primaryDark,
+  backgroundColor: '#7f1d1d',
   borderRadius: 12,
   display: 'flex',
   alignItems: 'center',
@@ -1673,13 +1682,14 @@ const logoBoxStyle: any = {
   fontSize: 18,
   fontWeight: 900,
 }
+
 const backBtnStyle: any = {
   textDecoration: 'none',
-  color: colors.secondaryText,
+  color: 'white',
   padding: '10px 12px',
-  backgroundColor: colors.white,
+  backgroundColor: 'rgba(255,255,255,0.15)',
   borderRadius: 10,
-  border: `1px solid ${colors.border}`,
+  border: '1px solid rgba(255,255,255,0.3)',
   fontSize: 16,
   fontWeight: 900,
 }
