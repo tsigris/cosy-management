@@ -358,6 +358,9 @@ function AddExpenseForm() {
   useEffect(() => {
     if (typeof window === 'undefined' || typeof document === 'undefined') return
 
+    const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent || '')
+    if (isIOS) return
+
     const ua = navigator.userAgent || ''
     const isMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(ua) || window.matchMedia('(pointer: coarse)').matches
     if (!isMobile) return
