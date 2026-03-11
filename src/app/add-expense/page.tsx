@@ -676,7 +676,8 @@ function AddExpenseForm() {
       if (it.kind === 'supplier') groups['Προμηθευτές'].push(it)
       else {
         const g = it.group || 'other'
-        const title = g === 'maintenance' ? 'Συντήρηση' : g === 'staff' ? 'Προσωπικό' : g === 'utility' ? 'Λογαριασμός' : 'Λοιπά'
+        const title = g === 'maintenance' ? 'Συντήρηση' : g === 'staff' ? 'Προσωπικό' : g === 'utility' ? 'Λογαριασμοί' : 'Λοιπά'
+        if (!groups[title]) groups[title] = []
         groups[title].push(it)
       }
     }
@@ -1074,7 +1075,7 @@ function AddExpenseForm() {
     const g = it.group || 'other'
     if (g === 'maintenance') return 'Συντήρηση'
     if (g === 'staff') return 'Προσωπικό'
-    if (g === 'utility') return 'Λογαριασμός'
+    if (g === 'utility') return 'Λογαριασμοί'
     return 'Λοιπά'
   }, [selectedEntity, smartItemMap])
 
@@ -1201,7 +1202,7 @@ function AddExpenseForm() {
                                     : item.group === 'staff'
                                       ? 'Προσωπικό'
                                       : item.group === 'utility'
-                                        ? 'Λογαριασμός'
+                                        ? 'Λογαριασμοί'
                                         : 'Λοιπά'}
                               </div>
                             </div>
