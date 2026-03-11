@@ -285,8 +285,10 @@ function AddExpenseForm() {
 
   // ✅ Auto focus on beneficiary input when ready
   useEffect(() => {
+    const isIOS = typeof window !== 'undefined' && /iPhone|iPad|iPod/i.test(navigator.userAgent || '')
     if (loading) return
     if (createOpen) return
+    if (isIOS) return
     requestAnimationFrame(() => {
       smartBeneficiaryInputRef.current?.focus()
     })
@@ -671,7 +673,7 @@ function AddExpenseForm() {
       if (it.kind === 'supplier') groups['Προμηθευτές'].push(it)
       else {
         const g = it.group || 'other'
-        const title = g === 'maintenance' ? 'Συντήρηση' : g === 'staff' ? 'Προσωπικό' : g === 'utility' ? 'Λογαριασμοί' : 'Λοιπά'
+        const title = g === 'maintenance' ? 'Συντήρηση' : g === 'staff' ? 'Προσωπικό' : g === 'utility' ? 'Λογαριασμός' : 'Λοιπά'
         groups[title].push(it)
       }
     }
@@ -1261,6 +1263,8 @@ function AddExpenseForm() {
               onChange={(e) => setAmount(e.target.value)}
               style={amountInputStyle}
               placeholder="0.00"
+              enterKeyHint="done"
+              autoComplete="off"
             />
             <div style={{ marginTop: 6, fontSize: 12, fontWeight: 800, color: colors.secondaryText }}>
               Tip: δέχεται και <b>10,50</b>.
@@ -1645,16 +1649,11 @@ function AddExpenseForm() {
 /* STYLES */
 const iphoneWrapper: any = {
   backgroundColor: colors.bgLight,
-  minHeight: '100dvh',
+  minHeight: '100svh',
   padding: 20,
-  overflowY: 'auto',
-  position: 'absolute',
-  top: 0,
-  left: 0,
-  right: 0,
-  bottom: 0,
+  position: 'relative',
   fontSize: 16,
-  touchAction: 'pan-y',
+  touchAction: 'manipulation',
 }
 
 // ✅ ΖΗΤΗΣΕΣ: κόκκινο header για να φαίνεται ότι είναι Έξοδο
