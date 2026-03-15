@@ -698,8 +698,60 @@ export default function EconomicsExpensesPage() {
                 </div>
               )}
           </section>
-        )}
-      </div>
+            )} : (
+              <section style={card}>
+                <h2 style={cardTitle}>Λίστα Κινήσεων</h2>
+
+                  {loading ? (
+                    <div style={centerText}>Φόρτωση...</div>
+                  ) : (!filteredMovements || filteredMovements.length === 0) ? (
+                    <div style={emptyText}>Δεν υπάρχουν κινήσεις</div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                      {groupedMovements.map((g) => (
+                        <div key={g.key} style={{ borderRadius: 18, border: '1px solid #e5e7eb', background: 'white', padding: 14, marginBottom: 12 }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
+                            <div style={{ flex: 1, wordBreak: 'break-word', fontSize: 15, fontWeight: 900 }}>{g.title}</div>
+                            <div style={{ whiteSpace: 'nowrap', fontSize: 16, fontWeight: 900 }}>{Number(g.total).toLocaleString('el-GR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}€</div>
+                          </div>
+
+                          <div style={{ marginTop: 8, fontSize: 12, color: 'var(--muted)' }}>
+                            <span>{displayCategoryLabel(g.category)}</span>
+                            <span style={{ marginLeft: 8 }}>• Τελευταία κίνηση: {formatDateOnly(g.lastDate)}</span>
+                          </div>
+
+                          <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <div style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 800 }}>{g.count} κινήσεις</div>
+                            {g.hasCredit ? (
+                              <div style={{ display: 'inline-flex', padding: '6px 10px', borderRadius: 999, fontSize: 11, fontWeight: 900, background: '#eef2ff', color: '#4f46e5', maxWidth: 'fit-content' }}>ΠΙΣΤΩΣΗ</div>
+                            ) : null}
+                            <div style={{ marginLeft: 'auto', fontSize: 18, color: 'var(--muted)' }}>{openSupplier === g.key ? '▴' : '▾'}</div>
+                          </div>
+
+                          {openSupplier === g.key && (
+                            <div style={{ marginTop: 12 }}>
+                              {g.rows.slice(0, 5).map((r) => (
+                                <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid var(--border)' }}>
+                                  <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                    <div style={{ fontSize: 13, fontWeight: 800 }}>{formatDate(r.created_at || r.date)}</div>
+                                    <div style={{ fontSize: 13, color: 'var(--muted)' }}>{displayCategoryLabel(r.category || '—')}</div>
+                                  </div>
+                                  <div style={{ textAlign: 'right', display: 'flex', alignItems: 'center', gap: 8 }}>
+                                    {r.is_credit ? <div style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 800 }}>Πίστωση</div> : null}
+                                    <div style={{ fontWeight: 900 }}>{Math.abs(Number(r.amount) || 0).toLocaleString('el-GR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}€</div>
+                                  </div>
+                                </div>
+                              ))}
+                              {g.rows.length > 5 ? <div style={{ fontSize: 13, color: 'var(--muted)', fontWeight: 800, marginTop: 8 }}>Εμφανίζονται οι 5 πιο πρόσφατες κινήσεις</div> : null}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+              </section>
+            )}
+          </div>
     </main>
   )
 }
