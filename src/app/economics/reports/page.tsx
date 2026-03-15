@@ -81,11 +81,7 @@ function ReportsContent() {
     try {
       setLoading(true)
 
-      const transRes = await supabase
-        .from('transactions')
-        .select('*')
-        .eq('store_id', storeIdFromUrl)
-
+      const transRes = await supabase.from('transactions').select('*').eq('store_id', storeIdFromUrl)
       if (transRes.error) throw transRes.error
 
       const txs = transRes.data || []
@@ -148,185 +144,177 @@ function ReportsContent() {
   const headerTitle = 'Οικονομικό Κέντρο'
   const headerSubtitle = 'ΑΝΑΦΟΡΕΣ'
 
-  // UI styles (consistent with economics pages)
-  const iphoneWrapper: any = { background: 'var(--bg-grad)', minHeight: '100vh', padding: '20px', position: 'relative' }
+  // mobile-first UI styles
+  const container: any = { maxWidth: 520, margin: '0 auto', paddingBottom: 120 }
+  const headerRow: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }
   const logoBoxStyle: any = { width: '45px', height: '45px', background: 'var(--surface)', borderRadius: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center' }
   const backBtnStyle: any = { textDecoration: 'none', color: 'var(--muted)', background: 'var(--surface)', width: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '12px', border: '1px solid var(--border)' }
-  const switchBtn: any = { flex: 1, padding: '12px', borderRadius: '10px', border: 'none', fontWeight: '950', fontSize: '12px', cursor: 'pointer' }
-  const switcherWrap: any = { display: 'flex', background: '#e2e8f0', padding: '4px', borderRadius: '14px', marginBottom: '12px' }
-  const card: any = { background: 'var(--surface)', padding: '16px', borderRadius: '16px', border: '1px solid var(--border)', boxShadow: 'var(--shadow)' }
+  const navWrap: any = { display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 8, marginBottom: 12 }
+  const navBtn: any = { flex: '0 0 auto', padding: '10px 12px', borderRadius: 12, border: '1px solid var(--border)', background: 'transparent', fontWeight: 900, fontSize: 12 }
+  const activeNavBtn: any = { background: 'var(--surface)', boxShadow: 'var(--shadow)' }
+  const viewWrapMobile: any = { display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }
+  const viewBtn: any = { flex: 1, minWidth: 110, padding: 10, borderRadius: 10, border: '1px solid var(--border)', background: 'transparent', fontWeight: 900 }
+  const card: any = { background: 'var(--surface)', padding: 14, borderRadius: 16, border: '1px solid var(--border)', boxShadow: 'var(--shadow)', marginBottom: 12 }
 
   return (
-    <div style={iphoneWrapper}>
+    <div style={{ background: 'var(--bg-grad)', minHeight: '100vh', padding: 20 }}>
       <Toaster position="top-center" richColors />
-      <div style={{ maxWidth: 820, margin: '0 auto', paddingBottom: 120 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <div style={logoBoxStyle}><Wallet size={22} color={colors.accentOrange} /></div>
+      <div style={container}>
+        {/* Header */}
+        <div style={headerRow}>
+          <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+            <div style={logoBoxStyle}><Wallet size={20} color={colors.accentOrange} /></div>
             <div>
-              <h1 style={{ fontWeight: 900, fontSize: 20, margin: 0, color: 'var(--text)' }}>{headerTitle}</h1>
-              <p style={{ margin: 0, fontSize: 10, color: 'var(--muted)', fontWeight: 800, letterSpacing: 1 }}>{headerSubtitle}</p>
+              <h1 style={{ fontWeight: 900, fontSize: 18, margin: 0, color: 'var(--text)' }}>{headerTitle}</h1>
+              <p style={{ margin: 0, fontSize: 11, color: 'var(--muted)', fontWeight: 800 }}>{headerSubtitle}</p>
             </div>
           </div>
-          <Link href={`/?store=${storeIdFromUrl || ''}`} style={backBtnStyle}><ChevronLeft size={20} /></Link>
+          <Link href={`/?store=${storeIdFromUrl || ''}`} style={backBtnStyle}><ChevronLeft size={18} /></Link>
         </div>
 
-        <div style={{ display: 'flex', gap: 12, marginBottom: 12 }}>
-          <div style={{ flex: 1 }}>
-            <div style={card}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                  <div style={{ fontSize: 11, fontWeight: 900, color: 'var(--muted)' }}>Έσοδα</div>
-                  <div style={{ fontSize: 22, fontWeight: 900, color: colors.accentGreen }}>{incomeTotal.toLocaleString('el-GR', { minimumFractionDigits: 2 })}€</div>
-                </div>
-                <div>
-                  <div style={{ fontSize: 11, fontWeight: 900, color: 'var(--muted)' }}>Έξοδα</div>
-                  <div style={{ fontSize: 22, fontWeight: 900, color: colors.accentOrange }}>{expenseTotal.toLocaleString('el-GR', { minimumFractionDigits: 2 })}€</div>
-                </div>
-                <div>
-                  <div style={{ fontSize: 11, fontWeight: 900, color: 'var(--muted)' }}>Καθαρό</div>
-                  <div style={{ fontSize: 22, fontWeight: 900, color: netTotal >= 0 ? colors.accentGreen : colors.accentRed }}>{netTotal.toLocaleString('el-GR', { minimumFractionDigits: 2 })}€</div>
-                </div>
-              </div>
-            </div>
-          </div>
+        {/* Economics navigation */}
+        <div style={navWrap}>
+          <Link href={`/economics/cashflow?store=${storeIdFromUrl}`} style={{ ...navBtn }}><Layers size={14} style={{ marginRight: 6 }} />Cashflow</Link>
+          <Link href={`/economics/expenses?store=${storeIdFromUrl}`} style={{ ...navBtn }}><SlidersHorizontal size={14} style={{ marginRight: 6 }} />Expenses</Link>
+          <Link href={`/economics/credits?store=${storeIdFromUrl}`} style={{ ...navBtn }}><List size={14} style={{ marginRight: 6 }} />Credits</Link>
+          <Link href={`/economics/reports?store=${storeIdFromUrl}`} style={{ ...navBtn, ...activeNavBtn }}><Wallet size={14} style={{ marginRight: 6 }} />Reports</Link>
+          <Link href={`/economics/scheduled-payments?store=${storeIdFromUrl}`} style={{ ...navBtn }}><Calendar size={14} style={{ marginRight: 6 }} />Scheduled</Link>
+        </div>
 
-          <div style={{ width: 220 }}>
-            <div style={card}>
-              <div style={{ fontSize: 11, fontWeight: 900, color: 'var(--muted)', marginBottom: 8 }}>Έτος</div>
-              <select value={String(selectedYear)} onChange={(e) => setSelectedYear(Number(e.target.value))} style={{ width: '100%', padding: 12, borderRadius: 10, border: '1px solid var(--border)', background: 'var(--surface)', fontWeight: 800 }}>
-                {yearOptions.map((y) => <option key={y} value={String(y)}>{y}</option>)}
-              </select>
-              <div style={{ marginTop: 10 }}>
-                <div style={{ fontSize: 11, fontWeight: 900, color: 'var(--muted)', marginBottom: 8 }}>Προβολή</div>
-                <div style={switcherWrap}>
-                  <button onClick={() => setView('summary')} style={{ ...switchBtn, background: view === 'summary' ? 'var(--surface)' : 'transparent' }} title="Summary">Σύνοψη</button>
-                  <button onClick={() => setView('category')} style={{ ...switchBtn, background: view === 'category' ? 'var(--surface)' : 'transparent' }} title="By Category">Κατηγορία</button>
-                  <button onClick={() => setView('method')} style={{ ...switchBtn, background: view === 'method' ? 'var(--surface)' : 'transparent' }} title="By Method">Μέθοδος</button>
-                </div>
-                <div style={{ marginTop: 8, display: 'flex', gap: 8 }}>
-                  <button onClick={() => setView('timeline')} style={{ flex: 1, padding: 10, borderRadius: 10, border: '1px solid var(--border)', background: view === 'timeline' ? 'var(--surface)' : 'transparent', fontWeight: 900 }}>Χρονικά</button>
-                  <button onClick={() => setView('movements')} style={{ padding: 10, borderRadius: 10, border: '1px solid var(--border)', background: view === 'movements' ? 'var(--surface)' : 'transparent', fontWeight: 900 }}>Κινήσεις</button>
-                </div>
-              </div>
+        {/* Year selector */}
+        <div style={card}>
+          <div style={{ fontSize: 11, fontWeight: 900, color: 'var(--muted)', marginBottom: 8 }}>ΕΤΟΣ</div>
+          <select value={String(selectedYear)} onChange={(e) => setSelectedYear(Number(e.target.value))} style={{ width: '100%', padding: 12, borderRadius: 10, border: '1px solid var(--border)', background: 'var(--surface)', fontWeight: 800 }}>
+            {yearOptions.map((y) => <option key={y} value={String(y)}>{y}</option>)}
+          </select>
+        </div>
+
+        {/* View selector */}
+        <div style={viewWrapMobile}>
+          <button onClick={() => setView('summary')} style={{ ...viewBtn, background: view === 'summary' ? 'var(--surface)' : 'transparent' }}>Σύνοψη</button>
+          <button onClick={() => setView('category')} style={{ ...viewBtn, background: view === 'category' ? 'var(--surface)' : 'transparent' }}>Κατηγορία</button>
+          <button onClick={() => setView('method')} style={{ ...viewBtn, background: view === 'method' ? 'var(--surface)' : 'transparent' }}>Μέθοδος</button>
+          <button onClick={() => setView('timeline')} style={{ ...viewBtn, background: view === 'timeline' ? 'var(--surface)' : 'transparent' }}>Χρονικά</button>
+          <button onClick={() => setView('movements')} style={{ ...viewBtn, background: view === 'movements' ? 'var(--surface)' : 'transparent' }}>Κινήσεις</button>
+        </div>
+
+        {/* Summary cards */}
+        <div style={card}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 900, color: 'var(--muted)' }}>Έσοδα</div>
+              <div style={{ fontSize: 18, fontWeight: 900, color: colors.accentGreen }}>{incomeTotal.toLocaleString('el-GR', { minimumFractionDigits: 2 })}€</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 900, color: 'var(--muted)' }}>Έξοδα</div>
+              <div style={{ fontSize: 18, fontWeight: 900, color: colors.accentOrange }}>{expenseTotal.toLocaleString('el-GR', { minimumFractionDigits: 2 })}€</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 900, color: 'var(--muted)' }}>Καθαρό</div>
+              <div style={{ fontSize: 18, fontWeight: 900, color: netTotal >= 0 ? colors.accentGreen : colors.accentRed }}>{netTotal.toLocaleString('el-GR', { minimumFractionDigits: 2 })}€</div>
             </div>
           </div>
         </div>
 
-        <div style={{ display: 'flex', gap: 12 }}>
-          <div style={{ flex: 1 }}>
-            {loading ? (
-              <div style={{ ...card, textAlign: 'center', padding: 40 }}>Φόρτωση...</div>
-            ) : (
-              <div style={card}>
-                {view === 'summary' && (
-                  <div>
-                    <h3 style={{ margin: '0 0 8px 0', fontSize: 14, fontWeight: 900 }}>Σύνοψη Έτους</h3>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
-                      <div style={{ padding: 12, borderRadius: 10, background: 'var(--surface)' }}>
-                        <div style={{ fontSize: 12, fontWeight: 900, color: 'var(--muted)' }}>Έσοδα</div>
-                        <div style={{ fontSize: 18, fontWeight: 900 }}>{incomeTotal.toLocaleString('el-GR', { minimumFractionDigits: 2 })}€</div>
-                      </div>
-                      <div style={{ padding: 12, borderRadius: 10, background: 'var(--surface)' }}>
-                        <div style={{ fontSize: 12, fontWeight: 900, color: 'var(--muted)' }}>Έξοδα</div>
-                        <div style={{ fontSize: 18, fontWeight: 900 }}>{expenseTotal.toLocaleString('el-GR', { minimumFractionDigits: 2 })}€</div>
-                      </div>
-                      <div style={{ padding: 12, borderRadius: 10, background: 'var(--surface)' }}>
-                        <div style={{ fontSize: 12, fontWeight: 900, color: 'var(--muted)' }}>Καθαρό</div>
-                        <div style={{ fontSize: 18, fontWeight: 900 }}>{netTotal.toLocaleString('el-GR', { minimumFractionDigits: 2 })}€</div>
-                      </div>
+        <div style={{ display: 'flex', gap: 12, flexDirection: 'column' }}>
+          {/* Main content depending on view */}
+          {loading ? (
+            <div style={card}>Φόρτωση...</div>
+          ) : (
+            <>
+              {view === 'summary' && (
+                <div style={card}>
+                  <div style={{ fontSize: 14, fontWeight: 900, marginBottom: 8 }}>Σύνοψη Έτους</div>
+                  <div style={{ display: 'flex', gap: 8, flexDirection: 'column' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <div style={{ fontWeight: 900 }}>Συνολικές Κινήσεις</div>
+                      <div style={{ fontWeight: 900 }}>{txThisYear.length}</div>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <div style={{ color: 'var(--muted)' }}>Έσοδα</div>
+                      <div style={{ fontWeight: 900 }}>{incomeTotal.toLocaleString('el-GR', { minimumFractionDigits: 2 })}€</div>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <div style={{ color: 'var(--muted)' }}>Έξοδα</div>
+                      <div style={{ fontWeight: 900 }}>{expenseTotal.toLocaleString('el-GR', { minimumFractionDigits: 2 })}€</div>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <div style={{ color: 'var(--muted)' }}>Καθαρό</div>
+                      <div style={{ fontWeight: 900 }}>{netTotal.toLocaleString('el-GR', { minimumFractionDigits: 2 })}€</div>
                     </div>
                   </div>
-                )}
+                </div>
+              )}
 
-                {view === 'category' && (
-                  <div>
-                    <h3 style={{ margin: '0 0 8px 0', fontSize: 14, fontWeight: 900 }}>Κατά Κατηγορία</h3>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                      {byCategory.map((g) => (
-                        <div key={g.key} style={{ display: 'flex', justifyContent: 'space-between', padding: 8, borderRadius: 8, background: 'var(--surface)', border: '1px solid var(--border)' }}>
-                          <div style={{ fontWeight: 900 }}>{String(g.key)}</div>
+              {view === 'category' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {byCategory.map((g) => (
+                    <div key={g.key} style={card}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div style={{ fontWeight: 900 }}>{g.key}</div>
+                        <div style={{ textAlign: 'right' }}>
                           <div style={{ fontWeight: 900 }}>{(g.total || 0).toLocaleString('el-GR', { minimumFractionDigits: 2 })}€</div>
+                          <div style={{ fontSize: 12, color: 'var(--muted)' }}>{g.count} κινήσεις</div>
                         </div>
-                      ))}
+                      </div>
                     </div>
-                  </div>
-                )}
+                  ))}
+                </div>
+              )}
 
-                {view === 'method' && (
-                  <div>
-                    <h3 style={{ margin: '0 0 8px 0', fontSize: 14, fontWeight: 900 }}>Κατά Μέθοδο Πληρωμής</h3>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                      {byMethod.map((g) => (
-                        <div key={g.key} style={{ display: 'flex', justifyContent: 'space-between', padding: 8, borderRadius: 8, background: 'var(--surface)', border: '1px solid var(--border)' }}>
-                          <div style={{ fontWeight: 900 }}>{String(g.key)}</div>
+              {view === 'method' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {byMethod.map((g) => (
+                    <div key={g.key} style={card}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div style={{ fontWeight: 900 }}>{g.key}</div>
+                        <div style={{ textAlign: 'right' }}>
                           <div style={{ fontWeight: 900 }}>{(g.total || 0).toLocaleString('el-GR', { minimumFractionDigits: 2 })}€</div>
+                          <div style={{ fontSize: 12, color: 'var(--muted)' }}>{g.count} κινήσεις</div>
                         </div>
-                      ))}
+                      </div>
                     </div>
-                  </div>
-                )}
+                  ))}
+                </div>
+              )}
 
-                {view === 'timeline' && (
-                  <div>
-                    <h3 style={{ margin: '0 0 8px 0', fontSize: 14, fontWeight: 900 }}>Χρονική Προβολή (Μηνιαία)</h3>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                      {byMonth.map((m) => (
-                        <div key={m.key} style={{ display: 'flex', justifyContent: 'space-between', padding: 8, borderRadius: 8, background: 'var(--surface)', border: '1px solid var(--border)' }}>
-                          <div style={{ fontWeight: 900 }}>{m.key}</div>
+              {view === 'timeline' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {byMonth.map((m) => (
+                    <div key={m.key} style={card}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div style={{ fontWeight: 900 }}>{m.key}</div>
+                        <div style={{ textAlign: 'right' }}>
                           <div style={{ fontWeight: 900 }}>{(m.total || 0).toLocaleString('el-GR', { minimumFractionDigits: 2 })}€</div>
+                          <div style={{ fontSize: 12, color: 'var(--muted)' }}>{m.count} κινήσεις</div>
                         </div>
-                      ))}
+                      </div>
                     </div>
-                  </div>
-                )}
+                  ))}
+                </div>
+              )}
 
-                {view === 'movements' && (
-                  <div>
-                    <h3 style={{ margin: '0 0 8px 0', fontSize: 14, fontWeight: 900 }}>Τελευταίες Κινήσεις ({recent.length})</h3>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                      {recent.map((t) => (
-                        <div key={t.id} style={{ display: 'flex', justifyContent: 'space-between', padding: 8, borderRadius: 8, background: 'var(--surface)', border: '1px solid var(--border)' }}>
-                          <div style={{ minWidth: 0 }}>
-                            <div style={{ fontWeight: 900 }}>{String(t.category || t.type || '—')}</div>
-                            <div style={{ fontSize: 12, color: 'var(--muted)' }}>{String(t.notes || '').slice(0, 120)}</div>
-                          </div>
-                          <div style={{ textAlign: 'right' }}>
-                            <div style={{ fontWeight: 900 }}>{moneyAbs(t.amount).toLocaleString('el-GR', { minimumFractionDigits: 2 })}€</div>
-                            <div style={{ fontSize: 12, color: 'var(--muted)' }}>{String(t.date || t.created_at || '—')}</div>
-                          </div>
+              {view === 'movements' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {recent.map((t) => (
+                    <div key={t.id} style={card}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontWeight: 900 }}>{String(t.category || t.type || '—')}</div>
+                          <div style={{ fontSize: 12, color: 'var(--muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{String(t.notes || '')}</div>
+                          {t.payment_method || t.method ? <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 6 }}>{String(t.payment_method || t.method)}</div> : null}
                         </div>
-                      ))}
+                        <div style={{ textAlign: 'right' }}>
+                          <div style={{ fontWeight: 900 }}>{moneyAbs(t.amount).toLocaleString('el-GR', { minimumFractionDigits: 2 })}€</div>
+                          <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 6 }}>{String(t.date || t.created_at || '—')}</div>
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-
-          <div style={{ width: 320 }}>
-            <div style={card}>
-              <div style={{ fontSize: 12, fontWeight: 900, color: 'var(--muted)', marginBottom: 8 }}>Σύνοψη</div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <div style={{ color: 'var(--muted)', fontWeight: 800 }}>Συνολικές Κινήσεις</div>
-                  <div style={{ fontWeight: 900 }}>{txThisYear.length}</div>
+                  ))}
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <div style={{ color: 'var(--muted)', fontWeight: 800 }}>Έσοδα</div>
-                  <div style={{ fontWeight: 900 }}>{incomeTotal.toLocaleString('el-GR', { minimumFractionDigits: 2 })}€</div>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <div style={{ color: 'var(--muted)', fontWeight: 800 }}>Έξοδα</div>
-                  <div style={{ fontWeight: 900 }}>{expenseTotal.toLocaleString('el-GR', { minimumFractionDigits: 2 })}€</div>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <div style={{ color: 'var(--muted)', fontWeight: 800 }}>Καθαρό</div>
-                  <div style={{ fontWeight: 900 }}>{netTotal.toLocaleString('el-GR', { minimumFractionDigits: 2 })}€</div>
-                </div>
-              </div>
-            </div>
-          </div>
+              )}
+            </>
+          )}
         </div>
       </div>
     </div>
