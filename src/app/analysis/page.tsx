@@ -1473,7 +1473,7 @@ function AnalysisContent() {
                 <div style={smallKpiLabel}>Ταμείο Ημέρας (Z View)</div>
                 <div style={smallKpiValue}>{drawer ? moneyGR(drawer.total_cash_drawer) : '—'}</div>
                 <div style={smallKpiHint}>
-                  {drawer ? `Ημερομηνία Ζ: ${drawer.date}` : `Δεν βρέθηκε Ζ έως: ${endDate}`}
+                  {drawer ? `Ημερομηνία Ζ: ${formatDateGreek(drawer.date)}` : `Δεν βρέθηκε Ζ έως: ${formatDateGreek(endDate)}`}
                 </div>
                 <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', marginTop: 4 }}>
                   {drawer ? `Z: ${moneyGR(drawer.z_cash)} • Χωρίς Σήμανση: ${moneyGR(drawer.extra_cash)}` : ''}
@@ -1612,7 +1612,7 @@ function AnalysisContent() {
                   {proDetailSummary.creditRows.slice(0, 10).map((t: any) => (
                     <div key={`cr-${t.id}`} style={listRow}>
                       <div className="print-row-compact">
-                        <div className="print-row-date">{t.date}</div>
+                        <div className="print-row-date">{formatDateGreek(t.date)}</div>
                         <div className="print-row-notes">{String(t.notes || t.category || '').trim() || '—'}</div>
                         <div className="print-row-amount print-amount-negative">
                           {moneyGR(Math.abs(Number(t.amount) || 0))}
@@ -1620,7 +1620,7 @@ function AnalysisContent() {
                       </div>
                       <div className="screen-row" style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
                         <div style={{ minWidth: 0 }}>
-                          <div style={{ fontSize: 13, fontWeight: 950, color: colors.primary }}>{t.date}</div>
+                          <div style={{ fontSize: 13, fontWeight: 950, color: colors.primary }}>{formatDateGreek(t.date)}</div>
                           <div style={{ fontSize: 12, fontWeight: 850, color: colors.secondary, marginTop: 4 }}>
                             {String(t.notes || t.category || '').trim() || '—'}
                           </div>
@@ -1839,7 +1839,7 @@ function AnalysisContent() {
                     <div key={t.id} style={listRow}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
                         <div style={{ minWidth: 0 }}>
-                          <div style={{ fontSize: 13, fontWeight: 950, color: colors.primary }}>{t.date}</div>
+                          <div style={{ fontSize: 13, fontWeight: 950, color: colors.primary }}>{formatDateGreek(t.date)}</div>
                           <div
                             style={{
                               marginTop: 6,
@@ -2009,7 +2009,7 @@ function AnalysisContent() {
                   return (
                     <div key={t.id ?? `${t.date}-${t.created_at}-${absAmt}`} style={listRow}>
                       <div className="print-row-compact">
-                        <div className="print-row-date">{t.date}</div>
+                        <div className="print-row-date">{formatDateGreek(t.date)}</div>
                         <div className="print-row-notes">
                           <div style={{ fontWeight: 800 }}>{String(name || '').toUpperCase()}</div>
                           {!!t.notes && <div>{String(t.notes)}</div>}
@@ -2023,7 +2023,7 @@ function AnalysisContent() {
                       </div>
                       <div className="screen-row" style={{ display: 'flex', flexDirection: 'column', gap: 8, minWidth: 0 }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
-                          <div style={{ fontSize: 14, fontWeight: 900, color: colors.primary, whiteSpace: 'nowrap' }}>{t.date}</div>
+                          <div style={{ fontSize: 14, fontWeight: 900, color: colors.primary, whiteSpace: 'nowrap' }}>{formatDateGreek(t.date)}</div>
                           <div
                             style={{
                               padding: '8px 12px',
