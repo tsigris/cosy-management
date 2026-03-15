@@ -51,7 +51,19 @@ const { chromium } = require('playwright');
   await page.goto(base, { waitUntil: 'networkidle', timeout: 30000 }).catch(() => {});
   const storeId = await page.evaluate(() => {
     try {
-      return localStorage.getItem('active_store_id');
+      // prefer explicit key
+      const explicit = localStorage.getItem('active_store_id');
+      if (explicit) return explicit;
+      // fallback: scan for any uuid-like value in localStorage
+      const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        try {
+          const v = localStorage.getItem(k);
+          if (typeof v === 'string' && uuidRe.test(v.trim())) return v.trim();
+        } catch (e) {}
+      }
+      return null;
     } catch (e) {
       return null;
     }
