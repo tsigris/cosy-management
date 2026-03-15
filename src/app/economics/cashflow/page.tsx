@@ -303,21 +303,57 @@ export default function EconomicsCashflowPage() {
     }
   }, [rows])
 
-  // Chart data: last 6 months + optional future 3 months
+  // Chart data: derive monthly income/expense & running balance from the
+  // same filters the ledger uses (filterFrom/filterTo/filterType/category/method).
   const chart = useMemo(() => {
-    // determine last 6 months keys
-    const base = new Date()
-    base.setDate(1)
+    // Build the same filtered source as filteredLedger (but scoped here so
+    // chart can be computed before filteredLedger is declared elsewhere).
+    const from = filterFrom || '0000-01-01'
+    const to = filterTo || '9999-12-31'
+    const cat = filterCategory.trim()
+    const met = filterMethod.trim()
+
+    const source = rows.filter((r) => {
+      if (r.date < from || r.date > to) return false
+      if (filterType === 'income' && !INCOME_TYPES.has(r.type)) return false
+      if (filterType === 'expense' && !EXPENSE_TYPES.has(r.type)) return false
+      if (cat && String(r.category || '').toLowerCase() !== cat.toLowerCase()) return false
+      if (met && String(r.method || '').toLowerCase() !== met.toLowerCase()) return false
+      return true
+    })
+
+    // If empty, fallback to last 6 months window
+    let startMonth: Date
+    let endMonth: Date
+    if (source.length) {
+      const dates = source
+        .map((r) => (r.date ? new Date(r.date) : r.created_at ? new Date(r.created_at) : null))
+        .filter((d) => d && !isNaN(d.getTime())) as Date[]
+      const minD = dates.reduce((a, b) => (a.getTime() < b.getTime() ? a : b), dates[0])
+      const maxD = dates.reduce((a, b) => (a.getTime() > b.getTime() ? a : b), dates[0])
+      startMonth = new Date(minD.getFullYear(), minD.getMonth(), 1)
+      endMonth = new Date(maxD.getFullYear(), maxD.getMonth(), 1)
+    } else {
+      const base = new Date()
+      base.setDate(1)
+      endMonth = new Date(base.getFullYear(), base.getMonth(), 1)
+      startMonth = new Date(base.getFullYear(), base.getMonth() - 5, 1)
+    }
+
+    // build month keys inclusive
     const months: string[] = []
-    for (let i = 5; i >= 0; i--) {
-      const d = new Date(base.getFullYear(), base.getMonth() - i, 1)
-      months.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`)
+    const maxMonths = 24
+    let cursor = new Date(startMonth.getFullYear(), startMonth.getMonth(), 1)
+    while (cursor.getTime() <= endMonth.getTime() && months.length < maxMonths) {
+      months.push(`${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}`)
+      cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1)
     }
 
     const incomeBy: Record<string, number> = Object.fromEntries(months.map((m) => [m, 0]))
     const expenseBy: Record<string, number> = Object.fromEntries(months.map((m) => [m, 0]))
 
-    for (const r of rows) {
+    for (const r of source) {
+      if (isTransfer(r)) continue // exclude internal transfers from chart
       const key = ymKey(r.date)
       if (!(key in incomeBy)) continue
 
@@ -350,7 +386,7 @@ export default function EconomicsCashflowPage() {
 
       let lastBalance = line.length ? line[line.length - 1].balance : 0
       for (let i = 1; i <= 3; i++) {
-        const d = new Date(base.getFullYear(), base.getMonth() + i, 1)
+        const d = new Date(endMonth.getFullYear(), endMonth.getMonth() + i, 1)
         const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
         lastBalance += avgNet
         projected.push({
@@ -382,7 +418,7 @@ export default function EconomicsCashflowPage() {
     const lineRange = Math.max(1, maxLine - minLine)
 
     return { data: all, maxBar, minLine, maxLine, lineRange }
-  }, [rows, futureProjection])
+  }, [rows, filterFrom, filterTo, filterType, filterCategory, filterMethod, futureProjection, isTransfer])
 
   const uniqueCategories = useMemo(() => {
     const s = new Set<string>()
