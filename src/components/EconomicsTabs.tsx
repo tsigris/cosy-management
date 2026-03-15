@@ -63,14 +63,14 @@ export default function EconomicsTabs() {
 
 const tabsStickyWrap: CSSProperties = {
   position: 'sticky',
-  top: 12,
-  zIndex: 30,
+  top: 72,
+  zIndex: 20,
   marginBottom: 14,
   padding: 8,
   borderRadius: 18,
   border: '1px solid var(--border)',
-  background: 'rgba(255,255,255,0.92)',
-  backdropFilter: 'blur(10px)',
+  background: 'var(--surface)',
+  backdropFilter: 'blur(6px)',
   boxShadow: 'var(--shadow)',
 }
 

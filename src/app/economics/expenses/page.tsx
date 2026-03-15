@@ -46,7 +46,8 @@ function groupByMethod(rows: ExpenseRow[]): GroupBase[] {
     const key = (r.method || 'Άλλη Μέθοδος').trim() || 'Άλλη Μέθοδος'
     if (!map.has(key)) map.set(key, { key, total: 0, count: 0, rows: [] })
     const entry = map.get(key)!
-    if (r.type === 'expense' || r.type === 'debt_payment' || r.type === 'salary_advance') entry.total += Math.abs(Number(r.amount) || 0)
+    const isStaff = String(r.fixed_assets?.sub_category || '').trim().toLowerCase() === 'staff'
+    if (r.type === 'expense' || r.type === 'debt_payment' || r.type === 'salary_advance' || isStaff) entry.total += Math.abs(Number(r.amount) || 0)
     entry.count += 1
     entry.rows.push(r)
   }
@@ -62,10 +63,13 @@ function filterGroupsByKey<T extends { key: string }>(groups: T[], q: string): T
 function groupByCategory(rows: ExpenseRow[]): GroupBase[] {
   const map = new Map<string, GroupBase>()
   for (const r of rows) {
-    const key = (r.category || 'Άλλη Κατηγορία').trim() || 'Άλλη Κατηγορία'
+    const isStaff = String(r.fixed_assets?.sub_category || '').trim().toLowerCase() === 'staff'
+    let key = (r.category || '').trim() || ''
+    if (!key && isStaff) key = 'ΠΡΟΣΩΠΙΚΟ'
+    if (!key) key = 'Άλλη Κατηγορία'
     if (!map.has(key)) map.set(key, { key, total: 0, count: 0, rows: [] })
     const entry = map.get(key)!
-    if (r.type === 'expense' || r.type === 'debt_payment' || r.type === 'salary_advance') entry.total += Math.abs(Number(r.amount) || 0)
+    if (r.type === 'expense' || r.type === 'debt_payment' || r.type === 'salary_advance' || isStaff) entry.total += Math.abs(Number(r.amount) || 0)
     entry.count += 1
     entry.rows.push(r)
   }
@@ -88,7 +92,8 @@ function groupByBeneficiary(rows: ExpenseRow[]): BeneficiaryGroup[] {
 
     if (!map.has(key)) map.set(key, { key, label, total: 0, count: 0, rows: [] })
     const entry = map.get(key)!
-    if (r.type === 'expense' || r.type === 'debt_payment' || r.type === 'salary_advance') entry.total += Math.abs(Number(r.amount) || 0)
+    const isStaff = String(r.fixed_assets?.sub_category || '').trim().toLowerCase() === 'staff'
+    if (r.type === 'expense' || r.type === 'debt_payment' || r.type === 'salary_advance' || isStaff) entry.total += Math.abs(Number(r.amount) || 0)
     entry.count += 1
     entry.rows.push(r)
   }
@@ -194,17 +199,50 @@ export default function EconomicsExpensesPage() {
           return
         }
 
-        const { data, error } = await supabase
+        const q =
+          'id, date, amount, type, method, category, is_credit, created_at, suppliers:suppliers(name), fixed_assets:fixed_assets(name, sub_category)'
+
+        // Fetch canonical expense types + salary advances
+        const byType = await supabase
           .from('transactions')
-          .select(
-            'id, date, amount, type, method, category, is_credit, created_at, suppliers:suppliers(name), fixed_assets:fixed_assets(name, sub_category)'
-          )
+          .select(q)
           .eq('store_id', storeId)
           .in('type', ['expense', 'debt_payment', 'salary_advance'])
           .order('date', { ascending: false })
 
+        // Also fetch recent transactions that reference fixed_assets and filter client-side
+        // to include any staff-related transactions regardless of type.
+        const byFixedAssets = await supabase
+          .from('transactions')
+          .select(q)
+          .eq('store_id', storeId)
+          .not('fixed_asset_id', 'is', null)
+          .order('date', { ascending: false })
+          .limit(1000)
+
         if (!isMounted) return
-        if (error) throw error
+
+        if (byType.error) throw byType.error
+        if (byFixedAssets.error) throw byFixedAssets.error
+
+        const combined = new Map<string, any>()
+
+        const pushRow = (row: any) => {
+          if (!row) return
+          const id = String(row.id)
+          if (combined.has(id)) return
+          combined.set(id, row)
+        }
+
+        for (const r of (byType.data || [])) pushRow(r)
+
+        for (const r of (byFixedAssets.data || [])) {
+          const fa = Array.isArray(r.fixed_assets) ? r.fixed_assets[0] : r.fixed_assets
+          if (!fa) continue
+          if (String(fa.sub_category || '').trim().toLowerCase() === 'staff') pushRow(r)
+        }
+
+        const data = Array.from(combined.values())
 
         const safeData: ExpenseRow[] = Array.isArray(data)
           ? (data as any[]).map((row) => ({
@@ -301,7 +339,13 @@ export default function EconomicsExpensesPage() {
           return key === activeFilter.value
         })
       } else if (activeFilter.type === 'category') {
-        filtered = filtered.filter((r) => ((r.category || 'Άλλη Κατηγορία').trim() || 'Άλλη Κατηγορία') === activeFilter.value)
+        filtered = filtered.filter((r) => {
+          const isStaff = String(r.fixed_assets?.sub_category || '').trim().toLowerCase() === 'staff'
+          let key = (r.category || '').trim() || ''
+          if (!key && isStaff) key = 'ΠΡΟΣΩΠΙΚΟ'
+          if (!key) key = 'Άλλη Κατηγορία'
+          return key === activeFilter.value
+        })
       } else if (activeFilter.type === 'method') {
         filtered = filtered.filter((r) => ((r.method || 'Άλλη Μέθοδος').trim() || 'Άλλη Μέθοδος') === activeFilter.value)
       }
@@ -326,7 +370,16 @@ export default function EconomicsExpensesPage() {
     for (const r of filteredMovements || []) {
       const key = (r.suppliers?.name || r.fixed_assets?.name || 'Άλλο').trim() || 'Άλλο'
       if (!map.has(key))
-        map.set(key, { key, title: key, total: 0, count: 0, lastDate: null, category: (r.category || r.type || 'Λοιπά'), hasCredit: false, rows: [] })
+        map.set(key, {
+          key,
+          title: key,
+          total: 0,
+          count: 0,
+          lastDate: null,
+          category: String(r.category || (String(r.fixed_assets?.sub_category || '').toLowerCase() === 'staff' ? 'ΠΡΟΣΩΠΙΚΟ' : r.type) || 'Λοιπά'),
+          hasCredit: false,
+          rows: [],
+        })
       const entry = map.get(key)!
       const amt = Math.abs(Number(r.amount) || 0)
       entry.total += amt
@@ -376,7 +429,13 @@ export default function EconomicsExpensesPage() {
           return key === activeFilter.value
         })
       } else if (activeFilter.type === 'category') {
-        filtered = filtered.filter((r) => ((r.category || 'Άλλη Κατηγορία').trim() || 'Άλλη Κατηγορία') === activeFilter.value)
+        filtered = filtered.filter((r) => {
+          const isStaff = String(r.fixed_assets?.sub_category || '').trim().toLowerCase() === 'staff'
+          let key = (r.category || '').trim() || ''
+          if (!key && isStaff) key = 'ΠΡΟΣΩΠΙΚΟ'
+          if (!key) key = 'Άλλη Κατηγορία'
+          return key === activeFilter.value
+        })
       } else if (activeFilter.type === 'method') {
         filtered = filtered.filter((r) => ((r.method || 'Άλλη Μέθοδος').trim() || 'Άλλη Μέθοδος') === activeFilter.value)
       }
@@ -926,7 +985,9 @@ export default function EconomicsExpensesPage() {
                                   >
                                     <div style={{ display: 'flex', flexDirection: 'column' }}>
                                       <div style={{ fontSize: 13, fontWeight: 800 }}>{formatDate(r.created_at || r.date)}</div>
-                                      <div style={{ fontSize: 13, color: 'var(--muted)' }}>{displayCategoryLabel(r.category || '—')}</div>
+                                      <div style={{ fontSize: 13, color: 'var(--muted)' }}>
+                                        {r.category ? displayCategoryLabel(r.category) : (String(r.fixed_assets?.sub_category || '').trim().toLowerCase() === 'staff' ? 'Προσωπικό' : '—')}
+                                      </div>
                                     </div>
                                     <div style={{ textAlign: 'right', display: 'flex', alignItems: 'center', gap: 8 }}>
                                       {r.is_credit ? <div style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 800 }}>Πίστωση</div> : null}
