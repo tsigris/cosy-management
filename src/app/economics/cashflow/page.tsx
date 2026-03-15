@@ -603,51 +603,99 @@ export default function EconomicsCashflowPage() {
         </section>
 
         {/* Chart */}
-        <section style={styles.card}>
-          <div style={styles.cardHeadRow}>
+        <section style={styles.premiumCard}>
+          <div style={styles.cardHeadRowPremium}>
             <div>
-              <h2 style={styles.cardTitle}>Οπτικοποίηση</h2>
-              <p style={styles.cardSub}>Μηνιαία έσοδα/έξοδα + εξέλιξη υπολοίπου</p>
+              <h2 style={styles.premiumTitle}>Οπτικοποίηση</h2>
+              <p style={styles.premiumSub}>Μηνιαία έσοδα/έξοδα και εξέλιξη υπολοίπου</p>
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <button type="button" onClick={() => setFutureProjection((p) => !p)} style={styles.secondaryBtn}>
-                {futureProjection ? '✅ Future Projection ON' : 'Future Projection'}
-              </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={styles.segmentedToggle} role="tablist" aria-label="Projection toggle">
+                <button
+                  type="button"
+                  onClick={() => setFutureProjection(false)}
+                  aria-pressed={!futureProjection}
+                  style={{ ...(futureProjection ? styles.segmentBtn : styles.segmentBtnActive) }}
+                >
+                  Live
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFutureProjection(true)}
+                  aria-pressed={futureProjection}
+                  style={{ ...(futureProjection ? styles.segmentBtnActive : styles.segmentBtn) }}
+                >
+                  Πρόβλεψη
+                </button>
+              </div>
             </div>
           </div>
 
-          <div style={styles.chartWrap}>
-            <div style={styles.chartLegend}>
-              <span style={{ ...styles.legendPill, borderColor: t.green }}>
-                <span style={{ ...styles.legendDot, background: t.green }} /> Έσοδα
-              </span>
-              <span style={{ ...styles.legendPill, borderColor: t.red }}>
-                <span style={{ ...styles.legendDot, background: t.red }} /> Έξοδα
-              </span>
-              <span style={{ ...styles.legendPill, borderColor: t.indigo }}>
-                <span style={{ ...styles.legendDot, background: t.indigo }} /> Υπόλοιπο (γραμμή)
-              </span>
-              {futureProjection && (
-                <span style={{ ...styles.legendPill, borderColor: t.border }}>
-                  <span style={{ ...styles.legendDot, background: t.border }} /> Πρόβλεψη
-                </span>
-              )}
+          <div style={styles.chartWrapPremium}>
+            <div style={styles.premiumLegendRow}>
+              <div style={styles.legendChips}>
+                <div style={{ ...styles.legendChip }}>
+                  <span style={{ ...styles.legendDotSmall, background: '#059669' }} /> Έσοδα
+                </div>
+                <div style={{ ...styles.legendChip }}>
+                  <span style={{ ...styles.legendDotSmall, background: '#ef476f' }} /> Έξοδα
+                </div>
+                <div style={{ ...styles.legendChip }}>
+                  <span style={{ ...styles.legendDotSmall, background: '#6d28d9' }} /> Υπόλοιπο
+                </div>
+              </div>
+
+              {/* mini insights */}
+              <div style={styles.insightsRow}>
+                {(() => {
+                  const last = chart.data.length ? chart.data[chart.data.length - 1] : null
+                  const prev = chart.data.length > 1 ? chart.data[chart.data.length - 2] : null
+                  const highestExpense = chart.data.reduce((acc, p) => (p.expense > (acc?.expense ?? 0) ? p : acc), null as any)
+                  const trend = last && prev ? last.net - prev.net : 0
+                  return (
+                    <>
+                      <div style={styles.insightCard}>
+                        <div style={styles.insightLabel}>Μέγιστο Έξοδο</div>
+                        <div style={styles.insightValue}>{highestExpense ? prettyMonthLabel(highestExpense.ym) : '—'}</div>
+                        <div style={styles.insightSmall}>{highestExpense ? amountFormatter.format(highestExpense.expense) : '—'}</div>
+                      </div>
+
+                      <div style={styles.insightCard}>
+                        <div style={styles.insightLabel}>Τρέχον Net</div>
+                        <div style={styles.insightValue}>{last ? amountFormatter.format(last.net) : '—'}</div>
+                        <div style={styles.insightSmall}>{last ? `${last.income > last.expense ? 'Έσοδα > Έξοδα' : 'Έξοδα ≥ Έσοδα'}` : '—'}</div>
+                      </div>
+
+                      <div style={styles.insightCard}>
+                        <div style={styles.insightLabel}>Τάση</div>
+                        <div style={styles.insightValue}>
+                          {trend > 0 ? '▲ Άνοδος' : trend < 0 ? '▼ Πτώση' : '—'}
+                        </div>
+                        <div style={styles.insightSmall}>{trend ? amountFormatter.format(Math.abs(trend)) : ''}</div>
+                      </div>
+                    </>
+                  )
+                })()}
+              </div>
             </div>
 
-            <div style={styles.chartScroller}>
+            <div style={styles.chartScrollerPremium}>
               <svg width={chartWidth} height={chartHeight} style={{ display: 'block' }}>
-                {/* baseline */}
-                <line
-                  x1={paddingX}
-                  y1={paddingY + innerH}
-                  x2={paddingX + innerW}
-                  y2={paddingY + innerH}
-                  stroke={t.border}
-                  strokeWidth="1"
-                />
+                {/* subtle grid lines */}
+                {[0.25, 0.5, 0.75].map((tFrac, i) => (
+                  <line
+                    key={`g${i}`}
+                    x1={paddingX}
+                    x2={paddingX + innerW}
+                    y1={paddingY + innerH * (1 - tFrac)}
+                    y2={paddingY + innerH * (1 - tFrac)}
+                    stroke="rgba(15,23,42,0.04)"
+                    strokeWidth={1}
+                  />
+                ))}
 
-                {/* bars */}
+                {/* bars (thinner, softer corners) */}
                 {chart.data.map((p, idx) => {
                   const xCenter = paddingX + idx * step
                   const incomeH = (Math.abs(p.income) / chart.maxBar) * innerH
@@ -663,24 +711,24 @@ export default function EconomicsCashflowPage() {
 
                   return (
                     <g key={p.ym}>
-                      <rect x={incomeX} y={yIncome} width={barW} height={incomeH} rx="6" fill={t.green} opacity={isProj ? 0.25 : 0.85} />
-                      <rect x={expenseX} y={yExpense} width={barW} height={expenseH} rx="6" fill={t.red} opacity={isProj ? 0.25 : 0.85} />
+                      <rect x={incomeX} y={yIncome} width={Math.max(6, barW * 0.9)} height={incomeH} rx={6} fill="#059669" opacity={isProj ? 0.22 : 0.9} />
+                      <rect x={expenseX} y={yExpense} width={Math.max(6, barW * 0.9)} height={expenseH} rx={6} fill="#ef476f" opacity={isProj ? 0.22 : 0.9} />
                     </g>
                   )
                 })}
 
-                {/* line */}
-                <path d={linePath} fill="none" stroke={t.indigo} strokeWidth="2.5" />
+                {/* balance line (smoother) */}
+                <path d={linePath} fill="none" stroke="#6d28d9" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" opacity={0.95} />
 
-                {/* points + labels */}
+                {/* points + labels (muted small) */}
                 {chart.data.map((p, idx) => {
                   const x = paddingX + idx * step
                   const y = paddingY + (1 - (p.balance - chart.minLine) / chart.lineRange) * innerH
                   const isProj = p.projected
                   return (
                     <g key={`${p.ym}-pt`}>
-                      <circle cx={x} cy={y} r={isProj ? 3 : 3.5} fill={t.indigo} opacity={isProj ? 0.35 : 0.95} />
-                      <text x={x} y={chartHeight - 6} textAnchor="middle" fontSize="11" fontWeight="800" fill={t.muted}>
+                      <circle cx={x} cy={y} r={isProj ? 2.5 : 3} fill="#6d28d9" opacity={isProj ? 0.28 : 0.95} />
+                      <text x={x} y={chartHeight - 8} textAnchor="middle" fontSize="11" fontWeight={700} fill="rgba(0,0,0,0.45)">
                         {prettyMonthLabel(p.ym)}
                       </text>
                     </g>
