@@ -49,7 +49,9 @@ const { chromium } = require('playwright');
 
   // 1) Visit root and try to read active_store_id from localStorage
   await page.goto(base, { waitUntil: 'networkidle', timeout: 30000 }).catch(() => {});
-  const storeId = await page.evaluate(() => {
+  // allow overriding the store id from the environment for CI/headless runs
+  const envStore = process.env.STORE_ID;
+  const storeId = envStore || (await page.evaluate(() => {
     try {
       // prefer explicit key
       const explicit = localStorage.getItem('active_store_id');
@@ -67,7 +69,7 @@ const { chromium } = require('playwright');
     } catch (e) {
       return null;
     }
-  });
+  }));
 
   out.summary.storeId = storeId || null;
 
