@@ -45,6 +45,7 @@ function ManagementContent() {
 
   const economicsLinks = useMemo(
     () => [
+      { label: 'Έσοδα', subLabel: 'Income', path: '/economics/income' },
       { label: 'Ταμειακή ροή', subLabel: 'Cashflow', path: '/economics/cashflow' },
       { label: 'Δαπάνες', subLabel: 'Expenses', path: '/economics/expenses' },
       { label: 'Πιστώσεις', subLabel: 'Credits', path: '/economics/credits' },
@@ -161,7 +162,7 @@ function ManagementContent() {
                   <div style={labelWrap}>
                     <div style={{ display: 'flex', flexDirection: 'column', textAlign: 'left' }}>
                       <span style={label}>Οικονομικό Κέντρο</span>
-                      <span style={subLabelStyle}>Cashflow, Δαπάνες, Πιστώσεις, Αναφορές, Πληρωμές</span>
+                      <span style={subLabelStyle}>Έσοδα, Cashflow, Δαπάνες, Πιστώσεις, Αναφορές, Πληρωμές</span>
                     </div>
 
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>

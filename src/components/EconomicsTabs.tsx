@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { usePathname, useSearchParams } from 'next/navigation'
 import type { CSSProperties } from 'react'
-import { Wallet, TrendingDown, Receipt, BarChart3, CalendarDays, LineChart } from 'lucide-react'
+import { Wallet, TrendingDown, Receipt, BarChart3, CalendarDays, LineChart, Coins } from 'lucide-react'
 
 type TabItem = {
   label: string
@@ -12,6 +12,7 @@ type TabItem = {
 }
 
 const tabs: TabItem[] = [
+  { label: 'Έσοδα', path: '/economics/income', Icon: Coins },
   { label: 'Ταμειακή Ροή', path: '/economics/cashflow', Icon: Wallet },
   { label: 'Δαπάνες', path: '/economics/expenses', Icon: TrendingDown },
   { label: 'Πιστώσεις', path: '/economics/credits', Icon: Receipt },

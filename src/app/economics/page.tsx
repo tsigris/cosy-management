@@ -11,8 +11,8 @@ export default function EconomicsRedirectPage() {
   useEffect(() => {
     // ασφαλές redirect στο default tab (cashflow)
     const nextPath = storeId
-      ? `/economics/cashflow?store=${encodeURIComponent(storeId)}`
-      : '/economics/cashflow'
+      ? `/economics/income?store=${encodeURIComponent(storeId)}`
+      : '/economics/income'
 
     router.replace(nextPath)
   }, [router, storeId])
