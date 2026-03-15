@@ -346,7 +346,7 @@ export default function EconomicsExpensesPage() {
     return groups.sort((a, b) => b.total - a.total)
   }, [filteredMovements])
 
-  const [expandedMovementGroup, setExpandedMovementGroup] = useState<string | null>(null)
+  const [openSupplier, setOpenSupplier] = useState<string | null>(null)
 
   const clearFilterAndGoMovements = useCallback(() => {
     setActiveFilter(null)
