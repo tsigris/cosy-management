@@ -132,6 +132,17 @@ function displayCategoryLabel(value?: string | null): string {
   return map[v] ?? value
 }
 
+function formatDate(raw?: string | null): string {
+  if (!raw) return '—'
+  try {
+    const d = new Date(raw)
+    if (isNaN(d.getTime())) return '—'
+    return d.toLocaleDateString('el-GR')
+  } catch (e) {
+    return '—'
+  }
+}
+
 /* ---------------- UI CONFIG ---------------- */
 
 const VIEW_MODES = [
