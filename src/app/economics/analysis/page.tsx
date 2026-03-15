@@ -17,7 +17,7 @@ export default function EconomicsAnalysisPage() {
           <p style={{ margin: 0, fontSize: 13, fontWeight: 800, color: 'var(--muted)' }}>KPIs και γρήγορη εικόνα οικονομικών</p>
         </div>
 
-        <AnalysisContent />
+        <AnalysisContent embeddedInEconomics />
       </div>
     </main>
   )

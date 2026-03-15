@@ -125,7 +125,7 @@ function isCapitalTransferTx(t: any) {
   return c === 'μεταφορά κεφαλαίων' || c === 'μεταφορά κεφαλαίου'
 }
 
-function AnalysisContent() {
+function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?: boolean }) {
   const supabase = getSupabase()
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -1121,8 +1121,13 @@ function AnalysisContent() {
 
   /* ---------------- UI ---------------- */
 
+  const rootStyle = embeddedInEconomics ? { width: '100%', padding: 0, background: 'transparent', position: 'static' } : iphoneWrapper
+  const innerContainerStyle = embeddedInEconomics
+    ? { width: '100%', paddingBottom: 0 }
+    : { maxWidth: 560, margin: '0 auto', paddingBottom: 120 }
+
   return (
-    <div style={iphoneWrapper} data-print-root="true">
+    <div style={rootStyle} data-print-root="true">
       <Toaster position="top-center" richColors />
       <style jsx>{`
         @media (max-width: 520px) {
@@ -1161,9 +1166,10 @@ function AnalysisContent() {
         }
       `}</style>
 
-      <div style={{ maxWidth: 560, margin: '0 auto', paddingBottom: 120 }}>
+      <div style={innerContainerStyle}>
         {/* PRINT HEADER */}
-        <div className="print-header" style={{ display: 'none' }}>
+        {!embeddedInEconomics && (
+          <div className="print-header" style={{ display: 'none' }}>
           <h1 className="print-title">ΟΙΚΟΝΟΜΙΚΗ ΑΝΑΦΟΡΑ ΚΑΤΑΣΤΗΜΑΤΟΣ</h1>
             <p className="print-sub">
               Ημερομηνία Εκτύπωσης: <b>{format(new Date(), 'dd/MM/yyyy HH:mm')}</b>
@@ -1171,10 +1177,12 @@ function AnalysisContent() {
             <p className="print-meta">
               Εύρος Ημερομηνιών: <b>{formatDateGreek(startDate)} → {formatDateGreek(endDate)}</b> • Φίλτρο: <b>{filterA}</b>
             </p>
-        </div>
+          </div>
+        )}
 
         {/* HEADER */}
-        <div style={headerCard} className="no-print">
+        {!embeddedInEconomics && (
+          <div style={headerCard} className="no-print">
           <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
             <div style={headerIconBox}>📊</div>
             <div style={{ minWidth: 0 }}>
@@ -1204,16 +1212,20 @@ function AnalysisContent() {
               ✕
             </Link>
           </div>
-        </div>
+          </div>
+        )}
 
         {/* SIMPLE: TOP “ΑΠΟ/ΕΩΣ” PILL */}
-        <div style={rangePill} className="no-print">
-          {formatDateGreek(startDate)} → {formatDateGreek(endDate)}
-        </div>
+        {!embeddedInEconomics && (
+          <div style={rangePill} className="no-print">
+            {formatDateGreek(startDate)} → {formatDateGreek(endDate)}
+          </div>
+        )}
 
         {/* FILTER CARD */}
-        <div style={filterCard} className="no-print">
-          <div style={filtersStack} className="analysis-filters-stack">
+        {!embeddedInEconomics && (
+          <div style={filterCard} className="no-print">
+            <div style={filtersStack} className="analysis-filters-stack">
             <div style={tile} className="analysis-filter-tile">
               <div style={tileIcon} className="analysis-filter-icon">📅</div>
               <div style={tileBody} className="analysis-filter-body">
@@ -1287,9 +1299,10 @@ function AnalysisContent() {
               </div>
             )}
 
-            <div style={rangeHint}>Περίοδος: {rangeText}</div>
+              <div style={rangeHint}>Περίοδος: {rangeText}</div>
+            </div>
           </div>
-        </div>
+        )}
 
         {/* KPI GRID (always) */}
         <div style={kpiGrid} data-print-section="true" className="kpi-grid-print">
