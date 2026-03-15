@@ -120,9 +120,7 @@ function CreditsContent() {
   const supabase = getSupabase()
   const router = useRouter()
   const searchParams = useSearchParams()
-  const storeIdFromParams = searchParams.get('store')
-
-  const [storeId, setStoreId] = useState<string | null>(null)
+  const storeIdFromUrl = searchParams.get('store')
 
   const [viewMode, setViewMode] = useState<ViewMode>('expenses')
   const [creditsView, setCreditsView] = useState<CreditsView>('entity')
@@ -220,7 +218,7 @@ function CreditsContent() {
   // FETCH (transactions + entities)
   // -----------------------------
   const fetchAll = useCallback(async () => {
-    if (!storeId || !isValidUUID(storeId)) {
+    if (!storeIdFromUrl || !isValidUUID(storeIdFromUrl)) {
       setLoading(false)
       return
     }
@@ -229,67 +227,64 @@ function CreditsContent() {
       setLoading(true)
 
       // 1) transactions
-      const transRes = await supabase
-        .from('transactions')
-        .select(
-          'id, store_id, created_at, date, type, amount, category, method, notes, is_credit, supplier_id, fixed_asset_id, revenue_source_id',
-        )
-        .eq('store_id', storeId)
+      const transRes = await supabase.from('transactions').select('*').eq('store_id', storeIdFromUrl)
 
       if (transRes.error) {
         console.error('Transactions query error', transRes.error)
         throw transRes.error
       }
-      const txs: Tx[] = (transRes.data || []) as any
-      setAllTx(txs)
+      const transactions: Tx[] = (transRes.data || []) as any
+      setAllTx(transactions)
 
-      // 2) entities for names
-      const [supsRes, assetsRes, revRes] = await Promise.all([
-        supabase.from('suppliers').select('id, name, bank_name').eq('store_id', storeId),
-        supabase.from('fixed_assets').select('id, name, sub_category, category').eq('store_id', storeId),
-        supabase.from('revenue_sources').select('id, name').eq('store_id', storeId),
-      ])
-
-      if (supsRes.error) {
-        console.error('Suppliers query error', supsRes.error)
-        throw supsRes.error
-      }
-      if (assetsRes.error) {
-        console.error('Fixed assets query error', assetsRes.error)
-        throw assetsRes.error
-      }
-      if (revRes.error) {
-        console.error('Revenue sources query error', revRes.error)
-        throw revRes.error
-      }
-
+      // 2) entities for names (only what is needed per mode)
       const map: Record<string, EntityInfo> = {}
 
-      for (const s of supsRes.data || []) {
-        map[String(s.id)] = {
-          id: String(s.id),
-          name: String(s.name || ''),
-          entityType: 'supplier',
-          rf_code: (s as any).rf_code ?? null,
-          bank_name: (s as any).bank_name ?? null,
-        }
-      }
+      if (viewMode === 'expenses') {
+        const [supsRes, assetsRes] = await Promise.all([
+          supabase.from('suppliers').select('*').eq('store_id', storeIdFromUrl),
+          supabase.from('fixed_assets').select('*').eq('store_id', storeIdFromUrl),
+        ])
 
-      for (const a of assetsRes.data || []) {
-        map[String(a.id)] = {
-          id: String(a.id),
-          name: String((a as any).name || ''),
-          entityType: 'asset',
-          sub_category: (a as any).sub_category ?? null,
-          category: (a as any).category ?? null,
+        if (supsRes.error) {
+          console.error('Suppliers query error', supsRes.error)
+          throw supsRes.error
         }
-      }
+        if (assetsRes.error) {
+          console.error('Fixed assets query error', assetsRes.error)
+          throw assetsRes.error
+        }
 
-      for (const r of revRes.data || []) {
-        map[String(r.id)] = {
-          id: String(r.id),
-          name: String((r as any).name || ''),
-          entityType: 'revenue',
+        for (const s of supsRes.data || []) {
+          map[String(s.id)] = {
+            id: String(s.id),
+            name: String(s.name || ''),
+            entityType: 'supplier',
+            rf_code: (s as any).rf_code ?? null,
+            bank_name: (s as any).bank_name ?? null,
+          }
+        }
+
+        for (const a of assetsRes.data || []) {
+          map[String(a.id)] = {
+            id: String(a.id),
+            name: String((a as any).name || ''),
+            entityType: 'asset',
+            sub_category: (a as any).sub_category ?? null,
+            category: (a as any).category ?? null,
+          }
+        }
+      } else {
+        const revRes = await supabase.from('revenue_sources').select('*').eq('store_id', storeIdFromUrl)
+        if (revRes.error) {
+          console.error('Revenue sources query error', revRes.error)
+          throw revRes.error
+        }
+        for (const r of revRes.data || []) {
+          map[String(r.id)] = {
+            id: String(r.id),
+            name: String((r as any).name || ''),
+            entityType: 'revenue',
+          }
         }
       }
 
@@ -300,21 +295,17 @@ function CreditsContent() {
     } finally {
       setLoading(false)
     }
-  }, [storeId, supabase])
+  }, [storeIdFromUrl, supabase, viewMode])
+
+
 
   useEffect(() => {
-    const id = storeIdFromParams || (typeof window !== 'undefined' ? localStorage.getItem('active_store_id') : null)
-    setStoreId(id)
-  }, [storeIdFromParams])
-
-  useEffect(() => {
-    if (!storeId) return
-    if (!isValidUUID(storeId)) {
+    if (!storeIdFromUrl || !isValidUUID(storeIdFromUrl)) {
       router.replace('/select-store')
       return
     }
     fetchAll()
-  }, [fetchAll, storeId, router])
+  }, [fetchAll, storeIdFromUrl, router])
 
   // -----------------------------
   // CREDIT TX FILTER (year + mode + relevant entity)
@@ -378,7 +369,7 @@ function CreditsContent() {
 
     if (viewMode === 'income') {
       return {
-        title: String(ent?.name || 'ΠΗΓΗ ΕΣΟΔΟΥ'),
+        title: String(ent?.name || t.category || t.type || 'ΠΗΓΗ ΕΣΟΔΟΥ'),
         subtitle: 'Πηγή εσόδου',
         badge: { text: 'ΑΠΑΙΤΗΣΗ', bg: '#ecfdf5', color: '#065f46' },
       }
@@ -386,7 +377,7 @@ function CreditsContent() {
 
     const badge = getEntityBadge(ent || undefined)
     return {
-      title: String(ent?.name || 'ΟΝΤΟΤΗΤΑ'),
+      title: String(ent?.name || t.category || t.type || ''),
       subtitle: ent?.entityType === 'supplier' ? 'Προμηθευτής' : 'Πάγιο',
       badge,
     }
@@ -552,7 +543,7 @@ function CreditsContent() {
               </p>
             </div>
           </div>
-          <Link href={`/?store=${storeId || ''}`} style={backBtnStyle}>
+          <Link href={`/?store=${storeIdFromUrl || ''}`} style={backBtnStyle}>
             <ChevronLeft size={20} />
           </Link>
         </div>
@@ -850,15 +841,15 @@ function CreditsContent() {
                               // “mode=debt” flows you already have; using your existing pages
                               if (viewMode === 'income') {
                                 // if grouped by entity, key is revenue_source_id
-                                if (creditsView === 'entity') router.push(`/add-income?store=${storeId}&sourceId=${g.key}&mode=debt`)
-                                  else router.push(`/add-income?store=${storeId}&mode=debt`)
+                                if (creditsView === 'entity') router.push(`/add-income?store=${storeIdFromUrl}&sourceId=${g.key}&mode=debt`)
+                                  else router.push(`/add-income?store=${storeIdFromUrl}&mode=debt`)
                               } else {
                                 if (creditsView === 'entity') {
                                   const ent = entities[g.key]
-                                  if (ent?.entityType === 'supplier') router.push(`/add-expense?store=${storeId}&supId=${g.key}&mode=debt`)
-                                  else router.push(`/add-expense?store=${storeId}&assetId=${g.key}&mode=debt`)
+                                  if (ent?.entityType === 'supplier') router.push(`/add-expense?store=${storeIdFromUrl}&supId=${g.key}&mode=debt`)
+                                  else router.push(`/add-expense?store=${storeIdFromUrl}&assetId=${g.key}&mode=debt`)
                                 } else {
-                                  router.push(`/add-expense?store=${storeId}&mode=debt`)
+                                  router.push(`/add-expense?store=${storeIdFromUrl}&mode=debt`)
                                 }
                               }
                             }}
