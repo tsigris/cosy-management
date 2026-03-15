@@ -230,6 +230,14 @@ export default function EconomicsExpensesPage() {
     return Array.from(s).sort((a, b) => b - a)
   }, [rows])
 
+  // Ensure selectedYear defaults to current year when available
+  useEffect(() => {
+    if (!yearOptions || !yearOptions.length) return
+    const currentYear = new Date().getFullYear()
+    const next = yearOptions.includes(currentYear) ? currentYear : yearOptions[0]
+    setSelectedYear(next)
+  }, [yearOptions])
+
 
   const beneficiaryGroups = useMemo(() => groupByBeneficiary(filteredRowsByPeriod), [filteredRowsByPeriod])
   const filteredBeneficiaries = useMemo(() => filterBeneficiaries(beneficiaryGroups, search), [beneficiaryGroups, search])
@@ -294,6 +302,22 @@ export default function EconomicsExpensesPage() {
     const incomeMode = txs.length > 0 && txs.every((t) => t.type === 'income')
     return { totalAmount: total, cashAmount: cash, creditAmount: credit, avgAmount: avg, isIncomeMode: incomeMode }
   }, [filteredRelevantTxs])
+
+  // KPI tone helper
+  const getKpiTone = (kind: 'total' | 'cash' | 'credit' | 'avg') => {
+    // colors chosen for mobile-friendly, muted palettes
+    if (kind === 'total') {
+      return { background: '#fff1f2', border: '#fecdd3', valueColor: '#e11d48' }
+    }
+    if (kind === 'cash') {
+      return { background: '#fff7ed', border: '#fdba74', valueColor: '#ea580c' }
+    }
+    if (kind === 'credit') {
+      return { background: '#eef2ff', border: '#c7d2fe', valueColor: '#4f46e5' }
+    }
+    // avg
+    return { background: '#f8fafc', border: '#cbd5e1', valueColor: '#0f172a' }
+  }
 
   // top entities reuse existing beneficiaryGroups (already sorted by total)
   const topEntities = useMemo(() => beneficiaryGroups.slice(0, 3), [beneficiaryGroups])
@@ -368,46 +392,70 @@ export default function EconomicsExpensesPage() {
 
         {/* KPI Grid */}
         <div style={kpiGrid}>
-          <div style={kpiCard}>
-            <div style={{ color: 'var(--muted)', fontWeight: 800 }}>{isIncomeMode ? 'Total Income' : 'Total Expenses'}</div>
-            <div style={{ fontWeight: 900, fontSize: 20, marginTop: 8 }}>
-              {Number(totalAmount).toLocaleString('el-GR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}€
-            </div>
-          </div>
+          {/* Total */}
+          {(() => {
+            const tone = getKpiTone('total')
+            return (
+              <div style={{ ...kpiCard, background: tone.background, borderColor: tone.border }}>
+                <div style={{ color: 'var(--muted)', fontWeight: 800 }}>{isIncomeMode ? 'Συνολικά Έσοδα' : 'Συνολικά Έξοδα'}</div>
+                <div style={{ fontWeight: 900, fontSize: 20, marginTop: 8, color: tone.valueColor }}>
+                  {Number(totalAmount).toLocaleString('el-GR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}€
+                </div>
+              </div>
+            )
+          })()}
 
-          <div style={kpiCard}>
-            <div style={{ color: 'var(--muted)', fontWeight: 800 }}>{isIncomeMode ? 'Cash Income' : 'Cash Expenses'}</div>
-            <div style={{ fontWeight: 900, fontSize: 20, marginTop: 8 }}>
-              {Number(cashAmount).toLocaleString('el-GR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}€
-            </div>
-          </div>
+          {/* Cash */}
+          {(() => {
+            const tone = getKpiTone('cash')
+            return (
+              <div style={{ ...kpiCard, background: tone.background, borderColor: tone.border }}>
+                <div style={{ color: 'var(--muted)', fontWeight: 800 }}>{isIncomeMode ? 'Έσοδα Μετρητοίς' : 'Έξοδα Μετρητοίς'}</div>
+                <div style={{ fontWeight: 900, fontSize: 20, marginTop: 8, color: tone.valueColor }}>
+                  {Number(cashAmount).toLocaleString('el-GR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}€
+                </div>
+              </div>
+            )
+          })()}
 
-          <div style={kpiCard}>
-            <div style={{ color: 'var(--muted)', fontWeight: 800 }}>{isIncomeMode ? 'Credit Income' : 'Credit Expenses'}</div>
-            <div style={{ fontWeight: 900, fontSize: 20, marginTop: 8 }}>
-              {Number(creditAmount).toLocaleString('el-GR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}€
-            </div>
-          </div>
+          {/* Credit */}
+          {(() => {
+            const tone = getKpiTone('credit')
+            return (
+              <div style={{ ...kpiCard, background: tone.background, borderColor: tone.border }}>
+                <div style={{ color: 'var(--muted)', fontWeight: 800 }}>{isIncomeMode ? 'Έσοδα Πίστωσης' : 'Έξοδα Πίστωσης'}</div>
+                <div style={{ fontWeight: 900, fontSize: 20, marginTop: 8, color: tone.valueColor }}>
+                  {Number(creditAmount).toLocaleString('el-GR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}€
+                </div>
+              </div>
+            )
+          })()}
 
-          <div style={kpiCard}>
-            <div style={{ color: 'var(--muted)', fontWeight: 800 }}>{isIncomeMode ? 'Average Income' : 'Average Expense'}</div>
-            <div style={{ fontWeight: 900, fontSize: 20, marginTop: 8 }}>
-              {Number(avgAmount).toLocaleString('el-GR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}€
-            </div>
-          </div>
+          {/* Average */}
+          {(() => {
+            const tone = getKpiTone('avg')
+            return (
+              <div style={{ ...kpiCard, background: tone.background, borderColor: tone.border }}>
+                <div style={{ color: 'var(--muted)', fontWeight: 800 }}>{isIncomeMode ? 'Μέσο Έσοδο' : 'Μέσο Έξοδο'}</div>
+                <div style={{ fontWeight: 900, fontSize: 20, marginTop: 8, color: tone.valueColor }}>
+                  {Number(avgAmount).toLocaleString('el-GR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}€
+                </div>
+              </div>
+            )
+          })()}
         </div>
 
         {/* Top Suppliers & Categories */}
         <section style={summarySection}>
-          <h3 style={{ margin: 0, color: 'var(--text)', fontSize: 16, fontWeight: 900 }}>TOP ENTITIES</h3>
+          <h3 style={{ margin: 0, color: 'var(--text)', fontSize: 16, fontWeight: 900 }}>Κορυφαίοι Δικαιούχοι</h3>
           <div style={summaryGridThree}>
             {topEntities.length === 0 ? (
-              <div style={emptyText}>Δεν υπάρχουν οντότητες</div>
+              <div style={emptyText}>Δεν υπάρχουν δικαιούχοι</div>
             ) : (
               topEntities.map((s) => (
                 <div key={s.key} style={summaryCard}>
                   <div style={{ fontWeight: 900, color: 'var(--text)' }}>{s.key}</div>
-                  <div style={{ color: 'var(--muted)', fontWeight: 800, fontSize: 13 }}>{s.rows.length} κινήσεις</div>
+                  <div style={{ color: 'var(--muted)', fontWeight: 700, fontSize: 13 }}>{s.rows.length} κινήσεις</div>
                   <div style={{ fontWeight: 900, marginTop: 8 }}>
                     {Number(s.total).toLocaleString('el-GR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}€
                   </div>
@@ -418,7 +466,7 @@ export default function EconomicsExpensesPage() {
         </section>
 
         <section style={summarySection}>
-          <h3 style={{ margin: 0, color: 'var(--text)', fontSize: 16, fontWeight: 900 }}>TOP CATEGORIES</h3>
+          <h3 style={{ margin: 0, color: 'var(--text)', fontSize: 16, fontWeight: 900 }}>Κορυφαίες Κατηγορίες</h3>
           <div style={summaryGridFour}>
             {topCategories.length === 0 ? (
               <div style={emptyText}>Δεν υπάρχουν κατηγορίες</div>
@@ -426,7 +474,7 @@ export default function EconomicsExpensesPage() {
               topCategories.map((c) => (
                 <div key={c.key} style={summaryCard}>
                   <div style={{ fontWeight: 900, color: 'var(--text)' }}>{c.key}</div>
-                  <div style={{ color: 'var(--muted)', fontWeight: 800, fontSize: 13 }}>{c.count} κινήσεις</div>
+                  <div style={{ color: 'var(--muted)', fontWeight: 700, fontSize: 13 }}>{c.count} κινήσεις</div>
                   <div style={{ fontWeight: 900, marginTop: 8 }}>
                     {Number(c.total).toLocaleString('el-GR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}€
                   </div>
