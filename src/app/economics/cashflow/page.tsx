@@ -1046,6 +1046,72 @@ function makeStyles(t: {
     background: t.solidCard,
   }
 
+  // Premium variants
+  const premiumCard: CSSProperties = {
+    marginTop: 16,
+    borderRadius: 28,
+    border: `1px solid rgba(15,23,42,0.06)`,
+    background: t.isDark ? 'linear-gradient(180deg, rgba(20,20,30,0.6), rgba(10,10,20,0.4))' : 'rgba(255,255,255,0.7)',
+    boxShadow: '0 10px 30px rgba(15,23,42,0.06)',
+    padding: 22,
+    backdropFilter: 'blur(8px)',
+  }
+
+  const cardHeadRowPremium: CSSProperties = {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 8,
+  }
+
+  const premiumTitle: CSSProperties = { margin: 0, color: t.text, fontSize: 20, fontWeight: 950 }
+  const premiumSub: CSSProperties = { margin: '6px 0 0 0', color: 'rgba(0,0,0,0.45)', fontSize: 12, fontWeight: 800 }
+
+  const segmentedToggle: CSSProperties = {
+    display: 'inline-flex',
+    borderRadius: 999,
+    background: t.solidCard,
+    border: `1px solid ${t.border}`,
+    padding: 4,
+  }
+  const segmentBtn: CSSProperties = {
+    border: 'none',
+    background: 'transparent',
+    padding: '6px 10px',
+    borderRadius: 999,
+    cursor: 'pointer',
+    fontWeight: 900,
+    color: t.muted,
+  }
+  const segmentBtnActive: CSSProperties = {
+    ...segmentBtn,
+    background: t.indigo,
+    color: t.isDark ? 'white' : 'white',
+    boxShadow: '0 4px 10px rgba(99,102,241,0.12)',
+  }
+
+  const chartWrapPremium: CSSProperties = { marginTop: 12 }
+  const premiumLegendRow: CSSProperties = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 12 }
+  const legendChips: CSSProperties = { display: 'flex', gap: 8, alignItems: 'center' }
+  const legendChip: CSSProperties = { display: 'inline-flex', gap: 8, alignItems: 'center', padding: '6px 10px', borderRadius: 999, background: t.solidCard, border: `1px solid ${t.border}`, fontSize: 12, fontWeight: 900, color: 'rgba(0,0,0,0.6)' }
+  const legendDotSmall: CSSProperties = { width: 10, height: 10, borderRadius: 999, display: 'inline-block' }
+
+  const insightsRow: CSSProperties = { display: 'flex', gap: 10, alignItems: 'center' }
+  const insightCard: CSSProperties = { display: 'flex', flexDirection: 'column', gap: 4, padding: '8px 12px', borderRadius: 12, background: t.solidCard, border: `1px solid ${t.border}`, minWidth: 120 }
+  const insightLabel: CSSProperties = { fontSize: 11, color: t.muted, fontWeight: 900 }
+  const insightValue: CSSProperties = { fontSize: 14, fontWeight: 900, color: t.text }
+  const insightSmall: CSSProperties = { fontSize: 12, color: t.muted, fontWeight: 800 }
+
+  const chartScrollerPremium: CSSProperties = {
+    overflowX: 'auto',
+    WebkitOverflowScrolling: 'touch',
+    borderRadius: 16,
+    border: `1px solid ${t.border}`,
+    background: 'transparent',
+    padding: 10,
+  }
+
   const projectionHint: CSSProperties = { marginTop: 12, color: t.muted, fontSize: 12, fontWeight: 800 }
 
   const filtersWrap: CSSProperties = {
