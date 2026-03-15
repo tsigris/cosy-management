@@ -396,6 +396,16 @@ export default function EconomicsCashflowPage() {
     return Array.from(s).sort((a, b) => a.localeCompare(b, 'el'))
   }, [rows])
 
+  const yearOptions = useMemo(() => {
+    const s = new Set<number>()
+    for (const r of rows) {
+      const d = r.date ? new Date(r.date) : r.created_at ? new Date(r.created_at) : null
+      if (d && !isNaN(d.getTime())) s.add(d.getFullYear())
+    }
+    if (!s.size) s.add(new Date().getFullYear())
+    return Array.from(s).sort((a, b) => b - a)
+  }, [rows])
+
   const filteredLedger = useMemo(() => {
     const from = filterFrom || '0000-01-01'
     const to = filterTo || '9999-12-31'
@@ -484,6 +494,8 @@ export default function EconomicsCashflowPage() {
     <main style={styles.pageWrap}>
       <div style={styles.container}>
         <EconomicsHeaderNav title="Οικονομικό Κέντρο" subtitle="Ταμειακή ροή" theme={theme} setTheme={setTheme} />
+
+        <EconomicsPeriodFilter period={period} onPeriodChange={(p) => setPeriod(p)} selectedYear={selectedYear} onYearChange={(y) => setSelectedYear(y)} yearOptions={yearOptions} />
 
         {/* KPI Cards */}
         <section style={styles.kpiGrid}>
