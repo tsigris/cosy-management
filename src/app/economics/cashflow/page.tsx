@@ -766,9 +766,9 @@ export default function EconomicsCashflowPage() {
                   return (
                     <g key={`${p.ym}-pt`}>
                       <circle cx={x} cy={y} r={isProj ? 2.5 : 3} fill="#6d28d9" opacity={isProj ? 0.28 : 0.95} />
-                      <text x={x} y={chartHeight - 8} textAnchor="middle" fontSize="11" fontWeight={700} fill="rgba(0,0,0,0.45)">
-                        {prettyMonthLabel(p.ym)}
-                      </text>
+                            <text x={x} y={chartHeight - 10} textAnchor="middle" fontSize={isMobile ? 10 : 11} fontWeight={700} fill="rgba(15,23,42,0.55)">
+                              {prettyMonthLabel(p.ym)}
+                            </text>
                     </g>
                   )
                 })}
