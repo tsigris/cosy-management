@@ -638,6 +638,17 @@ function AnalysisContent() {
     }
   }, [isZReport, periodTx, getMethod])
 
+  const simpleBankFromZ = useMemo(() => {
+    return periodTx
+      .filter((t) => t.type === 'income')
+      .filter((t) => String(t.category || '').trim() === 'Εσοδα Ζ')
+      .filter((t) => {
+        const method = getMethod(t)
+        return method === 'Κάρτα' || method === 'Τράπεζα'
+      })
+      .reduce((a, t) => a + Number(t.amount || 0), 0)
+  }, [periodTx, getMethod])
+
   const cashExpensesToday = useMemo(() => {
     if (!isZReport) return 0
     return periodTx
@@ -1328,12 +1339,13 @@ function AnalysisContent() {
           >
             <div style={kpiTopRow}>
               <div style={{ ...kpiLabel, color: '#b45309' }}>
-                Tips <span style={kpiDelta}>{fmtPct(variance.tips)} vs prev</span>
+                {uiMode === 'simple' ? 'Στην Τράπεζα από Z' : 'Tips'}{' '}
+                <span style={kpiDelta}>{fmtPct(variance.tips)} vs prev</span>
               </div>
               <div style={{ ...kpiSign, color: '#b45309' }}>+</div>
             </div>
             <div className="print-amount-positive" style={{ ...kpiValue, color: '#b45309' }}>
-              + {moneyGR(kpis.tips)}
+              + {moneyGR(uiMode === 'simple' ? simpleBankFromZ : kpis.tips)}
             </div>
             <div className="kpi-track-print-hide" style={kpiTrack}>
               <div style={{ ...kpiFill, width: '70%', background: colors.amber }} />
