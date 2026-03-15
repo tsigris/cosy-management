@@ -264,7 +264,7 @@ function ReportsContent() {
                   <div style={{ display: 'flex', gap: 8, flexDirection: 'column' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                       <div style={{ fontWeight: 900 }}>Συνολικές Κινήσεις</div>
-                      <div style={{ fontWeight: 900 }}>{txThisYear.length}</div>
+                      <div style={{ fontWeight: 900 }}>{filteredTx.length}</div>
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                       <div style={{ color: 'var(--muted)' }}>Έσοδα</div>
