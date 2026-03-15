@@ -501,28 +501,44 @@ export default function EconomicsCashflowPage() {
     window.print()
   }
 
-  const chartWidth = 920
-  const chartHeight = 220
-  const paddingX = 26
-  const paddingY = 22
-  const innerW = chartWidth - paddingX * 2
-  const innerH = chartHeight - paddingY * 2
-  const step = chart.data.length > 1 ? innerW / (chart.data.length - 1) : innerW
+  const [isMobile, setIsMobile] = useState<boolean>(false)
+
+  useEffect(() => {
+    const onResize = () => {
+      try {
+        setIsMobile(window.innerWidth < 768)
+      } catch {}
+    }
+    onResize()
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
+
+  const chartMetrics = useMemo(() => {
+    const cw = isMobile ? Math.max(360, Math.min(window.innerWidth - 48, 720)) : 920
+    const ch = isMobile ? 180 : 220
+    const px = isMobile ? 18 : 26
+    const py = isMobile ? 16 : 22
+    const innerW = cw - px * 2
+    const innerH = ch - py * 2
+    const step = chart.data.length > 1 ? innerW / (chart.data.length - 1) : innerW
+    const barGroupW = clamp(step * 0.62, 18, Math.min(74, innerW * 0.6))
+    const barW = Math.max(6, barGroupW / 2 - 3)
+    return { cw, ch, px, py, innerW, innerH, step, barGroupW, barW }
+  }, [chart.data.length, isMobile])
+
+  const { cw: chartWidth, ch: chartHeight, px: paddingX, py: paddingY, innerW, innerH, step, barGroupW, barW } = chartMetrics
 
   const linePath = useMemo(() => {
     if (!chart.data.length) return ''
     return chart.data
       .map((p, idx) => {
-        const x = paddingX + idx * step
+        const x = chart.data.length > 1 ? paddingX + idx * step : paddingX + innerW / 2
         const y = paddingY + (1 - (p.balance - chart.minLine) / chart.lineRange) * innerH
         return `${idx === 0 ? 'M' : 'L'} ${x.toFixed(2)} ${y.toFixed(2)}`
       })
       .join(' ')
   }, [chart.data, chart.minLine, chart.lineRange, innerH, paddingX, paddingY, step])
-
-  // Bars: draw income/expense as two bars per point (best-effort).
-  const barGroupW = useMemo(() => clamp(step * 0.62, 26, 74), [step])
-  const barW = useMemo(() => barGroupW / 2 - 3, [barGroupW])
 
   const styles = useMemo(() => makeStyles(t), [t])
 
