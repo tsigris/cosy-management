@@ -667,44 +667,50 @@ export default function EconomicsExpensesPage() {
               <div style={emptyText}>Δεν βρέθηκαν μέθοδοι</div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                {filteredMethods.map((g) => (
-                  <button
-                    key={g.key}
-                    type="button"
-                    style={beneficiaryCard}
-                    onClick={() => {
-                      setActiveFilter({ type: 'method', value: g.key })
-                      setViewMode('movements')
-                    }}
-                  >
-                    <div style={{ fontWeight: 950, fontSize: 16, color: 'var(--text)' }}>{g.key}</div>
-                    <div style={{ marginTop: 6, fontWeight: 950, fontSize: 18, color: 'var(--text)' }}>
-                      {Number(g.total).toLocaleString('el-GR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}€
-                    </div>
-                    <div style={{ fontSize: 13, color: 'var(--muted)', fontWeight: 800 }}>Κινήσεις: {Number(g.count)}</div>
-                  </button>
-                ))}
-              </div>
-            )}
-          </section>
-        ) : (
-          <section style={card}>
-            <h2 style={cardTitle}>Λίστα Κινήσεων</h2>
-
-              {loading ? (
-                <div style={centerText}>Φόρτωση...</div>
-              ) : (!filteredMovements || filteredMovements.length === 0) ? (
-                <div style={emptyText}>Δεν υπάρχουν κινήσεις</div>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                   {groupedMovements.map((g) => (
-                    <div key={g.key} style={{ borderRadius: 20, border: '1px solid var(--border)', background: 'white', padding: 14, boxShadow: 'var(--shadow)', display: 'flex', flexDirection: 'column', gap: 8, overflow: 'hidden' }}>
-                      {/* ROW 1: title (left) + amount (right) */}
-                      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
-                        <div style={{ fontSize: 15, fontWeight: 950, lineHeight: 1.3, color: 'var(--text)', wordBreak: 'break-word' }}>{g.title}</div>
-                        <div style={{ fontSize: 17, fontWeight: 950, color: 'var(--text)', whiteSpace: 'nowrap' }}>{Number(g.total).toLocaleString('el-GR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}€</div>
+                    <div
+                      key={g.key}
+                      onClick={() => setOpenSupplier(openSupplier === g.key ? null : g.key)}
+                      style={{ borderRadius: 18, border: '1px solid #e5e7eb', background: 'white', padding: 14, marginBottom: 12, cursor: 'pointer' }}
+                    >
+                      {/* Header: title (left) + amount (right) */}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
+                        <div style={{ flex: 1, wordBreak: 'break-word', fontSize: 15, fontWeight: 900 }}>{g.title}</div>
+                        <div style={{ whiteSpace: 'nowrap', fontSize: 16, fontWeight: 900 }}>{Number(g.total).toLocaleString('el-GR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}€</div>
                       </div>
 
+                      {/* sub row: category + last date */}
+                      <div style={{ marginTop: 8, fontSize: 12, color: 'var(--muted)' }}>
+                        <span>{displayCategoryLabel(g.category)}</span>
+                        <span style={{ marginLeft: 8 }}>• Τελευταία κίνηση: {formatDateOnly(g.lastDate)}</span>
+                      </div>
+
+                      {/* footer row: count + expand icon (icon aligned right) */}
+                      <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <div style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 800 }}>{g.count} κινήσεις</div>
+                        <div style={{ marginLeft: 'auto', fontSize: 18, color: 'var(--muted)' }}>{openSupplier === g.key ? '▴' : '▾'}</div>
+                      </div>
+
+                      {/* movements list inside card when open */}
+                      {openSupplier === g.key && (
+                        <div style={{ marginTop: 12 }}>
+                          {g.rows.slice(0, 5).map((r) => (
+                            <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid var(--border)' }}>
+                              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                <div style={{ fontSize: 13, fontWeight: 800 }}>{formatDate(r.created_at || r.date)}</div>
+                                <div style={{ fontSize: 13, color: 'var(--muted)' }}>{displayCategoryLabel(r.category || '—')}</div>
+                              </div>
+                              <div style={{ textAlign: 'right', display: 'flex', alignItems: 'center', gap: 8 }}>
+                                {r.is_credit ? <div style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 800 }}>Πίστωση</div> : null}
+                                <div style={{ fontWeight: 900 }}>{Math.abs(Number(r.amount) || 0).toLocaleString('el-GR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}€</div>
+                              </div>
+                            </div>
+                          ))}
+                          {g.rows.length > 5 ? <div style={{ fontSize: 13, color: 'var(--muted)', fontWeight: 800, marginTop: 8 }}>Εμφανίζονται οι 5 πιο πρόσφατες κινήσεις</div> : null}
+                        </div>
+                      )}
+                    </div>
+                  ))}
                       {/* ROW 2: category label + last date */}
                       <div style={{ fontSize: 12, color: 'var(--muted)', lineHeight: 1.35 }}>
                         <span>{displayCategoryLabel(g.category)}</span>
