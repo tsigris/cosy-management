@@ -22,6 +22,7 @@ import {
   List,
   SlidersHorizontal,
 } from 'lucide-react'
+import EconomicsHeaderNav from '@/components/economics/EconomicsHeaderNav'
 
 const colors = {
   primaryDark: '#1e293b',
@@ -541,23 +542,11 @@ function CreditsContent() {
     <div style={iphoneWrapper}>
       <Toaster position="top-center" richColors />
       <div style={{ maxWidth: '520px', margin: '0 auto', paddingBottom: '120px' }}>
-        {/* HEADER */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div style={logoBoxStyle}>
-              <Receipt size={22} color="#f97316" />
-            </div>
-            <div>
-              <h1 style={{ fontWeight: '900', fontSize: '20px', margin: 0, color: 'var(--text)' }}>{headerTitle}</h1>
-              <p style={{ margin: 0, fontSize: '10px', color: 'var(--muted)', fontWeight: '800', letterSpacing: '1px' }}>
-                {headerSubtitle}
-              </p>
-            </div>
-          </div>
-          <Link href={`/?store=${storeIdFromUrl || ''}`} style={backBtnStyle}>
-            <ChevronLeft size={20} />
-          </Link>
-        </div>
+        <EconomicsHeaderNav
+          title={headerTitle}
+          subtitle={headerSubtitle}
+          rightControl={<Link href={`/?store=${storeIdFromUrl || ''}`} style={backBtnStyle}><ChevronLeft size={20} /></Link>}
+        />
 
         {/* MODE SWITCHER */}
         <div style={switcherWrap}>

@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState, Suspense, useCallback } from 'react'
 import { getSupabase } from '@/lib/supabase'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
+import EconomicsHeaderNav from '@/components/economics/EconomicsHeaderNav'
 import { toast, Toaster } from 'sonner'
 import { ChevronLeft, Wallet, Layers, Calendar, SlidersHorizontal, List } from 'lucide-react'
 
@@ -188,26 +189,11 @@ function ReportsContent() {
     <div style={{ background: 'var(--bg-grad)', minHeight: '100vh', padding: 20 }}>
       <Toaster position="top-center" richColors />
       <div style={container}>
-        {/* Header */}
-        <div style={headerRow}>
-          <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-            <div style={logoBoxStyle}><Wallet size={20} color={colors.accentOrange} /></div>
-            <div>
-              <h1 style={{ fontWeight: 900, fontSize: 18, margin: 0, color: 'var(--text)' }}>{headerTitle}</h1>
-              <p style={{ margin: 0, fontSize: 11, color: 'var(--muted)', fontWeight: 800 }}>{headerSubtitle}</p>
-            </div>
-          </div>
-          <Link href={`/?store=${storeIdFromUrl || ''}`} style={backBtnStyle}><ChevronLeft size={18} /></Link>
-        </div>
-
-        {/* Economics navigation */}
-        <div style={navWrap}>
-          <Link href={`/economics/cashflow?store=${storeIdFromUrl}`} style={{ ...navBtn }}><Layers size={14} style={{ marginRight: 6 }} />Cashflow</Link>
-          <Link href={`/economics/expenses?store=${storeIdFromUrl}`} style={{ ...navBtn }}><SlidersHorizontal size={14} style={{ marginRight: 6 }} />Expenses</Link>
-          <Link href={`/economics/credits?store=${storeIdFromUrl}`} style={{ ...navBtn }}><List size={14} style={{ marginRight: 6 }} />Credits</Link>
-          <Link href={`/economics/reports?store=${storeIdFromUrl}`} style={{ ...navBtn, ...activeNavBtn }}><Wallet size={14} style={{ marginRight: 6 }} />Reports</Link>
-          <Link href={`/economics/scheduled-payments?store=${storeIdFromUrl}`} style={{ ...navBtn }}><Calendar size={14} style={{ marginRight: 6 }} />Scheduled</Link>
-        </div>
+        <EconomicsHeaderNav
+          title={headerTitle}
+          subtitle={headerSubtitle}
+          rightControl={<Link href={`/?store=${storeIdFromUrl || ''}`} style={backBtnStyle}><ChevronLeft size={18} /></Link>}
+        />
 
         {/* Period selector */}
         <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>

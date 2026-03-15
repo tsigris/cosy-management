@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, type CSSProperties, useCallback } from 'react'
 import { useSearchParams } from 'next/navigation'
-import EconomicsTabs from '@/components/EconomicsTabs'
+import EconomicsHeaderNav from '@/components/economics/EconomicsHeaderNav'
 import { getSupabase } from '@/lib/supabase'
 
 // If your project already uses xlsx (you used it in Settings), keep this import.
@@ -456,25 +456,7 @@ export default function EconomicsCashflowPage() {
   return (
     <main style={styles.pageWrap}>
       <div style={styles.container}>
-        <div style={styles.headerCard}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
-            <div>
-              <h1 style={styles.title}>Οικονομικό Κέντρο</h1>
-              <p style={styles.subtitle}>Ταμειακή ροή</p>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => setTheme((p) => (p === 'dark' ? 'light' : 'dark'))}
-              style={styles.themeBtn}
-              aria-label="toggle theme"
-            >
-              {theme === 'dark' ? '☀️ Light' : '🌙 Dark'}
-            </button>
-          </div>
-        </div>
-
-        <EconomicsTabs />
+        <EconomicsHeaderNav title="Οικονομικό Κέντρο" subtitle="Ταμειακή ροή" theme={theme} setTheme={setTheme} />
 
         {/* KPI Cards */}
         <section style={styles.kpiGrid}>

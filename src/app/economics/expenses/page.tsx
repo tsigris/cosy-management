@@ -6,7 +6,7 @@ import type { CSSProperties } from 'react'
 import { useEffect, useMemo, useState, useCallback } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { getSupabase } from '@/lib/supabase'
-import EconomicsTabs from '@/components/EconomicsTabs'
+import EconomicsHeaderNav from '@/components/economics/EconomicsHeaderNav'
 
 /* ---------------- TYPES ---------------- */
 
@@ -223,20 +223,17 @@ export default function EconomicsExpensesPage() {
   return (
     <main style={pageWrap}>
       <div style={container}>
-        <div style={headerCard}>
-          <div>
-            <h1 style={title}>Οικονομικό Κέντρο</h1>
-            <p style={subtitle}>Έξοδα</p>
-          </div>
-
-          {activeFilter && (
-            <button type="button" onClick={clearFilterAndGoMovements} style={clearBtn}>
-              Καθαρισμός
-            </button>
-          )}
-        </div>
-
-        <EconomicsTabs />
+        <EconomicsHeaderNav
+          title="Οικονομικό Κέντρο"
+          subtitle="Έξοδα"
+          rightControl={
+            activeFilter ? (
+              <button type="button" onClick={clearFilterAndGoMovements} style={clearBtn}>
+                Καθαρισμός
+              </button>
+            ) : undefined
+          }
+        />
 
         {/* Segmented */}
         <div style={segmentedWrap}>
