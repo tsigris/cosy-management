@@ -16,7 +16,7 @@ const colors = {
 // ✅ Επαναφορά των Emojis και προσθήκη του ⚙️ για τη Διαχείριση
 const navItems = [
   { label: 'Αρχική', icon: '🏠', path: '/' },
-  { label: 'Ανάλυση', icon: '📊', path: '/analysis' },
+  { label: 'Οικονομικό Κέντρο', icon: '📊', path: '/economics' },
   { label: 'Καρτέλες', icon: '🚩', path: '/suppliers-balance' },
   { label: 'Προσωπικό', icon: '👤', path: '/employees' },
   { label: 'Διαχείριση', icon: '⚙️', path: '/management' },

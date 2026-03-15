@@ -17,6 +17,7 @@ const tabs: TabItem[] = [
   { label: 'Πιστώσεις', path: '/economics/credits', Icon: Receipt },
   { label: 'Αναφορές', path: '/economics/reports', Icon: BarChart3 },
   { label: 'Πληρωμές', path: '/economics/scheduled-payments', Icon: CalendarDays },
+  { label: 'Ανάλυση', path: '/economics/analysis', Icon: LineChart },
   { label: 'Κέρδος', path: '/economics/profit', Icon: LineChart },
 ]
 
