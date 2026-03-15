@@ -790,161 +790,162 @@ export default function EconomicsExpensesPage() {
               <section style={card}>
                 <h2 style={cardTitle}>Λίστα Κινήσεων</h2>
 
-                  {loading ? (
-                    <div style={centerText}>Φόρτωση...</div>
-                  ) : (!filteredMovements || filteredMovements.length === 0) ? (
-                    <div style={emptyText}>Δεν υπάρχουν κινήσεις</div>
-                  ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                      <input
-                        style={searchInput}
-                        placeholder="Αναζήτηση προμηθευτή..."
-                        value={movementSearch}
-                        onChange={(e) => setMovementSearch(e.target.value)}
-                      />
+                {loading ? (
+                  <div style={centerText}>Φόρτωση...</div>
+                ) : (!filteredMovements || filteredMovements.length === 0) ? (
+                  <div style={emptyText}>Δεν υπάρχουν κινήσεις</div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                    <input
+                      style={searchInput}
+                      placeholder="Αναζήτηση προμηθευτή..."
+                      value={movementSearch}
+                      onChange={(e) => setMovementSearch(e.target.value)}
+                    />
 
-                      {filteredMovementGroups.length === 0 ? (
-                        <div style={emptyText}>Δεν βρέθηκε προμηθευτής</div>
-                      ) : (
-                        filteredMovementGroups.map((g) => (
-                        <div
-                          key={g.key}
-                          onClick={() => setOpenSupplier((prev) => (prev === g.key ? null : g.key))}
-                          style={{
-                            borderRadius: 18,
-                            border: '1px solid #e5e7eb',
-                            background: 'white',
-                            padding: 14,
-                            marginBottom: 12,
-                            cursor: 'pointer',
-                          }}
-                        >
-                          {/* Header: left column with title+meta, right column with amount+count */}
+                    {filteredMovementGroups.length === 0 ? (
+                      <div style={emptyText}>Δεν βρέθηκε προμηθευτής</div>
+                    ) : (
+                      filteredMovementGroups.map((g) => {
+                        return (
                           <div
+                            key={g.key}
+                            onClick={() => setOpenSupplier((prev) => (prev === g.key ? null : g.key))}
                             style={{
-                              display: 'flex',
-                              justifyContent: 'space-between',
-                              alignItems: 'flex-start',
-                              gap: 10,
+                              borderRadius: 18,
+                              border: '1px solid #e5e7eb',
+                              background: 'white',
+                              padding: 14,
+                              marginBottom: 12,
+                              cursor: 'pointer',
                             }}
                           >
                             <div
                               style={{
-                                flex: 1,
-                                minWidth: 0,
                                 display: 'flex',
-                                flexDirection: 'column',
-                                gap: 6,
+                                justifyContent: 'space-between',
+                                alignItems: 'flex-start',
+                                gap: 10,
                               }}
                             >
                               <div
                                 style={{
-                                  fontSize: 15,
-                                  fontWeight: 900,
-                                  color: 'var(--text)',
-                                  wordBreak: 'break-word',
-                                  lineHeight: 1.25,
+                                  flex: 1,
+                                  minWidth: 0,
+                                  display: 'flex',
+                                  flexDirection: 'column',
+                                  gap: 6,
                                 }}
                               >
-                                {g.title}
-                              </div>
-
-                              <div
-                                style={{
-                                  fontSize: 12,
-                                  color: 'var(--muted)',
-                                  lineHeight: 1.35,
-                                }}
-                              >
-                                {displayCategoryLabel(g.category)} • Τελευταία κίνηση: {formatDateOnly(g.lastDate)}
-                              </div>
-                            </div>
-
-                            <div
-                              style={{
-                                textAlign: 'right',
-                                flexShrink: 0,
-                                whiteSpace: 'nowrap',
-                                display: 'flex',
-                                flexDirection: 'column',
-                                alignItems: 'flex-end',
-                                gap: 4,
-                              }}
-                            >
-                              <div style={{ fontSize: 16, fontWeight: 900 }}>
-                                {Number(g.total).toLocaleString('el-GR', {
-                                  minimumFractionDigits: 2,
-                                  maximumFractionDigits: 2,
-                                })}€
-                              </div>
-
-                              <div style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 800 }}>{g.count} κινήσεις</div>
-                            </div>
-                          </div>
-
-                          {/* bottom row: badge + arrow */}
-                          <div
-                            style={{
-                              marginTop: 10,
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: 8,
-                            }}
-                          >
-                            {g.hasCredit ? (
-                              <div
-                                style={{
-                                  display: 'inline-flex',
-                                  padding: '6px 10px',
-                                  borderRadius: 999,
-                                  fontSize: 11,
-                                  fontWeight: 900,
-                                  background: '#eef2ff',
-                                  color: '#4f46e5',
-                                  maxWidth: 'fit-content',
-                                }}
-                              >
-                                ΠΙΣΤΩΣΗ
-                              </div>
-                            ) : null}
-
-                            <div style={{ marginLeft: 'auto', fontSize: 18, color: 'var(--muted)' }}>{openSupplier === g.key ? '▴' : '▾'}</div>
-                          </div>
-
-                          {openSupplier === g.key && (
-                            <div style={{ marginTop: 12 }}>
-                              {g.rows.slice(0, 5).map((r) => (
                                 <div
-                                  key={r.id}
-                                  onClick={(e) => e.stopPropagation()}
                                   style={{
-                                    display: 'flex',
-                                    justifyContent: 'space-between',
-                                    alignItems: 'center',
-                                    padding: '8px 0',
-                                    borderBottom: '1px solid var(--border)',
+                                    fontSize: 15,
+                                    fontWeight: 900,
+                                    color: 'var(--text)',
+                                    wordBreak: 'break-word',
+                                    lineHeight: 1.25,
                                   }}
                                 >
-                                  <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                    <div style={{ fontSize: 13, fontWeight: 800 }}>{formatDate(r.created_at || r.date)}</div>
-                                    <div style={{ fontSize: 13, color: 'var(--muted)' }}>{displayCategoryLabel(r.category || '—')}</div>
-                                  </div>
-                                  <div style={{ textAlign: 'right', display: 'flex', alignItems: 'center', gap: 8 }}>
-                                    {r.is_credit ? <div style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 800 }}>Πίστωση</div> : null}
-                                    <div style={{ fontWeight: 900 }}>{Math.abs(Number(r.amount) || 0).toLocaleString('el-GR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}€</div>
-                                  </div>
+                                  {g.title}
                                 </div>
-                              ))}
 
-                              {g.rows.length > 5 ? (
-                                <div style={{ fontSize: 13, color: 'var(--muted)', fontWeight: 800, marginTop: 8 }}>Εμφανίζονται οι 5 πιο πρόσφατες κινήσεις</div>
-                              ) : null}
+                                <div
+                                  style={{
+                                    fontSize: 12,
+                                    color: 'var(--muted)',
+                                    lineHeight: 1.35,
+                                  }}
+                                >
+                                  {displayCategoryLabel(g.category)} • Τελευταία κίνηση: {formatDateOnly(g.lastDate)}
+                                </div>
+                              </div>
+
+                              <div
+                                style={{
+                                  textAlign: 'right',
+                                  flexShrink: 0,
+                                  whiteSpace: 'nowrap',
+                                  display: 'flex',
+                                  flexDirection: 'column',
+                                  alignItems: 'flex-end',
+                                  gap: 4,
+                                }}
+                              >
+                                <div style={{ fontSize: 16, fontWeight: 900 }}>
+                                  {Number(g.total).toLocaleString('el-GR', {
+                                    minimumFractionDigits: 2,
+                                    maximumFractionDigits: 2,
+                                  })}€
+                                </div>
+
+                                <div style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 800 }}>{g.count} κινήσεις</div>
+                              </div>
                             </div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  )}
+
+                            <div
+                              style={{
+                                marginTop: 10,
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 8,
+                              }}
+                            >
+                              {g.hasCredit ? (
+                                <div
+                                  style={{
+                                    display: 'inline-flex',
+                                    padding: '6px 10px',
+                                    borderRadius: 999,
+                                    fontSize: 11,
+                                    fontWeight: 900,
+                                    background: '#eef2ff',
+                                    color: '#4f46e5',
+                                    maxWidth: 'fit-content',
+                                  }}
+                                >
+                                  ΠΙΣΤΩΣΗ
+                                </div>
+                              ) : null}
+
+                              <div style={{ marginLeft: 'auto', fontSize: 18, color: 'var(--muted)' }}>{openSupplier === g.key ? '▴' : '▾'}</div>
+                            </div>
+
+                            {openSupplier === g.key && (
+                              <div style={{ marginTop: 12 }}>
+                                {g.rows.slice(0, 5).map((r) => (
+                                  <div
+                                    key={r.id}
+                                    onClick={(e) => e.stopPropagation()}
+                                    style={{
+                                      display: 'flex',
+                                      justifyContent: 'space-between',
+                                      alignItems: 'center',
+                                      padding: '8px 0',
+                                      borderBottom: '1px solid var(--border)',
+                                    }}
+                                  >
+                                    <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                      <div style={{ fontSize: 13, fontWeight: 800 }}>{formatDate(r.created_at || r.date)}</div>
+                                      <div style={{ fontSize: 13, color: 'var(--muted)' }}>{displayCategoryLabel(r.category || '—')}</div>
+                                    </div>
+                                    <div style={{ textAlign: 'right', display: 'flex', alignItems: 'center', gap: 8 }}>
+                                      {r.is_credit ? <div style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 800 }}>Πίστωση</div> : null}
+                                      <div style={{ fontWeight: 900 }}>{Math.abs(Number(r.amount) || 0).toLocaleString('el-GR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}€</div>
+                                    </div>
+                                  </div>
+                                ))}
+
+                                {g.rows.length > 5 ? (
+                                  <div style={{ fontSize: 13, color: 'var(--muted)', fontWeight: 800, marginTop: 8 }}>Εμφανίζονται οι 5 πιο πρόσφατες κινήσεις</div>
+                                ) : null}
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })
+                    )}
+                  </div>
+                )}
               </section>
             )}
           </div>
