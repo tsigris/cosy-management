@@ -12,9 +12,11 @@ type Props = {
   // optional theme control from parent pages (cashflow passes its theme state)
   theme?: 'light' | 'dark'
   setTheme?: (v: 'light' | 'dark') => void
+  // allow pages to opt-out of rendering the shared tabs inside the header
+  showTabs?: boolean
 }
 
-export default function EconomicsHeaderNav({ title, subtitle, rightControl, theme, setTheme }: Props) {
+export default function EconomicsHeaderNav({ title, subtitle, rightControl, theme, setTheme, showTabs }: Props) {
   const searchParams = useSearchParams()
   const store = searchParams?.get('store') || ''
 
@@ -100,7 +102,7 @@ export default function EconomicsHeaderNav({ title, subtitle, rightControl, them
         </div>
       </div>
 
-      <EconomicsTabs />
+      {showTabs !== false ? <EconomicsTabs /> : null}
     </div>
   )
 }
