@@ -289,8 +289,7 @@ function EmployeesContent() {
         const note = String(t.notes || '')
         const txType = String(t.type || '')
         const isTip = /tips/i.test(note) || txType === 'tip_entry'
-        const isAdvance = txType === 'salary_advance'
-        if (isTip || isAdvance) return false
+        if (isTip) return false
 
         return true
       })
@@ -656,7 +655,7 @@ function EmployeesContent() {
       const isTip = /tips/i.test(note) || txType === 'tip_entry'
       const isAdvance = txType === 'salary_advance'
 
-      if (!isTip && !isAdvance) {
+      if (!isTip) {
         stats.total += Number(t.amount) || 0
       }
 

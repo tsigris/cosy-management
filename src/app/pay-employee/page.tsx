@@ -136,7 +136,7 @@ function PayEmployeeContent() {
       }
 
       // normal final payment (subtract advances)
-      if (netPayable <= 0) {
+      if (netPayable < 0) {
         setLoading(false)
         return toast.error('Το τελικό πληρωτέο πρέπει να είναι μεγαλύτερο από 0')
       }
@@ -145,22 +145,23 @@ function PayEmployeeContent() {
       const daysOrAbsencesLabel = agreementType === 'monthly' ? `Απουσίες: ${absences}` : `Ημέρες: ${workedDays}`;
       const notes = `Εκκαθάριση ${empName || ''} | ${agreementLabel} | Ημέρες/Απουσίες: ${daysOrAbsencesLabel}`;
 
+      // 1. Καταγραφή στα Transactions (net after advances) — only when there's a positive net payable
+      if (netPayable > 0) {
+        const { error: transError } = await supabase.from('transactions').insert([{
+          amount: -Math.abs(netPayable),
+          type: 'expense',
+          category: 'Staff',
+          method: paymentMethod,
+          fixed_asset_id: empId,
+          store_id: storeId,
+          date: date,
+          notes: notes
+        }]);
 
-      // 1. Καταγραφή στα Transactions (net after advances)
-      const { error: transError } = await supabase.from('transactions').insert([{
-        amount: -Math.abs(netPayable),
-        type: 'expense',
-        category: 'Staff',
-        method: paymentMethod,
-        fixed_asset_id: empId,
-        store_id: storeId,
-        date: date,
-        notes: notes
-      }]);
+        if (transError) throw transError;
+      }
 
-      if (transError) throw transError;
-
-      // 2. After successful payment, mark advances as settled for this employee/store
+      // 2. After payment (or when netPayable === 0), mark advances as settled for this employee/store
       const { error: settleError } = await supabase
         .from('transactions')
         .update({ is_settled: true })
@@ -315,7 +316,7 @@ function PayEmployeeContent() {
 
           <button
             onClick={handleFinalPayment}
-            disabled={loading || (mode === 'advance' ? Number(advanceAmount) <= 0 : netPayable <= 0)}
+            disabled={loading || (mode === 'advance' ? Number(advanceAmount) <= 0 : netPayable < 0)}
             style={payBtn}
           >
             {loading
