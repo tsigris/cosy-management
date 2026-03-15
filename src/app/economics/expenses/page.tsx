@@ -267,6 +267,45 @@ export default function EconomicsExpensesPage() {
     return filtered
   }, [rows, activeFilter])
 
+  // Grouped movements for compact accordion view (group by beneficiary)
+  const groupedMovements = useMemo(() => {
+    const map = new Map<string, {
+      key: string
+      title: string
+      total: number
+      count: number
+      lastDate: string | null
+      category: string
+      hasCredit: boolean
+      rows: ExpenseRow[]
+    }>()
+
+    for (const r of filteredMovements || []) {
+      const key = (r.suppliers?.name || r.fixed_assets?.name || 'Άλλο').trim() || 'Άλλο'
+      if (!map.has(key))
+        map.set(key, { key, title: key, total: 0, count: 0, lastDate: null, category: (r.category || r.type || 'Λοιπά'), hasCredit: false, rows: [] })
+      const entry = map.get(key)!
+      const amt = Math.abs(Number(r.amount) || 0)
+      entry.total += amt
+      entry.count += 1
+      entry.rows.push(r)
+      if (r.is_credit) entry.hasCredit = true
+      const raw = r.created_at || r.date
+      if (raw) {
+        const d = new Date(raw)
+        if (!entry.lastDate || new Date(entry.lastDate) < d) entry.lastDate = raw
+      }
+    }
+
+    const groups = Array.from(map.values())
+    for (const g of groups) {
+      g.rows.sort((a, b) => (new Date(b.created_at || b.date).getTime() - new Date(a.created_at || a.date).getTime()))
+    }
+    return groups.sort((a, b) => b.total - a.total)
+  }, [filteredMovements])
+
+  const [expandedMovementGroup, setExpandedMovementGroup] = useState<string | null>(null)
+
   const clearFilterAndGoMovements = useCallback(() => {
     setActiveFilter(null)
     setViewMode('movements')
@@ -446,18 +485,24 @@ export default function EconomicsExpensesPage() {
         </div>
 
         {/* Top Suppliers & Categories */}
-        <section style={summarySection}>
-          <h3 style={{ margin: 0, color: 'var(--text)', fontSize: 16, fontWeight: 900 }}>Κορυφαίοι Δικαιούχοι</h3>
-          <div style={summaryGridThree}>
+        <section style={{ ...summarySection, background: 'transparent' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+            <h3 style={{ margin: 0, color: 'var(--text)', fontSize: 16, fontWeight: 900 }}>Κορυφαίοι Δικαιούχοι</h3>
+          </div>
+          <div style={{ ...summaryGridThree, marginTop: 12 }}>
             {topEntities.length === 0 ? (
               <div style={emptyText}>Δεν υπάρχουν δικαιούχοι</div>
             ) : (
               topEntities.map((s) => (
-                <div key={s.key} style={summaryCard}>
-                  <div style={{ fontWeight: 900, color: 'var(--text)' }}>{s.key}</div>
-                  <div style={{ color: 'var(--muted)', fontWeight: 700, fontSize: 13 }}>{s.rows.length} κινήσεις</div>
-                  <div style={{ fontWeight: 900, marginTop: 8 }}>
-                    {Number(s.total).toLocaleString('el-GR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}€
+                <div key={s.key} style={{ ...summaryCard, background: '#f8fbff', border: '1px solid #dbeafe' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                    <div style={{ display: 'flex', flexDirection: 'column' }}>
+                      <div style={{ fontWeight: 900, color: '#0f172a' }}>{s.key}</div>
+                      <div style={{ color: 'var(--muted)', fontWeight: 700, fontSize: 13 }}>Δικαιούχος • {s.rows.length} κινήσεις</div>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{ fontWeight: 900, color: '#0f172a' }}>{Number(s.total).toLocaleString('el-GR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}€</div>
+                    </div>
                   </div>
                 </div>
               ))
@@ -465,18 +510,24 @@ export default function EconomicsExpensesPage() {
           </div>
         </section>
 
-        <section style={summarySection}>
-          <h3 style={{ margin: 0, color: 'var(--text)', fontSize: 16, fontWeight: 900 }}>Κορυφαίες Κατηγορίες</h3>
-          <div style={summaryGridFour}>
+        <section style={{ ...summarySection, background: 'transparent' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+            <h3 style={{ margin: 0, color: 'var(--text)', fontSize: 16, fontWeight: 900 }}>Κορυφαίες Κατηγορίες</h3>
+          </div>
+          <div style={{ ...summaryGridFour, marginTop: 12 }}>
             {topCategories.length === 0 ? (
               <div style={emptyText}>Δεν υπάρχουν κατηγορίες</div>
             ) : (
               topCategories.map((c) => (
-                <div key={c.key} style={summaryCard}>
-                  <div style={{ fontWeight: 900, color: 'var(--text)' }}>{c.key}</div>
-                  <div style={{ color: 'var(--muted)', fontWeight: 700, fontSize: 13 }}>{c.count} κινήσεις</div>
-                  <div style={{ fontWeight: 900, marginTop: 8 }}>
-                    {Number(c.total).toLocaleString('el-GR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}€
+                <div key={c.key} style={{ ...summaryCard, background: '#fcfaff', border: '1px solid #e9d5ff' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                    <div style={{ display: 'flex', flexDirection: 'column' }}>
+                      <div style={{ fontWeight: 900, color: '#312e81' }}>{c.key}</div>
+                      <div style={{ color: 'var(--muted)', fontWeight: 700, fontSize: 13 }}>Κατηγορία • {c.count} κινήσεις</div>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{ fontWeight: 900, color: '#312e81' }}>{Number(c.total).toLocaleString('el-GR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}€</div>
+                    </div>
                   </div>
                 </div>
               ))
@@ -598,30 +649,52 @@ export default function EconomicsExpensesPage() {
           <section style={card}>
             <h2 style={cardTitle}>Λίστα Κινήσεων</h2>
 
-            {loading ? (
-              <div style={centerText}>Φόρτωση...</div>
-            ) : activeFilter && filteredMovements.length === 0 ? (
-              <div style={emptyText}>Δεν βρέθηκαν κινήσεις</div>
-            ) : filteredMovements.length === 0 ? (
-              <div style={emptyText}>Δεν υπάρχουν κινήσεις</div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {filteredMovements.map((r) => (
-                  <div key={r.id} style={movementCard}>
-                    <div style={{ fontWeight: 950, fontSize: 15, color: 'var(--text)' }}>
-                      {r.suppliers?.name || r.fixed_assets?.name || 'Άλλο'}
+              {loading ? (
+                <div style={centerText}>Φόρτωση...</div>
+              ) : (!filteredMovements || filteredMovements.length === 0) ? (
+                <div style={emptyText}>Δεν υπάρχουν κινήσεις</div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  {groupedMovements.map((g) => (
+                    <div key={g.key} style={{ borderRadius: 18, border: '1px solid var(--border)', background: 'white', padding: 14, boxShadow: 'var(--shadow)' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                        <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                          <div style={{ display: 'flex', flexDirection: 'column' }}>
+                            <div style={{ fontWeight: 900, fontSize: 15, color: 'var(--text)' }}>{g.title}</div>
+                            <div style={{ color: 'var(--muted)', fontWeight: 700, fontSize: 13 }}>{g.category} • Τελευταία κίνηση: {g.lastDate ? g.lastDate : '—'}</div>
+                          </div>
+                        </div>
+
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                          <div style={{ textAlign: 'right' }}>
+                            <div style={{ fontWeight: 900, fontSize: 18, color: 'var(--text)' }}>{Number(g.total).toLocaleString('el-GR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}€</div>
+                            <div style={{ fontSize: 13, color: 'var(--muted)', fontWeight: 700 }}>{g.count} κινήσεις</div>
+                          </div>
+                          {g.hasCredit ? <div style={{ background: '#eef2ff', color: '#4f46e5', padding: '6px 8px', borderRadius: 999, fontWeight: 800, fontSize: 12 }}>ΠΙΣΤΩΣΗ</div> : null}
+                          <button aria-expanded={expandedMovementGroup === g.key} onClick={() => setExpandedMovementGroup(expandedMovementGroup === g.key ? null : g.key)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 18, color: 'var(--muted)' }}>
+                            {expandedMovementGroup === g.key ? '−' : '+'}
+                          </button>
+                        </div>
+                      </div>
+
+                      {expandedMovementGroup === g.key && (
+                        <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                          {g.rows.slice(0, 5).map((r) => (
+                            <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', padding: '8px 0', borderTop: '1px dashed var(--border)' }}>
+                              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--text)' }}>{r.category || '—'}</div>
+                                <div style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 700 }}>{r.method || '—'} • {r.date}</div>
+                              </div>
+                              <div style={{ textAlign: 'right', fontWeight: 900 }}>{Math.abs(Number(r.amount) || 0).toLocaleString('el-GR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}€ {r.is_credit ? <span style={{ marginLeft: 8, background: '#eef2ff', color: '#4f46e5', padding: '4px 6px', borderRadius: 999, fontWeight: 800 }}>ΠΙΣΤΩΣΗ</span> : null}</div>
+                            </div>
+                          ))}
+                          {g.rows.length > 5 ? <div style={{ fontSize: 13, color: 'var(--muted)', fontWeight: 800 }}>Δείχνω τις 5 πιο πρόσφατες κινήσεις</div> : null}
+                        </div>
+                      )}
                     </div>
-                    <div style={{ color: 'var(--muted)', fontWeight: 800, fontSize: 12 }}>
-                      {r.category || '—'} • {r.method || '—'} {r.is_credit ? ' • ⚠️ ΠΙΣΤΩΣΗ' : ''}
-                    </div>
-                    <div style={{ fontWeight: 950, fontSize: 16, color: 'var(--text)', marginTop: 4 }}>
-                      {Math.abs(Number(r.amount) || 0).toLocaleString('el-GR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}€
-                    </div>
-                    <div style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 800 }}>{r.date}</div>
-                  </div>
-                ))}
-              </div>
-            )}
+                  ))}
+                </div>
+              )}
           </section>
         )}
       </div>
