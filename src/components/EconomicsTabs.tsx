@@ -12,12 +12,12 @@ type TabItem = {
 }
 
 const tabs: TabItem[] = [
-  { label: 'Cashflow', path: '/economics/cashflow', Icon: Wallet },
-  { label: 'Expenses', path: '/economics/expenses', Icon: TrendingDown },
-  { label: 'Credits', path: '/economics/credits', Icon: Receipt },
-  { label: 'Reports', path: '/economics/reports', Icon: BarChart3 },
-  { label: 'Scheduled', path: '/economics/scheduled-payments', Icon: CalendarDays },
-  { label: 'Profit', path: '/economics/profit', Icon: LineChart },
+  { label: 'Ταμειακή Ροή', path: '/economics/cashflow', Icon: Wallet },
+  { label: 'Δαπάνες', path: '/economics/expenses', Icon: TrendingDown },
+  { label: 'Πιστώσεις', path: '/economics/credits', Icon: Receipt },
+  { label: 'Αναφορές', path: '/economics/reports', Icon: BarChart3 },
+  { label: 'Πληρωμές', path: '/economics/scheduled-payments', Icon: CalendarDays },
+  { label: 'Κέρδος', path: '/economics/profit', Icon: LineChart },
 ]
 
 export default function EconomicsTabs() {
@@ -85,11 +85,11 @@ const tabsScroller: CSSProperties = {
 const tabBtn: CSSProperties = {
   flex: '0 0 auto',
   textDecoration: 'none',
-  borderRadius: 14,
+  borderRadius: 999,
   border: '1px solid var(--border)',
   background: 'var(--surfaceSolid)',
   color: 'var(--text)',
-  padding: '10px 12px',
+  padding: '10px 14px',
   fontSize: 12,
   fontWeight: 900,
   transition: 'all 150ms ease',
