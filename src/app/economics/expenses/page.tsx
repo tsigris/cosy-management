@@ -114,11 +114,17 @@ type ViewMode = (typeof VIEW_MODES)[number]['key']
 
 /* ---------------- PAGE ---------------- */
 
+import EconomicsPeriodFilter from '@/components/economics/EconomicsPeriodFilter'
+
 export default function EconomicsExpensesPage() {
   const supabase = getSupabase()
   const router = useRouter()
   const searchParams = useSearchParams()
   const storeId = searchParams.get('store')
+
+  // period filter
+  const [period, setPeriod] = useState<'month' | 'year' | '30days' | 'all'>('month')
+  const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear())
 
   const [viewMode, setViewMode] = useState<ViewMode>('movements')
   const [loading, setLoading] = useState(false)
@@ -187,17 +193,43 @@ export default function EconomicsExpensesPage() {
     }
   }, [viewMode, storeId, supabase, router])
 
-  const beneficiaryGroups = useMemo(() => groupByBeneficiary(rows), [rows])
+  const filteredRowsByPeriod = useMemo(() => {
+    if (!rows || !rows.length) return rows
+    return rows.filter((r) => {
+      const raw = r.created_at || r.date
+      if (!raw) return false
+      const d = new Date(raw)
+      if (period === 'all') return true
+      if (period === 'month') {
+        const start = new Date(new Date().getFullYear(), new Date().getMonth(), 1)
+        return d >= start
+      }
+      if (period === 'year') {
+        const start = new Date(selectedYear, 0, 1)
+        return d >= start
+      }
+      if (period === '30days') {
+        const since = new Date()
+        since.setDate(since.getDate() - 30)
+        since.setHours(0, 0, 0, 0)
+        return d >= since
+      }
+      return true
+    })
+  }, [rows, period, selectedYear])
+
+
+  const beneficiaryGroups = useMemo(() => groupByBeneficiary(filteredRowsByPeriod), [filteredRowsByPeriod])
   const filteredBeneficiaries = useMemo(() => filterBeneficiaries(beneficiaryGroups, search), [beneficiaryGroups, search])
 
-  const categoryGroups = useMemo(() => groupByCategory(rows), [rows])
+  const categoryGroups = useMemo(() => groupByCategory(filteredRowsByPeriod), [filteredRowsByPeriod])
   const filteredCategories = useMemo(() => filterGroupsByKey(categoryGroups, search), [categoryGroups, search])
 
-  const methodGroups = useMemo(() => groupByMethod(rows), [rows])
+  const methodGroups = useMemo(() => groupByMethod(filteredRowsByPeriod), [filteredRowsByPeriod])
   const filteredMethods = useMemo(() => filterGroupsByKey(methodGroups, search), [methodGroups, search])
 
   const filteredMovements = useMemo(() => {
-    let filtered = rows
+    let filtered = filteredRowsByPeriod
 
     if (activeFilter) {
       if (activeFilter.type === 'beneficiary') {
@@ -234,6 +266,8 @@ export default function EconomicsExpensesPage() {
             ) : undefined
           }
         />
+
+        <EconomicsPeriodFilter period={period} onPeriodChange={(p) => setPeriod(p)} selectedYear={selectedYear} onYearChange={(y) => setSelectedYear(y)} yearOptions={[]}/>
 
         {/* Segmented */}
         <div style={segmentedWrap}>

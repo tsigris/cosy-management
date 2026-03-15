@@ -6,6 +6,7 @@ import { getSupabase } from '@/lib/supabase'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import EconomicsHeaderNav from '@/components/economics/EconomicsHeaderNav'
+import EconomicsPeriodFilter from '@/components/economics/EconomicsPeriodFilter'
 import { toast, Toaster } from 'sonner'
 import { ChevronLeft, Wallet, Layers, Calendar, SlidersHorizontal, List } from 'lucide-react'
 
@@ -195,21 +196,13 @@ function ReportsContent() {
           rightControl={<Link href={`/?store=${storeIdFromUrl || ''}`} style={backBtnStyle}><ChevronLeft size={18} /></Link>}
         />
 
-        {/* Period selector */}
-        <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
-          <button onClick={() => setPeriod('month')} style={{ ...viewBtn, background: period === 'month' ? 'var(--surface)' : 'transparent' }}>Μήνας</button>
-          <button onClick={() => setPeriod('year')} style={{ ...viewBtn, background: period === 'year' ? 'var(--surface)' : 'transparent' }}>Έτος</button>
-          <button onClick={() => setPeriod('30days')} style={{ ...viewBtn, background: period === '30days' ? 'var(--surface)' : 'transparent' }}>30 ημέρες</button>
-          <button onClick={() => setPeriod('all')} style={{ ...viewBtn, background: period === 'all' ? 'var(--surface)' : 'transparent' }}>Όλα</button>
-        </div>
-
-        {/* Year selector (full width) */}
-        <div style={card}>
-          <div style={{ fontSize: 11, fontWeight: 900, color: 'var(--muted)', marginBottom: 8 }}>ΕΤΟΣ</div>
-          <select value={String(selectedYear)} onChange={(e) => setSelectedYear(Number(e.target.value))} style={{ width: '100%', padding: 12, borderRadius: 10, border: '1px solid var(--border)', background: 'var(--surface)', fontWeight: 800 }}>
-            {yearOptions.map((y) => <option key={y} value={String(y)}>{y}</option>)}
-          </select>
-        </div>
+        <EconomicsPeriodFilter
+          period={period}
+          onPeriodChange={(p) => setPeriod(p)}
+          selectedYear={selectedYear}
+          onYearChange={(y) => setSelectedYear(y)}
+          yearOptions={yearOptions}
+        />
 
         {/* View selector */}
         <div style={viewWrapMobile}>

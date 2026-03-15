@@ -23,6 +23,7 @@ import {
   SlidersHorizontal,
 } from 'lucide-react'
 import EconomicsHeaderNav from '@/components/economics/EconomicsHeaderNav'
+import EconomicsPeriodFilter from '@/components/economics/EconomicsPeriodFilter'
 
 const colors = {
   primaryDark: '#1e293b',
@@ -132,6 +133,10 @@ function CreditsContent() {
 
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [selectedKey, setSelectedKey] = useState<string>('all')
+
+  // period filter
+  const [period, setPeriod] = useState<'month' | 'year' | '30days' | 'all'>('month')
+  const [selectedYear, setSelectedYear] = useState<number>(currentYear)
 
   // ✅ YEAR SELECTOR (tab-aware)
   const currentYear = new Date().getFullYear()
@@ -326,13 +331,26 @@ function CreditsContent() {
     const isIncome = viewMode === 'income'
     return allTx
       .filter((t) => isCreditLike(t))
-      .filter((t) => isTxInYear(t, selectedYear))
+      .filter((t) => {
+        const d = getTxDate(t)
+        if (!d) return false
+        if (period === 'all') return true
+        if (period === 'month') return d >= new Date(new Date().getFullYear(), new Date().getMonth(), 1)
+        if (period === 'year') return isTxInYear(t, selectedYear)
+        if (period === '30days') {
+          const since = new Date()
+          since.setDate(since.getDate() - 30)
+          since.setHours(0, 0, 0, 0)
+          return d >= since
+        }
+        return true
+      })
       .filter((t) => {
         if (isIncome) return !!t.revenue_source_id
         return !!t.supplier_id || !!t.fixed_asset_id
       })
       .sort((a, b) => (getTxDate(b)?.getTime() || 0) - (getTxDate(a)?.getTime() || 0))
-  }, [allTx, viewMode, selectedYear])
+  }, [allTx, viewMode, selectedYear, period])
 
   // -----------------------------
   // YEAR OPTIONS (TAB-AWARE, credit-only)
@@ -548,6 +566,8 @@ function CreditsContent() {
           rightControl={<Link href={`/?store=${storeIdFromUrl || ''}`} style={backBtnStyle}><ChevronLeft size={20} /></Link>}
         />
 
+          <EconomicsPeriodFilter period={period} onPeriodChange={(p) => setPeriod(p)} selectedYear={selectedYear} onYearChange={(y) => setSelectedYear(y)} yearOptions={yearOptions} />
+
         {/* MODE SWITCHER */}
         <div style={switcherWrap}>
           <button
@@ -604,17 +624,7 @@ function CreditsContent() {
           </button>
         </div>
 
-        {/* YEAR SELECTOR */}
-        <div style={{ marginBottom: '18px' }}>
-          <label style={smallLabel}>ΕΤΟΣ</label>
-          <select value={String(selectedYear)} onChange={(e) => setSelectedYear(Number(e.target.value))} style={selectStyle}>
-            {yearOptions.map((y) => (
-              <option key={y} value={String(y)}>
-                {y}
-              </option>
-            ))}
-          </select>
-        </div>
+        {/* YEAR handled by EconomicsPeriodFilter when applicable */}
 
         {/* GROUP SELECT (only for grouped views) */}
         {creditsView !== 'movements' && (

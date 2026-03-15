@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, type CSSProperties, useCallback } from 'react'
 import { useSearchParams } from 'next/navigation'
 import EconomicsHeaderNav from '@/components/economics/EconomicsHeaderNav'
+import EconomicsPeriodFilter from '@/components/economics/EconomicsPeriodFilter'
 import { getSupabase } from '@/lib/supabase'
 
 // If your project already uses xlsx (you used it in Settings), keep this import.
@@ -193,6 +194,32 @@ export default function EconomicsCashflowPage() {
       isCancelled = true
     }
   }, [storeId])
+
+  // GLOBAL period filter
+  const [period, setPeriod] = useState<'month' | 'year' | '30days' | 'all'>('month')
+  const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear())
+
+  useEffect(() => {
+    // when period changes, update filterFrom/filterTo to match
+    if (period === 'month') {
+      setFilterFrom(startOfMonthStr(new Date()))
+      setFilterTo(endOfMonthStr(new Date()))
+    } else if (period === 'year') {
+      setFilterFrom(`${selectedYear}-01-01`)
+      setFilterTo(`${selectedYear}-12-31`)
+    } else if (period === '30days') {
+      const d = new Date()
+      d.setDate(d.getDate() - 30)
+      const y = d.getFullYear()
+      const m = String(d.getMonth() + 1).padStart(2, '0')
+      const day = String(d.getDate()).padStart(2, '0')
+      setFilterFrom(`${y}-${m}-${day}`)
+      setFilterTo(endOfMonthStr(new Date()))
+    } else if (period === 'all') {
+      setFilterFrom('0000-01-01')
+      setFilterTo('9999-12-31')
+    }
+  }, [period, selectedYear])
 
   // Transfers + Organic split (canonical for SaaS)
   const internalTransfers = useMemo(() => rows.filter(isTransfer), [rows, isTransfer])

@@ -5,6 +5,8 @@ import { useEffect, useMemo, useState, Suspense, useCallback } from 'react'
 import { getSupabase } from '@/lib/supabase'
 import { useRouter, useSearchParams } from 'next/navigation'
 import EconomicsHeaderNav from '@/components/economics/EconomicsHeaderNav'
+import { toast, Toaster } from 'sonner'
+import EconomicsPeriodFilter from '@/components/economics/EconomicsPeriodFilter'
 
 const isValidUUID = (id: any) => {
   const regex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -69,6 +71,7 @@ function ProfitContent() {
       setTransactions(txs)
     } catch (err) {
       console.error('Profit load error', err)
+      toast.error('Σφάλμα φόρτωσης report κέρδους')
       setTransactions([])
     } finally {
       setLoading(false)
@@ -148,39 +151,27 @@ function ProfitContent() {
 
   return (
     <div style={{ background: 'var(--bg-grad)', minHeight: '100vh', padding: 20 }}>
+      <Toaster position="top-center" richColors />
       <div style={container}>
-        <EconomicsHeaderNav title="Οικονομικό Κέντρο" subtitle="Profit" />
+        <EconomicsHeaderNav title="Οικονομικό Κέντρο" subtitle="ΚΕΡΔΟΣ" />
 
-        {/* Period selector */}
-        <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
-          <button onClick={() => setPeriod('month')} style={{ ...viewBtn, background: period === 'month' ? 'var(--surface)' : 'transparent' }}>Month</button>
-          <button onClick={() => setPeriod('year')} style={{ ...viewBtn, background: period === 'year' ? 'var(--surface)' : 'transparent' }}>Year</button>
-          <button onClick={() => setPeriod('30days')} style={{ ...viewBtn, background: period === '30days' ? 'var(--surface)' : 'transparent' }}>30 days</button>
-          <button onClick={() => setPeriod('all')} style={{ ...viewBtn, background: period === 'all' ? 'var(--surface)' : 'transparent' }}>All</button>
-        </div>
+        <EconomicsPeriodFilter period={period} onPeriodChange={(p) => setPeriod(p)} selectedYear={selectedYear} onYearChange={(y) => setSelectedYear(y)} yearOptions={yearOptions} />
 
         {/* Year selector when relevant */}
-        {period === 'year' ? (
-          <div style={card}>
-            <div style={{ fontSize: 11, fontWeight: 900, color: 'var(--muted)', marginBottom: 8 }}>YEAR</div>
-            <select value={String(selectedYear)} onChange={(e) => setSelectedYear(Number(e.target.value))} style={{ width: '100%', padding: 12, borderRadius: 10, border: '1px solid var(--border)', background: 'var(--surface)', fontWeight: 800 }}>
-              {yearOptions.map((y) => <option key={y} value={String(y)}>{y}</option>)}
-            </select>
-          </div>
-        ) : null}
+        {/* year selector handled by EconomicsPeriodFilter when needed */}
 
         {/* Summary cards */}
         <div style={{ display: 'flex', gap: 12, marginBottom: 12, flexWrap: 'wrap' }}>
           <div style={{ ...card, flex: 1 }}>
-            <div style={{ fontSize: 11, fontWeight: 900, color: 'var(--muted)' }}>Total Revenue</div>
+            <div style={{ fontSize: 11, fontWeight: 900, color: 'var(--muted)' }}>Συνολικά Έσοδα</div>
             <div style={{ fontSize: 18, fontWeight: 900, color: '#10b981' }}>{loading ? '—' : amountFmt(totalRevenue)}</div>
           </div>
           <div style={{ ...card, flex: 1 }}>
-            <div style={{ fontSize: 11, fontWeight: 900, color: 'var(--muted)' }}>Total Expenses</div>
+            <div style={{ fontSize: 11, fontWeight: 900, color: 'var(--muted)' }}>Συνολικά Έξοδα</div>
             <div style={{ fontSize: 18, fontWeight: 900, color: '#f97316' }}>{loading ? '—' : amountFmt(totalExpenses)}</div>
           </div>
           <div style={{ ...card, flex: 1 }}>
-            <div style={{ fontSize: 11, fontWeight: 900, color: 'var(--muted)' }}>Total Profit</div>
+            <div style={{ fontSize: 11, fontWeight: 900, color: 'var(--muted)' }}>Συνολικό Κέρδος</div>
             <div style={{ fontSize: 18, fontWeight: 900, color: totalProfit >= 0 ? '#10b981' : '#dc2626' }}>{loading ? '—' : amountFmt(totalProfit)}</div>
           </div>
         </div>
@@ -189,23 +180,23 @@ function ProfitContent() {
         <div style={card}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
             <div>
-              <h2 style={{ margin: 0, fontSize: 16, fontWeight: 900 }}>Monthly P&L</h2>
-              <div style={{ fontSize: 12, color: 'var(--muted)' }}>Month • Revenue • Expenses • Profit</div>
+              <h2 style={{ margin: 0, fontSize: 16, fontWeight: 900 }}>Μηνιαίο Κέρδος / Ζημία</h2>
+              <div style={{ fontSize: 12, color: 'var(--muted)' }}>Μήνας • Έσοδα • Έξοδα • Κέρδος</div>
             </div>
           </div>
 
           {loading ? (
-            <div>Loading...</div>
+            <div>Φόρτωση...</div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               <div style={{ display: 'flex', fontWeight: 900, color: 'var(--muted)', padding: '6px 0' }}>
-                <div style={{ flex: 2 }}>Month</div>
-                <div style={{ flex: 1, textAlign: 'right' }}>Revenue</div>
-                <div style={{ flex: 1, textAlign: 'right' }}>Expenses</div>
-                <div style={{ flex: 1, textAlign: 'right' }}>Profit</div>
+                <div style={{ flex: 2 }}>Μήνας</div>
+                <div style={{ flex: 1, textAlign: 'right' }}>Έσοδα</div>
+                <div style={{ flex: 1, textAlign: 'right' }}>Έξοδα</div>
+                <div style={{ flex: 1, textAlign: 'right' }}>Κέρδος</div>
               </div>
 
-              {byMonth.length === 0 && <div style={{ color: 'var(--muted)' }}>No data for selected period.</div>}
+              {byMonth.length === 0 && <div style={{ color: 'var(--muted)' }}>Δεν υπάρχουν δεδομένα για την επιλεγμένη περίοδο.</div>}
 
               {byMonth.map((r) => (
                 <div key={r.month} style={{ display: 'flex', alignItems: 'center', padding: '8px 0', borderTop: '1px solid var(--border)' }}>
