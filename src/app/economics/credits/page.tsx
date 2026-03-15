@@ -45,6 +45,16 @@ const isValidUUID = (id: any) => {
 
 const normalize = (v: any) => String(v ?? '').trim().toLowerCase()
 
+function getPaymentMethodFromTx(tx: any) {
+  return String(tx?.payment_method ?? tx?.method ?? '').trim()
+}
+
+function isCreditLike(tx: any) {
+  if (!tx) return false
+  if (tx?.is_credit === true) return true
+  return getPaymentMethodFromTx(tx).toLowerCase() === 'πίστωση'
+}
+
 // ✅ BUSINESS DAY HELPERS (07:00 cutoff)
 const toBusinessDayDate = (d: Date) => {
   const bd = new Date(d)
@@ -294,7 +304,7 @@ function CreditsContent() {
     const isIncome = viewMode === 'income'
     return allTx
       .filter((t) => t?.is_deleted !== true)
-      .filter((t) => t?.is_credit === true)
+      .filter((t) => isCreditLike(t))
       .filter((t) => isTxInYear(t, selectedYear))
       .filter((t) => {
         if (isIncome) return !!t.revenue_source_id
@@ -313,7 +323,7 @@ function CreditsContent() {
 
     for (const t of allTx) {
       if (t?.is_deleted === true) continue
-      if (t?.is_credit !== true) continue
+      if (!isCreditLike(t)) continue
 
       const relevantForTab = isIncome ? !!t?.revenue_source_id : !!t?.supplier_id || !!t?.fixed_asset_id
       if (!relevantForTab) continue

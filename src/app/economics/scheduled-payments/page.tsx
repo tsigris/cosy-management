@@ -45,6 +45,16 @@ const isValidUUID = (id: any) => {
 
 const normalize = (v: any) => String(v ?? '').trim().toLowerCase()
 
+function getPaymentMethodFromTx(tx: any) {
+  return String(tx?.payment_method ?? tx?.method ?? '').trim()
+}
+
+function isCreditLike(tx: any) {
+  if (!tx) return false
+  if (tx?.is_credit === true) return true
+  return getPaymentMethodFromTx(tx).toLowerCase() === 'πίστωση'
+}
+
 // ✅ BUSINESS DAY HELPERS (07:00 cutoff)
 const toBusinessDayDate = (d: Date) => {
   const bd = new Date(d)
@@ -217,17 +227,30 @@ function CreditsContent() {
     try {
       setLoading(true)
 
-      // 1) transactions
-      const transRes = await supabase
-        .from('transactions')
-        .select(
-          'id, store_id, created_at, date, type, amount, category, method, notes, description, is_credit, supplier_id, fixed_asset_id, revenue_source_id, is_deleted',
-        )
-        .eq('store_id', storeIdFromUrl)
+      // 1) scheduled payments (map to Tx-like shape for UI)
+      const schedRes = await supabase.from('scheduled_payments').select('*').eq('store_id', storeIdFromUrl)
 
-      if (transRes.error) throw transRes.error
-      const txs: Tx[] = (transRes.data || []) as any
-      setAllTx(txs)
+      if (schedRes.error) throw schedRes.error
+      const rows: any[] = schedRes.data || []
+      const mapped: Tx[] = rows.map((r) => ({
+        id: String(r.id),
+        store_id: String(r.store_id || ''),
+        created_at: r.created_at || null,
+        date: r.next_date || r.date || r.scheduled_date || null,
+        type: r.type || 'scheduled_payment',
+        amount: r.amount ?? r.total_amount ?? 0,
+        category: r.category ?? r.notes ?? null,
+        method: r.payment_method ?? r.method ?? null,
+        notes: r.notes ?? r.description ?? null,
+        description: r.description ?? null,
+        is_credit: r.is_credit === true,
+        supplier_id: r.supplier_id ?? null,
+        fixed_asset_id: r.fixed_asset_id ?? null,
+        revenue_source_id: r.revenue_source_id ?? null,
+        is_deleted: r.is_deleted ?? false,
+      }))
+
+      setAllTx(mapped)
 
       // 2) entities for names
       const [supsRes, assetsRes, revRes] = await Promise.all([
@@ -294,7 +317,7 @@ function CreditsContent() {
     const isIncome = viewMode === 'income'
     return allTx
       .filter((t) => t?.is_deleted !== true)
-      .filter((t) => t?.is_credit === true)
+      .filter((t) => isCreditLike(t))
       .filter((t) => isTxInYear(t, selectedYear))
       .filter((t) => {
         if (isIncome) return !!t.revenue_source_id
@@ -313,7 +336,7 @@ function CreditsContent() {
 
     for (const t of allTx) {
       if (t?.is_deleted === true) continue
-      if (t?.is_credit !== true) continue
+      if (!isCreditLike(t)) continue
 
       const relevantForTab = isIncome ? !!t?.revenue_source_id : !!t?.supplier_id || !!t?.fixed_asset_id
       if (!relevantForTab) continue
