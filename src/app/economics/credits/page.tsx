@@ -92,7 +92,6 @@ type Tx = {
   supplier_id?: string | null
   fixed_asset_id?: string | null
   revenue_source_id?: string | null
-  is_deleted?: boolean | null
 }
 
 type EntityInfo = {
@@ -311,7 +310,6 @@ function CreditsContent() {
   const creditTxs = useMemo(() => {
     const isIncome = viewMode === 'income'
     return allTx
-      .filter((t) => t?.is_deleted !== true)
       .filter((t) => isCreditLike(t))
       .filter((t) => isTxInYear(t, selectedYear))
       .filter((t) => {
@@ -330,7 +328,6 @@ function CreditsContent() {
     const isIncome = viewMode === 'income'
 
     for (const t of allTx) {
-      if (t?.is_deleted === true) continue
       if (!isCreditLike(t)) continue
 
       const relevantForTab = isIncome ? !!t?.revenue_source_id : !!t?.supplier_id || !!t?.fixed_asset_id
