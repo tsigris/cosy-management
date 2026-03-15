@@ -1247,7 +1247,7 @@ function EmployeesContent() {
                           </>
                         )}
 
-                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', alignItems: 'stretch' }}>
                           <Link
                             href={`/pay-employee?id=${emp.id}&name=${encodeURIComponent(emp.name || '')}&store=${storeId}`}
                             onClick={(e) => e.stopPropagation()}
