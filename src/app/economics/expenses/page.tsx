@@ -172,6 +172,7 @@ export default function EconomicsExpensesPage() {
   const [loading, setLoading] = useState(false)
   const [rows, setRows] = useState<ExpenseRow[]>([])
   const [search, setSearch] = useState('')
+  const [movementSearch, setMovementSearch] = useState('')
   const [activeFilter, setActiveFilter] = useState<DrilldownFilter>(null)
 
   useEffect(() => {
@@ -347,6 +348,16 @@ export default function EconomicsExpensesPage() {
   }, [filteredMovements])
 
   const [openSupplier, setOpenSupplier] = useState<string | null>(null)
+
+  useEffect(() => {
+    setOpenSupplier(null)
+  }, [movementSearch])
+
+  const filteredMovementGroups = useMemo(() => {
+    if (!movementSearch || !movementSearch.trim()) return groupedMovements
+    const q = norm(movementSearch)
+    return groupedMovements.filter((g) => norm(g.title).includes(q))
+  }, [groupedMovements, movementSearch])
 
   const clearFilterAndGoMovements = useCallback(() => {
     setActiveFilter(null)
@@ -785,7 +796,17 @@ export default function EconomicsExpensesPage() {
                     <div style={emptyText}>Δεν υπάρχουν κινήσεις</div>
                   ) : (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                      {groupedMovements.map((g) => (
+                      <input
+                        style={searchInput}
+                        placeholder="Αναζήτηση προμηθευτή..."
+                        value={movementSearch}
+                        onChange={(e) => setMovementSearch(e.target.value)}
+                      />
+
+                      {filteredMovementGroups.length === 0 ? (
+                        <div style={emptyText}>Δεν βρέθηκε προμηθευτής</div>
+                      ) : (
+                        filteredMovementGroups.map((g) => (
                         <div
                           key={g.key}
                           onClick={() => setOpenSupplier((prev) => (prev === g.key ? null : g.key))}
