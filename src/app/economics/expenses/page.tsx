@@ -218,6 +218,18 @@ export default function EconomicsExpensesPage() {
     })
   }, [rows, period, selectedYear])
 
+  const yearOptions = useMemo(() => {
+    const s = new Set<number>()
+    for (const r of rows) {
+      const raw = r.created_at || r.date
+      if (!raw) continue
+      const d = new Date(raw)
+      if (!isNaN(d.getTime())) s.add(d.getFullYear())
+    }
+    if (!s.size) s.add(new Date().getFullYear())
+    return Array.from(s).sort((a, b) => b - a)
+  }, [rows])
+
 
   const beneficiaryGroups = useMemo(() => groupByBeneficiary(filteredRowsByPeriod), [filteredRowsByPeriod])
   const filteredBeneficiaries = useMemo(() => filterBeneficiaries(beneficiaryGroups, search), [beneficiaryGroups, search])
@@ -267,7 +279,7 @@ export default function EconomicsExpensesPage() {
           }
         />
 
-        <EconomicsPeriodFilter period={period} onPeriodChange={(p) => setPeriod(p)} selectedYear={selectedYear} onYearChange={(y) => setSelectedYear(y)} yearOptions={[]}/>
+        <EconomicsPeriodFilter period={period} onPeriodChange={(p) => setPeriod(p)} selectedYear={selectedYear} onYearChange={(y) => setSelectedYear(y)} yearOptions={yearOptions} />
 
         {/* Segmented */}
         <div style={segmentedWrap}>
