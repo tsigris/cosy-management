@@ -265,16 +265,51 @@ export default function EconomicsExpensesPage() {
   }, [])
 
   // --- DASHBOARD METRICS (STEP 1-3) ---
-  const allTx = filteredRowsByPeriod || []
-  const creditTxs = allTx.filter((t) => Boolean(t.is_credit))
+  const filteredRelevantTxs = useMemo(() => {
+    let filtered = filteredRowsByPeriod || []
 
-  const totalExpenses = allTx.reduce((s, t) => s + Math.abs(Number(t.amount) || 0), 0)
-  const cashExpenses = allTx.filter((t) => !t.is_credit).reduce((s, t) => s + Math.abs(Number(t.amount) || 0), 0)
-  const creditExpenses = allTx.filter((t) => t.is_credit).reduce((s, t) => s + Math.abs(Number(t.amount) || 0), 0)
-  const averageExpense = allTx.length ? totalExpenses / allTx.length : 0
+    // apply active drilldown filter same as movements
+    if (activeFilter) {
+      if (activeFilter.type === 'beneficiary') {
+        filtered = filtered.filter((r) => {
+          const key = (r.suppliers?.name || r.fixed_assets?.name || 'Άλλο').trim() || 'Άλλο'
+          return key === activeFilter.value
+        })
+      } else if (activeFilter.type === 'category') {
+        filtered = filtered.filter((r) => ((r.category || 'Άλλη Κατηγορία').trim() || 'Άλλη Κατηγορία') === activeFilter.value)
+      } else if (activeFilter.type === 'method') {
+        filtered = filtered.filter((r) => ((r.method || 'Άλλη Μέθοδος').trim() || 'Άλλη Μέθοδος') === activeFilter.value)
+      }
+    }
 
-  const topSuppliers = beneficiaryGroups.slice(0, 3)
-  const topCategories = categoryGroups.slice(0, 4)
+    return filtered
+  }, [filteredRowsByPeriod, activeFilter])
+
+  const { totalAmount, cashAmount, creditAmount, avgAmount, isIncomeMode } = useMemo(() => {
+    const txs = filteredRelevantTxs || []
+    const total = txs.reduce((s, t) => s + Math.abs(Number(t.amount) || 0), 0)
+    const cash = txs.filter((t) => !t.is_credit).reduce((s, t) => s + Math.abs(Number(t.amount) || 0), 0)
+    const credit = txs.filter((t) => t.is_credit).reduce((s, t) => s + Math.abs(Number(t.amount) || 0), 0)
+    const avg = txs.length ? total / txs.length : 0
+    const incomeMode = txs.length > 0 && txs.every((t) => t.type === 'income')
+    return { totalAmount: total, cashAmount: cash, creditAmount: credit, avgAmount: avg, isIncomeMode: incomeMode }
+  }, [filteredRelevantTxs])
+
+  // top entities reuse existing beneficiaryGroups (already sorted by total)
+  const topEntities = useMemo(() => beneficiaryGroups.slice(0, 3), [beneficiaryGroups])
+
+  // top categories grouped from already filtered transactions (fallback to type)
+  const topCategories = useMemo(() => {
+    const map = new Map<string, { key: string; total: number; count: number }>()
+    for (const r of filteredRelevantTxs) {
+      const key = (r.category || r.type || 'Λοιπά').trim() || 'Λοιπά'
+      if (!map.has(key)) map.set(key, { key, total: 0, count: 0 })
+      const entry = map.get(key)!
+      entry.total += Math.abs(Number(r.amount) || 0)
+      entry.count += 1
+    }
+    return Array.from(map.values()).sort((a, b) => b.total - a.total).slice(0, 4)
+  }, [filteredRelevantTxs])
 
   return (
     <main style={pageWrap}>
@@ -334,42 +369,42 @@ export default function EconomicsExpensesPage() {
         {/* KPI Grid */}
         <div style={kpiGrid}>
           <div style={kpiCard}>
-            <div style={{ color: 'var(--muted)', fontWeight: 800 }}>Total Expenses</div>
+            <div style={{ color: 'var(--muted)', fontWeight: 800 }}>{isIncomeMode ? 'Total Income' : 'Total Expenses'}</div>
             <div style={{ fontWeight: 900, fontSize: 20, marginTop: 8 }}>
-              {Number(totalExpenses).toLocaleString('el-GR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}€
+              {Number(totalAmount).toLocaleString('el-GR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}€
             </div>
           </div>
 
           <div style={kpiCard}>
-            <div style={{ color: 'var(--muted)', fontWeight: 800 }}>Cash Expenses</div>
+            <div style={{ color: 'var(--muted)', fontWeight: 800 }}>{isIncomeMode ? 'Cash Income' : 'Cash Expenses'}</div>
             <div style={{ fontWeight: 900, fontSize: 20, marginTop: 8 }}>
-              {Number(cashExpenses).toLocaleString('el-GR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}€
+              {Number(cashAmount).toLocaleString('el-GR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}€
             </div>
           </div>
 
           <div style={kpiCard}>
-            <div style={{ color: 'var(--muted)', fontWeight: 800 }}>Credit Expenses</div>
+            <div style={{ color: 'var(--muted)', fontWeight: 800 }}>{isIncomeMode ? 'Credit Income' : 'Credit Expenses'}</div>
             <div style={{ fontWeight: 900, fontSize: 20, marginTop: 8 }}>
-              {Number(creditExpenses).toLocaleString('el-GR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}€
+              {Number(creditAmount).toLocaleString('el-GR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}€
             </div>
           </div>
 
           <div style={kpiCard}>
-            <div style={{ color: 'var(--muted)', fontWeight: 800 }}>Average Expense</div>
+            <div style={{ color: 'var(--muted)', fontWeight: 800 }}>{isIncomeMode ? 'Average Income' : 'Average Expense'}</div>
             <div style={{ fontWeight: 900, fontSize: 20, marginTop: 8 }}>
-              {Number(averageExpense).toLocaleString('el-GR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}€
+              {Number(avgAmount).toLocaleString('el-GR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}€
             </div>
           </div>
         </div>
 
         {/* Top Suppliers & Categories */}
         <section style={summarySection}>
-          <h3 style={{ margin: 0, color: 'var(--text)', fontSize: 16, fontWeight: 900 }}>TOP SUPPLIERS</h3>
+          <h3 style={{ margin: 0, color: 'var(--text)', fontSize: 16, fontWeight: 900 }}>TOP ENTITIES</h3>
           <div style={summaryGridThree}>
-            {topSuppliers.length === 0 ? (
-              <div style={emptyText}>Δεν υπάρχουν προμηθευτές</div>
+            {topEntities.length === 0 ? (
+              <div style={emptyText}>Δεν υπάρχουν οντότητες</div>
             ) : (
-              topSuppliers.map((s) => (
+              topEntities.map((s) => (
                 <div key={s.key} style={summaryCard}>
                   <div style={{ fontWeight: 900, color: 'var(--text)' }}>{s.key}</div>
                   <div style={{ color: 'var(--muted)', fontWeight: 800, fontSize: 13 }}>{s.rows.length} κινήσεις</div>
@@ -391,7 +426,7 @@ export default function EconomicsExpensesPage() {
               topCategories.map((c) => (
                 <div key={c.key} style={summaryCard}>
                   <div style={{ fontWeight: 900, color: 'var(--text)' }}>{c.key}</div>
-                  <div style={{ color: 'var(--muted)', fontWeight: 800, fontSize: 13 }}>{c.rows.length} κινήσεις</div>
+                  <div style={{ color: 'var(--muted)', fontWeight: 800, fontSize: 13 }}>{c.count} κινήσεις</div>
                   <div style={{ fontWeight: 900, marginTop: 8 }}>
                     {Number(c.total).toLocaleString('el-GR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}€
                   </div>
@@ -729,14 +764,14 @@ const summarySection: CSSProperties = {
 
 const summaryGridThree: CSSProperties = {
   display: 'grid',
-  gridTemplateColumns: 'repeat(3, 1fr)',
+  gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
   gap: 12,
   marginTop: 12,
 }
 
 const summaryGridFour: CSSProperties = {
   display: 'grid',
-  gridTemplateColumns: 'repeat(4, 1fr)',
+  gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
   gap: 12,
   marginTop: 12,
 }
