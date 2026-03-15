@@ -222,6 +222,52 @@ export default function EconomicsIncomePage() {
     return { today, yesterday: yesterdayTotal, monthTotal, avgDaily }
   }, [grouped])
 
+  // business day keys for badges and quick lookup
+  const now = new Date()
+  const todayKey = toBusinessDayDate(now).toISOString().slice(0, 10)
+  const yesterdayDate = new Date(now)
+  yesterdayDate.setDate(yesterdayDate.getDate() - 1)
+  const yesterdayKey = toBusinessDayDate(yesterdayDate).toISOString().slice(0, 10)
+
+  // derive cash/card breakdown for today, yesterday and current month (presentation only)
+  const dayBreakdowns = useMemo(() => {
+    const map = new Map<string, { total: number; cash: number; card: number; other: number }>()
+    for (const [day, items] of grouped) {
+      let total = 0
+      let cash = 0
+      let card = 0
+      for (const it of items) {
+        const amt = Math.abs(it.amount)
+        total += amt
+        const m = normalizeMethod(it.method)
+        if (m === 'Μετρητά') cash += amt
+        else if (m === 'Κάρτα') card += amt
+      }
+      const other = Math.max(0, total - cash - card)
+      map.set(day, { total, cash, card, other })
+    }
+    return map
+  }, [grouped])
+
+  const todayBreak = dayBreakdowns.get(todayKey) || { total: 0, cash: 0, card: 0, other: 0 }
+  const yesterdayBreak = dayBreakdowns.get(yesterdayKey) || { total: 0, cash: 0, card: 0, other: 0 }
+
+  const monthCashCard = useMemo(() => {
+    const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+    let cash = 0
+    let card = 0
+    for (const [day, v] of dayBreakdowns) {
+      if (!day.startsWith(ym)) continue
+      cash += v.cash
+      card += v.card
+    }
+    return { cash, card }
+  }, [dayBreakdowns])
+
+  // Last Z (most recent day with income)
+  const lastZ = grouped.length ? grouped[0] : null
+  const lastZBreak = lastZ ? dayBreakdowns.get(lastZ[0]) || { total: 0, cash: 0, card: 0, other: 0 } : null
+
   // expanded days
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
 
@@ -242,10 +288,21 @@ export default function EconomicsIncomePage() {
     page: { minHeight: '100vh', paddingBottom: 120 },
     container: { maxWidth: 920, margin: '0 auto', padding: '0 16px' },
     kpiGrid: { display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 10, marginTop: 12 },
-    kpiCard: { padding: 12, borderRadius: 12, background: 'var(--surface)', border: '1px solid var(--border)' as const },
+    kpiCard: { padding: 12, borderRadius: 18, background: 'var(--surface)', border: '1px solid var(--border)' as const, minHeight: 76 },
+    kpiTitle: { fontWeight: 900, fontSize: 13, color: 'var(--muted)' },
+    kpiTotal: { fontSize: 20, marginTop: 6, fontWeight: 900 },
+    kpiSmall: { fontSize: 12, color: 'var(--muted)', marginTop: 6 },
     list: { display: 'flex', flexDirection: 'column', gap: 10, marginTop: 12 },
-    dayCard: { padding: 12, borderRadius: 12, background: 'var(--surface)', border: '1px solid var(--border)', cursor: 'pointer' },
+    dayCard: { padding: 12, borderRadius: 20, background: 'var(--surface)', border: '1px solid var(--border)', cursor: 'pointer' },
+    dayHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
+    dayLeft: { minWidth: 0 },
+    badge: { marginLeft: 8, padding: '4px 8px', borderRadius: 999, fontSize: 11, fontWeight: 900, background: 'var(--surfaceSolid)', color: 'var(--muted)' },
+    dayMeta: { fontSize: 12, color: 'var(--muted)', marginTop: 6 },
+    dayTotalsWrap: { display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' },
+    chip: { display: 'inline-flex', justifyContent: 'space-between', gap: 8, padding: '6px 10px', borderRadius: 12, background: 'transparent', border: '1px solid var(--border)', minWidth: 120 },
     txRow: { display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderTop: '1px dashed var(--border)' },
+    expandBtn: { border: 'none', background: 'transparent', color: 'var(--muted)', fontWeight: 900, cursor: 'pointer' },
+    lastZCard: { padding: 12, borderRadius: 18, background: 'var(--surfaceSolid)', border: '1px solid var(--border)', marginTop: 12 },
   }
 
   return (
@@ -265,25 +322,81 @@ export default function EconomicsIncomePage() {
           {/* KPI row */}
           <div style={styles.kpiGrid as any}>
             <div style={styles.kpiCard}>
-              <div style={{ fontWeight: 900 }}>Σήμερα</div>
-              <div style={{ fontSize: 20, marginTop: 6 }}>{loading ? '—' : amountFmt.format(KPIs.today)}</div>
+              <div style={styles.kpiTitle}>Σήμερα</div>
+              <div style={styles.kpiTotal}>{loading ? '—' : amountFmt.format(KPIs.today)}</div>
+              <div style={styles.kpiSmall}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+                  <div style={{ color: 'var(--muted)' }}>Μετρητά</div>
+                  <div style={{ fontWeight: 900 }}>{loading ? '—' : amountFmt.format(todayBreak.cash)}</div>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginTop: 6 }}>
+                  <div style={{ color: 'var(--muted)' }}>Κάρτα</div>
+                  <div style={{ fontWeight: 900 }}>{loading ? '—' : amountFmt.format(todayBreak.card)}</div>
+                </div>
+              </div>
             </div>
 
             <div style={styles.kpiCard}>
-              <div style={{ fontWeight: 900 }}>Χθες</div>
-              <div style={{ fontSize: 20, marginTop: 6 }}>{loading ? '—' : amountFmt.format(KPIs.yesterday)}</div>
+              <div style={styles.kpiTitle}>Χθες</div>
+              <div style={styles.kpiTotal}>{loading ? '—' : amountFmt.format(KPIs.yesterday)}</div>
+              <div style={styles.kpiSmall}>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <div style={{ color: 'var(--muted)' }}>Μετρητά</div>
+                  <div style={{ fontWeight: 900 }}>{loading ? '—' : amountFmt.format(yesterdayBreak.cash)}</div>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6 }}>
+                  <div style={{ color: 'var(--muted)' }}>Κάρτα</div>
+                  <div style={{ fontWeight: 900 }}>{loading ? '—' : amountFmt.format(yesterdayBreak.card)}</div>
+                </div>
+              </div>
             </div>
 
             <div style={styles.kpiCard}>
-              <div style={{ fontWeight: 900 }}>Τρέχων Μήνας</div>
-              <div style={{ fontSize: 20, marginTop: 6 }}>{loading ? '—' : amountFmt.format(KPIs.monthTotal)}</div>
+              <div style={styles.kpiTitle}>Τρέχων Μήνας</div>
+              <div style={styles.kpiTotal}>{loading ? '—' : amountFmt.format(KPIs.monthTotal)}</div>
+              <div style={styles.kpiSmall}>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <div style={{ color: 'var(--muted)' }}>Μετρητά μήνα</div>
+                  <div style={{ fontWeight: 900 }}>{loading ? '—' : amountFmt.format(monthCashCard.cash)}</div>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6 }}>
+                  <div style={{ color: 'var(--muted)' }}>Κάρτα μήνα</div>
+                  <div style={{ fontWeight: 900 }}>{loading ? '—' : amountFmt.format(monthCashCard.card)}</div>
+                </div>
+              </div>
             </div>
 
             <div style={styles.kpiCard}>
-              <div style={{ fontWeight: 900 }}>Μέσο Ημερήσιο</div>
-              <div style={{ fontSize: 20, marginTop: 6 }}>{loading ? '—' : amountFmt.format(KPIs.avgDaily)}</div>
+              <div style={styles.kpiTitle}>Μέσο Ημερήσιο</div>
+              <div style={styles.kpiTotal}>{loading ? '—' : amountFmt.format(KPIs.avgDaily)}</div>
             </div>
           </div>
+
+          {/* Last Z card (most recent day with income) */}
+          {lastZ && lastZBreak && (
+            <div style={styles.lastZCard}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <div style={{ fontWeight: 900 }}>Τελευταίο Ζ</div>
+                  <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 6 }}>{formatDateEl(new Date(lastZ[0]))}</div>
+                </div>
+
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ fontWeight: 900, fontSize: 18 }}>{amountFmt.format(lastZBreak.total)}</div>
+                  <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 6 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <div style={{ color: 'var(--muted)' }}>Μετρητά</div>
+                      <div style={{ fontWeight: 900 }}>{amountFmt.format(lastZBreak.cash)}</div>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6 }}>
+                      <div style={{ color: 'var(--muted)' }}>Κάρτα</div>
+                      <div style={{ fontWeight: 900 }}>{amountFmt.format(lastZBreak.card)}</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Daily list */}
           <div style={styles.list as any}>
@@ -298,16 +411,27 @@ export default function EconomicsIncomePage() {
 
               return (
                 <div key={day} style={styles.dayCard as any}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }} onClick={() => toggleDay(day)}>
-                    <div>
-                      <div style={{ fontWeight: 900 }}>{formatDateEl(new Date(day))}</div>
-                      <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 6 }}>{items.length} κινήσεις</div>
+                  <div style={styles.dayHeader as any} onClick={() => toggleDay(day)}>
+                    <div style={styles.dayLeft as any}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <div style={{ fontWeight: 900 }}>{formatDateEl(new Date(day))}</div>
+                        {day === todayKey ? <span style={styles.badge as any}>Σήμερα</span> : null}
+                        {day === yesterdayKey ? <span style={styles.badge as any}>Χθες</span> : null}
+                      </div>
+                      <div style={styles.dayMeta as any}>{items.length} κινήσεις</div>
                     </div>
 
                     <div style={{ textAlign: 'right' }}>
                       <div style={{ fontWeight: 900 }}>{amountFmt.format(total)}</div>
-                      <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 6 }}>
-                        Μετρητά {amountFmt.format(cash)} • Κάρτα {amountFmt.format(card)} {other ? `• Λοιπά ${amountFmt.format(other)}` : ''}
+                      <div style={styles.dayTotalsWrap as any}>
+                        <div style={styles.chip as any}>
+                          <div style={{ color: 'var(--muted)' }}>Μετρητά</div>
+                          <div style={{ fontWeight: 900 }}>{amountFmt.format(cash)}</div>
+                        </div>
+                        <div style={styles.chip as any}>
+                          <div style={{ color: 'var(--muted)' }}>Κάρτα</div>
+                          <div style={{ fontWeight: 900 }}>{amountFmt.format(card)}</div>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -337,11 +461,11 @@ export default function EconomicsIncomePage() {
                   )}
 
                   <div style={{ marginTop: 8, display: 'flex', justifyContent: 'flex-end' }}>
-                    <button type="button" onClick={() => toggleDay(day)} style={{ border: 'none', background: 'transparent', color: 'var(--muted)', fontWeight: 900 }}>
+                    <button type="button" onClick={() => toggleDay(day)} style={styles.expandBtn as any}>
                       {expanded[day] ? (
-                        <span style={{ display: 'inline-flex', gap: 8, alignItems: 'center' }}><ChevronUp size={14} /> Σύμπτυξη</span>
+                        <span style={{ display: 'inline-flex', gap: 8, alignItems: 'center' }}><ChevronUp size={14} /> Απόκρυψη</span>
                       ) : (
-                        <span style={{ display: 'inline-flex', gap: 8, alignItems: 'center' }}><ChevronDown size={14} /> Επέκταση</span>
+                        <span style={{ display: 'inline-flex', gap: 8, alignItems: 'center' }}><ChevronDown size={14} /> Λεπτομέρειες</span>
                       )}
                     </button>
                   </div>
