@@ -296,7 +296,8 @@ export default function EconomicsIncomePage() {
     dayCard: { padding: 12, borderRadius: 20, background: 'var(--surface)', border: '1px solid var(--border)', cursor: 'pointer' },
     dayHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
     dayLeft: { minWidth: 0 },
-    badge: { marginLeft: 8, padding: '4px 8px', borderRadius: 999, fontSize: 11, fontWeight: 900, background: 'var(--surfaceSolid)', color: 'var(--muted)' },
+    // badge: no absolute positioning; inline in date row. Colors set inline per state.
+    badge: { padding: '4px 10px', borderRadius: 999, fontSize: 12, fontWeight: 600, display: 'inline-flex', alignItems: 'center' },
     dayMeta: { fontSize: 12, color: 'var(--muted)', marginTop: 6 },
     dayTotalsWrap: { display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' },
     chip: { display: 'inline-flex', justifyContent: 'space-between', gap: 8, padding: '6px 10px', borderRadius: 12, background: 'transparent', border: '1px solid var(--border)', minWidth: 120 },
@@ -411,28 +412,31 @@ export default function EconomicsIncomePage() {
 
               return (
                 <div key={day} style={styles.dayCard as any}>
-                  <div style={styles.dayHeader as any} onClick={() => toggleDay(day)}>
-                    <div style={styles.dayLeft as any}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <div style={{ fontWeight: 900 }}>{formatDateEl(new Date(day))}</div>
-                        {day === todayKey ? <span style={styles.badge as any}>Σήμερα</span> : null}
-                        {day === yesterdayKey ? <span style={styles.badge as any}>Χθες</span> : null}
-                      </div>
-                      <div style={styles.dayMeta as any}>{items.length} κινήσεις</div>
+                  <div style={styles.dayHeader as any}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <div style={{ fontWeight: 900 }}>{formatDateEl(new Date(day))}</div>
+                      {day === todayKey ? (
+                        <span style={{ ...styles.badge as any, background: '#DCFCE7', color: '#166534' }}>Σήμερα</span>
+                      ) : null}
+                      {day === yesterdayKey ? (
+                        <span style={{ ...styles.badge as any, background: '#E0E7FF', color: '#3730A3' }}>Χθες</span>
+                      ) : null}
                     </div>
 
                     <div style={{ textAlign: 'right' }}>
                       <div style={{ fontWeight: 900 }}>{amountFmt.format(total)}</div>
-                      <div style={styles.dayTotalsWrap as any}>
-                        <div style={styles.chip as any}>
-                          <div style={{ color: 'var(--muted)' }}>Μετρητά</div>
-                          <div style={{ fontWeight: 900 }}>{amountFmt.format(cash)}</div>
-                        </div>
-                        <div style={styles.chip as any}>
-                          <div style={{ color: 'var(--muted)' }}>Κάρτα</div>
-                          <div style={{ fontWeight: 900 }}>{amountFmt.format(card)}</div>
-                        </div>
-                      </div>
+                      <div style={styles.dayMeta as any}>{items.length} κινήσεις</div>
+                    </div>
+                  </div>
+
+                  <div style={styles.dayTotalsWrap as any}>
+                    <div style={styles.chip as any}>
+                      <div style={{ color: 'var(--muted)' }}>Μετρητά</div>
+                      <div style={{ fontWeight: 900 }}>{amountFmt.format(cash)}</div>
+                    </div>
+                    <div style={styles.chip as any}>
+                      <div style={{ color: 'var(--muted)' }}>Κάρτα</div>
+                      <div style={{ fontWeight: 900 }}>{amountFmt.format(card)}</div>
                     </div>
                   </div>
 
