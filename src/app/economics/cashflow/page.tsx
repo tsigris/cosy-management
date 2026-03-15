@@ -24,7 +24,16 @@ type TxRow = {
 
 type ThemeName = 'light' | 'dark'
 
-const INCOME_TYPES = new Set(['income', 'income_collection', 'debt_received'])
+const INCOME_TYPES = new Set([
+  'income',
+  'income_collection',
+  'debt_received',
+  'revenue',
+  'sale',
+  'payment',
+  'booking',
+  'deposit',
+])
 const EXPENSE_TYPES = new Set(['expense', 'debt_payment'])
 
 function clamp(n: number, min: number, max: number) {
@@ -176,7 +185,10 @@ export default function EconomicsCashflowPage() {
           notes: r.notes ? String(r.notes) : null,
         }))
 
-        if (!isCancelled) setRows(mapped)
+        if (!isCancelled) {
+          setRows(mapped)
+          console.log('Transaction types detected:', [...new Set(mapped.map((r) => r.type))])
+        }
       } catch (e) {
         console.error('Cashflow load failed:', e)
         if (!isCancelled) {
@@ -364,12 +376,19 @@ export default function EconomicsCashflowPage() {
       if (EXPENSE_TYPES.has(r.type)) expenseBy[key] += abs
     }
 
-    const points = months.map((m) => ({
-      ym: m,
-      income: incomeBy[m] || 0,
-      expense: expenseBy[m] || 0,
-      net: (incomeBy[m] || 0) - (expenseBy[m] || 0),
-    }))
+    const points = months.map((m) => {
+      const income = incomeBy[m] || 0
+      const expense = expenseBy[m] || 0
+      const profit = income - expense
+
+      return {
+        ym: m,
+        income,
+        expense,
+        profit,
+        net: profit,
+      }
+    })
 
     // running balance line (starting from 0, best-effort)
     let running = 0
@@ -412,7 +431,10 @@ export default function EconomicsCashflowPage() {
       ...projected,
     ]
 
-    const maxBar = Math.max(1, ...all.map((x) => Math.max(Math.abs(x.income), Math.abs(x.expense))))
+    const maxBar = Math.max(
+      1,
+      ...all.map((x) => Math.max(Math.abs(x.income), Math.abs(x.expense)))
+    ) * 1.25
     const minLine = Math.min(...all.map((x) => x.balance))
     const maxLine = Math.max(...all.map((x) => x.balance))
     const lineRange = Math.max(1, maxLine - minLine)
@@ -554,6 +576,23 @@ export default function EconomicsCashflowPage() {
       .join(' ')
   }, [chart.data, chart.minLine, chart.lineRange, innerH, paddingX, paddingY, step])
 
+  const profitPath = useMemo(() => {
+    if (!chart.data.length) return ''
+    return chart.data
+      .map((p, idx) => {
+        const x = chart.data.length > 1
+          ? paddingX + step * idx + step / 2
+          : paddingX + innerW / 2
+        const y = paddingY + (1 - (p.net - chart.minLine) / chart.lineRange) * innerH
+        return `${idx === 0 ? 'M' : 'L'} ${x.toFixed(2)} ${y.toFixed(2)}`
+      })
+      .join(' ')
+  }, [chart.data, chart.minLine, chart.lineRange, innerH, paddingX, paddingY, step])
+
+  const totalRevenue = chart.data.reduce((a, x) => a + (x.income || 0), 0)
+  const totalExpenses = chart.data.reduce((a, x) => a + (x.expense || 0), 0)
+  const totalProfit = totalRevenue - totalExpenses
+
   const styles = useMemo(() => makeStyles(t), [t])
 
   return (
@@ -633,6 +672,28 @@ export default function EconomicsCashflowPage() {
         </section>
 
         {/* Chart */}
+
+        {/* Mini KPI row for chart period */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0,1fr))', gap: 10, marginTop: 12 }}> 
+          <div style={{ ...styles.kpiCard, padding: 12, minHeight: 72 }}>
+            <div style={styles.kpiLabel}>Profit This Period</div>
+            <div style={styles.kpiValue}>{loading ? '—' : amountFormatter.format(totalProfit)}</div>
+            <div style={styles.kpiHint}>Συνολικό κέρδος</div>
+          </div>
+
+          <div style={{ ...styles.kpiCard, padding: 12, minHeight: 72 }}>
+            <div style={styles.kpiLabel}>Total Revenue</div>
+            <div style={{ ...styles.kpiValue, color: t.green }}>{loading ? '—' : amountFormatter.format(totalRevenue)}</div>
+            <div style={styles.kpiHint}>Συνολικά Έσοδα</div>
+          </div>
+
+          <div style={{ ...styles.kpiCard, padding: 12, minHeight: 72 }}>
+            <div style={styles.kpiLabel}>Total Expenses</div>
+            <div style={{ ...styles.kpiValue, color: t.red }}>{loading ? '—' : amountFormatter.format(totalExpenses)}</div>
+            <div style={styles.kpiHint}>Συνολικά Έξοδα</div>
+          </div>
+        </div>
+
         <section style={styles.premiumCard}>
           <div style={styles.cardHeadRowPremium}>
             <div style={{ flex: '1 1 240px', minWidth: 0 }}>
@@ -679,6 +740,9 @@ export default function EconomicsCashflowPage() {
                 </div>
                 <div style={{ ...styles.legendChip }}>
                   <span style={{ ...styles.legendDotSmall, background: '#6d28d9' }} /> Υπόλοιπο
+                </div>
+                <div style={{ ...styles.legendChip }}>
+                  <span style={{ ...styles.legendDotSmall, background: '#10b981' }} /> Profit
                 </div>
               </div>
 
@@ -757,6 +821,9 @@ export default function EconomicsCashflowPage() {
 
                 {/* balance line (smoother) */}
                 <path d={linePath} fill="none" stroke="#6d28d9" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" opacity={0.95} />
+
+                {/* profit line (dashed green) */}
+                <path d={profitPath} fill="none" stroke="#10b981" strokeWidth="2" strokeDasharray="6 4" opacity={0.9} />
 
                 {/* points + labels (muted small) */}
                 {chart.data.map((p, idx) => {
