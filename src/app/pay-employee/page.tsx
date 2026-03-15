@@ -99,7 +99,8 @@ function PayEmployeeContent() {
   };
 
   const grossPayable = calculateCurrentBase() + (Number(bonus) || 0) + (Number(extraOvertimeEuro) || 0);
-  const netPayable = Math.max(0, grossPayable - (advanceTotal || 0));
+  const rawNetPayable = grossPayable - (advanceTotal || 0);
+  const netPayable = Math.max(0, rawNetPayable);
 
   async function handleFinalPayment() {
     if (!storeId) return toast.error('Σφάλμα καταστήματος');
@@ -136,9 +137,9 @@ function PayEmployeeContent() {
       }
 
       // normal final payment (subtract advances)
-      if (netPayable < 0) {
+      if (rawNetPayable < 0) {
         setLoading(false)
-        return toast.error('Το τελικό πληρωτέο πρέπει να είναι μεγαλύτερο από 0')
+        return toast.error('Οι προκαταβολές είναι περισσότερες από το υπολογισμένο ποσό')
       }
 
       const agreementLabel = agreementType === 'monthly' ? 'Μισθός' : 'Ημερομίσθιο';
@@ -316,7 +317,7 @@ function PayEmployeeContent() {
 
           <button
             onClick={handleFinalPayment}
-            disabled={loading || (mode === 'advance' ? Number(advanceAmount) <= 0 : netPayable < 0)}
+            disabled={loading || (mode === 'advance' ? Number(advanceAmount) <= 0 : rawNetPayable < 0)}
             style={payBtn}
           >
             {loading
