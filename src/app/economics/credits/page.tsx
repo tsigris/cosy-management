@@ -232,11 +232,14 @@ function CreditsContent() {
       const transRes = await supabase
         .from('transactions')
         .select(
-          'id, store_id, created_at, date, type, amount, category, method, notes, description, is_credit, supplier_id, fixed_asset_id, revenue_source_id',
+          'id, store_id, created_at, date, type, amount, category, method, notes, is_credit, supplier_id, fixed_asset_id, revenue_source_id',
         )
         .eq('store_id', storeId)
 
-      if (transRes.error) throw transRes.error
+      if (transRes.error) {
+        console.error('Transactions query error', transRes.error)
+        throw transRes.error
+      }
       const txs: Tx[] = (transRes.data || []) as any
       setAllTx(txs)
 
@@ -247,9 +250,18 @@ function CreditsContent() {
         supabase.from('revenue_sources').select('id, name').eq('store_id', storeId),
       ])
 
-      if (supsRes.error) throw supsRes.error
-      if (assetsRes.error) throw assetsRes.error
-      if (revRes.error) throw revRes.error
+      if (supsRes.error) {
+        console.error('Suppliers query error', supsRes.error)
+        throw supsRes.error
+      }
+      if (assetsRes.error) {
+        console.error('Fixed assets query error', assetsRes.error)
+        throw assetsRes.error
+      }
+      if (revRes.error) {
+        console.error('Revenue sources query error', revRes.error)
+        throw revRes.error
+      }
 
       const map: Record<string, EntityInfo> = {}
 
