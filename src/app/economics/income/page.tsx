@@ -293,13 +293,30 @@ export default function EconomicsIncomePage() {
     kpiTotal: { fontSize: 20, marginTop: 6, fontWeight: 900 },
     kpiSmall: { fontSize: 12, color: 'var(--muted)', marginTop: 6 },
     list: { display: 'flex', flexDirection: 'column', gap: 10, marginTop: 12 },
-    dayCard: { padding: 12, borderRadius: 20, background: 'var(--surface)', border: '1px solid var(--border)', cursor: 'pointer' },
-    dayHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
-    dayLeft: { minWidth: 0 },
-    // badge: no absolute positioning; inline in date row. Colors set inline per state.
-    badge: { padding: '4px 10px', borderRadius: 999, fontSize: 12, fontWeight: 600, display: 'inline-flex', alignItems: 'center' },
-    dayMeta: { fontSize: 12, color: 'var(--muted)', marginTop: 6 },
-    dayTotalsWrap: { display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' },
+    dayCard: {
+      padding: 16,
+      borderRadius: 22,
+      background: 'rgba(255,255,255,0.96)',
+      border: '1px solid #e2e8f0',
+      boxShadow: '0 10px 24px rgba(15,23,42,0.06)',
+      display: 'flex',
+      flexDirection: 'column',
+      gap: 8,
+    },
+    // Header row: date+badge (left) and total (right)
+    dayHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 },
+    dateRow: { display: 'flex', alignItems: 'center', gap: 8 },
+    dateText: { fontSize: 18, fontWeight: 900, color: '#0f172a' },
+    totalText: { fontSize: 20, fontWeight: 900, color: '#0f172a', textAlign: 'right' },
+    // badge: inline element
+    badge: { display: 'inline-flex', alignItems: 'center', padding: '4px 10px', borderRadius: 999, fontSize: 12, fontWeight: 700 },
+    // breakdown row (pills)
+    breakdownRow: { display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 6 },
+    pill: { display: 'inline-flex', alignItems: 'center', padding: '8px 12px', borderRadius: 999, fontSize: 13, fontWeight: 700, gap: 6 },
+    cashPill: { background: '#ECFDF5', color: '#166534', border: '1px solid #A7F3D0' },
+    cardPill: { background: '#EFF6FF', color: '#1D4ED8', border: '1px solid #BFDBFE' },
+    // meta row
+    metaRow: { fontSize: 12, fontWeight: 600, color: '#64748b', marginTop: 6 },
     chip: { display: 'inline-flex', justifyContent: 'space-between', gap: 8, padding: '6px 10px', borderRadius: 12, background: 'transparent', border: '1px solid var(--border)', minWidth: 120 },
     txRow: { display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderTop: '1px dashed var(--border)' },
     expandBtn: { border: 'none', background: 'transparent', color: 'var(--muted)', fontWeight: 900, cursor: 'pointer' },
@@ -413,8 +430,8 @@ export default function EconomicsIncomePage() {
               return (
                 <div key={day} style={styles.dayCard as any}>
                   <div style={styles.dayHeader as any}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <div style={{ fontWeight: 900 }}>{formatDateEl(new Date(day))}</div>
+                    <div style={styles.dateRow as any}>
+                      <div style={styles.dateText as any}>{formatDateEl(new Date(day))}</div>
                       {day === todayKey ? (
                         <span style={{ ...styles.badge as any, background: '#DCFCE7', color: '#166534' }}>Σήμερα</span>
                       ) : null}
@@ -424,21 +441,23 @@ export default function EconomicsIncomePage() {
                     </div>
 
                     <div style={{ textAlign: 'right' }}>
-                      <div style={{ fontWeight: 900 }}>{amountFmt.format(total)}</div>
-                      <div style={styles.dayMeta as any}>{items.length} κινήσεις</div>
+                      <div style={styles.totalText as any}>{amountFmt.format(total)}</div>
                     </div>
                   </div>
 
-                  <div style={styles.dayTotalsWrap as any}>
-                    <div style={styles.chip as any}>
-                      <div style={{ color: 'var(--muted)' }}>Μετρητά</div>
+                  <div style={styles.breakdownRow as any}>
+                    <div style={{ ...styles.pill as any, ...styles.cashPill as any }}>
+                      <div>Μετρητά</div>
                       <div style={{ fontWeight: 900 }}>{amountFmt.format(cash)}</div>
                     </div>
-                    <div style={styles.chip as any}>
-                      <div style={{ color: 'var(--muted)' }}>Κάρτα</div>
+
+                    <div style={{ ...styles.pill as any, ...styles.cardPill as any }}>
+                      <div>Κάρτα</div>
                       <div style={{ fontWeight: 900 }}>{amountFmt.format(card)}</div>
                     </div>
                   </div>
+
+                  <div style={styles.metaRow as any}>{items.length} κινήσεις • Z ταμειακής</div>
 
                   {isExpanded && (
                     <div style={{ marginTop: 10 }}>
