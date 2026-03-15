@@ -27,6 +27,7 @@ function PayEmployeeContent() {
   const empId = searchParams.get('id') // fixed_asset_id
   const empName = searchParams.get('name')
   const storeId = searchParams.get('store')
+  const mode = searchParams.get('mode')
 
   const [agreementType, setAgreementType] = useState('monthly') 
   const [baseAmount, setBaseAmount] = useState<number>(0)
@@ -37,6 +38,8 @@ function PayEmployeeContent() {
   const [bonus, setBonus] = useState<string>('')
   const [extraOvertimeEuro, setExtraOvertimeEuro] = useState<string>('')
   const [pendingOvertimeHours, setPendingOvertimeHours] = useState<number>(0)
+  const [advanceAmount, setAdvanceAmount] = useState<string>('')
+  const [advanceTotal, setAdvanceTotal] = useState<number>(0)
   const [paymentMethod, setPaymentMethod] = useState<'Μετρητά' | 'Τράπεζα'>('Μετρητά')
   const [date, setDate] = useState(new Date().toISOString().split('T')[0])
   const [loading, setLoading] = useState(true)
@@ -49,6 +52,7 @@ function PayEmployeeContent() {
         .from('fixed_assets')
         .select('pay_basis, monthly_salary, daily_rate, monthly_days')
         .eq('id', empId)
+        .eq('store_id', storeId)
         .single();
 
       if (emp) {
@@ -61,11 +65,25 @@ function PayEmployeeContent() {
         .from('employee_overtimes')
         .select('hours')
         .eq('employee_id', empId)
+        .eq('store_id', storeId)
         .eq('is_paid', false);
 
       if (overtimeError) throw overtimeError;
       const totalPendingHours = (overtimeRows || []).reduce((sum, row) => sum + (Number(row.hours) || 0), 0);
       setPendingOvertimeHours(totalPendingHours);
+
+      // Fetch existing salary advances for this employee in this store
+      const { data: advanceRows, error: advanceError } = await supabase
+        .from('transactions')
+        .select('amount')
+        .eq('fixed_asset_id', empId)
+        .eq('store_id', storeId)
+        .eq('type', 'salary_advance')
+        .eq('is_settled', false);
+
+      if (advanceError) throw advanceError;
+      const totalAdvance = (advanceRows || []).reduce((sum, r) => sum + Math.abs(Number(r.amount) || 0), 0);
+      setAdvanceTotal(totalAdvance);
     } catch (err) { console.error(err) } finally { setLoading(false) }
   }, [empId, storeId])
 
@@ -80,22 +98,57 @@ function PayEmployeeContent() {
     return workedDays * baseAmount;
   };
 
-  const totalPayable = calculateCurrentBase() + (Number(bonus) || 0) + (Number(extraOvertimeEuro) || 0);
+  const grossPayable = calculateCurrentBase() + (Number(bonus) || 0) + (Number(extraOvertimeEuro) || 0);
+  const netPayable = Math.max(0, grossPayable - (advanceTotal || 0));
 
   async function handleFinalPayment() {
-    if (totalPayable <= 0) return toast.error('Το ποσό πρέπει να είναι μεγαλύτερο από 0');
     if (!storeId) return toast.error('Σφάλμα καταστήματος');
     if (!empId) return toast.error('Σφάλμα υπαλλήλου');
     setLoading(true);
 
     try {
+      if (mode === 'advance') {
+        const amountNum = Number(advanceAmount)
+        if (Number.isNaN(amountNum) || amountNum <= 0) {
+          setLoading(false)
+          return toast.error('Το ποσό πρέπει να είναι μεγαλύτερο από 0')
+        }
+
+        const notes = `Προκαταβολή μισθού | ${empName || ''}`
+
+        const { error: transError } = await supabase.from('transactions').insert([{
+          amount: -Math.abs(amountNum),
+          type: 'salary_advance',
+          category: 'Staff',
+          method: paymentMethod,
+          fixed_asset_id: empId,
+          store_id: storeId,
+          date: date,
+          notes: notes,
+          is_settled: false,
+        }]);
+
+        if (transError) throw transError;
+
+        toast.success('Η προκαταβολή καταχωρήθηκε!');
+        router.push(`/employees?store=${storeId}`);
+        return;
+      }
+
+      // normal final payment (subtract advances)
+      if (netPayable <= 0) {
+        setLoading(false)
+        return toast.error('Το τελικό πληρωτέο πρέπει να είναι μεγαλύτερο από 0')
+      }
+
       const agreementLabel = agreementType === 'monthly' ? 'Μισθός' : 'Ημερομίσθιο';
       const daysOrAbsencesLabel = agreementType === 'monthly' ? `Απουσίες: ${absences}` : `Ημέρες: ${workedDays}`;
       const notes = `Εκκαθάριση ${empName || ''} | ${agreementLabel} | Ημέρες/Απουσίες: ${daysOrAbsencesLabel}`;
 
-      // 1. Καταγραφή στα Transactions
+
+      // 1. Καταγραφή στα Transactions (net after advances)
       const { error: transError } = await supabase.from('transactions').insert([{
-        amount: -Math.abs(totalPayable),
+        amount: -Math.abs(netPayable),
         type: 'expense',
         category: 'Staff',
         method: paymentMethod,
@@ -107,13 +160,32 @@ function PayEmployeeContent() {
 
       if (transError) throw transError;
 
-      // 2. Μηδενισμός υπερωριών (Mark as paid)
-      await supabase
+      // 2. After successful payment, mark advances as settled for this employee/store
+      const { error: settleError } = await supabase
+        .from('transactions')
+        .update({ is_settled: true })
+        .eq('store_id', storeId)
+        .eq('fixed_asset_id', empId)
+        .eq('type', 'salary_advance')
+        .eq('is_settled', false);
+
+      if (settleError) {
+        console.error('Failed to mark advances settled', settleError)
+        throw settleError
+      }
+
+      // 3. Μηδενισμός υπερωριών (Mark as paid)
+      const { error: overtimeSettleError } = await supabase
         .from('employee_overtimes')
         .update({ is_paid: true })
         .eq('employee_id', empId)
         .eq('store_id', storeId)
-        .eq('is_paid', false);
+        .eq('is_paid', false)
+
+      if (overtimeSettleError) {
+        console.error('Failed to settle overtimes', overtimeSettleError)
+        throw overtimeSettleError
+      }
 
       toast.success('Η πληρωμή καταχωρήθηκε και οι υπερωρίες εκκαθαρίστηκαν!');
       router.push(`/employees?store=${storeId}`);
@@ -130,66 +202,98 @@ function PayEmployeeContent() {
       <div style={{ maxWidth: '500px', margin: '0 auto', paddingBottom: '100px' }}>
         
         <header style={headerStyle}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <div style={logoBoxStyle}><Calculator size={20} color="#2563eb" /></div>
             <div>
-              <h1 style={titleStyle}>Εκκαθάριση</h1>
+              <h1 style={titleStyle}>{mode === 'advance' ? 'Προκαταβολή' : 'Εκκαθάριση'}</h1>
               <p style={subTitleStyle}>{empName?.toUpperCase()}</p>
             </div>
           </div>
           <Link href={`/employees?store=${storeId}`} style={backBtnStyle}><ChevronLeft size={20} /></Link>
         </header>
 
-        <div style={cardStyle}>
-          <label style={labelStyle}>ΤΥΠΟΣ ΣΥΜΦΩΝΙΑΣ: <span style={{color: colors.accentBlue}}>{agreementType === 'monthly' ? 'ΜΗΝΙΑΙΟΣ' : 'ΗΜΕΡΟΜΙΣΘΙΟ'}</span></label>
-          
-          <div style={gridRow}>
-            {agreementType === 'monthly' ? (
-              <>
-                <div style={inputGroup}>
-                  <label style={smallLabel}>ΑΠΟΥΣΙΕΣ (ΗΜΕΡΕΣ)</label>
-                  <input type="number" value={absences} onChange={e => setAbsences(Number(e.target.value))} style={inputStyle} />
-                </div>
-                <div style={inputGroup}>
-                  <label style={smallLabel}>ΒΑΣΙΚΟΣ ΜΙΣΘΟΣ</label>
-                  <div style={staticValue}>{baseAmount}€</div>
-                </div>
-              </>
-            ) : (
-              <>
-                <div style={inputGroup}>
-                  <label style={smallLabel}>ΗΜΕΡΕΣ ΕΡΓΑΣΙΑΣ</label>
-                  <input type="number" value={workedDays} onChange={e => setWorkedDays(Number(e.target.value))} style={inputStyle} />
-                </div>
-                <div style={inputGroup}>
-                  <label style={smallLabel}>ΗΜΕΡΟΜΙΣΘΙΟ</label>
-                  <div style={staticValue}>{baseAmount}€ / ημ.</div>
-                </div>
-              </>
-            )}
-          </div>
+          <div style={cardStyle}>
+          {mode !== 'advance' && (
+            <>
+              <label style={labelStyle}>ΤΥΠΟΣ ΣΥΜΦΩΝΙΑΣ: <span style={{color: colors.accentBlue}}>{agreementType === 'monthly' ? 'ΜΗΝΙΑΙΟΣ' : 'ΗΜΕΡΟΜΙΣΘΙΟ'}</span></label>
+              
+              <div style={gridRow}>
+                {agreementType === 'monthly' ? (
+                  <>
+                    <div style={inputGroup}>
+                      <label style={smallLabel}>ΑΠΟΥΣΙΕΣ (ΗΜΕΡΕΣ)</label>
+                      <input type="number" value={absences} onChange={e => setAbsences(Number(e.target.value))} style={inputStyle} />
+                    </div>
+                    <div style={inputGroup}>
+                      <label style={smallLabel}>ΒΑΣΙΚΟΣ ΜΙΣΘΟΣ</label>
+                      <div style={staticValue}>{baseAmount}€</div>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div style={inputGroup}>
+                      <label style={smallLabel}>ΗΜΕΡΕΣ ΕΡΓΑΣΙΑΣ</label>
+                      <input type="number" value={workedDays} onChange={e => setWorkedDays(Number(e.target.value))} style={inputStyle} />
+                    </div>
+                    <div style={inputGroup}>
+                      <label style={smallLabel}>ΗΜΕΡΟΜΙΣΘΙΟ</label>
+                      <div style={staticValue}>{baseAmount}€ / ημ.</div>
+                    </div>
+                  </>
+                )}
+              </div>
+            </>
+          )}
 
-          <div style={{...divider, margin: '20px 0'}} />
-
-          <div style={inputGroup}>
-            <label style={smallLabel}>BONUS / ΕΞΤΡΑ (€)</label>
-            <input type="number" value={bonus} onChange={e => setBonus(e.target.value)} style={inputStyle} placeholder="0.00" />
-          </div>
-
-          <div style={{...inputGroup, marginTop: '15px'}}>
-            <label style={smallLabel}>ΥΠΕΡΩΡΙΕΣ ΠΡΟΣ ΠΛΗΡΩΜΗ (€)</label>
-            <input type="number" value={extraOvertimeEuro} onChange={e => setExtraOvertimeEuro(e.target.value)} style={{...inputStyle, borderColor: colors.accentBlue}} placeholder="0.00" />
-            <div style={overtimeHint}>
-              <Clock size={14} />
-              <span>Εκκρεμούν: {pendingOvertimeHours.toFixed(2)} ώρες</span>
+          {mode === 'advance' && (
+            <div style={{ marginBottom: '14px' }}>
+              <label style={smallLabel}>ΠΟΣΟ ΠΡΟΚΑΤΑΒΟΛΗΣ (€)</label>
+              <input type="number" value={advanceAmount} onChange={e => setAdvanceAmount(e.target.value)} style={inputStyle} placeholder="0.00" />
             </div>
-          </div>
+          )}
+
+          {mode !== 'advance' && (
+            <>
+              <div style={{...divider, margin: '20px 0'}} />
+
+              <div style={inputGroup}>
+                <label style={smallLabel}>BONUS / ΕΞΤΡΑ (€)</label>
+                <input type="number" value={bonus} onChange={e => setBonus(e.target.value)} style={inputStyle} placeholder="0.00" />
+              </div>
+
+              <div style={{...inputGroup, marginTop: '15px'}}>
+                <label style={smallLabel}>ΥΠΕΡΩΡΙΕΣ ΠΡΟΣ ΠΛΗΡΩΜΗ (€)</label>
+                <input type="number" value={extraOvertimeEuro} onChange={e => setExtraOvertimeEuro(e.target.value)} style={{...inputStyle, borderColor: colors.accentBlue}} placeholder="0.00" />
+                <div style={overtimeHint}>
+                  <Clock size={14} />
+                  <span>Εκκρεμούν: {pendingOvertimeHours.toFixed(2)} ώρες</span>
+                </div>
+              </div>
+            </>
+          )}
 
           <div style={resultBox}>
-            <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
-              <span style={resultLabel}>ΣΥΝΟΛΟ ΠΛΗΡΩΤΕΟ</span>
-              <span style={resultValue}>{totalPayable.toFixed(2)}€</span>
-            </div>
+            {mode === 'advance' ? (
+              <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
+                <span style={resultLabel}>ΠΟΣΟ ΠΡΟΚΑΤΑΒΟΛΗΣ</span>
+                <span style={resultValue}>{(Number(advanceAmount) || 0).toFixed(2)}€</span>
+              </div>
+            ) : (
+              <div style={{display: 'flex', flexDirection: 'column', gap: '8px'}}>
+                <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
+                  <span style={resultLabel}>ΥΠΟΛΟΓΙΣΜΕΝΟ ΠΟΣΟ</span>
+                  <span style={resultValue}>{grossPayable.toFixed(2)}€</span>
+                </div>
+                <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
+                  <span style={resultLabel}>ΠΡΟΚΑΤΑΒΟΛΕΣ</span>
+                  <span style={resultValue}>{advanceTotal.toFixed(2)}€</span>
+                </div>
+                <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
+                  <span style={resultLabel}>ΤΕΛΙΚΟ ΠΛΗΡΩΤΕΟ</span>
+                  <span style={resultValue}>{netPayable.toFixed(2)}€</span>
+                </div>
+              </div>
+            )}
           </div>
 
           <div style={{marginTop: '20px'}}>
@@ -209,8 +313,14 @@ function PayEmployeeContent() {
             </div>
           </div>
 
-          <button onClick={handleFinalPayment} disabled={loading || totalPayable <= 0} style={payBtn}>
-            {loading ? 'ΓΙΝΕΤΑΙ ΚΑΤΑΧΩΡΗΣΗ...' : <><Banknote size={18} /> ΟΛΟΚΛΗΡΩΣΗ ΠΛΗΡΩΜΗΣ</>}
+          <button
+            onClick={handleFinalPayment}
+            disabled={loading || (mode === 'advance' ? Number(advanceAmount) <= 0 : netPayable <= 0)}
+            style={payBtn}
+          >
+            {loading
+              ? 'ΓΙΝΕΤΑΙ ΚΑΤΑΧΩΡΗΣΗ...'
+              : mode === 'advance' ? <><Banknote size={18} /> ΚΑΤΑΧΩΡΗΣΗ ΠΡΟΚΑΤΑΒΟΛΗΣ</> : <><Banknote size={18} /> ΟΛΟΚΛΗΡΩΣΗ ΠΛΗΡΩΜΗΣ</>}
           </button>
         </div>
       </div>

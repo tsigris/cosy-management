@@ -287,8 +287,10 @@ function EmployeesContent() {
 
         // exclude tips (και παλιές/νέες εγγραφές)
         const note = String(t.notes || '')
-        const isTip = /tips/i.test(note) || String(t.type || '') === 'tip_entry'
-        if (isTip) return false
+        const txType = String(t.type || '')
+        const isTip = /tips/i.test(note) || txType === 'tip_entry'
+        const isAdvance = txType === 'salary_advance'
+        if (isTip || isAdvance) return false
 
         return true
       })
@@ -650,24 +652,29 @@ function EmployeesContent() {
 
     yearTrans.forEach((t) => {
       const note = String(t.notes || '')
-      const isTip = /tips/i.test(note) || String(t.type || '') === 'tip_entry'
+      const txType = String(t.type || '')
+      const isTip = /tips/i.test(note) || txType === 'tip_entry'
+      const isAdvance = txType === 'salary_advance'
 
-      if (!isTip) {
+      if (!isTip && !isAdvance) {
         stats.total += Number(t.amount) || 0
       }
 
       const d = parseTxDate(t)
       const key = d ? getBusinessYear(d) + '-' + getBusinessMonth(d) + '-' + toBusinessDayDate(d).getDate() : String(t.date || '')
       if (!processedDates.has(key)) {
-        const extract = (label: string) => {
-          const regex = new RegExp(`${label}:\\s*(\\d+(\\.\\d+)?)`, 'i')
-          const match = note.match(regex)
-          return match ? parseFloat(match[1]) : 0
-        }
+        // skip extracting base/overtime/bonus for tips or advances
+        if (!isTip && !isAdvance) {
+          const extract = (label: string) => {
+            const regex = new RegExp(`${label}:\\s*(\\d+(\\.\\d+)?)`, 'i')
+            const match = note.match(regex)
+            return match ? parseFloat(match[1]) : 0
+          }
 
-        stats.base += extract('Βασικός')
-        stats.overtime += extract('Υπερ.')
-        stats.bonus += extract('Bonus')
+          stats.base += extract('Βασικός')
+          stats.overtime += extract('Υπερ.')
+          stats.bonus += extract('Bonus')
+        }
 
         if (isTip) {
           const amt = Number(t.amount) || 0
@@ -1241,13 +1248,23 @@ function EmployeesContent() {
                           </>
                         )}
 
-                        <Link
-                          href={`/pay-employee?id=${emp.id}&name=${encodeURIComponent(emp.name || '')}&store=${storeId}`}
-                          onClick={(e) => e.stopPropagation()}
-                          style={payBtnStyle}
-                        >
-                          ΠΛΗΡΩΜΗ
-                        </Link>
+                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                          <Link
+                            href={`/pay-employee?id=${emp.id}&name=${encodeURIComponent(emp.name || '')}&store=${storeId}`}
+                            onClick={(e) => e.stopPropagation()}
+                            style={payBtnStyle}
+                          >
+                            ΠΛΗΡΩΜΗ
+                          </Link>
+
+                          <Link
+                            href={`/pay-employee?id=${emp.id}&name=${encodeURIComponent(emp.name || '')}&store=${storeId}&mode=advance`}
+                            onClick={(e) => e.stopPropagation()}
+                            style={advanceBtnStyle}
+                          >
+                            ΠΡΟΚΑΤΑΒΟΛΗ
+                          </Link>
+                        </div>
                       </div>
                     </div>
 
@@ -1344,11 +1361,18 @@ function EmployeesContent() {
                             })
                             .map((t) => {
                               const note = String(t.notes || '')
-                              const isTip = /tips/i.test(note) || String(t.type || '') === 'tip_entry'
-                              const noteLabel = isTip ? note.split('[')[0]?.trim() || 'Tips' : note.split('[')[1]?.replace(']', '') || 'Πληρωμή'
+                              const txType = String(t.type || '')
+                              const isTip = /tips/i.test(note) || txType === 'tip_entry'
+                              const isAdvance = txType === 'salary_advance'
+                              let noteLabel = 'Πληρωμή'
+                              if (isAdvance) noteLabel = 'ΠΡΟΚΑΤΑΒΟΛΗ'
+                              else if (isTip) noteLabel = note.split('[')[0]?.trim() || 'Tips'
+                              else noteLabel = note.split('[')[1]?.replace(']', '') || 'Πληρωμή'
 
                               const d = parseTxDate(t)
                               const dateLabel = d ? formatBusinessDateShort(d) : new Date(t.date).toLocaleDateString('el-GR')
+
+                              const displayAmount = Math.abs(Number(t.amount) || 0)
 
                               return (
                                 <div key={t.id} style={historyItemExtended}>
@@ -1356,7 +1380,7 @@ function EmployeesContent() {
                                     <span style={{ color: colors.secondaryText, fontWeight: '700', fontSize: '11px' }}>{dateLabel}</span>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                                       <span>{t.method === 'Τράπεζα' ? '🏦' : '💵'}</span>
-                                      <span style={{ fontWeight: '800', color: colors.primaryDark }}>{Number(t.amount).toFixed(2)}€</span>
+                                      <span style={{ fontWeight: '800', color: colors.primaryDark }}>{displayAmount.toFixed(2)}€</span>
                                       {isAdmin && (
                                         <button onClick={() => deleteTransaction(t.id)} style={transDeleteBtn}>
                                           🗑️
@@ -1369,9 +1393,9 @@ function EmployeesContent() {
                                     style={{
                                       margin: '4px 0 0',
                                       fontSize: '10px',
-                                      color: isTip ? '#b45309' : colors.secondaryText,
+                                      color: isTip ? '#b45309' : isAdvance ? '#f59e0b' : colors.secondaryText,
                                       fontStyle: 'italic',
-                                      fontWeight: isTip ? 900 : 600,
+                                      fontWeight: isTip ? 900 : isAdvance ? 800 : 600,
                                     }}
                                   >
                                     {noteLabel}
@@ -1496,6 +1520,17 @@ const payBtnStyle: any = {
   fontWeight: '800',
   textDecoration: 'none',
   boxShadow: '0 4px 8px rgba(37, 99, 235, 0.2)',
+}
+
+const advanceBtnStyle: any = {
+  backgroundColor: '#f59e0b',
+  color: 'white',
+  padding: '8px 14px',
+  borderRadius: '10px',
+  fontSize: '10px',
+  fontWeight: '800',
+  textDecoration: 'none',
+  boxShadow: '0 4px 8px rgba(245, 158, 11, 0.18)',
 }
 
 const addBtn: any = {
