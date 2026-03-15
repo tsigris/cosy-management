@@ -264,6 +264,18 @@ export default function EconomicsExpensesPage() {
     setViewMode('movements')
   }, [])
 
+  // --- DASHBOARD METRICS (STEP 1-3) ---
+  const allTx = filteredRowsByPeriod || []
+  const creditTxs = allTx.filter((t) => Boolean(t.is_credit))
+
+  const totalExpenses = allTx.reduce((s, t) => s + Math.abs(Number(t.amount) || 0), 0)
+  const cashExpenses = allTx.filter((t) => !t.is_credit).reduce((s, t) => s + Math.abs(Number(t.amount) || 0), 0)
+  const creditExpenses = allTx.filter((t) => t.is_credit).reduce((s, t) => s + Math.abs(Number(t.amount) || 0), 0)
+  const averageExpense = allTx.length ? totalExpenses / allTx.length : 0
+
+  const topSuppliers = beneficiaryGroups.slice(0, 3)
+  const topCategories = categoryGroups.slice(0, 4)
+
   return (
     <main style={pageWrap}>
       <div style={container}>
@@ -318,6 +330,76 @@ export default function EconomicsExpensesPage() {
             </span>
           </div>
         )}
+
+        {/* KPI Grid */}
+        <div style={kpiGrid}>
+          <div style={kpiCard}>
+            <div style={{ color: 'var(--muted)', fontWeight: 800 }}>Total Expenses</div>
+            <div style={{ fontWeight: 900, fontSize: 20, marginTop: 8 }}>
+              {Number(totalExpenses).toLocaleString('el-GR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}€
+            </div>
+          </div>
+
+          <div style={kpiCard}>
+            <div style={{ color: 'var(--muted)', fontWeight: 800 }}>Cash Expenses</div>
+            <div style={{ fontWeight: 900, fontSize: 20, marginTop: 8 }}>
+              {Number(cashExpenses).toLocaleString('el-GR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}€
+            </div>
+          </div>
+
+          <div style={kpiCard}>
+            <div style={{ color: 'var(--muted)', fontWeight: 800 }}>Credit Expenses</div>
+            <div style={{ fontWeight: 900, fontSize: 20, marginTop: 8 }}>
+              {Number(creditExpenses).toLocaleString('el-GR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}€
+            </div>
+          </div>
+
+          <div style={kpiCard}>
+            <div style={{ color: 'var(--muted)', fontWeight: 800 }}>Average Expense</div>
+            <div style={{ fontWeight: 900, fontSize: 20, marginTop: 8 }}>
+              {Number(averageExpense).toLocaleString('el-GR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}€
+            </div>
+          </div>
+        </div>
+
+        {/* Top Suppliers & Categories */}
+        <section style={summarySection}>
+          <h3 style={{ margin: 0, color: 'var(--text)', fontSize: 16, fontWeight: 900 }}>TOP SUPPLIERS</h3>
+          <div style={summaryGridThree}>
+            {topSuppliers.length === 0 ? (
+              <div style={emptyText}>Δεν υπάρχουν προμηθευτές</div>
+            ) : (
+              topSuppliers.map((s) => (
+                <div key={s.key} style={summaryCard}>
+                  <div style={{ fontWeight: 900, color: 'var(--text)' }}>{s.key}</div>
+                  <div style={{ color: 'var(--muted)', fontWeight: 800, fontSize: 13 }}>{s.rows.length} κινήσεις</div>
+                  <div style={{ fontWeight: 900, marginTop: 8 }}>
+                    {Number(s.total).toLocaleString('el-GR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}€
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </section>
+
+        <section style={summarySection}>
+          <h3 style={{ margin: 0, color: 'var(--text)', fontSize: 16, fontWeight: 900 }}>TOP CATEGORIES</h3>
+          <div style={summaryGridFour}>
+            {topCategories.length === 0 ? (
+              <div style={emptyText}>Δεν υπάρχουν κατηγορίες</div>
+            ) : (
+              topCategories.map((c) => (
+                <div key={c.key} style={summaryCard}>
+                  <div style={{ fontWeight: 900, color: 'var(--text)' }}>{c.key}</div>
+                  <div style={{ color: 'var(--muted)', fontWeight: 800, fontSize: 13 }}>{c.rows.length} κινήσεις</div>
+                  <div style={{ fontWeight: 900, marginTop: 8 }}>
+                    {Number(c.total).toLocaleString('el-GR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}€
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </section>
 
         {/* Views */}
         {viewMode === 'beneficiary' ? (
@@ -623,3 +705,46 @@ const movementCard: CSSProperties = {
 
 const centerText: CSSProperties = { padding: 24, textAlign: 'center', fontWeight: 850, color: 'var(--text)' }
 const emptyText: CSSProperties = { padding: 24, textAlign: 'center', fontWeight: 850, color: 'var(--muted)' }
+
+const kpiGrid: CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: 'repeat(2, 1fr)',
+  gap: 16,
+  marginTop: 16,
+}
+
+const kpiCard: CSSProperties = {
+  borderRadius: 20,
+  border: '1px solid var(--border)',
+  background: 'var(--surface, rgba(255,255,255,0.97))',
+  padding: 16,
+  boxShadow: 'var(--shadow)',
+}
+
+const summarySection: CSSProperties = {
+  marginTop: 16,
+  borderRadius: 20,
+  padding: 12,
+}
+
+const summaryGridThree: CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: 'repeat(3, 1fr)',
+  gap: 12,
+  marginTop: 12,
+}
+
+const summaryGridFour: CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: 'repeat(4, 1fr)',
+  gap: 12,
+  marginTop: 12,
+}
+
+const summaryCard: CSSProperties = {
+  borderRadius: 16,
+  border: '1px solid var(--border)',
+  background: 'var(--surface, rgba(255,255,255,0.97))',
+  padding: 12,
+  textAlign: 'left',
+}
