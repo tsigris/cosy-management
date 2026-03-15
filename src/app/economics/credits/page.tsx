@@ -233,7 +233,7 @@ function CreditsContent() {
       const transRes = await supabase
         .from('transactions')
         .select(
-          'id, store_id, created_at, date, type, amount, category, method, notes, description, is_credit, supplier_id, fixed_asset_id, revenue_source_id, is_deleted',
+          'id, store_id, created_at, date, type, amount, category, method, notes, description, is_credit, supplier_id, fixed_asset_id, revenue_source_id',
         )
         .eq('store_id', storeId)
 
