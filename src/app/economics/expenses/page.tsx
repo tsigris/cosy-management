@@ -101,6 +101,37 @@ function filterBeneficiaries(groups: BeneficiaryGroup[], q: string): Beneficiary
   return groups.filter((g) => norm(g.key).includes(qn) || norm(g.label).includes(qn))
 }
 
+/* ---------------- NEW HELPERS (layout / display) ---------------- */
+
+function formatDateOnly(raw?: string | null): string {
+  if (!raw) return '—'
+  try {
+    const d = new Date(raw)
+    if (isNaN(d.getTime())) return '—'
+    const dd = String(d.getDate()).padStart(2, '0')
+    const mm = String(d.getMonth() + 1).padStart(2, '0')
+    const yyyy = d.getFullYear()
+    return `${dd}/${mm}/${yyyy}`
+  } catch (e) {
+    return '—'
+  }
+}
+
+function displayCategoryLabel(value?: string | null): string {
+  if (!value) return '—'
+  const v = String(value).trim().toLowerCase()
+  const map: Record<string, string> = {
+    utilities: 'Λογαριασμοί',
+    utility: 'Λογαριασμοί',
+    other: 'Λοιπά',
+    maintenance: 'Συντήρηση',
+    staff: 'Προσωπικό',
+    worker: 'Συντήρηση',
+    products: 'Εμπορεύματα',
+  }
+  return map[v] ?? value
+}
+
 /* ---------------- UI CONFIG ---------------- */
 
 const VIEW_MODES = [
