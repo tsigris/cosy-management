@@ -536,14 +536,58 @@ export default function EconomicsExpensesPage() {
               <div style={emptyText}>Δεν υπάρχουν δικαιούχοι</div>
             ) : (
               topEntities.map((s) => (
-                <div key={s.key} style={{ ...summaryCard, background: '#f8fbff', border: '1px solid #dbeafe' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-                    <div style={{ display: 'flex', flexDirection: 'column' }}>
-                      <div style={{ fontWeight: 900, color: '#0f172a' }}>{s.key}</div>
-                      <div style={{ color: 'var(--muted)', fontWeight: 700, fontSize: 13 }}>Δικαιούχος • {s.rows.length} κινήσεις</div>
+                <div
+                  key={s.key}
+                  style={{
+                    ...summaryCard,
+                    background: '#f8fbff',
+                    border: '1px solid #dbeafe',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 8,
+                    minHeight: 120,
+                    justifyContent: 'space-between',
+                    overflow: 'hidden',
+                  }}
+                >
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    <div
+                      style={{
+                        fontSize: 15,
+                        lineHeight: 1.25,
+                        fontWeight: 900,
+                        color: '#0f172a',
+                        wordBreak: 'break-word',
+                      }}
+                    >
+                      {s.key}
                     </div>
-                    <div style={{ textAlign: 'right' }}>
-                      <div style={{ fontWeight: 900, color: '#0f172a' }}>{Number(s.total).toLocaleString('el-GR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}€</div>
+
+                    <div
+                      style={{
+                        color: 'var(--muted)',
+                        fontWeight: 700,
+                        fontSize: 13,
+                      }}
+                    >
+                      Δικαιούχος • {s.rows.length} κινήσεις
+                    </div>
+                  </div>
+
+                  <div style={{ textAlign: 'right' }}>
+                    <div
+                      style={{
+                        fontSize: 16,
+                        fontWeight: 900,
+                        color: '#0f172a',
+                        wordBreak: 'keep-all',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {Number(s.total).toLocaleString('el-GR', {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}€
                     </div>
                   </div>
                 </div>
@@ -576,11 +620,44 @@ export default function EconomicsExpensesPage() {
                   }}
                 >
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                    <div style={{ fontSize: 15, lineHeight: 1.25, fontWeight: 900, color: '#312e81', wordBreak: 'break-word' }}>{displayCategoryLabel(c.key)}</div>
-                    <div style={{ color: 'var(--muted)', fontWeight: 700, fontSize: 13 }}>Κατηγορία • {c.count} κινήσεις</div>
+                    <div
+                      style={{
+                        fontSize: 15,
+                        lineHeight: 1.25,
+                        fontWeight: 900,
+                        color: '#312e81',
+                        wordBreak: 'break-word',
+                      }}
+                    >
+                      {displayCategoryLabel(c.key)}
+                    </div>
+
+                    <div
+                      style={{
+                        color: 'var(--muted)',
+                        fontWeight: 700,
+                        fontSize: 13,
+                      }}
+                    >
+                      Κατηγορία • {c.count} κινήσεις
+                    </div>
                   </div>
+
                   <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontSize: 16, fontWeight: 900, color: '#312e81', wordBreak: 'keep-all', whiteSpace: 'nowrap' }}>{Number(c.total).toLocaleString('el-GR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}€</div>
+                    <div
+                      style={{
+                        fontSize: 16,
+                        fontWeight: 900,
+                        color: '#312e81',
+                        wordBreak: 'keep-all',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {Number(c.total).toLocaleString('el-GR', {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}€
+                    </div>
                   </div>
                 </div>
               ))
