@@ -76,6 +76,7 @@ function ReportsContent() {
   const [transactions, setTransactions] = useState<any[]>([])
   const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear())
   const [view, setView] = useState<ReportsView>('summary')
+  const [period, setPeriod] = useState<'month' | 'year' | '30days' | 'all'>('month')
 
   const load = useCallback(async () => {
     try {
@@ -115,21 +116,48 @@ function ReportsContent() {
     setSelectedYear(yearOptions[0])
   }, [yearOptions, selectedYear])
 
-  const txThisYear = useMemo(() => transactions.filter((t) => getTxYear(t) === selectedYear), [transactions, selectedYear])
+  // PERIOD helpers
+  const getStartOfMonth = useCallback(() => {
+    const now = new Date()
+    return new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0)
+  }, [])
+
+  const getStartOfYear = useCallback(() => {
+    return new Date(selectedYear, 0, 1, 0, 0, 0, 0)
+  }, [selectedYear])
+
+  const getLast30Days = useCallback(() => {
+    const d = new Date()
+    d.setDate(d.getDate() - 30)
+    d.setHours(0, 0, 0, 0)
+    return d
+  }, [])
+
+  const filteredTx = useMemo(() => {
+    return transactions.filter((tx) => {
+      const d = getTxDate(tx)
+      if (!d) return false
+      if (period === 'all') return true
+      if (period === 'month') return d >= getStartOfMonth()
+      if (period === 'year') return d >= getStartOfYear()
+      if (period === '30days') return d >= getLast30Days()
+      return true
+    })
+  }, [transactions, period, getStartOfMonth, getStartOfYear, getLast30Days])
 
   // types inferred from analysis page
   const incomeTypes = ['income', 'income_collection', 'debt_received']
   const expenseTypes = ['expense', 'debt_payment']
 
-  const incomeTotal = useMemo(() => txThisYear.filter((t) => incomeTypes.includes(t.type)).reduce((a, t) => a + Number(t.amount || 0), 0), [txThisYear])
-  const expenseTotal = useMemo(() => txThisYear.filter((t) => expenseTypes.includes(t.type)).reduce((a, t) => a + Math.abs(Number(t.amount || 0)), 0), [txThisYear])
+  const incomeTotal = useMemo(() => filteredTx.filter((t) => incomeTypes.includes(t.type)).reduce((a, t) => a + Number(t.amount || 0), 0), [filteredTx])
+  const expenseTotal = useMemo(() => filteredTx.filter((t) => expenseTypes.includes(t.type)).reduce((a, t) => a + Math.abs(Number(t.amount || 0)), 0), [filteredTx])
   const netTotal = useMemo(() => incomeTotal - expenseTotal, [incomeTotal, expenseTotal])
 
-  const byCategory = useMemo(() => groupBy(txThisYear, (t) => String(t.category || t.type || 'Άγνωστο')), [txThisYear])
-  const byMethod = useMemo(() => groupBy(txThisYear, (t) => String((t.payment_method || t.method || '').trim() || 'Άγνωστη Μέθοδος')), [txThisYear])
+  const byCategory = useMemo(() => groupBy(filteredTx, (t) => String(t.category || t.type || 'Άγνωστο')), [filteredTx])
+  const byMethod = useMemo(() => groupBy(filteredTx, (t) => String((t.payment_method || t.method || '').trim() || 'Άγνωστη Μέθοδος')), [filteredTx])
   const byMonth = useMemo(() => {
     const map: Record<string, { key: string; total: number; count: number }> = {}
-    for (const t of txThisYear) {
+    for (const t of filteredTx) {
       const d = getTxDate(t)
       const k = d ? monthKey(d) : 'Άγνωστο'
       if (!map[k]) map[k] = { key: k, total: 0, count: 0 }
@@ -137,9 +165,9 @@ function ReportsContent() {
       map[k].count += 1
     }
     return Object.values(map).sort((a, b) => String(b.key).localeCompare(String(a.key)))
-  }, [txThisYear])
+  }, [filteredTx])
 
-  const recent = useMemo(() => txThisYear.slice().sort((a, b) => (new Date(b.date || b.created_at).getTime() || 0) - (new Date(a.date || a.created_at).getTime() || 0)).slice(0, 20), [txThisYear])
+  const recent = useMemo(() => filteredTx.slice().sort((a, b) => (new Date(b.date || b.created_at).getTime() || 0) - (new Date(a.date || a.created_at).getTime() || 0)).slice(0, 20), [filteredTx])
 
   const headerTitle = 'Οικονομικό Κέντρο'
   const headerSubtitle = 'ΑΝΑΦΟΡΕΣ'
@@ -181,7 +209,15 @@ function ReportsContent() {
           <Link href={`/economics/scheduled-payments?store=${storeIdFromUrl}`} style={{ ...navBtn }}><Calendar size={14} style={{ marginRight: 6 }} />Scheduled</Link>
         </div>
 
-        {/* Year selector */}
+        {/* Period selector */}
+        <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+          <button onClick={() => setPeriod('month')} style={{ ...viewBtn, background: period === 'month' ? 'var(--surface)' : 'transparent' }}>Μήνας</button>
+          <button onClick={() => setPeriod('year')} style={{ ...viewBtn, background: period === 'year' ? 'var(--surface)' : 'transparent' }}>Έτος</button>
+          <button onClick={() => setPeriod('30days')} style={{ ...viewBtn, background: period === '30days' ? 'var(--surface)' : 'transparent' }}>30 ημέρες</button>
+          <button onClick={() => setPeriod('all')} style={{ ...viewBtn, background: period === 'all' ? 'var(--surface)' : 'transparent' }}>Όλα</button>
+        </div>
+
+        {/* Year selector (full width) */}
         <div style={card}>
           <div style={{ fontSize: 11, fontWeight: 900, color: 'var(--muted)', marginBottom: 8 }}>ΕΤΟΣ</div>
           <select value={String(selectedYear)} onChange={(e) => setSelectedYear(Number(e.target.value))} style={{ width: '100%', padding: 12, borderRadius: 10, border: '1px solid var(--border)', background: 'var(--surface)', fontWeight: 800 }}>
