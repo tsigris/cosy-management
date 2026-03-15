@@ -243,7 +243,7 @@ function CreditsContent() {
 
       // 2) entities for names
       const [supsRes, assetsRes, revRes] = await Promise.all([
-        supabase.from('suppliers').select('id, name, rf_code, bank_name').eq('store_id', storeId),
+        supabase.from('suppliers').select('id, name, bank_name').eq('store_id', storeId),
         supabase.from('fixed_assets').select('id, name, sub_category, category').eq('store_id', storeId),
         supabase.from('revenue_sources').select('id, name').eq('store_id', storeId),
       ])
