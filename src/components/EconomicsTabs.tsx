@@ -3,18 +3,21 @@
 import Link from 'next/link'
 import { usePathname, useSearchParams } from 'next/navigation'
 import type { CSSProperties } from 'react'
+import { Wallet, TrendingDown, Receipt, BarChart3, CalendarDays, LineChart } from 'lucide-react'
 
 type TabItem = {
   label: string
   path: string
+  Icon: any
 }
 
 const tabs: TabItem[] = [
-  { label: 'Ταμειακή ροή', path: '/economics/cashflow' },
-  { label: 'Δαπάνες', path: '/economics/expenses' },
-  { label: 'Πιστώσεις', path: '/economics/credits' },
-  { label: 'Αναφορές', path: '/economics/reports' },
-  { label: 'Πληρωμές', path: '/economics/scheduled-payments' },
+  { label: 'Cashflow', path: '/economics/cashflow', Icon: Wallet },
+  { label: 'Expenses', path: '/economics/expenses', Icon: TrendingDown },
+  { label: 'Credits', path: '/economics/credits', Icon: Receipt },
+  { label: 'Reports', path: '/economics/reports', Icon: BarChart3 },
+  { label: 'Scheduled', path: '/economics/scheduled-payments', Icon: CalendarDays },
+  { label: 'Profit', path: '/economics/profit', Icon: LineChart },
 ]
 
 export default function EconomicsTabs() {
@@ -22,14 +25,14 @@ export default function EconomicsTabs() {
   const searchParams = useSearchParams()
 
   const withQueryParams = (path: string) => {
-    // κρατάμε ΟΛΑ τα query params (store, date, range, κλπ)
+    // preserve ALL query params (store, date, range, etc.)
     const qs = searchParams?.toString() || ''
     return qs ? `${path}?${qs}` : path
   }
 
   const isActivePath = (tabPath: string) => {
-    // exact match (όπως πριν) + safe support για nested routes
-    return pathname === tabPath || pathname.startsWith(`${tabPath}/`)
+    // exact match + safe support for nested routes
+    return pathname === tabPath || pathname?.startsWith(`${tabPath}/`)
   }
 
   return (
@@ -37,13 +40,17 @@ export default function EconomicsTabs() {
       <div style={tabsScroller}>
         {tabs.map((tab) => {
           const isActive = isActivePath(tab.path)
+          const Icon = tab.Icon
           return (
             <Link
               key={tab.path}
               href={withQueryParams(tab.path)}
               style={{ ...tabBtn, ...(isActive ? tabBtnActive : null) }}
             >
-              {tab.label}
+              <div style={tabInner}>
+                <Icon size={20} style={{ marginBottom: 6 }} />
+                <div style={tabLabel}>{tab.label}</div>
+              </div>
             </Link>
           )
         })}
@@ -78,14 +85,17 @@ const tabsScroller: CSSProperties = {
 const tabBtn: CSSProperties = {
   flex: '0 0 auto',
   textDecoration: 'none',
-  borderRadius: 999,
+  borderRadius: 14,
   border: '1px solid var(--border)',
   background: 'var(--surfaceSolid)',
   color: 'var(--text)',
-  padding: '10px 14px',
-  fontSize: 13,
+  padding: '10px 12px',
+  fontSize: 12,
   fontWeight: 900,
   transition: 'all 150ms ease',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
 }
 
 const tabBtnActive: CSSProperties = {
@@ -93,4 +103,17 @@ const tabBtnActive: CSSProperties = {
   color: 'var(--surfaceSolid)',
   border: '1px solid var(--text)',
   boxShadow: 'var(--shadow)',
+}
+
+const tabInner: CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: 0,
+}
+
+const tabLabel: CSSProperties = {
+  fontSize: 11,
+  lineHeight: '12px',
 }
