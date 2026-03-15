@@ -136,7 +136,6 @@ function CreditsContent() {
 
   // period filter
   const [period, setPeriod] = useState<'month' | 'year' | '30days' | 'all'>('month')
-  const [selectedYear, setSelectedYear] = useState<number>(currentYear)
 
   // ✅ YEAR SELECTOR (tab-aware)
   const currentYear = new Date().getFullYear()
