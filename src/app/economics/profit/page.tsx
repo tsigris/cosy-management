@@ -149,6 +149,15 @@ function ProfitContent() {
 
   const amountFmt = (n: number) => n.toLocaleString('el-GR', { minimumFractionDigits: 2 }) + '€'
 
+  const [isMobile, setIsMobile] = useState<boolean>(false)
+
+  useEffect(() => {
+    const check = () => setIsMobile(typeof window !== 'undefined' && window.innerWidth < 768)
+    check()
+    window.addEventListener('resize', check)
+    return () => window.removeEventListener('resize', check)
+  }, [])
+
   return (
     <div style={{ background: 'var(--bg-grad)', minHeight: '100vh', padding: 20 }}>
       <Toaster position="top-center" richColors />
@@ -187,23 +196,43 @@ function ProfitContent() {
 
           {loading ? (
             <div>Φόρτωση...</div>
+          ) : byMonth.length === 0 ? (
+            <div style={{ color: 'var(--muted)' }}>Δεν υπάρχουν δεδομένα για την επιλεγμένη περίοδο.</div>
+          ) : isMobile ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {byMonth.map((r) => (
+                <div key={r.month} style={{ padding: 12, borderRadius: 12, border: '1px solid var(--border)', background: 'var(--surface)' }}>
+                  <div style={{ fontWeight: 900, marginBottom: 8 }}>{prettyMonthLabel(r.month)}</div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 6 }}>
+                    <div style={{ color: 'var(--muted)' }}>Έσοδα</div>
+                    <div style={{ fontWeight: 900 }}>{amountFmt(r.revenue)}</div>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 6 }}>
+                    <div style={{ color: 'var(--muted)' }}>Έξοδα</div>
+                    <div style={{ fontWeight: 900 }}>{amountFmt(r.expenses)}</div>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+                    <div style={{ color: 'var(--muted)' }}>Κέρδος</div>
+                    <div style={{ fontWeight: 900, color: r.profit >= 0 ? '#10b981' : '#dc2626' }}>{amountFmt(r.profit)}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               <div style={{ display: 'flex', fontWeight: 900, color: 'var(--muted)', padding: '6px 0' }}>
-                <div style={{ flex: 2 }}>Μήνας</div>
-                <div style={{ flex: 1, textAlign: 'right' }}>Έσοδα</div>
-                <div style={{ flex: 1, textAlign: 'right' }}>Έξοδα</div>
-                <div style={{ flex: 1, textAlign: 'right' }}>Κέρδος</div>
+                <div style={{ flex: 2, minWidth: 160 }}>Μήνας</div>
+                <div style={{ flex: 1, textAlign: 'right', minWidth: 120 }}>Έσοδα</div>
+                <div style={{ flex: 1, textAlign: 'right', minWidth: 120 }}>Έξοδα</div>
+                <div style={{ flex: 1, textAlign: 'right', minWidth: 120 }}>Κέρδος</div>
               </div>
 
-              {byMonth.length === 0 && <div style={{ color: 'var(--muted)' }}>Δεν υπάρχουν δεδομένα για την επιλεγμένη περίοδο.</div>}
-
               {byMonth.map((r) => (
-                <div key={r.month} style={{ display: 'flex', alignItems: 'center', padding: '8px 0', borderTop: '1px solid var(--border)' }}>
-                  <div style={{ flex: 2 }}>{prettyMonthLabel(r.month)}</div>
-                  <div style={{ flex: 1, textAlign: 'right', fontWeight: 900 }}>{amountFmt(r.revenue)}</div>
-                  <div style={{ flex: 1, textAlign: 'right', fontWeight: 900 }}>{amountFmt(r.expenses)}</div>
-                  <div style={{ flex: 1, textAlign: 'right', fontWeight: 900, color: r.profit >= 0 ? '#10b981' : '#dc2626' }}>{amountFmt(r.profit)}</div>
+                <div key={r.month} style={{ display: 'flex', alignItems: 'center', padding: '10px 0', borderTop: '1px solid var(--border)' }}>
+                  <div style={{ flex: 2, minWidth: 160 }}>{prettyMonthLabel(r.month)}</div>
+                  <div style={{ flex: 1, textAlign: 'right', minWidth: 120, fontWeight: 900 }}>{amountFmt(r.revenue)}</div>
+                  <div style={{ flex: 1, textAlign: 'right', minWidth: 120, fontWeight: 900 }}>{amountFmt(r.expenses)}</div>
+                  <div style={{ flex: 1, textAlign: 'right', minWidth: 120, fontWeight: 900, color: r.profit >= 0 ? '#10b981' : '#dc2626' }}>{amountFmt(r.profit)}</div>
                 </div>
               ))}
             </div>
