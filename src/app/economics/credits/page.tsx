@@ -217,26 +217,31 @@ function CreditsContent() {
   // -----------------------------
   // FETCH (transactions + entities)
   // -----------------------------
-  const fetchAll = useCallback(async () => {
-    if (!storeIdFromUrl || !isValidUUID(storeIdFromUrl)) {
-      setLoading(false)
-      return
-    }
+  const fetchTransactions = useCallback(async () => {
+    if (!storeIdFromUrl || !isValidUUID(storeIdFromUrl)) return
 
     try {
       setLoading(true)
-
-      // 1) transactions
       const transRes = await supabase.from('transactions').select('*').eq('store_id', storeIdFromUrl)
-
       if (transRes.error) {
         console.error('Transactions query error', transRes.error)
         throw transRes.error
       }
       const transactions: Tx[] = (transRes.data || []) as any
       setAllTx(transactions)
+    } catch (e: any) {
+      console.error(e)
+      toast.error('Σφάλμα φόρτωσης δεδομένων Πιστώσεων')
+    } finally {
+      setLoading(false)
+    }
+  }, [storeIdFromUrl, supabase])
 
-      // 2) entities for names (only what is needed per mode)
+  const fetchEntities = useCallback(async () => {
+    if (!storeIdFromUrl || !isValidUUID(storeIdFromUrl)) return
+
+    try {
+      setLoading(true)
       const map: Record<string, EntityInfo> = {}
 
       if (viewMode === 'expenses') {
@@ -304,8 +309,14 @@ function CreditsContent() {
       router.replace('/select-store')
       return
     }
-    fetchAll()
-  }, [fetchAll, storeIdFromUrl, router])
+
+    fetchTransactions()
+  }, [fetchTransactions, storeIdFromUrl, router])
+
+  useEffect(() => {
+    if (!storeIdFromUrl || !isValidUUID(storeIdFromUrl)) return
+    fetchEntities()
+  }, [fetchEntities, viewMode, storeIdFromUrl])
 
   // -----------------------------
   // CREDIT TX FILTER (year + mode + relevant entity)
