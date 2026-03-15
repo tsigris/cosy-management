@@ -698,7 +698,7 @@ export default function EconomicsExpensesPage() {
                 </div>
               )}
           </section>
-            )} : (
+        ) : (
               <section style={card}>
                 <h2 style={cardTitle}>Λίστα Κινήσεων</h2>
 
