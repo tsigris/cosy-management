@@ -149,7 +149,7 @@ function ReportsContent() {
 
   // types inferred from analysis page
   const incomeTypes = ['income', 'income_collection', 'debt_received']
-  const expenseTypes = ['expense', 'debt_payment']
+  const expenseTypes = ['expense', 'debt_payment', 'salary_advance']
 
   const incomeTotal = useMemo(() => filteredTx.filter((t) => incomeTypes.includes(t.type)).reduce((a, t) => a + Number(t.amount || 0), 0), [filteredTx])
   const expenseTotal = useMemo(() => filteredTx.filter((t) => expenseTypes.includes(t.type)).reduce((a, t) => a + Math.abs(Number(t.amount || 0)), 0), [filteredTx])

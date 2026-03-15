@@ -193,7 +193,7 @@ function AnalysisContent() {
   const signedAmount = useCallback((t: any) => {
     const raw = Number(t.amount) || 0
     if (raw < 0) return raw
-    if (t.type === 'expense' || t.type === 'debt_payment' || t.type === 'savings_deposit') return -Math.abs(raw)
+    if (t.type === 'expense' || t.type === 'debt_payment' || t.type === 'salary_advance' || t.type === 'savings_deposit') return -Math.abs(raw)
     return Math.abs(raw)
   }, [])
 
@@ -435,7 +435,7 @@ function AnalysisContent() {
           .eq('store_id', storeId)
           .gt('date', endDate)
           .lte('date', forecastTo)
-          .in('type', ['expense', 'debt_payment'])
+          .in('type', ['expense', 'debt_payment', 'salary_advance'])
           .order('date', { ascending: true }),
       ])
 
@@ -541,7 +541,7 @@ function AnalysisContent() {
         .reduce((acc, t) => acc + Math.abs(Number(t.amount) || 0), 0)
 
       const expenses = rowsNoCredit
-        .filter((t) => t.type === 'expense' || t.type === 'debt_payment')
+        .filter((t) => t.type === 'expense' || t.type === 'debt_payment' || t.type === 'salary_advance')
         .reduce((acc, t) => acc + Math.abs(Number(t.amount) || 0), 0)
 
       const savingsDeposits = rowsNoCredit
@@ -585,7 +585,7 @@ function AnalysisContent() {
         const amt = signedAmount(t)
 
         if (credit) {
-          if (t.type === 'expense' || t.type === 'debt_payment') creditOutstanding += Math.abs(amt)
+            if (t.type === 'expense' || t.type === 'debt_payment' || t.type === 'salary_advance') creditOutstanding += Math.abs(amt)
           if (t.type === 'income' || t.type === 'income_collection' || t.type === 'debt_received')
             creditIncoming += Math.abs(amt)
           continue
@@ -660,7 +660,7 @@ function AnalysisContent() {
   const cashExpensesToday = useMemo(() => {
     if (!isZReport) return 0
     return periodTx
-      .filter((t) => t.type === 'expense' || t.type === 'debt_payment')
+      .filter((t) => t.type === 'expense' || t.type === 'debt_payment' || t.type === 'salary_advance')
       .filter((t) => getMethod(t) === 'Μετρητά')
       .filter((t) => !isCreditTx(t))
       .reduce((acc, t) => acc + Math.abs(Number(t.amount) || 0), 0)
@@ -701,7 +701,7 @@ function AnalysisContent() {
   const entitySummary = useMemo(() => {
     // Build a list of entities (paid/credit totals) depending on filterA
     // This is the SIMPLE replacement for “show all movements”.
-    const rows = periodTx.filter((t) => ['expense', 'debt_payment'].includes(t.type))
+    const rows = periodTx.filter((t) => ['expense', 'debt_payment', 'salary_advance'].includes(t.type))
 
     const pickMode: DetailMode =
       filterA === 'Εμπορεύματα'
@@ -877,7 +877,7 @@ function AnalysisContent() {
       notes(t).includes('εφορία')
 
     const loanOut = rows
-      .filter((t) => (t.type === 'expense' || t.type === 'debt_payment') && isLoan(t))
+      .filter((t) => (t.type === 'expense' || t.type === 'debt_payment' || t.type === 'salary_advance') && isLoan(t))
       .reduce((a, t) => a + Math.abs(Number(t.amount) || 0), 0)
 
     const loanIn = rows
@@ -885,7 +885,7 @@ function AnalysisContent() {
       .reduce((a, t) => a + Math.abs(Number(t.amount) || 0), 0)
 
     const settlementOut = rows
-      .filter((t) => (t.type === 'expense' || t.type === 'debt_payment') && isSettlement(t))
+      .filter((t) => (t.type === 'expense' || t.type === 'debt_payment' || t.type === 'salary_advance') && isSettlement(t))
       .reduce((a, t) => a + Math.abs(Number(t.amount) || 0), 0)
 
     return { loanOut, loanIn, settlementOut }
@@ -895,7 +895,7 @@ function AnalysisContent() {
 
   const proExpenseDocs = useMemo(() => {
     const rows = periodTx
-      .filter((t) => (t.type === 'expense' || t.type === 'debt_payment'))
+      .filter((t) => (t.type === 'expense' || t.type === 'debt_payment' || t.type === 'salary_advance'))
       .filter((t) => !isCreditTx(t))
       .filter((t) => !isCapitalTransferTx(t))
 
@@ -939,7 +939,7 @@ function AnalysisContent() {
       .filter((t) => !isCreditTx(t))
       .filter((t) => isCapitalTransferTx(t))
 
-    const outRows = rows.filter((t) => t.type === 'expense' || t.type === 'debt_payment')
+    const outRows = rows.filter((t) => t.type === 'expense' || t.type === 'debt_payment' || t.type === 'salary_advance')
     const inRows = rows.filter((t) => t.type === 'income' || t.type === 'income_collection' || t.type === 'debt_received')
 
     const out = outRows.reduce((a, t) => a + Math.abs(Number(t.amount) || 0), 0)
@@ -1082,7 +1082,7 @@ function AnalysisContent() {
   // Pie/Bar charts: use organicTransactions
   const categoryBreakdown = useMemo(() => {
     const expenseTx = organicTransactions
-      .filter((t) => t.type === 'expense' || t.type === 'debt_payment')
+      .filter((t) => t.type === 'expense' || t.type === 'debt_payment' || t.type === 'salary_advance')
       .filter((t) => !isCreditTx(t))
 
     const result: Record<string, number> = {}
@@ -1103,7 +1103,7 @@ function AnalysisContent() {
 
   const staffDetailsThisMonth = useMemo(() => {
     const staffTxs = monthTransactions
-      .filter((t) => t.type === 'expense' || t.type === 'debt_payment')
+      .filter((t) => t.type === 'expense' || t.type === 'debt_payment' || t.type === 'salary_advance')
       .filter((t) => !isCreditTx(t))
       .filter((t) => normalizeExpenseCategory(t) === 'Staff')
 
@@ -1995,7 +1995,7 @@ function AnalysisContent() {
                     t.type === 'debt_received' ||
                     t.type === 'savings_withdrawal'
                   const isTip = t.type === 'tip_entry'
-                  const isExp = t.type === 'expense' || t.type === 'debt_payment' || t.type === 'savings_deposit'
+                  const isExp = t.type === 'expense' || t.type === 'debt_payment' || t.type === 'salary_advance' || t.type === 'savings_deposit'
 
                   const sign = isInc || isTip ? '+' : isExp ? '-' : ''
                   const pillBg = isInc ? '#ecfdf5' : isTip ? '#fffbeb' : '#fff1f2'

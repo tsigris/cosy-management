@@ -46,7 +46,7 @@ function groupByMethod(rows: ExpenseRow[]): GroupBase[] {
     const key = (r.method || 'Άλλη Μέθοδος').trim() || 'Άλλη Μέθοδος'
     if (!map.has(key)) map.set(key, { key, total: 0, count: 0, rows: [] })
     const entry = map.get(key)!
-    if (r.type === 'expense' || r.type === 'debt_payment') entry.total += Math.abs(Number(r.amount) || 0)
+    if (r.type === 'expense' || r.type === 'debt_payment' || r.type === 'salary_advance') entry.total += Math.abs(Number(r.amount) || 0)
     entry.count += 1
     entry.rows.push(r)
   }
@@ -65,7 +65,7 @@ function groupByCategory(rows: ExpenseRow[]): GroupBase[] {
     const key = (r.category || 'Άλλη Κατηγορία').trim() || 'Άλλη Κατηγορία'
     if (!map.has(key)) map.set(key, { key, total: 0, count: 0, rows: [] })
     const entry = map.get(key)!
-    if (r.type === 'expense' || r.type === 'debt_payment') entry.total += Math.abs(Number(r.amount) || 0)
+    if (r.type === 'expense' || r.type === 'debt_payment' || r.type === 'salary_advance') entry.total += Math.abs(Number(r.amount) || 0)
     entry.count += 1
     entry.rows.push(r)
   }
@@ -88,7 +88,7 @@ function groupByBeneficiary(rows: ExpenseRow[]): BeneficiaryGroup[] {
 
     if (!map.has(key)) map.set(key, { key, label, total: 0, count: 0, rows: [] })
     const entry = map.get(key)!
-    if (r.type === 'expense' || r.type === 'debt_payment') entry.total += Math.abs(Number(r.amount) || 0)
+    if (r.type === 'expense' || r.type === 'debt_payment' || r.type === 'salary_advance') entry.total += Math.abs(Number(r.amount) || 0)
     entry.count += 1
     entry.rows.push(r)
   }
@@ -200,7 +200,7 @@ export default function EconomicsExpensesPage() {
             'id, date, amount, type, method, category, is_credit, created_at, suppliers:suppliers(name), fixed_assets:fixed_assets(name, sub_category)'
           )
           .eq('store_id', storeId)
-          .in('type', ['expense', 'debt_payment'])
+          .in('type', ['expense', 'debt_payment', 'salary_advance'])
           .order('date', { ascending: false })
 
         if (!isMounted) return

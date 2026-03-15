@@ -60,7 +60,7 @@ function ProfitContent() {
   const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear())
 
   const incomeTypes = ['income', 'income_collection', 'debt_received']
-  const expenseTypes = ['expense', 'debt_payment']
+  const expenseTypes = ['expense', 'debt_payment', 'salary_advance']
 
   const load = useCallback(async () => {
     try {

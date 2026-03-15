@@ -34,7 +34,7 @@ const INCOME_TYPES = new Set([
   'booking',
   'deposit',
 ])
-const EXPENSE_TYPES = new Set(['expense', 'debt_payment'])
+const EXPENSE_TYPES = new Set(['expense', 'debt_payment', 'salary_advance'])
 
 function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n))
