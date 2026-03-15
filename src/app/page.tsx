@@ -525,22 +525,26 @@ function DashboardContent() {
 
   // ✅ Totals (ΣΩΣΤΟ FIX: Ο κουμπαράς επηρεάζει ΜΟΝΟ το ταμείο, ΟΧΙ τα επιχειρηματικά Έσοδα/Έξοδα)
   const totals = useMemo(() => {
-    // 1. Καθαρά Έσοδα Επιχείρησης
     const INCOME_TYPES = ['income', 'income_collection', 'debt_received']
     const income = transactions
       .filter((t) => INCOME_TYPES.includes(String(t.type)))
       .reduce((acc, t) => acc + (Number(t.amount) || 0), 0)
 
-    // 2. Καθαρά Έξοδα Επιχείρησης
+    const EXPENSE_TYPES = ['expense', 'debt_payment', 'salary_advance']
+
     const expense = transactions
-      .filter((t) => (t.type === 'expense' && t.is_credit !== true) || t.type === 'debt_payment')
-      .reduce((acc, t) => acc + (Math.abs(Number(t.amount)) || 0), 0)
+      .filter((t) => {
+        const type = String(t.type || '')
+        if (!EXPENSE_TYPES.includes(type)) return false
+        if (type === 'expense' && t.is_credit === true) return false
+        return true
+      })
+      .reduce((acc, t) => acc + Math.abs(Number(t.amount) || 0), 0)
 
     const credits = transactions
       .filter((t) => t.type === 'expense' && t.is_credit === true)
       .reduce((acc: number, t: any) => acc + Math.abs(Number(t.amount) || 0), 0)
 
-    // 3. Κινήσεις Κουμπαρά (Αποταμίευση) – επηρεάζουν ΜΟΝΟ το ταμείο/ρευστό
     const savingsDeposits = transactions
       .filter((t) => t.type === 'savings_deposit')
       .reduce((acc, t) => acc + Math.abs(Number(t.amount) || 0), 0)
@@ -553,7 +557,6 @@ function DashboardContent() {
       income,
       expense,
       credits,
-      // Ρευστό Ημέρας = Καθαρά Έσοδα - Καθαρά Έξοδα - Καταθέσεις στον κουμπαρά + Αναλήψεις από κουμπαρά
       balance: income - expense - savingsDeposits + savingsWithdrawals,
     }
   }, [transactions])
