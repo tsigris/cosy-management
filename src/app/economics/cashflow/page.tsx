@@ -1287,6 +1287,21 @@ function makeStyles(t: {
       ;(thead as any).gridTemplateColumns = '110px 90px 1fr 120px'
       ;(tr as any).gridTemplateColumns = '110px 90px 1fr 120px'
     }
+    if (w < 768) {
+      ;(premiumCard as any).padding = 18
+      ;(premiumLegendRow as any).flexDirection = 'column'
+      ;(premiumLegendRow as any).alignItems = 'stretch'
+      ;(legendChips as any).flexWrap = 'wrap'
+      ;(legendChip as any).fontSize = '11px'
+      ;(legendChip as any).padding = '6px 10px'
+      ;(insightsRow as any).gridTemplateColumns = '1fr'
+      ;(cardHeadRowPremium as any).flexDirection = 'column'
+      ;(cardHeadRowPremium as any).alignItems = 'stretch'
+      ;(premiumTitle as any).fontSize = '18px'
+      ;(premiumSub as any).fontSize = '11px'
+      ;(chartScrollerPremium as any).overflowX = 'hidden'
+      ;(chartScrollerPremium as any).padding = 8
+    }
   }
 
   return {
