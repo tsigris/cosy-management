@@ -515,15 +515,27 @@ export default function EconomicsCashflowPage() {
   }, [])
 
   const chartMetrics = useMemo(() => {
-    const cw = isMobile ? Math.max(360, Math.min(window.innerWidth - 48, 720)) : 920
-    const ch = isMobile ? 180 : 220
-    const px = isMobile ? 18 : 26
-    const py = isMobile ? 16 : 22
+    const viewport = typeof window !== 'undefined' ? window.innerWidth : 390
+    const mobileWidth = Math.max(280, viewport - 88)
+    const desktopWidth = 920
+
+    const cw = isMobile ? mobileWidth : desktopWidth
+    const ch = isMobile ? 220 : 260
+    const px = isMobile ? 16 : 26
+    const py = isMobile ? 18 : 22
+
     const innerW = cw - px * 2
     const innerH = ch - py * 2
-    const step = chart.data.length > 1 ? innerW / (chart.data.length - 1) : innerW
-    const barGroupW = clamp(step * 0.62, 18, Math.min(74, innerW * 0.6))
-    const barW = Math.max(6, barGroupW / 2 - 3)
+
+    const step = chart.data.length > 1 ? innerW / chart.data.length : innerW
+    const barGroupW = isMobile
+      ? clamp(step * 0.58, 26, 54)
+      : clamp(step * 0.62, 28, 74)
+
+    const barW = isMobile
+      ? Math.max(10, barGroupW / 2 - 4)
+      : Math.max(8, barGroupW / 2 - 4)
+
     return { cw, ch, px, py, innerW, innerH, step, barGroupW, barW }
   }, [chart.data.length, isMobile])
 
@@ -533,7 +545,9 @@ export default function EconomicsCashflowPage() {
     if (!chart.data.length) return ''
     return chart.data
       .map((p, idx) => {
-        const x = chart.data.length > 1 ? paddingX + idx * step : paddingX + innerW / 2
+        const x = chart.data.length > 1
+          ? paddingX + step * idx + step / 2
+          : paddingX + innerW / 2
         const y = paddingY + (1 - (p.balance - chart.minLine) / chart.lineRange) * innerH
         return `${idx === 0 ? 'M' : 'L'} ${x.toFixed(2)} ${y.toFixed(2)}`
       })
@@ -621,18 +635,24 @@ export default function EconomicsCashflowPage() {
         {/* Chart */}
         <section style={styles.premiumCard}>
           <div style={styles.cardHeadRowPremium}>
-            <div>
+            <div style={{ flex: '1 1 240px', minWidth: 0 }}>
               <h2 style={styles.premiumTitle}>Οπτικοποίηση</h2>
               <p style={styles.premiumSub}>Μηνιαία έσοδα/έξοδα και εξέλιξη υπολοίπου</p>
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div
+              style={{
+                width: isMobile ? '100%' : 'auto',
+                display: 'flex',
+                justifyContent: isMobile ? 'flex-start' : 'flex-end',
+              }}
+            >
               <div style={styles.segmentedToggle} role="tablist" aria-label="Projection toggle">
                 <button
                   type="button"
                   onClick={() => setFutureProjection(false)}
                   aria-pressed={!futureProjection}
-                  style={{ ...(futureProjection ? styles.segmentBtn : styles.segmentBtnActive) }}
+                  style={futureProjection ? styles.segmentBtn : styles.segmentBtnActive}
                 >
                   Live
                 </button>
@@ -640,7 +660,7 @@ export default function EconomicsCashflowPage() {
                   type="button"
                   onClick={() => setFutureProjection(true)}
                   aria-pressed={futureProjection}
-                  style={{ ...(futureProjection ? styles.segmentBtnActive : styles.segmentBtn) }}
+                  style={futureProjection ? styles.segmentBtnActive : styles.segmentBtn}
                 >
                   Πρόβλεψη
                 </button>
@@ -713,7 +733,9 @@ export default function EconomicsCashflowPage() {
 
                 {/* bars (thinner, softer corners) */}
                 {chart.data.map((p, idx) => {
-                  const xCenter = paddingX + idx * step
+                  const xCenter = chart.data.length > 1
+                    ? paddingX + step * idx + step / 2
+                    : paddingX + innerW / 2
                   const incomeH = (Math.abs(p.income) / chart.maxBar) * innerH
                   const expenseH = (Math.abs(p.expense) / chart.maxBar) * innerH
 
@@ -1076,9 +1098,10 @@ function makeStyles(t: {
   const cardHeadRowPremium: CSSProperties = {
     display: 'flex',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: 12,
-    marginBottom: 8,
+    marginBottom: 12,
+    flexWrap: 'wrap',
   }
 
   const premiumTitle: CSSProperties = { margin: 0, color: t.text, fontSize: 20, fontWeight: 950 }
@@ -1090,6 +1113,8 @@ function makeStyles(t: {
     background: t.solidCard,
     border: `1px solid ${t.border}`,
     padding: 4,
+    width: '100%',
+    maxWidth: 320,
   }
   const segmentBtn: CSSProperties = {
     border: 'none',
@@ -1108,13 +1133,39 @@ function makeStyles(t: {
   }
 
   const chartWrapPremium: CSSProperties = { marginTop: 12 }
-  const premiumLegendRow: CSSProperties = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 12 }
-  const legendChips: CSSProperties = { display: 'flex', gap: 8, alignItems: 'center' }
+  const premiumLegendRow: CSSProperties = {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'stretch',
+    gap: 10,
+    marginBottom: 12,
+  }
+  const legendChips: CSSProperties = {
+    display: 'flex',
+    gap: 8,
+    alignItems: 'center',
+    flexWrap: 'wrap',
+  }
   const legendChip: CSSProperties = { display: 'inline-flex', gap: 8, alignItems: 'center', padding: '6px 10px', borderRadius: 999, background: t.solidCard, border: `1px solid ${t.border}`, fontSize: 12, fontWeight: 900, color: 'rgba(0,0,0,0.6)' }
   const legendDotSmall: CSSProperties = { width: 10, height: 10, borderRadius: 999, display: 'inline-block' }
 
-  const insightsRow: CSSProperties = { display: 'flex', gap: 10, alignItems: 'center' }
-  const insightCard: CSSProperties = { display: 'flex', flexDirection: 'column', gap: 4, padding: '8px 12px', borderRadius: 12, background: t.solidCard, border: `1px solid ${t.border}`, minWidth: 120 }
+  const insightsRow: CSSProperties = {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+    gap: 10,
+    alignItems: 'stretch',
+  }
+  const insightCard: CSSProperties = {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 4,
+    padding: '10px 12px',
+    borderRadius: 14,
+    background: t.solidCard,
+    border: `1px solid ${t.border}`,
+    minWidth: 0,
+    width: '100%',
+  }
   const insightLabel: CSSProperties = { fontSize: 11, color: t.muted, fontWeight: 900 }
   const insightValue: CSSProperties = { fontSize: 14, fontWeight: 900, color: t.text }
   const insightSmall: CSSProperties = { fontSize: 12, color: t.muted, fontWeight: 800 }
@@ -1122,7 +1173,7 @@ function makeStyles(t: {
   const chartScrollerPremium: CSSProperties = {
     overflowX: 'auto',
     WebkitOverflowScrolling: 'touch',
-    borderRadius: 16,
+    borderRadius: 20,
     border: `1px solid ${t.border}`,
     background: 'transparent',
     padding: 10,
