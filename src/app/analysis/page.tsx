@@ -2099,6 +2099,8 @@ function AnalysisContent() {
   )
 }
 
+export { AnalysisContent }
+
 /* ---------------- STYLES ---------------- */
 
 const iphoneWrapper: any = {
