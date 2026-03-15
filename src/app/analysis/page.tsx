@@ -107,6 +107,14 @@ function moneyGR(n: any) {
   return `${v.toLocaleString('el-GR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}€`
 }
 
+function formatDateGreek(date: string | Date) {
+  const d = new Date(date as any)
+  if (isNaN(d.getTime())) return ''
+  const day = String(d.getDate()).padStart(2, '0')
+  const month = String(d.getMonth() + 1).padStart(2, '0')
+  const year = d.getFullYear()
+  return `${day}-${month}-${year}`
+}
 function getPaymentMethod(tx: any): string {
   return String(tx?.payment_method ?? tx?.method ?? '').trim()
 }
@@ -688,7 +696,7 @@ function AnalysisContent() {
     return []
   }, [detailMode, staff, suppliers, revenueSources, maintenanceWorkers])
 
-  const rangeText = useMemo(() => `${startDate} → ${endDate}`, [startDate, endDate])
+  const rangeText = useMemo(() => `${formatDateGreek(startDate)} → ${formatDateGreek(endDate)}`, [startDate, endDate])
 
   const entitySummary = useMemo(() => {
     // Build a list of entities (paid/credit totals) depending on filterA
@@ -1157,12 +1165,12 @@ function AnalysisContent() {
         {/* PRINT HEADER */}
         <div className="print-header" style={{ display: 'none' }}>
           <h1 className="print-title">ΟΙΚΟΝΟΜΙΚΗ ΑΝΑΦΟΡΑ ΚΑΤΑΣΤΗΜΑΤΟΣ</h1>
-          <p className="print-sub">
-            Ημερομηνία Εκτύπωσης: <b>{format(new Date(), 'dd/MM/yyyy HH:mm')}</b>
-          </p>
-          <p className="print-meta">
-            Εύρος Ημερομηνιών: <b>{startDate} → {endDate}</b> • Φίλτρο: <b>{filterA}</b>
-          </p>
+            <p className="print-sub">
+              Ημερομηνία Εκτύπωσης: <b>{format(new Date(), 'dd/MM/yyyy HH:mm')}</b>
+            </p>
+            <p className="print-meta">
+              Εύρος Ημερομηνιών: <b>{formatDateGreek(startDate)} → {formatDateGreek(endDate)}</b> • Φίλτρο: <b>{filterA}</b>
+            </p>
         </div>
 
         {/* HEADER */}
@@ -1200,7 +1208,7 @@ function AnalysisContent() {
 
         {/* SIMPLE: TOP “ΑΠΟ/ΕΩΣ” PILL */}
         <div style={rangePill} className="no-print">
-          {startDate} → {endDate}
+          {formatDateGreek(startDate)} → {formatDateGreek(endDate)}
         </div>
 
         {/* FILTER CARD */}
@@ -1404,7 +1412,7 @@ function AnalysisContent() {
           <div className="print-card" style={smallKpiCard}>
             <div style={smallKpiLabel}>Υπόλοιπο Μετρητών</div>
             <div style={smallKpiValue}>{moneyGR(totalCashDisplay)}</div>
-            <div style={smallKpiHint}>{isZReport ? 'Συρτάρι ημέρας' : `As of: ${endDate} (χωρίς Πίστωση)`}</div>
+            <div style={smallKpiHint}>{isZReport ? 'Συρτάρι ημέρας' : `As of: ${formatDateGreek(endDate)} (χωρίς Πίστωση)`}</div>
           </div>
 
           <div className="print-card" style={smallKpiCard}>
