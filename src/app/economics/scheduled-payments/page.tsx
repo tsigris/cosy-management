@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import EconomicsHeaderNav from '@/components/economics/EconomicsHeaderNav'
-import EconomicsTabs from '@/components/EconomicsTabs'
+import EconomicsPeriodFilter from '@/components/economics/EconomicsPeriodFilter'
 import { getSupabase } from '@/lib/supabase'
 
 type ScheduledPayment = {
@@ -51,6 +51,8 @@ export default function EconomicsScheduledPaymentsPage() {
 	const [loading, setLoading] = useState(true)
 	const [items, setItems] = useState<ScheduledPayment[]>([])
 	const [filter, setFilter] = useState<'all' | 'salaries' | 'tax' | 'suppliers' | 'bills'>('all')
+	const [period, setPeriod] = useState<'month' | 'year' | '30days' | 'all'>('30days')
+	const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear())
 
 	const today = useMemo(() => {
 		const d = new Date()
@@ -78,17 +80,17 @@ export default function EconomicsScheduledPaymentsPage() {
 			const results: ScheduledPayment[] = []
 
 			try {
-				// 1) Employees (salaries) - compute next payment date from pay_day_of_month
+				// 1) Employees (salaries) - compute next payment date from possible fields (safe fallbacks)
 				const { data: employees, error: empErr } = await supabase
 					.from('employees')
-					.select('id, name, salary, pay_day_of_month')
+					.select('id, name, salary, monthly_salary, pay_day, salary_day, payment_day')
 					.eq('store_id', storeId)
 					.limit(500)
 
 				if (!empErr && Array.isArray(employees)) {
 					for (const e of employees as any) {
-						const salary = Number(e.salary) || 0
-						const payDay = Number(e.pay_day_of_month) || 0
+						const salary = Number(e.salary) || Number(e.monthly_salary) || 0
+						const payDay = Number(e.pay_day) || Number(e.salary_day) || Number(e.payment_day) || 1
 						if (!payDay || salary === 0) continue
 
 						const now = new Date()
@@ -98,6 +100,9 @@ export default function EconomicsScheduledPaymentsPage() {
 							// next month
 							next = new Date(now.getFullYear(), now.getMonth() + 1, Math.min(payDay, 28))
 						}
+
+						// only include if within +30 days window
+						if (new Date(toISODate(next)) > toDate) continue
 
 						const sp: ScheduledPayment = {
 							id: `emp-${e.id}`,
@@ -140,29 +145,62 @@ export default function EconomicsScheduledPaymentsPage() {
 				}
 
 				// 3) expenses with due_date (suppliers / bills / others)
-				const { data: expenses, error: expErr } = await supabase
-					.from('expenses')
-					.select('id, title, amount, due_date, supplier_id, category, notes')
-					.eq('store_id', storeId)
-					.lte('due_date', toDateStr)
-					.limit(800)
+				try {
+					const { data: expenses, error: expErr } = await supabase
+						.from('expenses')
+						.select('id, title, amount, due_date, supplier_id, category, notes')
+						.eq('store_id', storeId)
+						.lte('due_date', toDateStr)
+						.limit(800)
 
-				if (!expErr && Array.isArray(expenses)) {
-					for (const ex of expenses as any) {
-						if (!ex.due_date) continue
-						const cat = ex.supplier_id ? 'Προμηθευτές' : ex.category || 'Λοιπές υποχρεώσεις'
-						const maybeBill = (ex.title || '').toLowerCase().includes('λογια') || (ex.title || '').toLowerCase().includes('λογια')
-						const category = ex.supplier_id ? 'Προμηθευτές' : maybeBill ? 'Λογαριασμοί' : cat
-						results.push({
-							id: `exp-${ex.id}`,
-							title: ex.title || 'Πληρωμή',
-							amount: Number(ex.amount) || 0,
-							category,
-							due_date: String(ex.due_date).slice(0, 10),
-							source: 'expenses',
-							notes: ex.notes || null,
-						})
+					if (!expErr && Array.isArray(expenses)) {
+						for (const ex of expenses as any) {
+							if (!ex.due_date) continue
+							const cat = ex.supplier_id ? 'Προμηθευτές' : ex.category || 'Λοιπές υποχρεώσεις'
+							const titleLower = (ex.title || '').toLowerCase()
+							const maybeBill = titleLower.includes('λογ') || titleLower.includes('λογια') || titleLower.includes('λογαρι')
+							const category = ex.supplier_id ? 'Προμηθευτές' : maybeBill ? 'Λογαριασμοί' : cat
+							results.push({
+								id: `exp-${ex.id}`,
+								title: ex.title || 'Πληρωμή',
+								amount: Number(ex.amount) || 0,
+								category,
+								due_date: String(ex.due_date).slice(0, 10),
+								source: 'expenses',
+								notes: ex.notes || null,
+							})
+						}
 					}
+				} catch (e) {
+					// ignore
+				}
+
+				// 4) transactions that may have due_date / obligations (some projects store obligations here)
+				try {
+					const { data: txs, error: txErr } = await supabase
+						.from('transactions')
+						.select('id, description, amount, due_date, type, suppliers:suppliers(name), notes')
+						.eq('store_id', storeId)
+						.lte('due_date', toDateStr)
+						.limit(800)
+
+					if (!txErr && Array.isArray(txs)) {
+						for (const t of txs as any) {
+							if (!t.due_date) continue
+							const cat = t.suppliers ? 'Προμηθευτές' : t.type === 'expense' ? 'Λοιπά' : 'Λοιπά'
+							results.push({
+								id: `tx-${t.id}`,
+								title: t.description || t.notes || 'Πληρωμή',
+								amount: Number(t.amount) || 0,
+								category: cat,
+								due_date: String(t.due_date).slice(0, 10),
+								source: 'transactions',
+								notes: t.notes || null,
+							})
+						}
+					}
+				} catch (e) {
+					// ignore
 				}
 
 				if (!cancelled) {
@@ -273,11 +311,28 @@ export default function EconomicsScheduledPaymentsPage() {
 
 	const amountFormatter = useMemo(() => new Intl.NumberFormat('el-GR', { style: 'currency', currency: 'EUR' }), [])
 
+	const yearOptions = useMemo(() => {
+		const s = new Set<number>()
+		for (const it of items) {
+			if (!it.due_date) continue
+			const d = new Date(it.due_date)
+			if (!isNaN(d.getTime())) s.add(d.getFullYear())
+		}
+		if (!s.size) s.add(new Date().getFullYear())
+		return Array.from(s).sort((a, b) => b - a)
+	}, [items])
+
+	useEffect(() => {
+		if (!yearOptions || !yearOptions.length) return
+		const current = new Date().getFullYear()
+		setSelectedYear(yearOptions.includes(current) ? current : yearOptions[0])
+	}, [yearOptions])
+
 	return (
 		<div>
 			<EconomicsHeaderNav title="Οικονομικό Κέντρο" subtitle="Προγραμματισμένες Πληρωμές" theme={theme} setTheme={setTheme} />
 			<div style={{ padding: '0 12px 24px' }}>
-				<EconomicsTabs />
+				<EconomicsPeriodFilter period={period} onPeriodChange={(p) => setPeriod(p)} selectedYear={selectedYear} onYearChange={(y) => setSelectedYear(y)} yearOptions={yearOptions} />
 
 				<div style={{ display: 'flex', gap: 12, marginTop: 12, flexWrap: 'wrap' }}>
 					<div style={{ flex: '1 1 180px', minWidth: 160, padding: 14, borderRadius: 12, background: 'var(--surfaceSolid)', boxShadow: 'var(--shadow)' }}>
@@ -319,9 +374,9 @@ export default function EconomicsScheduledPaymentsPage() {
 					) : filteredItems.length === 0 ? (
 						<div style={{ color: 'var(--muted)' }}>Κανένα προγραμματισμένο στοιχείο.</div>
 					) : (
-						// Grouping: ΣΗΜΕΡΑ, ΑΥΡΙΟ, ΑΥΤΗ ΤΗΝ ΕΒΔΟΜΑΔΑ, ΕΠΟΜΕΝΕΣ ΠΛΗΡΩΜΕΣ
+						// Grouping: ΛΗΞΙΠΡΟΘΕΣΜΟ, ΣΗΜΕΡΑ, ΑΥΡΙΟ, ΑΥΤΗ ΤΗΝ ΕΒΔΟΜΑΔΑ, ΕΠΟΜΕΝΕΣ ΠΛΗΡΩΜΕΣ
 						<div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-							{['ΣΗΜΕΡΑ', 'ΑΥΡΙΟ', 'ΑΥΤΗ ΤΗΝ ΕΒΔΟΜΑΔΑ', 'ΕΠΟΜΕΝΕΣ ΠΛΗΡΩΜΕΣ', 'ΛΗΞΙΠΡΟΘΕΣΜΟ'].map((section) => {
+							{['ΛΗΞΙΠΡΟΘΕΣΜΟ', 'ΣΗΜΕΡΑ', 'ΑΥΡΙΟ', 'ΑΥΤΗ ΤΗΝ ΕΒΔΟΜΑΔΑ', 'ΕΠΟΜΕΝΕΣ ΠΛΗΡΩΜΕΣ'].map((section) => {
 								const group = filteredItems.filter((it) => {
 									const status = computeStatus(it.due_date)
 									if (section === 'ΕΠΟΜΕΝΕΣ ΠΛΗΡΩΜΕΣ') return status === 'ΠΡΟΓΡΑΜΜΑΤΙΣΜΕΝΟ' || status === 'ΕΠΟΜΕΝΟ ΜΗΝΑ'
