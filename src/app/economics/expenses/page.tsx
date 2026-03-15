@@ -786,29 +786,124 @@ export default function EconomicsExpensesPage() {
                   ) : (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                       {groupedMovements.map((g) => (
-                        <div key={g.key} style={{ borderRadius: 18, border: '1px solid #e5e7eb', background: 'white', padding: 14, marginBottom: 12 }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
-                            <div style={{ flex: 1, wordBreak: 'break-word', fontSize: 15, fontWeight: 900 }}>{g.title}</div>
-                            <div style={{ whiteSpace: 'nowrap', fontSize: 16, fontWeight: 900 }}>{Number(g.total).toLocaleString('el-GR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}€</div>
+                        <div
+                          key={g.key}
+                          onClick={() => setOpenSupplier((prev) => (prev === g.key ? null : g.key))}
+                          style={{
+                            borderRadius: 18,
+                            border: '1px solid #e5e7eb',
+                            background: 'white',
+                            padding: 14,
+                            marginBottom: 12,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          {/* Header: left column with title+meta, right column with amount+count */}
+                          <div
+                            style={{
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'flex-start',
+                              gap: 10,
+                            }}
+                          >
+                            <div
+                              style={{
+                                flex: 1,
+                                minWidth: 0,
+                                display: 'flex',
+                                flexDirection: 'column',
+                                gap: 6,
+                              }}
+                            >
+                              <div
+                                style={{
+                                  fontSize: 15,
+                                  fontWeight: 900,
+                                  color: 'var(--text)',
+                                  wordBreak: 'break-word',
+                                  lineHeight: 1.25,
+                                }}
+                              >
+                                {g.title}
+                              </div>
+
+                              <div
+                                style={{
+                                  fontSize: 12,
+                                  color: 'var(--muted)',
+                                  lineHeight: 1.35,
+                                }}
+                              >
+                                {displayCategoryLabel(g.category)} • Τελευταία κίνηση: {formatDateOnly(g.lastDate)}
+                              </div>
+                            </div>
+
+                            <div
+                              style={{
+                                textAlign: 'right',
+                                flexShrink: 0,
+                                whiteSpace: 'nowrap',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                alignItems: 'flex-end',
+                                gap: 4,
+                              }}
+                            >
+                              <div style={{ fontSize: 16, fontWeight: 900 }}>
+                                {Number(g.total).toLocaleString('el-GR', {
+                                  minimumFractionDigits: 2,
+                                  maximumFractionDigits: 2,
+                                })}€
+                              </div>
+
+                              <div style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 800 }}>{g.count} κινήσεις</div>
+                            </div>
                           </div>
 
-                          <div style={{ marginTop: 8, fontSize: 12, color: 'var(--muted)' }}>
-                            <span>{displayCategoryLabel(g.category)}</span>
-                            <span style={{ marginLeft: 8 }}>• Τελευταία κίνηση: {formatDateOnly(g.lastDate)}</span>
-                          </div>
-
-                          <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
-                            <div style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 800 }}>{g.count} κινήσεις</div>
+                          {/* bottom row: badge + arrow */}
+                          <div
+                            style={{
+                              marginTop: 10,
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 8,
+                            }}
+                          >
                             {g.hasCredit ? (
-                              <div style={{ display: 'inline-flex', padding: '6px 10px', borderRadius: 999, fontSize: 11, fontWeight: 900, background: '#eef2ff', color: '#4f46e5', maxWidth: 'fit-content' }}>ΠΙΣΤΩΣΗ</div>
+                              <div
+                                style={{
+                                  display: 'inline-flex',
+                                  padding: '6px 10px',
+                                  borderRadius: 999,
+                                  fontSize: 11,
+                                  fontWeight: 900,
+                                  background: '#eef2ff',
+                                  color: '#4f46e5',
+                                  maxWidth: 'fit-content',
+                                }}
+                              >
+                                ΠΙΣΤΩΣΗ
+                              </div>
                             ) : null}
+
                             <div style={{ marginLeft: 'auto', fontSize: 18, color: 'var(--muted)' }}>{openSupplier === g.key ? '▴' : '▾'}</div>
                           </div>
 
                           {openSupplier === g.key && (
                             <div style={{ marginTop: 12 }}>
                               {g.rows.slice(0, 5).map((r) => (
-                                <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid var(--border)' }}>
+                                <div
+                                  key={r.id}
+                                  onClick={(e) => e.stopPropagation()}
+                                  style={{
+                                    display: 'flex',
+                                    justifyContent: 'space-between',
+                                    alignItems: 'center',
+                                    padding: '8px 0',
+                                    borderBottom: '1px solid var(--border)',
+                                  }}
+                                >
                                   <div style={{ display: 'flex', flexDirection: 'column' }}>
                                     <div style={{ fontSize: 13, fontWeight: 800 }}>{formatDate(r.created_at || r.date)}</div>
                                     <div style={{ fontSize: 13, color: 'var(--muted)' }}>{displayCategoryLabel(r.category || '—')}</div>
@@ -819,7 +914,10 @@ export default function EconomicsExpensesPage() {
                                   </div>
                                 </div>
                               ))}
-                              {g.rows.length > 5 ? <div style={{ fontSize: 13, color: 'var(--muted)', fontWeight: 800, marginTop: 8 }}>Εμφανίζονται οι 5 πιο πρόσφατες κινήσεις</div> : null}
+
+                              {g.rows.length > 5 ? (
+                                <div style={{ fontSize: 13, color: 'var(--muted)', fontWeight: 800, marginTop: 8 }}>Εμφανίζονται οι 5 πιο πρόσφατες κινήσεις</div>
+                              ) : null}
                             </div>
                           )}
                         </div>
