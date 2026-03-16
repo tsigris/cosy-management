@@ -1006,7 +1006,7 @@ function GoalsContent() {
               )}
             </div>
 
-            {/* Pagination */}
+           {/* Pagination */}
             <div style={historyPager}>
               <button
                 type="button"
@@ -1041,9 +1041,13 @@ function GoalsContent() {
                 Next <ArrowRight size={16} />
               </button>
             </div>
-</div>
-)}
-</div>
+          </div>
+        </div>
+      </div>
+      )}
+    </div>
+  )
+}
 
 // --- STYLES ---
 const wrapperStyle: CSSProperties = { background: colors.bgLight, minHeight: '100dvh', padding: '20px' }
