@@ -668,7 +668,7 @@ function GoalsContent() {
               </button>
             </div>
 
-            <div style={{ ...modalBodyStyle, display: 'grid', gap: 12 }}>
+            <div style={{ display: 'grid', gap: 12, marginTop: 10 }}>
               <div>
                 <label style={labelStyle}>Όνομα (π.χ. Ανακαίνιση)</label>
                 <input style={inputStyle} value={name} onChange={(e) => setName(e.target.value)} />
@@ -721,8 +721,7 @@ function GoalsContent() {
               </button>
             </div>
 
-            <div style={modalBodyStyle}>
-              <div style={{ padding: 12, background: colors.bgLight, borderRadius: 12, marginBottom: 12 }}>
+            <div style={{ padding: 12, background: colors.bgLight, borderRadius: 12, marginBottom: 12 }}>
               <p style={{ margin: 0, fontWeight: 900, color: colors.primaryDark }}>{selectedGoal.name}</p>
               <p style={{ margin: '4px 0 0', fontSize: 12, fontWeight: 700, color: colors.secondaryText }}>
                 Διαθέσιμο Υπόλοιπο: {toMoney(selectedGoal.current_amount)}
@@ -777,17 +776,13 @@ function GoalsContent() {
                 </>
               )}
             </p>
-            </div>
-
-            <div style={{ padding: 12 }}>
-              <button
-                style={{ ...saveBtnStyle, background: txAction === 'deposit' ? colors.primaryDark : colors.accentBlue }}
-                onClick={onSaveTransaction}
-                disabled={savingTx}
-              >
-                {savingTx ? 'Εκτέλεση...' : 'Επιβεβαίωση'}
-              </button>
-            </div>
+            <button
+              style={{ ...saveBtnStyle, background: txAction === 'deposit' ? colors.primaryDark : colors.accentBlue }}
+              onClick={onSaveTransaction}
+              disabled={savingTx}
+            >
+              {savingTx ? 'Εκτέλεση...' : 'Επιβεβαίωση'}
+            </button>
           </div>
         </div>
       )}
