@@ -2,6 +2,7 @@
 export const dynamic = 'force-dynamic'
 
 import { useEffect, useState, Suspense, useMemo, useCallback } from 'react'
+import EconomicsPeriodFilter from '@/components/economics/EconomicsPeriodFilter'
 import { getSupabase } from '@/lib/supabase'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
@@ -153,6 +154,37 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
   // Global period (used for KPI summary)
   const [startDate, setStartDate] = useState(format(startOfMonth(new Date()), 'yyyy-MM-dd'))
   const [endDate, setEndDate] = useState(format(endOfMonth(new Date()), 'yyyy-MM-dd'))
+
+  // Period selector to match other economics pages
+  const [period, setPeriod] = useState<'month' | 'year' | '30days' | 'all'>('month')
+  const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear())
+
+  const yearOptions = useMemo(() => {
+    const s = new Set<number>()
+    for (const t of transactions) {
+      const d = t?.date ? new Date(t.date) : t?.created_at ? new Date(t.created_at) : null
+      if (d && !isNaN(d.getTime())) s.add(d.getFullYear())
+    }
+    if (!s.size) s.add(new Date().getFullYear())
+    return Array.from(s).sort((a, b) => b - a)
+  }, [transactions])
+
+  useEffect(() => {
+    if (period === 'month') {
+      setStartDate(format(startOfMonth(new Date()), 'yyyy-MM-dd'))
+      setEndDate(format(endOfMonth(new Date()), 'yyyy-MM-dd'))
+    } else if (period === 'year') {
+      setStartDate(`${selectedYear}-01-01`)
+      setEndDate(`${selectedYear}-12-31`)
+    } else if (period === '30days') {
+      const d = subDays(new Date(), 30)
+      setStartDate(format(d, 'yyyy-MM-dd'))
+      setEndDate(format(new Date(), 'yyyy-MM-dd'))
+    } else if (period === 'all') {
+      setStartDate('0000-01-01')
+      setEndDate('9999-12-31')
+    }
+  }, [period, selectedYear])
 
   // Simple: drilldown filter
   const [filterA, setFilterA] = useState<FilterA>('Όλες')
@@ -1215,7 +1247,20 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
           </div>
         )}
 
-        {/* SIMPLE: TOP “ΑΠΟ/ΕΩΣ” PILL */}
+          {/* PERIOD FILTER (matches other economics pages) */}
+          {!embeddedInEconomics && (
+            <div className="no-print" style={{ marginTop: 12 }}>
+              <EconomicsPeriodFilter
+                period={period}
+                onPeriodChange={(p) => setPeriod(p)}
+                selectedYear={selectedYear}
+                onYearChange={(y) => setSelectedYear(y)}
+                yearOptions={yearOptions}
+              />
+            </div>
+          )}
+
+          {/* SIMPLE: TOP “ΑΠΟ/ΕΩΣ” PILL */}
         {!embeddedInEconomics && (
           <div style={rangePill} className="no-print">
             {formatDateGreek(startDate)} → {formatDateGreek(endDate)}
