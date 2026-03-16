@@ -668,7 +668,7 @@ function GoalsContent() {
               </button>
             </div>
 
-            <div style={{ display: 'grid', gap: 12, marginTop: 10 }}>
+            <div style={{ ...modalBodyStyle, display: 'grid', gap: 12 }}>
               <div>
                 <label style={labelStyle}>Όνομα (π.χ. Ανακαίνιση)</label>
                 <input style={inputStyle} value={name} onChange={(e) => setName(e.target.value)} />
@@ -701,9 +701,13 @@ function GoalsContent() {
               </div>
             </div>
 
-            <button style={saveBtnStyle} onClick={onSaveGoal} disabled={savingGoal}>
+            </div>
+
+            <div style={{ padding: 12 }}>
+              <button style={saveBtnStyle} onClick={onSaveGoal} disabled={savingGoal}>
               {savingGoal ? 'Αποθήκευση...' : 'Αποθήκευση'}
-            </button>
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -719,16 +723,17 @@ function GoalsContent() {
               </button>
             </div>
 
-            <div style={{ padding: 12, background: colors.bgLight, borderRadius: 12, marginBottom: 12 }}>
+            <div style={modalBodyStyle}>
+              <div style={{ padding: 12, background: colors.bgLight, borderRadius: 12, marginBottom: 12 }}>
               <p style={{ margin: 0, fontWeight: 900, color: colors.primaryDark }}>{selectedGoal.name}</p>
               <p style={{ margin: '4px 0 0', fontSize: 12, fontWeight: 700, color: colors.secondaryText }}>
                 Διαθέσιμο Υπόλοιπο: {toMoney(selectedGoal.current_amount)}
               </p>
-            </div>
+              </div>
 
-            {/* ✅ multi-wallet selector */}
-            <label style={labelStyle}>Πηγή Χρημάτων</label>
-            <div style={methodGrid}>
+              {/* ✅ multi-wallet selector */}
+              <label style={labelStyle}>Πηγή Χρημάτων</label>
+              <div style={methodGrid}>
               <button type="button" onClick={() => setTxMethod('Μετρητά')} style={{ ...methodBtn, ...(txMethod === 'Μετρητά' ? methodBtnActive : {}) }}>
                 <Wallet size={16} /> Μετρητά
               </button>
@@ -775,13 +780,28 @@ function GoalsContent() {
               )}
             </p>
 
-            <button
-              style={{ ...saveBtnStyle, background: txAction === 'deposit' ? colors.primaryDark : colors.accentBlue }}
-              onClick={onSaveTransaction}
-              disabled={savingTx}
-            >
-              {savingTx ? 'Εκτέλεση...' : 'Επιβεβαίωση'}
-            </button>
+              <p style={{ fontSize: 11, fontWeight: 850, color: colors.secondaryText, marginTop: 10, lineHeight: 1.4 }}>
+                {txAction === 'deposit' ? (
+                  <>
+                    * Το ποσό θα <b>αφαιρεθεί</b> από <b>{txMethod}</b> στο ταμείο και θα μπει στον κουμπαρά.
+                  </>
+                ) : (
+                  <>
+                    * Το ποσό θα <b>επιστρέψει</b> στο ταμείο ως <b>{txMethod}</b>.
+                  </>
+                )}
+              </p>
+            </div>
+
+            <div style={{ padding: 12 }}>
+              <button
+                style={{ ...saveBtnStyle, background: txAction === 'deposit' ? colors.primaryDark : colors.accentBlue }}
+                onClick={onSaveTransaction}
+                disabled={savingTx}
+              >
+                {savingTx ? 'Εκτέλεση...' : 'Επιβεβαίωση'}
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -1281,9 +1301,48 @@ const miniChip: CSSProperties = {
   fontWeight: 950,
 }
 
-const modalBackdropStyle: CSSProperties = { position: 'fixed', inset: 0, background: colors.modalBackdrop, zIndex: 120, display: 'grid', placeItems: 'center', padding: '16px' }
-const modalCardStyle: CSSProperties = { width: '100%', maxWidth: '420px', background: 'var(--surfaceSolid)', borderRadius: '20px', padding: '18px', boxShadow: 'var(--shadow)' }
-const modalHeaderStyle: CSSProperties = { display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '14px', gap: 10 }
+const modalBackdropStyle: CSSProperties = {
+  position: 'fixed',
+  inset: 0,
+  background: colors.modalBackdrop,
+  zIndex: 120,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  padding: '16px',
+}
+
+const modalCardStyle: CSSProperties = {
+  width: '100%',
+  maxWidth: 520,
+  background: 'var(--surfaceSolid)',
+  borderRadius: '20px',
+  boxShadow: 'var(--shadow)',
+  display: 'flex',
+  flexDirection: 'column',
+  maxHeight: '90vh',
+  overflow: 'hidden',
+}
+
+const modalHeaderStyle: CSSProperties = {
+  display: 'flex',
+  alignItems: 'flex-start',
+  justifyContent: 'space-between',
+  gap: 10,
+  position: 'sticky',
+  top: 0,
+  background: 'var(--surfaceSolid)',
+  zIndex: 2,
+  paddingTop: 12,
+  paddingBottom: 12,
+}
+
+const modalBodyStyle: CSSProperties = {
+  overflowY: 'auto',
+  WebkitOverflowScrolling: 'touch',
+  flex: 1,
+  padding: 20,
+}
 const iconCloseBtnStyle: CSSProperties = { width: '32px', height: '32px', borderRadius: '10px', background: colors.bgLight, border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }
 const labelStyle: CSSProperties = { fontSize: '12px', fontWeight: 900, color: colors.secondaryText, marginBottom: 6, display: 'block' }
 const inputStyle: CSSProperties = { width: '100%', border: `1px solid ${colors.border}`, borderRadius: '12px', padding: '12px', fontSize: '16px', fontWeight: 900, background: colors.bgLight, outline: 'none' }
