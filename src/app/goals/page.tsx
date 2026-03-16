@@ -133,6 +133,12 @@ function monthsApprox(days: number) {
   return Math.max(1, Math.ceil(days / 30))
 }
 
+function getRemainingForToday(dailyNeeded: number | null, todayImpact: number): number | null {
+  if (dailyNeeded === null) return null
+  const depositedToday = Math.max(0, todayImpact < 0 ? Math.abs(todayImpact) : 0)
+  return Math.max(0, dailyNeeded - depositedToday)
+}
+
 function GoalsContent() {
   const supabase = getSupabase()
   const router = useRouter()
@@ -639,6 +645,7 @@ function GoalsContent() {
               const isCompleted = g.status === 'completed'
               const plan = getGoalProgress(g, businessDate)
               const todayImpact = Number(todayImpactByGoal[g.id] || 0) // negative for deposits, positive for withdraw
+              const remainingForToday = getRemainingForToday(plan.dailyNeeded, todayImpact)
               const ringRadius = 28
               const ringCircumference = 2 * Math.PI * ringRadius
               const ringOffset = ringCircumference - (progress / 100) * ringCircumference
@@ -691,6 +698,9 @@ function GoalsContent() {
                   <div style={goalTileTarget}>Στόχος: {toMoney(target)}</div>
                   <div style={{ marginTop: 6, fontSize: 13, fontWeight: 700, color: colors.secondaryText }}>
                     Απομένουν: {toMoney(plan.remainingAmount)} • Χρειάζονται / ημέρα: {plan.dailyNeeded !== null ? toMoney(plan.dailyNeeded) : '-'}
+                  </div>
+                  <div style={{ marginTop: 4, fontSize: 12, fontWeight: 800, color: colors.secondaryText }}>
+                    Σήμερα να καταθέσεις: {remainingForToday !== null ? toMoney(remainingForToday) : '-'}
                   </div>
                   <div style={{ marginTop: 6, fontSize: 12, color: colors.secondaryText }}>{getGoalInsights(g, businessDate).message}</div>
                       <div style={goalTileBottomRow}>
@@ -861,6 +871,8 @@ function GoalsContent() {
               const target = Number(selectedGoal.target_amount || 0)
               const current = Number(selectedGoal.current_amount || 0)
               const plan = getGoalProgress(selectedGoal, businessDate)
+              const todayImpact = Number(todayImpactByGoal[selectedGoal.id] || 0)
+              const remainingForToday = getRemainingForToday(plan.dailyNeeded, todayImpact)
               const paceHint = plan.hasDate
                 ? plan.expired
                   ? `Η ημερομηνία στόχου έχει περάσει. Υπόλοιπο: ${toMoney(plan.remaining)}`
@@ -901,6 +913,9 @@ function GoalsContent() {
                           </div>
                           <div style={{ marginTop: 8, fontSize: 13, fontWeight: 850, color: colors.secondaryText }}>
                             Απομένουν: {toMoney(plan.remainingAmount)} • Χρειάζονται / ημέρα: {plan.dailyNeeded !== null ? toMoney(plan.dailyNeeded) : '-'}
+                          </div>
+                          <div style={{ marginTop: 6, fontSize: 13, fontWeight: 850, color: colors.secondaryText }}>
+                            Σήμερα να καταθέσεις: {remainingForToday !== null ? toMoney(remainingForToday) : '-'}
                           </div>
                           <div style={{ marginTop: 6, fontSize: 12, color: colors.secondaryText }}>{getGoalInsights(selectedGoal, businessDate).message}</div>
                     {paceDelta && (
