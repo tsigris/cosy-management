@@ -140,7 +140,7 @@ export default function HelpPage() {
         {/* SECTION: ΤΑΜΕΙΑΚΗ ΡΟΗ */}
         <section style={section}>
           <div style={sectionHeader}>
-            <div style={{ ...iconBox, background: '#ecfeff', color: colors.sky || '#0ea5e9' }}>
+            <div style={{ ...iconBox, background: '#ecfeff', color: '#0ea5e9' }}>
               <Coins size={20} />
             </div>
             <h2 style={sectionTitle}>Ταμειακή Ροή</h2>
