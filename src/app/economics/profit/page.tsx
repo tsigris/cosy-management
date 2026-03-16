@@ -185,7 +185,6 @@ function ProfitContent() {
             <div style={{ fontSize: 18, fontWeight: 900, color: totalProfit >= 0 ? '#10b981' : '#dc2626' }}>{loading ? '—' : amountFmt(totalProfit)}</div>
           </div>
           </div>
-      </EconomicsContainer>
 
         {/* Monthly table */}
         <div style={card}>
@@ -240,6 +239,7 @@ function ProfitContent() {
             </div>
           )}
         </div>
+      </EconomicsContainer>
       </div>
     </div>
   )
