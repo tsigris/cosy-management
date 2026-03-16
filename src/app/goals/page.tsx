@@ -1358,9 +1358,11 @@ const modalBackdropStyle: CSSProperties = {
   background: colors.modalBackdrop,
   zIndex: 120,
   display: 'flex',
-  alignItems: 'center',
+  alignItems: 'flex-start',
   justifyContent: 'center',
   padding: '16px',
+  overflowY: 'auto',
+  WebkitOverflowScrolling: 'touch',
 }
 
 const modalCardStyle: CSSProperties = {
@@ -1371,7 +1373,9 @@ const modalCardStyle: CSSProperties = {
   boxShadow: 'var(--shadow)',
   display: 'flex',
   flexDirection: 'column',
-  maxHeight: '90vh',
+  maxHeight: 'calc(100dvh - 32px)',
+  margin: '0 auto',
+  minHeight: 0,
   overflow: 'hidden',
 }
 
@@ -1391,8 +1395,11 @@ const modalHeaderStyle: CSSProperties = {
 const modalBodyStyle: CSSProperties = {
   overflowY: 'auto',
   WebkitOverflowScrolling: 'touch',
+  overscrollBehavior: 'contain',
   flex: 1,
+  minHeight: 0,
   padding: 20,
+  paddingBottom: 120,
 }
 const iconCloseBtnStyle: CSSProperties = { width: '32px', height: '32px', borderRadius: '10px', background: colors.bgLight, border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }
 const labelStyle: CSSProperties = { fontSize: '12px', fontWeight: 900, color: colors.secondaryText, marginBottom: 6, display: 'block' }
