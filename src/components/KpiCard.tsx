@@ -28,16 +28,15 @@ export default function KpiCard({ label, value, loading, hint, color, dashed, st
   const isCompact = typeof window !== 'undefined' && window.innerWidth < 420 && numberStr.replace(/[^0-9]/g, '').length > 10
 
   const outer: React.CSSProperties = {
-    borderRadius: 22,
-    border: dashed ? `2px dashed rgba(99,102,241,0.6)` : undefined,
+    borderRadius: 20,
+    border: dashed ? `2px dashed rgba(99,102,241,0.6)` : `1px solid var(--border)`,
     padding: 16,
-    minHeight: 108,
-    background: 'transparent',
+    background: 'var(--surface, rgba(255,255,255,0.97))',
     minWidth: 0,
     ...style,
   }
 
-  const labelStyle: React.CSSProperties = { fontSize: 11, fontWeight: 900, color: 'var(--muted)', letterSpacing: 0.6, textTransform: 'uppercase' }
+  const labelStyle: React.CSSProperties = { fontSize: 12, fontWeight: 900, color: 'var(--muted)', letterSpacing: 0.4, textTransform: 'uppercase' }
 
   const amountWrapper: React.CSSProperties = {
     marginTop: 12,
@@ -50,8 +49,8 @@ export default function KpiCard({ label, value, loading, hint, color, dashed, st
   }
 
   const amountBase: React.CSSProperties = {
-    fontWeight: 900,
-    lineHeight: 0.95,
+    fontWeight: 1000,
+    lineHeight: 1,
     overflow: 'hidden',
     whiteSpace: 'normal',
     wordBreak: 'break-word',
@@ -60,17 +59,19 @@ export default function KpiCard({ label, value, loading, hint, color, dashed, st
 
   const amountStyle: React.CSSProperties = {
     ...amountBase,
-    fontSize: isCompact ? 'clamp(1.4rem, 6vw, 2.4rem)' : 'clamp(1.9rem, 5.5vw, 3.2rem)',
-    letterSpacing: '-0.02em',
+    fontSize: 20,
+    marginTop: 8,
+    letterSpacing: '-0.01em',
     fontVariantNumeric: 'tabular-nums',
   }
 
   const currencyStyle: React.CSSProperties = {
     ...amountBase,
-    fontSize: isCompact ? '0.82em' : '0.9em',
+    fontSize: '0.9em',
     opacity: 0.95,
     display: 'inline-block',
     flexShrink: 0,
+    marginRight: 6,
   }
 
   const hintStyle: React.CSSProperties = { marginTop: 8, fontSize: 11, fontWeight: 800, color: 'var(--muted)' }
