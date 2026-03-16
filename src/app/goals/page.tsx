@@ -237,6 +237,42 @@ function GoalsContent() {
     return () => window.removeEventListener('focus', onWindowFocus)
   }, [loadGoals])
 
+  useEffect(() => {
+    if (!storeId) return
+
+    const channel = supabase
+      .channel(`goals-realtime-${storeId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'savings_goals',
+          filter: `store_id=eq.${storeId}`,
+        },
+        () => {
+          void loadGoals()
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'transactions',
+          filter: `store_id=eq.${storeId}`,
+        },
+        () => {
+          void loadGoals()
+        }
+      )
+      .subscribe()
+
+    return () => {
+      void supabase.removeChannel(channel)
+    }
+  }, [storeId, loadGoals, supabase])
+
   // --- GOAL ACTIONS ---
   const resetGoalForm = () => {
     setEditingGoalId(null)
@@ -419,6 +455,23 @@ function GoalsContent() {
           return g
         })
       )
+
+      setSelectedGoal((prev) => {
+        if (!prev || prev.id !== selectedGoal.id) return prev
+        const updatedAmount = Number(newAmount)
+        const finalStatus =
+          prev.status === 'completed' && updatedAmount < Number(prev.target_amount)
+            ? 'completed'
+            : updatedAmount >= Number(prev.target_amount)
+              ? 'completed'
+              : 'active'
+
+        return {
+          ...prev,
+          current_amount: updatedAmount,
+          status: finalStatus,
+        }
+      })
 
       setTodayImpactByGoal((prev) => ({
         ...prev,
