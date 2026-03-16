@@ -1247,18 +1247,16 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
           </div>
         )}
 
-          {/* PERIOD FILTER (matches other economics pages) */}
-          {!embeddedInEconomics && (
-            <div className="no-print" style={{ marginTop: 12 }}>
-              <EconomicsPeriodFilter
-                period={period}
-                onPeriodChange={(p) => setPeriod(p)}
-                selectedYear={selectedYear}
-                onYearChange={(y) => setSelectedYear(y)}
-                yearOptions={yearOptions}
-              />
-            </div>
-          )}
+        {/* PERIOD FILTER (matches other economics pages) */}
+        <div className="no-print" style={{ marginTop: 12 }}>
+          <EconomicsPeriodFilter
+            period={period}
+            onPeriodChange={setPeriod}
+            selectedYear={selectedYear}
+            onYearChange={setSelectedYear}
+            yearOptions={yearOptions}
+          />
+        </div>
 
           {/* SIMPLE: TOP “ΑΠΟ/ΕΩΣ” PILL */}
         {!embeddedInEconomics && (
