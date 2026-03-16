@@ -183,6 +183,15 @@ function GoalsContent() {
 
   const businessDate = useMemo(() => getBusinessDate(), [])
 
+  const [isMobile, setIsMobile] = useState(false)
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 767px)')
+    setIsMobile(mq.matches)
+    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches)
+    mq.addEventListener('change', handler)
+    return () => mq.removeEventListener('change', handler)
+  }, [])
+
   const loadGoals = useCallback(async () => {
     if (!storeId) return
     setLoading(true)
@@ -638,83 +647,101 @@ function GoalsContent() {
             <p style={{ margin: '8px 0 0', fontWeight: 800, color: colors.secondaryText }}>Δεν έχεις δημιουργήσει στόχους.</p>
           </div>
         ) : (
-          <div style={goalsGridStyle}>
+          <div style={{ ...goalsGridStyle, gridTemplateColumns: isMobile ? '1fr' : 'repeat(2, minmax(0, 1fr))' }}>
             {goals.map((g) => {
               const target = Number(g.target_amount || 0)
               const current = Number(g.current_amount || 0)
               const progress = target > 0 ? Math.min(100, Math.round((current / target) * 100)) : 0
               const isCompleted = g.status === 'completed'
               const plan = getGoalProgress(g, businessDate)
-              const todayImpact = Number(todayImpactByGoal[g.id] || 0) // negative for deposits, positive for withdraw
+              const todayImpact = Number(todayImpactByGoal[g.id] || 0)
               const remainingForToday = getRemainingForToday(plan.dailyNeeded, plan.deltaFromExpected, todayImpact)
               const ringRadius = 28
               const ringCircumference = 2 * Math.PI * ringRadius
               const ringOffset = ringCircumference - (progress / 100) * ringCircumference
 
-              const paceHint = plan.hasDate
-                ? plan.expired
-                  ? `Η ημερομηνία στόχου έχει περάσει. Υπόλοιπο: ${toMoney(plan.remaining)}`
-                  : `Απομένουν ~${plan.daysLeft} ημέρες • /ημέρα: ${toMoney(plan.perDay || 0)} • /μήνα: ${toMoney(plan.perMonth || 0)}`
-                : 'Βάλε ημερομηνία στόχου για να σου δείχνει /ημέρα και /μήνα.'
-
-              const paceDelta = plan.hasDate
-                ? plan.deltaFromExpected === null
-                  ? null
-                  : plan.deltaFromExpected >= 0
-                    ? `Μπροστά από πλάνο: ${toMoney(plan.deltaFromExpected)}`
-                    : `Πίσω από πλάνο: ${toMoney(Math.abs(plan.deltaFromExpected))}`
-                : null
-
               return (
-                <button
+                <div
                   key={g.id}
-                  type="button"
-                  onClick={() => openHistory(g)}
                   style={{ ...goalTileStyle, opacity: isCompleted ? 0.9 : 1 }}
                 >
-                  <div style={goalTileRingWrap}>
-                    <svg width="84" height="84" viewBox="0 0 84 84" style={{ transform: 'rotate(-90deg)' }}>
-                      <circle cx="42" cy="42" r={ringRadius} stroke="var(--border)" strokeWidth="8" fill="none" />
-                      <circle
-                        cx="42"
-                        cy="42"
-                        r={ringRadius}
-                        stroke={isCompleted ? colors.accentGreen : colors.accentBlue}
-                        strokeWidth="8"
-                        strokeLinecap="round"
-                        fill="none"
-                        strokeDasharray={ringCircumference}
-                        strokeDashoffset={ringOffset}
-                        style={{ transition: 'stroke-dashoffset 0.35s ease' }}
-                      />
-                    </svg>
-                    <div style={goalTileRingCenter}>
-                      {isCompleted ? <CheckCircle2 size={20} color={colors.accentGreen} /> : <PiggyBank size={20} color={colors.accentBlue} />}
+                  {/* Clickable top area → details */}
+                  <button
+                    type="button"
+                    onClick={() => openHistory(g)}
+                    style={goalTileClickArea}
+                  >
+                    <div style={goalTileRingWrap}>
+                      <svg width="72" height="72" viewBox="0 0 84 84" style={{ transform: 'rotate(-90deg)' }}>
+                        <circle cx="42" cy="42" r={ringRadius} stroke="var(--border)" strokeWidth="8" fill="none" />
+                        <circle
+                          cx="42"
+                          cy="42"
+                          r={ringRadius}
+                          stroke={isCompleted ? colors.accentGreen : colors.accentBlue}
+                          strokeWidth="8"
+                          strokeLinecap="round"
+                          fill="none"
+                          strokeDasharray={ringCircumference}
+                          strokeDashoffset={ringOffset}
+                          style={{ transition: 'stroke-dashoffset 0.35s ease' }}
+                        />
+                      </svg>
+                      <div style={goalTileRingCenter}>
+                        {isCompleted ? <CheckCircle2 size={18} color={colors.accentGreen} /> : <PiggyBank size={18} color={colors.accentBlue} />}
+                      </div>
                     </div>
-                  </div>
 
-                  <div style={goalTilePercent}>{progress}%</div>
-                  <h3 style={goalTileName}>{g.name}</h3>
-                  <div style={goalTileAmount}>{toMoney(current)}</div>
-                  <div style={goalTileTarget}>Στόχος: {toMoney(target)}</div>
-                  <div style={{ marginTop: 6, fontSize: 13, fontWeight: 700, color: colors.secondaryText }}>
-                    Απομένουν: {toMoney(plan.remainingAmount)} • Χρειάζονται / ημέρα: {plan.dailyNeeded !== null ? toMoney(plan.dailyNeeded) : '-'}
-                  </div>
-                  <div style={{ marginTop: 4, fontSize: 12, fontWeight: 800, color: colors.secondaryText }}>
-                    Σήμερα να καταθέσεις: {remainingForToday !== null ? toMoney(remainingForToday) : '-'}
-                  </div>
-                  <div style={{ marginTop: 6, fontSize: 12, color: colors.secondaryText }}>{getGoalInsights(g, businessDate).message}</div>
-                      <div style={goalTileBottomRow}>
-                    <span style={{ ...miniChip, borderColor: 'rgba(99,102,241,0.25)', background: 'rgba(99,102,241,0.08)', color: colors.indigo }}>
-                      <Clock size={12} /> {toMoney(todayImpact)}
-                    </span>
-                    {!!g.target_date && (
-                      <span style={dateBadgeStyle}>
-                        <Calendar size={12} /> {formatDateGR(g.target_date)}
+                    <div style={goalTilePercent}>{progress}%</div>
+                    <h3 style={goalTileName}>{g.name}</h3>
+                    <div style={goalTileAmount}>{toMoney(current)}</div>
+                    <div style={goalTileTarget}>Στόχος: {toMoney(target)}</div>
+
+                    <div style={goalTileInfoRow}>
+                      Απομένουν: {toMoney(plan.remainingAmount)}
+                    </div>
+                    <div style={goalTileInfoRow}>
+                      /ημέρα: {plan.dailyNeeded !== null ? toMoney(plan.dailyNeeded) : '-'}
+                    </div>
+                    <div style={{ ...goalTileInfoRow, fontWeight: 800 }}>
+                      Σήμερα: {remainingForToday !== null ? toMoney(remainingForToday) : '-'}
+                    </div>
+                    <div style={{ marginTop: 4, fontSize: 11, color: colors.secondaryText, lineHeight: 1.3 }}>
+                      {getGoalInsights(g, businessDate).message}
+                    </div>
+
+                    {/* chips row */}
+                    <div style={goalTileChipsRow}>
+                      <span style={{ ...miniChip, borderColor: 'rgba(99,102,241,0.25)', background: 'rgba(99,102,241,0.08)', color: colors.indigo, fontSize: 11, padding: '5px 8px' }}>
+                        <Clock size={11} /> {toMoney(todayImpact)}
                       </span>
-                    )}
+                      {!!g.target_date && (
+                        <span style={{ ...dateBadgeStyle, fontSize: 10 }}>
+                          <Calendar size={10} /> {formatDateGR(g.target_date)}
+                        </span>
+                      )}
+                    </div>
+                  </button>
+
+                  {/* Footer action */}
+                  <div style={goalTileFooter}>
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); startTransaction(g, 'deposit') }}
+                      style={depositCtaBtn}
+                      disabled={isCompleted}
+                    >
+                      <TrendingUp size={14} /> Κατάθεση
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); openHistory(g) }}
+                      style={detailsCtaBtn}
+                    >
+                      Λεπτομέρειες
+                    </button>
                   </div>
-                </button>
+                </div>
               )
             })}
           </div>
@@ -778,77 +805,77 @@ function GoalsContent() {
       {openTxModal && selectedGoal && (
         <div style={modalBackdropStyle} onClick={() => !savingTx && setOpenTxModal(false)}>
           <div style={modalCardStyle} onClick={(e) => e.stopPropagation()}>
-            <div style={modalHeaderStyle}>
-              <h2 style={{ margin: 0, fontWeight: 900 }}>{txAction === 'deposit' ? 'Κατάθεση στον Κουμπαρά' : 'Ανάληψη από Κουμπαρά'}</h2>
+            <div style={{ ...modalHeaderStyle, paddingLeft: 20, paddingRight: 20 }}>
+              <h2 style={{ margin: 0, fontWeight: 900, fontSize: 16 }}>{txAction === 'deposit' ? 'Κατάθεση στον Κουμπαρά' : 'Ανάληψη από Κουμπαρά'}</h2>
               <button style={iconCloseBtnStyle} onClick={() => setOpenTxModal(false)}>
                 <X size={16} />
               </button>
             </div>
 
-            <div style={{ padding: 12, background: colors.bgLight, borderRadius: 12, marginBottom: 12 }}>
-              <p style={{ margin: 0, fontWeight: 900, color: colors.primaryDark }}>{selectedGoal.name}</p>
-              <p style={{ margin: '4px 0 0', fontSize: 12, fontWeight: 700, color: colors.secondaryText }}>
-                Διαθέσιμο Υπόλοιπο: {toMoney(selectedGoal.current_amount)}
-              </p>
+            <div style={{ ...modalBodyStyle, display: 'flex', flexDirection: 'column', gap: 0 }}>
+              <div style={{ padding: '10px 12px', background: colors.bgLight, borderRadius: 12, marginBottom: 14 }}>
+                <p style={{ margin: 0, fontWeight: 900, color: colors.primaryDark }}>{selectedGoal.name}</p>
+                <p style={{ margin: '4px 0 0', fontSize: 12, fontWeight: 700, color: colors.secondaryText }}>
+                  Διαθέσιμο Υπόλοιπο: {toMoney(selectedGoal.current_amount)}
+                </p>
               </div>
 
-              {/* ✅ multi-wallet selector */}
               <label style={labelStyle}>Πηγή Χρημάτων</label>
-              <div style={methodGrid}>
-              <button type="button" onClick={() => setTxMethod('Μετρητά')} style={{ ...methodBtn, ...(txMethod === 'Μετρητά' ? methodBtnActive : {}) }}>
-                <Wallet size={16} /> Μετρητά
-              </button>
-              <button type="button" onClick={() => setTxMethod('Κάρτα')} style={{ ...methodBtn, ...(txMethod === 'Κάρτα' ? methodBtnActive : {}) }}>
-                <CreditCard size={16} /> Κάρτα
-              </button>
-              <button type="button" onClick={() => setTxMethod('Τράπεζα')} style={{ ...methodBtn, ...(txMethod === 'Τράπεζα' ? methodBtnActive : {}) }}>
-                <Landmark size={16} /> Τράπεζα
-              </button>
-            </div>
-
-            <label style={{ ...labelStyle, marginTop: 12 }}>Ποσό {txAction === 'deposit' ? 'Κατάθεσης' : 'Ανάληψης'}</label>
-
-            <input
-              style={inputStyle}
-              inputMode="decimal"
-              placeholder="π.χ. 50,00"
-              value={txAmount}
-              onChange={(e) => setTxAmount(normalizeMoneyInput(e.target.value))}
-              onBlur={() => {
-                const n = parseMoney(txAmount)
-                if (n) setTxAmount(formatMoneyInputEl(n))
-              }}
-            />
-
-            {/* ✅ presets */}
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 10 }}>
-              {presets.map((p) => (
-                <button key={p} type="button" onClick={() => applyPreset(p)} style={presetBtn}>
-                  +{p}€
+              <div style={{ ...methodGrid, gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+                <button type="button" onClick={() => setTxMethod('Μετρητά')} style={{ ...methodBtn, ...(txMethod === 'Μετρητά' ? methodBtnActive : {}) }}>
+                  <Wallet size={15} /> Μετρητά
                 </button>
-              ))}
-            </div>
+                <button type="button" onClick={() => setTxMethod('Κάρτα')} style={{ ...methodBtn, ...(txMethod === 'Κάρτα' ? methodBtnActive : {}) }}>
+                  <CreditCard size={15} /> Κάρτα
+                </button>
+                <button type="button" onClick={() => setTxMethod('Τράπεζα')} style={{ ...methodBtn, ...(txMethod === 'Τράπεζα' ? methodBtnActive : {}) }}>
+                  <Landmark size={15} /> Τράπεζα
+                </button>
+              </div>
 
-            <p style={{ fontSize: 11, fontWeight: 850, color: colors.secondaryText, marginTop: 10, lineHeight: 1.4 }}>
-              {txAction === 'deposit' ? (
-                <>
-                  * Το ποσό θα <b>αφαιρεθεί</b> από <b>{txMethod}</b> στο ταμείο και θα μπει στον κουμπαρά.
-                </>
-              ) : (
-                <>
-                  * Το ποσό θα <b>επιστρέψει</b> στο ταμείο ως <b>{txMethod}</b>.
-                </>
-              )}
-            </p>
-            <button
-              style={{ ...saveBtnStyle, background: txAction === 'deposit' ? colors.primaryDark : colors.accentBlue }}
-              onClick={onSaveTransaction}
-              disabled={savingTx}
-            >
-              {savingTx ? 'Εκτέλεση...' : 'Επιβεβαίωση'}
-            </button>
+              <label style={{ ...labelStyle, marginTop: 14 }}>Ποσό {txAction === 'deposit' ? 'Κατάθεσης' : 'Ανάληψης'}</label>
+              <input
+                style={inputStyle}
+                inputMode="decimal"
+                placeholder="π.χ. 50,00"
+                value={txAmount}
+                onChange={(e) => setTxAmount(normalizeMoneyInput(e.target.value))}
+                onBlur={() => {
+                  const n = parseMoney(txAmount)
+                  if (n) setTxAmount(formatMoneyInputEl(n))
+                }}
+              />
+
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 10 }}>
+                {presets.map((p) => (
+                  <button key={p} type="button" onClick={() => applyPreset(p)} style={presetBtn}>
+                    +{p}€
+                  </button>
+                ))}
+              </div>
+
+              <p style={{ fontSize: 11, fontWeight: 850, color: colors.secondaryText, marginTop: 10, lineHeight: 1.5, marginBottom: 0 }}>
+                {txAction === 'deposit' ? (
+                  <>
+                    * Το ποσό θα <b>αφαιρεθεί</b> από <b>{txMethod}</b> στο ταμείο και θα μπει στον κουμπαρά.
+                  </>
+                ) : (
+                  <>
+                    * Το ποσό θα <b>επιστρέψει</b> στο ταμείο ως <b>{txMethod}</b>.
+                  </>
+                )}
+              </p>
+
+              <button
+                style={{ ...saveBtnStyle, marginTop: 16, background: txAction === 'deposit' ? colors.primaryDark : colors.accentBlue }}
+                onClick={onSaveTransaction}
+                disabled={savingTx}
+              >
+                {savingTx ? 'Εκτέλεση...' : 'Επιβεβαίωση'}
+              </button>
+            </div>
           </div>
-      </div>
+        </div>
       )}
 
       {/* ✅ MODAL: GOAL DETAILS + HISTORY */}
@@ -984,7 +1011,7 @@ function GoalsContent() {
               )
             })()}
 
-            <div style={{ marginTop: 14, marginBottom: 8, fontSize: 13, fontWeight: 900, color: colors.primaryDark, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <div style={{ marginTop: 20, marginBottom: 10, fontSize: 13, fontWeight: 900, color: colors.primaryDark, display: 'inline-flex', alignItems: 'center', gap: 6, borderTop: `1px solid var(--border)`, paddingTop: 16, width: '100%' }}>
               <History size={14} /> Ιστορικό
             </div>
 
@@ -1190,13 +1217,76 @@ const goalTileStyle: CSSProperties = {
   border: `1px solid ${colors.border}`,
   background: 'var(--surfaceSolid)',
   borderRadius: 20,
-  padding: 12,
-  minHeight: 210,
+  overflow: 'hidden',
+  display: 'flex',
+  flexDirection: 'column',
+}
+
+const goalTileClickArea: CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
   alignItems: 'center',
   textAlign: 'center',
+  padding: '14px 12px 10px',
+  flex: 1,
+  background: 'none',
+  border: 'none',
   cursor: 'pointer',
+  width: '100%',
+}
+
+const goalTileInfoRow: CSSProperties = {
+  marginTop: 3,
+  fontSize: 12,
+  fontWeight: 700,
+  color: colors.secondaryText,
+  lineHeight: 1.4,
+}
+
+const goalTileChipsRow: CSSProperties = {
+  marginTop: 8,
+  width: '100%',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: 6,
+  flexWrap: 'wrap',
+}
+
+const goalTileFooter: CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: '1fr auto',
+  gap: 8,
+  padding: '10px 12px',
+  borderTop: `1px solid var(--border)`,
+  background: 'var(--bg)',
+}
+
+const depositCtaBtn: CSSProperties = {
+  border: 'none',
+  borderRadius: 10,
+  background: colors.primaryDark,
+  color: 'var(--surfaceSolid)',
+  fontWeight: 950,
+  fontSize: 13,
+  padding: '10px 12px',
+  cursor: 'pointer',
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: 6,
+}
+
+const detailsCtaBtn: CSSProperties = {
+  border: `1px solid var(--border)`,
+  borderRadius: 10,
+  background: 'var(--surfaceSolid)',
+  color: colors.secondaryText,
+  fontWeight: 850,
+  fontSize: 12,
+  padding: '10px 10px',
+  cursor: 'pointer',
+  whiteSpace: 'nowrap',
 }
 
 const goalTileRingWrap: CSSProperties = {
@@ -1251,6 +1341,7 @@ const goalTileBottomRow: CSSProperties = {
   justifyContent: 'space-between',
   gap: 6,
 }
+
 
 const emptyStateStyle: CSSProperties = { background: colors.white, border: `1px dashed ${colors.border}`, borderRadius: '18px', padding: '30px', textAlign: 'center' }
 const loadingCardStyle: CSSProperties = {
