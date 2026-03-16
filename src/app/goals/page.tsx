@@ -822,6 +822,7 @@ function GoalsContent() {
               </button>
             </div>
 
+            <div style={modalBodyStyle}>
             {(() => {
               const target = Number(selectedGoal.target_amount || 0)
               const current = Number(selectedGoal.current_amount || 0)
@@ -1023,6 +1024,8 @@ function GoalsContent() {
                   })}
                 </div>
               )}
+            </div>
+
             </div>
 
             {/* Pagination */}
