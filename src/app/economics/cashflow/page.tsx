@@ -605,35 +605,43 @@ export default function EconomicsCashflowPage() {
         {/* KPI Cards */}
         <section style={styles.kpiGrid}>
           <div style={styles.kpiCard}>
-            <div style={styles.kpiLabel}>Διαθέσιμο Υπόλοιπο</div>
-            <div style={styles.kpiValue}>{loading ? '—' : amountFormatter.format(KPI.availableBalance)}</div>
-            <div style={styles.kpiHint}>Τρέχον ρευστό (best-effort από κινήσεις)</div>
-          </div>
-
-          <div style={styles.kpiCard}>
-            <div style={styles.kpiLabel}>Αναμενόμενα Έσοδα</div>
-            <div style={styles.kpiValue}>{loading ? '—' : amountFormatter.format(KPI.expectedIncome)}</div>
-            <div style={styles.kpiHint}>Έσοδα σε πίστωση (is_credit)</div>
-          </div>
-
-          <div style={styles.kpiCard}>
-            <div style={styles.kpiLabel}>Προγραμματισμένα Έξοδα</div>
-            <div style={styles.kpiValue}>{loading ? '—' : amountFormatter.format(KPI.scheduledExpense)}</div>
-            <div style={styles.kpiHint}>Έξοδα σε πίστωση (is_credit)</div>
-          </div>
-
-          <div style={styles.kpiCard}>
-            <div style={styles.kpiLabel}>Net Cash Flow (μήνα)</div>
-            <div
-              style={{
-                ...styles.kpiValue,
-                color: KPI.netMonth + internalTransfersTotal >= 0 ? t.green : t.red,
-              }}
-            >
-              {loading ? '—' : amountFormatter.format(KPI.netMonth + internalTransfersTotal)}
+            <div style={{ minWidth: 0 }}>
+              <div style={styles.kpiLabel}>Διαθέσιμο Υπόλοιπο</div>
+              <div style={styles.kpiValue}>{loading ? '—' : amountFormatter.format(KPI.availableBalance)}</div>
+              <div style={styles.kpiHint}>Τρέχον ρευστό (best-effort από κινήσεις)</div>
             </div>
-            <div style={styles.kpiHint}>
-              {KPI.monthStart} → {KPI.monthEnd} (incl. transfers)
+          </div>
+
+          <div style={styles.kpiCard}>
+            <div style={{ minWidth: 0 }}>
+              <div style={styles.kpiLabel}>Αναμενόμενα Έσοδα</div>
+              <div style={styles.kpiValue}>{loading ? '—' : amountFormatter.format(KPI.expectedIncome)}</div>
+              <div style={styles.kpiHint}>Έσοδα σε πίστωση (is_credit)</div>
+            </div>
+          </div>
+
+          <div style={styles.kpiCard}>
+            <div style={{ minWidth: 0 }}>
+              <div style={styles.kpiLabel}>Προγραμματισμένα Έξοδα</div>
+              <div style={styles.kpiValue}>{loading ? '—' : amountFormatter.format(KPI.scheduledExpense)}</div>
+              <div style={styles.kpiHint}>Έξοδα σε πίστωση (is_credit)</div>
+            </div>
+          </div>
+
+          <div style={styles.kpiCard}>
+            <div style={{ minWidth: 0 }}>
+              <div style={styles.kpiLabel}>Καθαρή Ταμειακή Ροή (Μήνα)</div>
+              <div
+                style={{
+                  ...styles.kpiValue,
+                  color: KPI.netMonth + internalTransfersTotal >= 0 ? t.green : t.red,
+                }}
+              >
+                {loading ? '—' : amountFormatter.format(KPI.netMonth + internalTransfersTotal)}
+              </div>
+              <div style={styles.kpiHint}>
+                {KPI.monthStart} → {KPI.monthEnd} (incl. transfers)
+              </div>
             </div>
           </div>
 
@@ -645,29 +653,35 @@ export default function EconomicsCashflowPage() {
               background: t.isDark ? 'rgba(99,102,241,0.10)' : 'rgba(99,102,241,0.07)',
             }}
           >
-            <div style={{ ...styles.kpiLabel, color: t.indigo }}>Εσωτερικές Μεταφορές</div>
-            <div style={{ ...styles.kpiValue, color: t.indigo }}>{loading ? '—' : amountFormatter.format(internalTransfersTotal)}</div>
-            <div style={styles.kpiHint}>
-              Εισροές: <span style={{ color: t.green }}>{amountFormatter.format(internalTransfersIn)}</span> • Εκροές:{' '}
-              <span style={{ color: t.red }}>{amountFormatter.format(Math.abs(internalTransfersOut))}</span>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ ...styles.kpiLabel, color: t.indigo }}>Εσωτερικές Μεταφορές</div>
+              <div style={{ ...styles.kpiValue, color: t.indigo }}>{loading ? '—' : amountFormatter.format(internalTransfersTotal)}</div>
+              <div style={styles.kpiHint}>
+                Εισροές: <span style={{ color: t.green }}>{amountFormatter.format(internalTransfersIn)}</span> • Εκροές:{' '}
+                <span style={{ color: t.red }}>{amountFormatter.format(Math.abs(internalTransfersOut))}</span>
+              </div>
             </div>
           </div>
 
           {/* Οργανικά Έσοδα/Έξοδα */}
           <div style={styles.kpiCard}>
-            <div style={styles.kpiLabel}>Οργανικά Έσοδα</div>
-            <div style={{ ...styles.kpiValue, color: t.green }}>
-              {loading ? '—' : amountFormatter.format(organicIncome.reduce((a, r) => a + r.amount, 0))}
+            <div style={{ minWidth: 0 }}>
+              <div style={styles.kpiLabel}>Οργανικά Έσοδα</div>
+              <div style={{ ...styles.kpiValue, color: t.green }}>
+                {loading ? '—' : amountFormatter.format(organicIncome.reduce((a, r) => a + r.amount, 0))}
+              </div>
+              <div style={styles.kpiHint}>Χωρίς Μεταφορές Κεφαλαίου</div>
             </div>
-            <div style={styles.kpiHint}>Χωρίς Μεταφορές Κεφαλαίου</div>
           </div>
 
           <div style={styles.kpiCard}>
-            <div style={styles.kpiLabel}>Οργανικά Έξοδα</div>
-            <div style={{ ...styles.kpiValue, color: t.red }}>
-              {loading ? '—' : amountFormatter.format(organicExpense.reduce((a, r) => a + Math.abs(r.amount), 0))}
+            <div style={{ minWidth: 0 }}>
+              <div style={styles.kpiLabel}>Οργανικά Έξοδα</div>
+              <div style={{ ...styles.kpiValue, color: t.red }}>
+                {loading ? '—' : amountFormatter.format(organicExpense.reduce((a, r) => a + Math.abs(r.amount), 0))}
+              </div>
+              <div style={styles.kpiHint}>Χωρίς Μεταφορές Κεφαλαίου</div>
             </div>
-            <div style={styles.kpiHint}>Χωρίς Μεταφορές Κεφαλαίου</div>
           </div>
         </section>
 
@@ -676,21 +690,27 @@ export default function EconomicsCashflowPage() {
         {/* Mini KPI row for chart period */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0,1fr))', gap: 10, marginTop: 12 }}> 
           <div style={{ ...styles.kpiCard, padding: 12, minHeight: 72 }}>
-            <div style={styles.kpiLabel}>Profit This Period</div>
-            <div style={styles.kpiValue}>{loading ? '—' : amountFormatter.format(totalProfit)}</div>
-            <div style={styles.kpiHint}>Συνολικό κέρδος</div>
+            <div style={{ minWidth: 0 }}>
+              <div style={styles.kpiLabel}>Κέρδος Περιόδου</div>
+              <div style={styles.kpiValue}>{loading ? '—' : amountFormatter.format(totalProfit)}</div>
+              <div style={styles.kpiHint}>Συνολικό κέρδος</div>
+            </div>
           </div>
 
           <div style={{ ...styles.kpiCard, padding: 12, minHeight: 72 }}>
-            <div style={styles.kpiLabel}>Total Revenue</div>
-            <div style={{ ...styles.kpiValue, color: t.green }}>{loading ? '—' : amountFormatter.format(totalRevenue)}</div>
-            <div style={styles.kpiHint}>Συνολικά Έσοδα</div>
+            <div style={{ minWidth: 0 }}>
+              <div style={styles.kpiLabel}>Συνολικά Έσοδα</div>
+              <div style={{ ...styles.kpiValue, color: t.green }}>{loading ? '—' : amountFormatter.format(totalRevenue)}</div>
+              <div style={styles.kpiHint}>Συνολικά Έσοδα</div>
+            </div>
           </div>
 
           <div style={{ ...styles.kpiCard, padding: 12, minHeight: 72 }}>
-            <div style={styles.kpiLabel}>Total Expenses</div>
-            <div style={{ ...styles.kpiValue, color: t.red }}>{loading ? '—' : amountFormatter.format(totalExpenses)}</div>
-            <div style={styles.kpiHint}>Συνολικά Έξοδα</div>
+            <div style={{ minWidth: 0 }}>
+              <div style={styles.kpiLabel}>Συνολικά Έξοδα</div>
+              <div style={{ ...styles.kpiValue, color: t.red }}>{loading ? '—' : amountFormatter.format(totalExpenses)}</div>
+              <div style={styles.kpiHint}>Συνολικά Έξοδα</div>
+            </div>
           </div>
         </div>
 
@@ -1122,10 +1142,22 @@ function makeStyles(t: {
     padding: 16,
     backdropFilter: 'blur(10px)',
     minHeight: 108,
+    minWidth: 0,
   }
 
   const kpiLabel: CSSProperties = { fontSize: 11, fontWeight: 900, color: t.muted, letterSpacing: 0.6, textTransform: 'uppercase' }
-  const kpiValue: CSSProperties = { marginTop: 10, fontSize: 22, fontWeight: 900, color: t.text, lineHeight: 1.15 }
+  const kpiValue: CSSProperties = {
+    marginTop: 10,
+    fontSize: 'clamp(1.6rem, 5vw, 2.8rem)',
+    fontWeight: 900,
+    color: t.text,
+    lineHeight: 1,
+    overflow: 'hidden',
+    whiteSpace: 'normal',
+    maxWidth: '100%',
+    wordBreak: 'break-word',
+    overflowWrap: 'anywhere',
+  }
   const kpiHint: CSSProperties = { marginTop: 8, fontSize: 11, fontWeight: 800, color: t.muted2 }
 
   const chartWrap: CSSProperties = { marginTop: 12 }
