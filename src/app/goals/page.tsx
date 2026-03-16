@@ -701,8 +701,6 @@ function GoalsContent() {
               </div>
             </div>
 
-            </div>
-
             <div style={{ padding: 12 }}>
               <button style={saveBtnStyle} onClick={onSaveGoal} disabled={savingGoal}>
               {savingGoal ? 'Αποθήκευση...' : 'Αποθήκευση'}
@@ -1024,8 +1022,6 @@ function GoalsContent() {
                   })}
                 </div>
               )}
-            </div>
-
             </div>
 
             {/* Pagination */}
