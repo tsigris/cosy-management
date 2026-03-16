@@ -330,7 +330,7 @@ function ReportsContent() {
                 </div>
               )}
             </>
-          )}
+          )
         </div>
       </div>
     </div>
