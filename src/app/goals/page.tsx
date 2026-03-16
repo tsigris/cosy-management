@@ -133,10 +133,11 @@ function monthsApprox(days: number) {
   return Math.max(1, Math.ceil(days / 30))
 }
 
-function getRemainingForToday(dailyNeeded: number | null, todayImpact: number): number | null {
+function getRemainingForToday(dailyNeeded: number | null, deltaFromExpected: number | null, todayImpact: number): number | null {
   if (dailyNeeded === null) return null
   const depositedToday = Math.max(0, todayImpact < 0 ? Math.abs(todayImpact) : 0)
-  return Math.max(0, dailyNeeded - depositedToday)
+  const delta = Number(deltaFromExpected ?? 0)
+  return Math.max(0, dailyNeeded - delta - depositedToday)
 }
 
 function GoalsContent() {
@@ -645,7 +646,7 @@ function GoalsContent() {
               const isCompleted = g.status === 'completed'
               const plan = getGoalProgress(g, businessDate)
               const todayImpact = Number(todayImpactByGoal[g.id] || 0) // negative for deposits, positive for withdraw
-              const remainingForToday = getRemainingForToday(plan.dailyNeeded, todayImpact)
+              const remainingForToday = getRemainingForToday(plan.dailyNeeded, plan.deltaFromExpected, todayImpact)
               const ringRadius = 28
               const ringCircumference = 2 * Math.PI * ringRadius
               const ringOffset = ringCircumference - (progress / 100) * ringCircumference
@@ -872,7 +873,7 @@ function GoalsContent() {
               const current = Number(selectedGoal.current_amount || 0)
               const plan = getGoalProgress(selectedGoal, businessDate)
               const todayImpact = Number(todayImpactByGoal[selectedGoal.id] || 0)
-              const remainingForToday = getRemainingForToday(plan.dailyNeeded, todayImpact)
+              const remainingForToday = getRemainingForToday(plan.dailyNeeded, plan.deltaFromExpected, todayImpact)
               const paceHint = plan.hasDate
                 ? plan.expired
                   ? `Η ημερομηνία στόχου έχει περάσει. Υπόλοιπο: ${toMoney(plan.remaining)}`
