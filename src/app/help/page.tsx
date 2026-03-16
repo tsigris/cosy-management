@@ -52,43 +52,130 @@ export default function HelpPage() {
       </div>
 
       <div style={content}>
-        
-        {/* SECTION: ΣΤΟΧΟΙ & ΕΞΟΠΛΙΣΜΟΣ (ΚΟΥΜΠΑΡΑΣ) */}
+
+        {/* SECTION: ΑΡΧΙΚΗ (DASHBOARD) */}
+        <section style={section}>
+          <div style={sectionHeader}>
+            <div style={{ ...iconBox, background: '#fff7ed', color: colors.purple }}>
+              <Sparkles size={20} />
+            </div>
+            <h2 style={sectionTitle}>Αρχική (Πίνακας Ελέγχου)</h2>
+          </div>
+          <div style={card}>
+            <p style={text}>Η Αρχική σελίδα δίνει γρήγορη εικόνα της επιχείρησης: σύνολο ταμείου, σημερινές κινήσεις και βασικά KPIs.</p>
+            <p style={text}>Χρησιμοποιήστε την για γρήγορες αποφάσεις: δείτε εάν η μέρα είναι θετική ή χρειάζεται παρέμβαση.</p>
+          </div>
+        </section>
+
+        {/* SECTION: ΟΙΚΟΝΟΜΙΚΑ */}
+        <section style={section}>
+          <div style={sectionHeader}>
+            <div style={{ ...iconBox, background: '#eef2ff', color: colors.indigo }}>
+              <Coins size={20} />
+            </div>
+            <h2 style={sectionTitle}>Οικονομικά (Σύνοψη)</h2>
+          </div>
+          <div style={card}>
+            <p style={text}>Εδώ βρίσκετε συνοπτική εικόνα εσόδων, εξόδων και διαθέσιμου κεφαλαίου. Προβάλλει μηνιαίες τάσεις και τρέχουσες θέσεις ταμείου.</p>
+            <p style={text}>Χρησιμοποιήστε τα φίλτρα περιόδου για να συγκρίνετε μήνες, έτη ή την πλήρη περίοδο λειτουργίας.</p>
+          </div>
+        </section>
+
+        {/* SECTION: ΚΙΝΗΣΕΙΣ */}
+        <section style={section}>
+          <div style={sectionHeader}>
+            <div style={{ ...iconBox, background: '#f1f5f9', color: colors.secondary }}>
+              <RefreshCw size={20} />
+            </div>
+            <h2 style={sectionTitle}>Κινήσεις (Καταχώρηση)</h2>
+          </div>
+          <div style={card}>
+            <p style={text}>Καταχωρείτε κάθε εισροή ή εκροή: πωλήσεις, αγορές, δόσεις και διορθώσεις.</p>
+            <p style={text}>Οργανώστε τις κινήσεις με κατηγορίες και σημειώσεις για εύκολη αναζήτηση και ανάλυση.</p>
+          </div>
+        </section>
+
+        {/* SECTION: ΕΣΟΔΑ */}
+        <section style={section}>
+          <div style={sectionHeader}>
+            <div style={{ ...iconBox, background: '#ecfdf5', color: colors.success }}>
+              <BadgeEuro size={20} />
+            </div>
+            <h2 style={sectionTitle}>Έσοδα</h2>
+          </div>
+          <div style={card}>
+            <p style={text}>Δηλώνετε τις πωλήσεις και τις πιστώσεις που εισέρχονται στην επιχείρηση. Μπορείτε να διαχωρίσετε τα ζ/ημερήσια έσοδα από τις υπόλοιπες εισροές.</p>
+            <p style={text}>Παρακολουθήστε με εύκολες προβολές ποια προϊόντα ή πηγές φέρνουν τα μεγαλύτερα έσοδα.</p>
+          </div>
+        </section>
+
+        {/* SECTION: ΕΞΟΔΑ */}
+        <section style={section}>
+          <div style={sectionHeader}>
+            <div style={{ ...iconBox, background: '#fff1f2', color: colors.danger }}>
+              <ShoppingCart size={20} />
+            </div>
+            <h2 style={sectionTitle}>Έξοδα</h2>
+          </div>
+          <div style={card}>
+            <p style={text}>Καταχωρείτε όλες τις επιχειρηματικές δαπάνες: προμηθευτές, μισθοδοσία, λογαριασμούς και μικροέξοδα.</p>
+            <p style={text}>Χρησιμοποιήστε τις κατηγορίες για να δείτε που ξοδεύετε περισσότερο και να μειώσετε κόστη.</p>
+          </div>
+        </section>
+
+        {/* SECTION: ΚΕΡΔΟΣ */}
+        <section style={section}>
+          <div style={sectionHeader}>
+            <div style={{ ...iconBox, background: '#eef2ff', color: colors.indigo }}>
+              <BadgeEuro size={20} />
+            </div>
+            <h2 style={sectionTitle}>Κέρδος (Profit)</h2>
+          </div>
+          <div style={card}>
+            <p style={text}>Εμφανίζει την πραγματική κερδοφορία αφαιρώντας τα επιχειρηματικά έξοδα από τα έσοδα.</p>
+            <p style={text}>Χρησιμοποιήστε αυτή την προβολή για να ελέγξετε αν η επιχείρηση είναι βιώσιμη και πού να στοχεύσετε βελτίωση.</p>
+          </div>
+        </section>
+
+        {/* SECTION: ΤΑΜΕΙΑΚΗ ΡΟΗ */}
+        <section style={section}>
+          <div style={sectionHeader}>
+            <div style={{ ...iconBox, background: '#ecfeff', color: colors.sky || '#0ea5e9' }}>
+              <Coins size={20} />
+            </div>
+            <h2 style={sectionTitle}>Ταμειακή Ροή</h2>
+          </div>
+          <div style={card}>
+            <p style={text}>Παρακολουθεί την πραγματική ροή μετρητών σε καθημερινή βάση: τι μπαίνει και τι βγαίνει από το ταμείο.</p>
+            <p style={text}>Σας βοηθάει να διαχειριστείτε ρευστότητα και να προβλέψετε ελλείμματα ή πλεονάσματα.</p>
+          </div>
+        </section>
+
+        {/* SECTION: ΑΝΑΦΟΡΕΣ */}
+        <section style={section}>
+          <div style={sectionHeader}>
+            <div style={{ ...iconBox, background: '#f8fafc', color: colors.secondary }}>
+              <History size={20} />
+            </div>
+            <h2 style={sectionTitle}>Αναφορές</h2>
+          </div>
+          <div style={card}>
+            <p style={text}>Εξάγετε συνοπτικές και λεπτομερείς αναφορές για περίοδους, κατηγορίες και προμηθευτές.</p>
+            <p style={text}>Οι αναφορές σας βοηθούν να κατανοήσετε την οικονομική πορεία και να προετοιμάσετε φορολογικά ή επιχειρησιακά σχέδια.</p>
+          </div>
+        </section>
+
+        {/* SECTION: ΚΟΥΜΠΑΡΑΣ */}
         <section style={section}>
           <div style={sectionHeader}>
             <div style={{ ...iconBox, background: '#f5f3ff', color: colors.purple }}>
               <Target size={20} />
             </div>
-            <h2 style={sectionTitle}>Στόχοι & Εξοπλισμός (Savings Goals)</h2>
+            <h2 style={sectionTitle}>Κουμπαράς (Στόχοι)</h2>
           </div>
           <div style={card}>
-            <p style={text}>
-              Ο "Κουμπαράς" λειτουργεί ως εργαλείο <b>επένδυσης και προγραμματισμού</b>. Δεν είναι απλά λεφτά στην άκρη, αλλά πόροι για το μέλλον της επιχείρησης.
-            </p>
-            
-            <div style={goalsGrid}>
-              <div style={goalItem}>
-                <div style={goalIcon}><ShoppingCart size={16} /></div>
-                <div style={goalText}>Αγορά Εξοπλισμού</div>
-              </div>
-              <div style={goalItem}>
-                <div style={goalIcon}><RefreshCw size={16} /></div>
-                <div style={goalText}>Ανακαίνιση / Maintenance</div>
-              </div>
-              <div style={goalItem}>
-                <div style={goalIcon}><Coins size={16} /></div>
-                <div style={goalText}>Φόροι / Αποθεματικό</div>
-              </div>
-              <div style={goalItem}>
-                <div style={goalIcon}><History size={16} /></div>
-                <div style={goalText}>Μελλοντικές Δόσεις</div>
-              </div>
-            </div>
-
-            <ul style={list}>
-              <li><b>Δέσμευση Ποσού:</b> Όταν ορίζετε έναν στόχο (π.χ. νέα μηχανή καφέ), το ποσό "δεσμεύεται" εικονικά. Μειώνει το ρευστό που βλέπετε στο συρτάρι, προστατεύοντας το κεφάλαιο ανάπτυξης.</li>
-              <li><b>Υλοποίηση:</b> Μόλις ο στόχος επιτευχθεί, κάνετε "Ανάληψη από Στόχο" για να πληρώσετε την αγορά, χωρίς να επηρεαστεί η καθημερινή ροή του ταμείου σας.</li>
-            </ul>
+            <p style={text}>Ο Κουμπαράς είναι εργαλείο προγραμματισμού: δεσμεύετε κεφάλαιο για συγκεκριμένους στόχους (εξοπλισμός, φόροι, ανανέωση).</p>
+            <p style={text}>Μειώνει το διαθέσιμο ρευστό για καθημερινές ανάγκες αλλά προστατεύει χρήματα που προορίζονται για επενδύσεις.</p>
           </div>
         </section>
 
@@ -98,14 +185,39 @@ export default function HelpPage() {
             <div style={{ ...iconBox, background: colors.primary, color: '#fff' }}>
               <Zap size={20} />
             </div>
-            <h2 style={sectionTitle}>Το "Μαύρο Κουτί" (Business Performance)</h2>
+            <h2 style={sectionTitle}>Μαύρο Κουτί (Αποθεματικό Επιχείρησης)</h2>
           </div>
           <div style={card}>
-            <p style={text}>Δείχνει την <b>πραγματική κερδοφορία</b> του καταστήματος, ανεξάρτητα από προσωπικές αποταμιεύσεις ή δάνεια.</p>
-            <div style={formula}>
-              (Έσοδα Ζ + Έσοδα Χωρίς Σήμανση) - (Επιχειρηματικά Έξοδα Μετρητών)
+            <p style={text}>Το Μαύρο Κουτί είναι το αποθεματικό ασφαλείας της επιχείρησης: κεφάλαιο για έκτακτες ανάγκες ή ασφαλείς περιόδους.</p>
+            <p style={text}>Συνιστούμε να διατηρείτε ένα ρευστό αποθέμα για να καλύπτετε απρόβλεπτα έξοδα χωρίς να επηρεάζεται η λειτουργία.</p>
+          </div>
+        </section>
+
+        {/* SECTION: ΚΑΡΤΕΣ */}
+        <section style={section}>
+          <div style={sectionHeader}>
+            <div style={{ ...iconBox, background: '#eef2ff', color: colors.indigo }}>
+              <CreditCard size={20} />
             </div>
-            <p style={subText}>*Είναι το νούμερο που σας λέει αν το μαγαζί "μπαίνει μέσα" ή βγάζει κέρδος ως αυτόνομη οντότητα.</p>
+            <h2 style={sectionTitle}>Κάρτες (Πληρωμές)</h2>
+          </div>
+          <div style={card}>
+            <p style={text}>Διαχειριστείτε πληρωμές μέσω κάρτας και δείτε την κατανομή μετρητών vs κάρτας στις ημερήσιες κινήσεις.</p>
+            <p style={text}>Η σωστή χρήση των μεθόδων πληρωμής βελτιώνει την πρόβλεψη ρευστότητας και τη συμφωνία με το ταμείο.</p>
+          </div>
+        </section>
+
+        {/* SECTION: ΠΡΟΜΗΘΕΥΤΕΣ */}
+        <section style={section}>
+          <div style={sectionHeader}>
+            <div style={{ ...iconBox, background: '#fff7ed', color: colors.purple }}>
+              <Landmark size={20} />
+            </div>
+            <h2 style={sectionTitle}>Προμηθευτές</h2>
+          </div>
+          <div style={card}>
+            <p style={text}>Κρατήστε καρτέλες προμηθευτών με οφειλές, πληρωμές και ιστορικό αγορών.</p>
+            <p style={text}>Χρησιμοποιήστε αυτές τις πληροφορίες για να διαπραγματευτείτε καλύτερους όρους και να οργανώσετε τις πληρωμές.</p>
           </div>
         </section>
 
@@ -118,41 +230,22 @@ export default function HelpPage() {
             <h2 style={sectionTitle}>Προσωπικό & Μισθοδοσία</h2>
           </div>
           <div style={card}>
-            <div style={item}>
-              <Timer size={18} style={itemIcon} />
-              <div>
-                <div style={itemTitle}>Αντίστροφη Μέτρηση Πληρωμής</div>
-                <div style={itemDesc}>Παρακολουθήστε αυτόματα τις ημέρες που απομένουν μέχρι την επόμενη πληρωμή κάθε υπαλλήλου.</div>
-              </div>
-            </div>
-            <div style={item}>
-              <BadgeEuro size={18} style={itemIcon} />
-              <div>
-                <div style={itemTitle}>Tips, Υπερωρίες & Bonus</div>
-                <div style={itemDesc}>Εισάγετε φιλοδωρήματα ή έξτρα ώρες που προστίθενται αυτόματα στο σύνολο της καρτέλας.</div>
-              </div>
-            </div>
-            <div style={item}>
-              <CreditCard size={18} style={itemIcon} />
-              <div>
-                <div style={itemTitle}>Άμεση vs Μηνιαία Πληρωμή</div>
-                <div style={itemDesc}><b>Άμεση:</b> Εξόφληση τοις μετρητοίς τώρα. <b>Μηνιαία:</b> Λογιστική εγγραφή που εκκαθαρίζεται στο τέλος του μήνα.</div>
-              </div>
-            </div>
+            <p style={text}>Διαχειριστείτε εργαζόμενους, καταχωρήστε μισθούς, υπερωρίες και κατανομή φιλοδωρημάτων.</p>
+            <p style={text}>Χρησιμοποιήστε τις λειτουργίες για να διασφαλίσετε έγκαιρες πληρωμές και σωστή λογιστική καταγραφή.</p>
           </div>
         </section>
 
-        {/* SECTION: ΔΑΝΕΙΑ & ΠΙΣΤΩΣΕΙΣ */}
+        {/* SECTION: ΔΙΑΧΕΙΡΙΣΗ ΣΥΣΤΗΜΑΤΟΣ */}
         <section style={section}>
           <div style={sectionHeader}>
-            <div style={{ ...iconBox, background: '#fef3c7', color: '#b45309' }}>
-              <Landmark size={20} />
+            <div style={{ ...iconBox, background: '#f1f5f9', color: colors.secondary }}>
+              <SlidersHorizontal size={20} />
             </div>
-            <h2 style={sectionTitle}>Δάνεια, Ρυθμίσεις & Πιστώσεις</h2>
+            <h2 style={sectionTitle}>Διαχείριση Συστήματος</h2>
           </div>
           <div style={card}>
-            <p style={text}><b>Έξυπνος Έλεγχος:</b> Η εφαρμογή αναγνωρίζει αυτόματα δόσεις δανείων ή ρυθμίσεις αν στις σημειώσεις περιέχεται η λέξη "Δάνειο", "Δόση" ή "Ρύθμιση".</p>
-            <p style={{ ...text, marginTop: 12 }}><b>Επί Πιστώσει:</b> Οι αγορές/πωλήσεις με μέθοδο "Πίστωση" <b>δεν μειώνουν</b> το τρέχον ταμείο. Καταγράφονται ως εκκρεμότητα στην καρτέλα του προμηθευτή για πλήρη ανάλυση οφειλών.</p>
+            <p style={text}>Εδώ ρυθμίζετε καταστήματα, ρόλους χρηστών και βασικές παραμέτρους λειτουργίας.</p>
+            <p style={text}>Οι σωστές ρυθμίσεις εξασφαλίζουν ορθή λειτουργία και διαχείριση πρόσβασης στην ομάδα σας.</p>
           </div>
         </section>
 
@@ -167,11 +260,11 @@ export default function HelpPage() {
           <div style={card}>
             <div style={roleBox}>
               <div style={roleLabel}><Lock size={14} /> USER</div>
-              <div style={roleDesc}>Καταχώρηση κινήσεων, κλείσιμο Ζ και προβολή απλού ταμείου.</div>
+              <div style={roleDesc}>Καταχώρηση κινήσεων και βασική προβολή ταμείου. Ιδανικό για ταμίες και προσωπικό καταστήματος.</div>
             </div>
             <div style={{ ...roleBox, borderTop: `1px solid ${colors.border}`, paddingTop: 12 }}>
               <div style={{ ...roleLabel, color: colors.indigo }}><Sparkles size={14} /> ADMIN</div>
-              <div style={roleDesc}>Πλήρης πρόσβαση σε PRO αναλύσεις, ρυθμίσεις, διαγραφές και διαχείριση χρηστών.</div>
+              <div style={roleDesc}>Πλήρης πρόσβαση σε αναφορές, ρυθμίσεις, διαχείριση χρηστών και ευρύτερες λειτουργίες διαχείρισης.</div>
             </div>
           </div>
         </section>
