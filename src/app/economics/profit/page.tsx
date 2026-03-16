@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState, Suspense, useCallback } from 'react'
 import { getSupabase } from '@/lib/supabase'
 import { useRouter, useSearchParams } from 'next/navigation'
 import EconomicsHeaderNav from '@/components/economics/EconomicsHeaderNav'
+import EconomicsContainer from '@/components/economics/EconomicsContainer'
 import { toast, Toaster } from 'sonner'
 import EconomicsPeriodFilter from '@/components/economics/EconomicsPeriodFilter'
 
@@ -143,7 +144,7 @@ function ProfitContent() {
     return rows.sort((a, b) => String(b.month).localeCompare(String(a.month)))
   }, [filteredTx])
 
-  const container: any = { maxWidth: 920, margin: '0 auto', paddingBottom: 120 }
+  // container removed in favor of shared EconomicsContainer
   const card: any = { background: 'var(--surface)', padding: 14, borderRadius: 16, border: '1px solid var(--border)', boxShadow: 'var(--shadow)', marginBottom: 12 }
   const viewBtn: any = { flex: 1, minWidth: 90, padding: 10, borderRadius: 10, border: '1px solid var(--border)', background: 'transparent', fontWeight: 900 }
 
@@ -161,7 +162,7 @@ function ProfitContent() {
   return (
     <div style={{ background: 'var(--bg-grad)', minHeight: '100vh', padding: 20 }}>
       <Toaster position="top-center" richColors />
-      <div style={container}>
+      <EconomicsContainer>
         <EconomicsHeaderNav title="Οικονομικό Κέντρο" subtitle="ΚΕΡΔΟΣ" />
 
         <EconomicsPeriodFilter period={period} onPeriodChange={(p) => setPeriod(p)} selectedYear={selectedYear} onYearChange={(y) => setSelectedYear(y)} yearOptions={yearOptions} />
@@ -183,7 +184,7 @@ function ProfitContent() {
             <div style={{ fontSize: 11, fontWeight: 900, color: 'var(--muted)' }}>Συνολικό Κέρδος</div>
             <div style={{ fontSize: 18, fontWeight: 900, color: totalProfit >= 0 ? '#10b981' : '#dc2626' }}>{loading ? '—' : amountFmt(totalProfit)}</div>
           </div>
-        </div>
+      </EconomicsContainer>
 
         {/* Monthly table */}
         <div style={card}>

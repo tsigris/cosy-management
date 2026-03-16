@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, type CSSProperties, useCallback } from 'react'
 import { useSearchParams } from 'next/navigation'
 import EconomicsHeaderNav from '@/components/economics/EconomicsHeaderNav'
+import EconomicsContainer from '@/components/economics/EconomicsContainer'
 import EconomicsPeriodFilter from '@/components/economics/EconomicsPeriodFilter'
 import { getSupabase } from '@/lib/supabase'
 import KpiCard from '@/components/KpiCard'
@@ -598,7 +599,7 @@ export default function EconomicsCashflowPage() {
 
   return (
     <main style={styles.pageWrap}>
-      <div style={styles.container}>
+      <EconomicsContainer>
         <EconomicsHeaderNav title="Οικονομικό Κέντρο" subtitle="Ταμειακή ροή" theme={theme} setTheme={setTheme} />
 
         <EconomicsPeriodFilter period={period} onPeriodChange={(p) => setPeriod(p)} selectedYear={selectedYear} onYearChange={(y) => setSelectedYear(y)} yearOptions={yearOptions} />
@@ -975,7 +976,7 @@ export default function EconomicsCashflowPage() {
         </section>
 
         <div style={{ height: 24 }} />
-      </div>
+        </EconomicsContainer>
     </main>
   )
 }

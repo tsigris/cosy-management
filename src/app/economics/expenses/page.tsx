@@ -162,6 +162,7 @@ type ViewMode = (typeof VIEW_MODES)[number]['key']
 /* ---------------- PAGE ---------------- */
 
 import EconomicsPeriodFilter from '@/components/economics/EconomicsPeriodFilter'
+import EconomicsContainer from '@/components/economics/EconomicsContainer'
 
 export default function EconomicsExpensesPage() {
   const supabase = getSupabase()
@@ -488,7 +489,7 @@ export default function EconomicsExpensesPage() {
 
   return (
     <main style={pageWrap}>
-      <div style={container}>
+      <EconomicsContainer>
         <EconomicsHeaderNav
           title="Οικονομικό Κέντρο"
           subtitle="Έξοδα"
@@ -1009,8 +1010,8 @@ export default function EconomicsExpensesPage() {
                 )}
               </section>
             )}
-          </div>
-    </main>
+          </EconomicsContainer>
+      </main>
   )
 }
 
@@ -1031,11 +1032,7 @@ const pageWrap: CSSProperties = {
   padding: 16,
 }
 
-const container: CSSProperties = {
-  maxWidth: 560,
-  margin: '0 auto',
-  paddingBottom: 120,
-}
+// container removed in favor of shared EconomicsContainer
 
 const headerCard: CSSProperties = {
   borderRadius: 22,

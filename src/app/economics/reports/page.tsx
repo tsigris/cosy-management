@@ -7,6 +7,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import EconomicsHeaderNav from '@/components/economics/EconomicsHeaderNav'
 import EconomicsPeriodFilter from '@/components/economics/EconomicsPeriodFilter'
+import EconomicsContainer from '@/components/economics/EconomicsContainer'
 import { toast, Toaster } from 'sonner'
 import { ChevronLeft, Wallet, Layers, Calendar, SlidersHorizontal, List } from 'lucide-react'
 
@@ -175,7 +176,7 @@ function ReportsContent() {
   const headerSubtitle = 'ΑΝΑΦΟΡΕΣ'
 
   // mobile-first UI styles
-  const container: any = { maxWidth: 520, margin: '0 auto', paddingBottom: 120 }
+  // container removed in favor of shared EconomicsContainer
   const headerRow: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }
   const logoBoxStyle: any = { width: '45px', height: '45px', background: 'var(--surface)', borderRadius: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center' }
   const backBtnStyle: any = { textDecoration: 'none', color: 'var(--muted)', background: 'var(--surface)', width: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '12px', border: '1px solid var(--border)' }
@@ -189,7 +190,7 @@ function ReportsContent() {
   return (
     <div style={{ background: 'var(--bg-grad)', minHeight: '100vh', padding: 20 }}>
       <Toaster position="top-center" richColors />
-      <div style={container}>
+      <EconomicsContainer>
         <EconomicsHeaderNav
           title={headerTitle}
           subtitle={headerSubtitle}
