@@ -330,7 +330,7 @@ export default function EconomicsScheduledPaymentsPage() {
 
 	return (
 		<div>
-			<EconomicsHeaderNav title="Οικονομικό Κέντρο" subtitle="Προγραμματισμένες Πληρωμές" theme={theme} setTheme={setTheme} />
+			<EconomicsHeaderNav title="Οικονομικό Κέντρο" subtitle="Προγραμματισμένες Πληρωμές" />
 			<div style={{ padding: '0 12px 24px' }}>
 				<EconomicsPeriodFilter period={period} onPeriodChange={(p) => setPeriod(p)} selectedYear={selectedYear} onYearChange={(y) => setSelectedYear(y)} yearOptions={yearOptions} />
 

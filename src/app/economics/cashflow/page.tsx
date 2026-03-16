@@ -600,7 +600,7 @@ export default function EconomicsCashflowPage() {
   return (
     <main style={styles.pageWrap}>
       <EconomicsContainer>
-        <EconomicsHeaderNav title="Οικονομικό Κέντρο" subtitle="Ταμειακή ροή" theme={theme} setTheme={setTheme} />
+        <EconomicsHeaderNav title="Οικονομικό Κέντρο" subtitle="Ταμειακή ροή" />
 
         <EconomicsPeriodFilter period={period} onPeriodChange={(p) => setPeriod(p)} selectedYear={selectedYear} onYearChange={(y) => setSelectedYear(y)} yearOptions={yearOptions} />
 
