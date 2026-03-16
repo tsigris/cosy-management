@@ -707,7 +707,6 @@ function GoalsContent() {
               </button>
             </div>
           </div>
-        </div>
       )}
 
       {/* MODAL: TRANSACTION */}
