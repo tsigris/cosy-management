@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { toast, Toaster } from 'sonner'
 import { getSupabase } from '@/lib/supabase'
+import { getGoalProgress } from '@/lib/goalProgress'
 import {
   ChevronLeft,
   PiggyBank,
@@ -506,57 +507,7 @@ function GoalsContent() {
     return Object.values(todayImpactByGoal).reduce((a, v) => a + (Number(v) || 0), 0)
   }, [todayImpactByGoal])
 
-  // ✅ plan helper (daily/monthly + expected pace)
-  const getPlan = useCallback((g: Goal) => {
-    const target = Number(g.target_amount || 0)
-    const current = Number(g.current_amount || 0)
-    const remaining = Math.max(0, target - current)
-
-    const td = g.target_date ? new Date(g.target_date) : null
-    const today = new Date()
-    const todayDate = new Date(today.getFullYear(), today.getMonth(), today.getDate())
-
-    const hasDate = !!td && !Number.isNaN(td!.getTime())
-    if (!hasDate) {
-      return {
-        hasDate: false,
-        expired: false,
-        remaining,
-        daysLeft: null as number | null,
-        perDay: null as number | null,
-        perMonth: null as number | null,
-        expectedNow: null as number | null,
-        deltaFromExpected: null as number | null,
-      }
-    }
-
-    const targetDate = new Date(td!.getFullYear(), td!.getMonth(), td!.getDate())
-    const expired = todayDate.getTime() > targetDate.getTime() && current < target
-
-    const daysLeft = Math.max(1, daysBetweenInclusive(todayDate, targetDate))
-    const perDay = remaining / daysLeft
-    const perMonth = remaining / monthsApprox(daysLeft)
-
-    // expected pace: assume linear from created_at (or today if missing)
-    const created = g.created_at ? new Date(g.created_at) : todayDate
-    const start = new Date(created.getFullYear(), created.getMonth(), created.getDate())
-    const totalDays = Math.max(1, daysBetweenInclusive(start, targetDate))
-    const elapsedDays = clamp(daysBetweenInclusive(start, todayDate), 1, totalDays)
-    const elapsedPct = clamp(elapsedDays / totalDays, 0, 1)
-    const expectedNow = target * elapsedPct
-    const deltaFromExpected = current - expectedNow
-
-    return {
-      hasDate: true,
-      expired,
-      remaining,
-      daysLeft,
-      perDay,
-      perMonth,
-      expectedNow,
-      deltaFromExpected,
-    }
-  }, [])
+  // use centralized goal progress helper (uses business date)
 
   const proposeNewDate = useCallback((g: Goal) => {
     // suggest +3 months from today
@@ -633,7 +584,7 @@ function GoalsContent() {
               const current = Number(g.current_amount || 0)
               const progress = target > 0 ? Math.min(100, Math.round((current / target) * 100)) : 0
               const isCompleted = g.status === 'completed'
-              const plan = getPlan(g)
+              const plan = getGoalProgress(g, businessDate)
               const todayImpact = Number(todayImpactByGoal[g.id] || 0) // negative for deposits, positive for withdraw
               const ringRadius = 28
               const ringCircumference = 2 * Math.PI * ringRadius
@@ -850,7 +801,7 @@ function GoalsContent() {
             {(() => {
               const target = Number(selectedGoal.target_amount || 0)
               const current = Number(selectedGoal.current_amount || 0)
-              const plan = getPlan(selectedGoal)
+              const plan = getGoalProgress(selectedGoal, businessDate)
               const paceHint = plan.hasDate
                 ? plan.expired
                   ? `Η ημερομηνία στόχου έχει περάσει. Υπόλοιπο: ${toMoney(plan.remaining)}`
