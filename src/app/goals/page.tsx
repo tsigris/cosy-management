@@ -1042,7 +1042,6 @@ function GoalsContent() {
               </button>
             </div>
           </div>      )}
-    </div>
   )
 }
 
