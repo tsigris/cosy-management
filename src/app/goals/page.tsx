@@ -1041,9 +1041,7 @@ function GoalsContent() {
                 Next <ArrowRight size={16} />
               </button>
             </div>
-          </div>
-        </div>
-      )}
+          </div>      )}
     </div>
   )
 }
