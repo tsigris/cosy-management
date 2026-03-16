@@ -622,13 +622,44 @@ export default function EconomicsCashflowPage() {
 
         {/* Chart */}
 
-        {/* Mini KPI row for chart period */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0,1fr))', gap: 10, marginTop: 12 }}>
-          <KpiCard label="Κέρδος Περιόδου" value={totalProfit} loading={loading} hint="Συνολικό κέρδος" style={{ ...styles.kpiCard, padding: 12, minHeight: 72 }} />
+        {/* Mini KPI row for chart period: responsive layout for mobile */}
+        <div
+          style={
+            isMobile
+              ? { display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 10, marginTop: 12 }
+              : { display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 10, marginTop: 12 }
+          }
+        >
+          <KpiCard
+            label="Συνολικά Έσοδα"
+            value={totalRevenue}
+            loading={loading}
+            hint="Συνολικά Έσοδα"
+            color={t.green}
+            style={{ ...styles.kpiCard, padding: isMobile ? 18 : 12, minHeight: isMobile ? 96 : 72 }}
+          />
 
-          <KpiCard label="Συνολικά Έσοδα" value={totalRevenue} loading={loading} hint="Συνολικά Έσοδα" color={t.green} style={{ ...styles.kpiCard, padding: 12, minHeight: 72 }} />
+          <KpiCard
+            label="Συνολικά Έξοδα"
+            value={totalExpenses}
+            loading={loading}
+            hint="Συνολικά Έξοδα"
+            color={t.red}
+            style={{ ...styles.kpiCard, padding: isMobile ? 18 : 12, minHeight: isMobile ? 96 : 72 }}
+          />
 
-          <KpiCard label="Συνολικά Έξοδα" value={totalExpenses} loading={loading} hint="Συνολικά Έξοδα" color={t.red} style={{ ...styles.kpiCard, padding: 12, minHeight: 72 }} />
+          <KpiCard
+            label="Κέρδος Περιόδου"
+            value={totalProfit}
+            loading={loading}
+            hint="Συνολικό κέρδος"
+            style={{
+              ...styles.kpiCard,
+              padding: isMobile ? 20 : 12,
+              minHeight: isMobile ? 112 : 72,
+              gridColumn: isMobile ? '1 / -1' : undefined,
+            }}
+          />
         </div>
 
         <section style={styles.premiumCard}>
