@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, useCallback } from 'react'
 import { useSearchParams } from 'next/navigation'
 import EconomicsHeaderNav from '@/components/economics/EconomicsHeaderNav'
 import EconomicsPeriodFilter from '@/components/economics/EconomicsPeriodFilter'
+import EconomicsContainer from '@/components/economics/EconomicsContainer'
 import { getSupabase } from '@/lib/supabase'
 import { ChevronDown, ChevronUp } from 'lucide-react'
 
@@ -286,7 +287,6 @@ export default function EconomicsIncomePage() {
 
   const styles = {
     page: { minHeight: '100vh', paddingBottom: 120 },
-    container: { maxWidth: 920, margin: '0 auto', padding: '0 16px' },
     kpiGrid: { display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 10, marginTop: 12 },
     kpiCard: { padding: 12, borderRadius: 18, background: 'var(--surface)', border: '1px solid var(--border)' as const, minHeight: 76 },
     kpiTitle: { fontWeight: 900, fontSize: 13, color: 'var(--muted)' },
@@ -325,7 +325,7 @@ export default function EconomicsIncomePage() {
 
   return (
     <main style={styles.page}>
-      <div style={styles.container}>
+      <EconomicsContainer>
         <EconomicsHeaderNav title="Οικονομικό Κέντρο" subtitle="Έσοδα" />
 
         <EconomicsPeriodFilter period={period} onPeriodChange={(p) => setPeriod(p)} selectedYear={selectedYear} onYearChange={(y) => setSelectedYear(y)} yearOptions={yearOptions} />
@@ -497,7 +497,7 @@ export default function EconomicsIncomePage() {
             })}
           </div>
         </section>
-      </div>
+      </EconomicsContainer>
     </main>
   )
 }
