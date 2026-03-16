@@ -703,10 +703,12 @@ function GoalsContent() {
 
             <div style={{ padding: 12 }}>
               <button style={saveBtnStyle} onClick={onSaveGoal} disabled={savingGoal}>
-              {savingGoal ? 'Αποθήκευση...' : 'Αποθήκευση'}
+                {savingGoal ? 'Αποθήκευση...' : 'Αποθήκευση'}
               </button>
             </div>
           </div>
+        </div>
+      </div>
       )}
 
       {/* MODAL: TRANSACTION */}
