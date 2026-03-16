@@ -629,7 +629,7 @@ function GoalsContent() {
                 <Clock size={14} /> Σήμερα: {toMoney(totalTodayImpact)}
               </span>
               <span style={chipStyle}>
-                <Calendar size={14} /> Business Date: {businessDate}
+                <Calendar size={14} /> Business Date: {formatDateGR(businessDate)}
               </span>
             </div>
           </div>
@@ -1064,7 +1064,7 @@ function GoalsContent() {
                     return (
                       <div key={t.id} style={historyRow}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
-                          <div style={{ fontSize: 13, fontWeight: 950, color: colors.primaryDark }}>{t.date}</div>
+                          <div style={{ fontSize: 13, fontWeight: 950, color: colors.primaryDark }}>{formatDateGR(t.date)}</div>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                             <div
                               style={{
