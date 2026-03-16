@@ -783,7 +783,6 @@ function GoalsContent() {
               {savingTx ? 'Εκτέλεση...' : 'Επιβεβαίωση'}
             </button>
           </div>
-        </div>
       </div>
       )}
 
