@@ -1077,36 +1077,34 @@ function makeStyles(t: {
 
   const kpiGrid: CSSProperties = {
     display: 'grid',
-    gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
-    gap: 10,
-    marginTop: 12,
+    gridTemplateColumns: 'repeat(2, 1fr)',
+    gap: 16,
+    marginTop: 16,
   }
 
   const kpiCard: CSSProperties = {
-    borderRadius: 22,
+    borderRadius: 20,
     border: `1px solid ${t.border}`,
-    background: t.card,
+    background: t.surface,
     boxShadow: t.shadow,
     padding: 16,
     backdropFilter: 'blur(10px)',
-    minHeight: 108,
     minWidth: 0,
   }
 
-  const kpiLabel: CSSProperties = { fontSize: 11, fontWeight: 900, color: t.muted, letterSpacing: 0.6, textTransform: 'uppercase' }
+  const kpiLabel: CSSProperties = { fontSize: 12, fontWeight: 900, color: t.muted, letterSpacing: 0.4, textTransform: 'uppercase' }
   const kpiValue: CSSProperties = {
-    marginTop: 10,
-    fontSize: 'clamp(1.6rem, 5vw, 2.8rem)',
-    fontWeight: 900,
+    marginTop: 8,
+    fontSize: 20,
+    fontWeight: 1000,
     color: t.text,
     lineHeight: 1,
     overflow: 'hidden',
     whiteSpace: 'normal',
     maxWidth: '100%',
     wordBreak: 'break-word',
-    overflowWrap: 'anywhere',
   }
-  const kpiHint: CSSProperties = { marginTop: 8, fontSize: 11, fontWeight: 800, color: t.muted2 }
+  const kpiHint: CSSProperties = { marginTop: 6, fontSize: 12, fontWeight: 800, color: t.muted2 }
 
   const chartWrap: CSSProperties = { marginTop: 12 }
   const chartLegend: CSSProperties = { display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }
