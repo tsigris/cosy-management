@@ -230,7 +230,7 @@ export default function EconomicsCashflowPage() {
       setFilterFrom(`${y}-${m}-${day}`)
       setFilterTo(endOfMonthStr(new Date()))
     } else if (period === 'all') {
-      setFilterFrom('0000-01-01')
+      setFilterFrom('1970-01-01')
       setFilterTo('9999-12-31')
     }
   }, [period, selectedYear])
@@ -322,7 +322,7 @@ export default function EconomicsCashflowPage() {
   const chart = useMemo(() => {
     // Build the same filtered source as filteredLedger (but scoped here so
     // chart can be computed before filteredLedger is declared elsewhere).
-    const from = filterFrom || '0000-01-01'
+    const from = filterFrom || '1970-01-01'
     const to = filterTo || '9999-12-31'
     const cat = filterCategory.trim()
     const met = filterMethod.trim()
@@ -467,7 +467,7 @@ export default function EconomicsCashflowPage() {
   }, [rows])
 
   const filteredLedger = useMemo(() => {
-    const from = filterFrom || '0000-01-01'
+    const from = filterFrom || '1970-01-01'
     const to = filterTo || '9999-12-31'
     const cat = filterCategory.trim()
     const met = filterMethod.trim()

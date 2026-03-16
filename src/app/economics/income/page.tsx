@@ -101,7 +101,7 @@ export default function EconomicsIncomePage() {
       setFilterFrom(d.toISOString().slice(0, 10))
       setFilterTo(new Date().toISOString().slice(0, 10))
     } else if (period === 'all') {
-      setFilterFrom('0000-01-01')
+      setFilterFrom('1970-01-01')
       setFilterTo('9999-12-31')
     }
   }, [period, selectedYear])
@@ -160,7 +160,7 @@ export default function EconomicsIncomePage() {
 
   // derive filtered income rows
   const filtered = useMemo(() => {
-    const from = filterFrom || '0000-01-01'
+    const from = filterFrom || '1970-01-01'
     const to = filterTo || '9999-12-31'
     const q = searchQ.trim().toLowerCase()
 

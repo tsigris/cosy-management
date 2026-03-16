@@ -181,7 +181,9 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
       setStartDate(format(d, 'yyyy-MM-dd'))
       setEndDate(format(new Date(), 'yyyy-MM-dd'))
     } else if (period === 'all') {
-      setStartDate('0000-01-01')
+      // Use a safe early date instead of '0000-01-01' which Postgres rejects.
+      // We'll also avoid applying date filters to Supabase queries when period === 'all'.
+      setStartDate('1970-01-01')
       setEndDate('9999-12-31')
     }
   }, [period, selectedYear])
@@ -410,13 +412,19 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
         drawerRes,
         expOutRes,
       ] = await Promise.all([
-        supabase
-          .from('transactions')
-          .select('*, suppliers(id, name), fixed_assets(id, name, sub_category), revenue_sources(id, name)')
-          .eq('store_id', storeId)
-          .gte('date', startDate)
-          .lte('date', endDate)
-          .order('date', { ascending: false }),
+        // Main transactions query — skip server-side date filtering when period === 'all'
+        ((): any => {
+          let q: any = supabase
+            .from('transactions')
+            .select('*, suppliers(id, name), fixed_assets(id, name, sub_category), revenue_sources(id, name)')
+            .eq('store_id', storeId)
+
+          if (period !== 'all') {
+            q = q.gte('date', startDate).lte('date', endDate)
+          }
+
+          return q.order('date', { ascending: false })
+        })(),
 
         supabase
           .from('transactions')
@@ -461,14 +469,21 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
           .limit(1)
           .maybeSingle(),
 
-        supabase
-          .from('transactions')
-          .select('amount, type, is_credit, method, category, date')
-          .eq('store_id', storeId)
-          .gt('date', endDate)
-          .lte('date', forecastTo)
-          .in('type', ['expense', 'debt_payment', 'salary_advance'])
-          .order('date', { ascending: true }),
+        // Future outflows — if period === 'all' there's no meaningful endDate window,
+        // so only apply the gt/lte when period !== 'all'.
+        ((): any => {
+          let q: any = supabase
+            .from('transactions')
+            .select('amount, type, is_credit, method, category, date')
+            .eq('store_id', storeId)
+            .in('type', ['expense', 'debt_payment', 'salary_advance'])
+
+          if (period !== 'all') {
+            q = q.gt('date', endDate).lte('date', forecastTo)
+          }
+
+          return q.order('date', { ascending: true })
+        })(),
       ])
 
       if (txRes.error) throw txRes.error
@@ -494,7 +509,7 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
     } finally {
       setLoading(false)
     }
-  }, [router, storeId, startDate, endDate, getPrevRange, isCreditTx, supabase])
+  }, [router, storeId, startDate, endDate, getPrevRange, isCreditTx, supabase, period])
 
   useEffect(() => {
     loadData()
