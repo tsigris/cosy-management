@@ -32,19 +32,14 @@ const colors = {
 }
 
 export default function HelpPage() {
-
   const searchParams = useSearchParams()
   const storeId = searchParams.get('store')
   const backHref = storeId ? `/?store=${storeId}` : '/'
 
   return (
-
     <div style={container}>
-
       {/* HEADER */}
-
       <div style={header}>
-
         <Link href={backHref} style={backBtn}>
           <ChevronLeft size={24} />
         </Link>
@@ -52,44 +47,33 @@ export default function HelpPage() {
         <h1 style={headerTitle}>Οδηγίες Χρήσης</h1>
 
         <div style={{ width: 40 }} />
-
       </div>
 
       <div style={content}>
-
         {/* INTRO */}
-
         <section style={section}>
-
           <div style={sectionHeader}>
-
             <div style={{ ...iconBox, background: '#eef2ff', color: colors.indigo }}>
               <Info size={20} />
             </div>
 
-            <h2 style={sectionTitle}>Σχετικά με το PROFITRO Management</h2>
-
+            <h2 style={sectionTitle}>Σχετικά με το Cosy Management</h2>
           </div>
 
           <div style={card}>
-
-            <p style={text}>
-              Το PROFITRO Management είναι ένα σύστημα διαχείρισης επιχείρησης που
-              σας επιτρέπει να παρακολουθείτε οικονομικά δεδομένα, κινήσεις,
-              προσωπικό και βασικούς δείκτες απόδοσης σε πραγματικό χρόνο.
+            <p style={textStyle}>
+              Το PROFITRO Management είναι ένα σύστημα διαχείρισης επιχείρησης
+              που σας επιτρέπει να παρακολουθείτε οικονομικά δεδομένα,
+              κινήσεις, προσωπικό και βασικούς δείκτες απόδοσης σε πραγματικό χρόνο.
             </p>
 
-            <p style={text}>
+            <p style={textStyle}>
               Οι παρακάτω ενότητες εξηγούν τις βασικές λειτουργίες της εφαρμογής
               και πώς μπορείτε να τις χρησιμοποιήσετε για την αποτελεσματική
               οργάνωση της επιχείρησης σας.
             </p>
-
           </div>
-
         </section>
-
-        {/* DASHBOARD */}
 
         <HelpSection
           icon={<Sparkles size={20} />}
@@ -101,8 +85,6 @@ export default function HelpPage() {
           ]}
         />
 
-        {/* ΟΙΚΟΝΟΜΙΚΑ */}
-
         <HelpSection
           icon={<Coins size={20} />}
           title="Οικονομικά (Σύνοψη)"
@@ -112,8 +94,6 @@ export default function HelpPage() {
             'Μπορείτε να συγκρίνετε μήνες ή έτη για καλύτερη κατανόηση της πορείας της επιχείρησης.'
           ]}
         />
-
-        {/* ΚΙΝΗΣΕΙΣ */}
 
         <HelpSection
           icon={<RefreshCw size={20} />}
@@ -125,8 +105,6 @@ export default function HelpPage() {
           ]}
         />
 
-        {/* ΕΣΟΔΑ */}
-
         <HelpSection
           icon={<BadgeEuro size={20} />}
           title="Έσοδα"
@@ -136,8 +114,6 @@ export default function HelpPage() {
             'Βοηθά στον εντοπισμό των πιο αποδοτικών δραστηριοτήτων.'
           ]}
         />
-
-        {/* ΕΞΟΔΑ */}
 
         <HelpSection
           icon={<Landmark size={20} />}
@@ -149,8 +125,6 @@ export default function HelpPage() {
           ]}
         />
 
-        {/* ΚΕΡΔΟΣ */}
-
         <HelpSection
           icon={<BadgeEuro size={20} />}
           title="Κέρδος"
@@ -160,8 +134,6 @@ export default function HelpPage() {
             'Χρησιμοποιείται για αξιολόγηση της οικονομικής απόδοσης.'
           ]}
         />
-
-        {/* CASHFLOW */}
 
         <HelpSection
           icon={<Coins size={20} />}
@@ -173,8 +145,6 @@ export default function HelpPage() {
           ]}
         />
 
-        {/* REPORTS */}
-
         <HelpSection
           icon={<History size={20} />}
           title="Αναφορές"
@@ -184,8 +154,6 @@ export default function HelpPage() {
             'Χρήσιμο εργαλείο για κατανόηση της οικονομικής πορείας.'
           ]}
         />
-
-        {/* ΚΟΥΜΠΑΡΑΣ */}
 
         <HelpSection
           icon={<Target size={20} />}
@@ -197,8 +165,6 @@ export default function HelpPage() {
           ]}
         />
 
-        {/* ΚΑΡΤΕΣ */}
-
         <HelpSection
           icon={<CreditCard size={20} />}
           title="Κάρτες (Πληρωμές)"
@@ -208,8 +174,6 @@ export default function HelpPage() {
             'Διευκολύνει τον έλεγχο των συναλλαγών.'
           ]}
         />
-
-        {/* ΠΡΟΜΗΘΕΥΤΕΣ */}
 
         <HelpSection
           icon={<Landmark size={20} />}
@@ -221,8 +185,6 @@ export default function HelpPage() {
           ]}
         />
 
-        {/* ΠΡΟΣΩΠΙΚΟ */}
-
         <HelpSection
           icon={<Users size={20} />}
           title="Προσωπικό & Μισθοδοσία"
@@ -232,8 +194,6 @@ export default function HelpPage() {
             'Εξασφαλίζει σωστή οικονομική καταγραφή του προσωπικού.'
           ]}
         />
-
-        {/* SYSTEM */}
 
         <HelpSection
           icon={<SlidersHorizontal size={20} />}
@@ -246,23 +206,17 @@ export default function HelpPage() {
         />
 
         {/* ROLES */}
-
         <section style={section}>
-
           <div style={sectionHeader}>
-
             <div style={{ ...iconBox, background: '#dcfce7', color: colors.success }}>
               <ShieldCheck size={20} />
             </div>
 
             <h2 style={sectionTitle}>Ρόλοι Πρόσβασης</h2>
-
           </div>
 
           <div style={card}>
-
             <div style={roleBox}>
-
               <div style={roleLabel}>
                 <Lock size={14} /> USER
               </div>
@@ -271,11 +225,9 @@ export default function HelpPage() {
                 Καταχώρηση κινήσεων και βασική προβολή ταμείου.
                 Ιδανικό για ταμίες ή προσωπικό καταστήματος.
               </div>
-
             </div>
 
             <div style={{ ...roleBox, borderTop: `1px solid ${colors.border}`, paddingTop: 12 }}>
-
               <div style={{ ...roleLabel, color: colors.indigo }}>
                 <Sparkles size={14} /> ADMIN
               </div>
@@ -283,58 +235,42 @@ export default function HelpPage() {
               <div style={roleDesc}>
                 Πλήρης πρόσβαση σε αναφορές, ρυθμίσεις και διαχείριση χρηστών.
               </div>
-
             </div>
-
           </div>
-
         </section>
-
       </div>
-
     </div>
   )
 }
 
-/* COMPONENT */
-
 function HelpSection({ icon, title, text }: any) {
-
   return (
-
     <section style={section}>
-
       <div style={sectionHeader}>
-
         <div style={{ ...iconBox, background: '#f8fafc', color: colors.secondary }}>
           {icon}
         </div>
 
         <h2 style={sectionTitle}>{title}</h2>
-
       </div>
 
       <div style={card}>
-
         {text.map((t: string, i: number) => (
           <p key={i} style={textStyle}>{t}</p>
         ))}
-
       </div>
-
     </section>
-
   )
 }
 
 /* STYLES */
 
-const container = {
+const container: React.CSSProperties = {
   background: colors.background,
   minHeight: '100vh'
 }
 
-const header = {
+const header: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'space-between',
@@ -343,13 +279,13 @@ const header = {
   borderBottom: `1px solid ${colors.border}`
 }
 
-const headerTitle = {
+const headerTitle: React.CSSProperties = {
   fontSize: 18,
   fontWeight: 900,
   color: colors.primary
 }
 
-const backBtn = {
+const backBtn: React.CSSProperties = {
   width: 40,
   height: 40,
   borderRadius: 20,
@@ -360,24 +296,24 @@ const backBtn = {
   background: '#f1f5f9'
 }
 
-const content = {
+const content: React.CSSProperties = {
   maxWidth: 640,
   margin: '0 auto',
   padding: '24px 16px'
 }
 
-const section = {
+const section: React.CSSProperties = {
   marginBottom: 32
 }
 
-const sectionHeader = {
+const sectionHeader: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   gap: 12,
   marginBottom: 12
 }
 
-const iconBox = {
+const iconBox: React.CSSProperties = {
   width: 36,
   height: 36,
   borderRadius: 10,
@@ -386,13 +322,13 @@ const iconBox = {
   justifyContent: 'center'
 }
 
-const sectionTitle = {
+const sectionTitle: React.CSSProperties = {
   fontSize: 16,
   fontWeight: 900,
   color: colors.primary
 }
 
-const card = {
+const card: React.CSSProperties = {
   background: '#fff',
   borderRadius: 24,
   padding: 20,
@@ -400,18 +336,18 @@ const card = {
   boxShadow: '0 4px 6px rgba(0,0,0,0.05)'
 }
 
-const textStyle = {
+const textStyle: React.CSSProperties = {
   fontSize: 14,
   lineHeight: 1.6,
   color: colors.secondary,
   marginBottom: 8
 }
 
-const roleBox = {
+const roleBox: React.CSSProperties = {
   marginBottom: 12
 }
 
-const roleLabel = {
+const roleLabel: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   gap: 6,
@@ -421,7 +357,7 @@ const roleLabel = {
   marginBottom: 4
 }
 
-const roleDesc = {
+const roleDesc: React.CSSProperties = {
   fontSize: 13,
   color: colors.secondary,
   lineHeight: 1.4
