@@ -1,9 +1,14 @@
 'use client'
 
 import React, { useEffect, useMemo, useState } from 'react'
-import Link from 'next/link'
 import EconomicsTabs from '@/components/EconomicsTabs'
 import { useSearchParams } from 'next/navigation'
+import { getSupabase } from '@/lib/supabase'
+
+type StoreHeaderRow = {
+  name?: string | null
+  company_name?: string | null
+}
 
 type Props = {
   title: string
@@ -38,9 +43,11 @@ function getBusinessDate() {
 }
 
 export default function EconomicsHeaderNav({ title, subtitle, rightControl, businessDate, showTabs }: Props) {
+  const supabase = getSupabase()
   const searchParams = useSearchParams()
-  const store = searchParams?.get('store') || ''
+  const storeId = searchParams?.get('store') || ''
   const [isMobile, setIsMobile] = useState(false)
+  const [storeDisplayTitle, setStoreDisplayTitle] = useState('')
 
   // Compute or use provided business date
   const bDate = useMemo(() => businessDate || getBusinessDate(), [businessDate])
@@ -53,6 +60,46 @@ export default function EconomicsHeaderNav({ title, subtitle, rightControl, busi
     mq.addEventListener('change', handler)
     return () => mq.removeEventListener('change', handler)
   }, [])
+
+  useEffect(() => {
+    let cancelled = false
+
+    const pickStoreTitle = (row: StoreHeaderRow | null | undefined) => {
+      const displayTitle = String(row?.name ?? '').trim()
+      if (displayTitle) return displayTitle
+
+      const companyName = String(row?.company_name ?? '').trim()
+      if (companyName) return companyName
+
+      return storeId
+    }
+
+    const loadStoreTitle = async () => {
+      if (!storeId) {
+        setStoreDisplayTitle('')
+        return
+      }
+
+      try {
+        const { data, error } = await supabase
+          .from('stores')
+          .select('name, company_name')
+          .eq('id', storeId)
+          .maybeSingle<StoreHeaderRow>()
+
+        if (error) throw error
+        if (!cancelled) setStoreDisplayTitle(pickStoreTitle(data))
+      } catch {
+        if (!cancelled) setStoreDisplayTitle(storeId)
+      }
+    }
+
+    void loadStoreTitle()
+
+    return () => {
+      cancelled = true
+    }
+  }, [storeId, supabase])
 
   const t = {
     border: 'var(--border)',
@@ -112,7 +159,7 @@ export default function EconomicsHeaderNav({ title, subtitle, rightControl, busi
             ) : (
               <>
                 <div style={chipStyle}>📅 {formatDateGR(bDate)}</div>
-                <div style={chipStyle}>🏪 {store || '—'}</div>
+                <div style={chipStyle}>🏪 {storeDisplayTitle || storeId || '—'}</div>
               </>
             )}
           </div>
