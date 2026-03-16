@@ -98,3 +98,38 @@ export function getGoalProgress(g: GoalLite, businessDate?: string | Date) {
 }
 
 export default getGoalProgress
+
+export function formatDateGR(date?: string | Date | null) {
+  if (!date) return ''
+  const d = date instanceof Date ? date : yyyyMmDdToDate(String(date)) || new Date(String(date))
+  const day = String(d.getDate()).padStart(2, '0')
+  const month = String(d.getMonth() + 1).padStart(2, '0')
+  const year = d.getFullYear()
+  return `${day}-${month}-${year}`
+}
+
+export function getGoalInsights(g: GoalLite, businessDate?: string | Date) {
+  const p = getGoalProgress(g, businessDate)
+
+  if (p.isCompleted) return { status: 'completed', message: 'Ο στόχος έχει επιτευχθεί 🎉' }
+  if (p.isOverdue) return { status: 'overdue', message: 'Η ημερομηνία στόχου έχει περάσει' }
+
+  // expectedNow may be null if no date
+  const expected = p.expectedNow ?? null
+  if (expected !== null) {
+    const diff = p.savedAmount - expected
+    const rounded = Math.abs(Math.round(diff * 100) / 100)
+    if (diff > 0.005) return { status: 'ahead', message: `Είσαι μπροστά από το πλάνο κατά ${rounded} €` }
+    if (diff < -0.005) {
+      // compute how much extra per day is needed to catch up
+      const days = p.rawDaysLeft === null ? 1 : Math.max(1, p.rawDaysLeft)
+      const neededTotal = Math.max(0, (p.targetAmount - p.savedAmount))
+      const perDay = Math.round((neededTotal / days) * 100) / 100
+      return { status: 'behind', message: `Χρειάζονται ${perDay} € επιπλέον ανά ημέρα για να πιαστεί ο στόχος` }
+    }
+    return { status: 'ontrack', message: 'Ο στόχος εξελίσσεται σύμφωνα με το πλάνο' }
+  }
+
+  // fallback when no date/expected
+  return { status: 'nodate', message: 'Βάλε ημερομηνία στόχου για πλήρη πρόβλεψη' }
+}

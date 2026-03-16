@@ -6,7 +6,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { toast, Toaster } from 'sonner'
 import { getSupabase } from '@/lib/supabase'
-import { getGoalProgress } from '@/lib/goalProgress'
+import { getGoalProgress, getGoalInsights, formatDateGR } from '@/lib/goalProgress'
 import {
   ChevronLeft,
   PiggyBank,
@@ -636,13 +636,17 @@ function GoalsContent() {
                   <h3 style={goalTileName}>{g.name}</h3>
                   <div style={goalTileAmount}>{toMoney(current)}</div>
                   <div style={goalTileTarget}>Στόχος: {toMoney(target)}</div>
-                  <div style={goalTileBottomRow}>
+                  <div style={{ marginTop: 6, fontSize: 13, fontWeight: 700, color: colors.secondaryText }}>
+                    Απομένουν: {toMoney(plan.remainingAmount)} • Χρειάζονται / ημέρα: {plan.dailyNeeded !== null ? toMoney(plan.dailyNeeded) : '-'}
+                  </div>
+                  <div style={{ marginTop: 6, fontSize: 12, color: colors.secondaryText }}>{getGoalInsights(g, businessDate).message}</div>
+                      <div style={goalTileBottomRow}>
                     <span style={{ ...miniChip, borderColor: 'rgba(99,102,241,0.25)', background: 'rgba(99,102,241,0.08)', color: colors.indigo }}>
                       <Clock size={12} /> {toMoney(todayImpact)}
                     </span>
                     {!!g.target_date && (
                       <span style={dateBadgeStyle}>
-                        <Calendar size={12} /> {g.target_date}
+                        <Calendar size={12} /> {formatDateGR(g.target_date)}
                       </span>
                     )}
                   </div>
@@ -837,9 +841,13 @@ function GoalsContent() {
                         </button>
                       )}
                     </div>
-                    <div style={{ marginTop: 8, fontSize: 13, fontWeight: 850, color: plan.hasDate && plan.expired ? colors.accentRed : colors.secondaryText }}>
-                      {paceHint}
-                    </div>
+                          <div style={{ marginTop: 8, fontSize: 13, fontWeight: 850, color: plan.hasDate && plan.expired ? colors.accentRed : colors.secondaryText }}>
+                            {paceHint}
+                          </div>
+                          <div style={{ marginTop: 8, fontSize: 13, fontWeight: 850, color: colors.secondaryText }}>
+                            Απομένουν: {toMoney(plan.remainingAmount)} • Χρειάζονται / ημέρα: {plan.dailyNeeded !== null ? toMoney(plan.dailyNeeded) : '-'}
+                          </div>
+                          <div style={{ marginTop: 6, fontSize: 12, color: colors.secondaryText }}>{getGoalInsights(selectedGoal, businessDate).message}</div>
                     {paceDelta && (
                       <div style={{ marginTop: 6, fontSize: 13, fontWeight: 900, color: plan.deltaFromExpected! >= 0 ? colors.accentGreen : colors.accentRed }}>
                         {paceDelta}
