@@ -562,7 +562,6 @@ function CreditsContent() {
         <EconomicsHeaderNav
           title={headerTitle}
           subtitle={headerSubtitle}
-          rightControl={<Link href={`/?store=${storeIdFromUrl || ''}`} style={backBtnStyle}><ChevronLeft size={20} /></Link>}
         />
 
           <EconomicsPeriodFilter period={period} onPeriodChange={(p) => setPeriod(p)} selectedYear={selectedYear} onYearChange={(y) => setSelectedYear(y)} yearOptions={yearOptions} />

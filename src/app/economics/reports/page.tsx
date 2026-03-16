@@ -237,22 +237,6 @@ function ReportsContent() {
       <EconomicsHeaderNav
         title="Οικονομικό Κέντρο"
         subtitle="ΑΝΑΦΟΡΕΣ"
-        rightControl={
-          <Link
-            href={`/?store=${storeIdFromUrl}`}
-            style={{
-              width: 40,
-              height: 40,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              borderRadius: 12,
-              border: "1px solid var(--border)",
-            }}
-          >
-            <ChevronLeft size={18} />
-          </Link>
-        }
       />
 
       <EconomicsPeriodFilter
