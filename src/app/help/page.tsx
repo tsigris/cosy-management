@@ -57,7 +57,7 @@ export default function HelpPage() {
               <Info size={20} />
             </div>
 
-            <h2 style={sectionTitle}>Σχετικά με το Cosy Management</h2>
+            <h2 style={sectionTitle}>Σχετικά με το PROFITRO Management</h2>
           </div>
 
           <div style={card}>
