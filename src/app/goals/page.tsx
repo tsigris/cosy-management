@@ -777,18 +777,6 @@ function GoalsContent() {
                 </>
               )}
             </p>
-
-              <p style={{ fontSize: 11, fontWeight: 850, color: colors.secondaryText, marginTop: 10, lineHeight: 1.4 }}>
-                {txAction === 'deposit' ? (
-                  <>
-                    * Το ποσό θα <b>αφαιρεθεί</b> από <b>{txMethod}</b> στο ταμείο και θα μπει στον κουμπαρά.
-                  </>
-                ) : (
-                  <>
-                    * Το ποσό θα <b>επιστρέψει</b> στο ταμείο ως <b>{txMethod}</b>.
-                  </>
-                )}
-              </p>
             </div>
 
             <div style={{ padding: 12 }}>
