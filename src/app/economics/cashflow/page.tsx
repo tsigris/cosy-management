@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation'
 import EconomicsHeaderNav from '@/components/economics/EconomicsHeaderNav'
 import EconomicsPeriodFilter from '@/components/economics/EconomicsPeriodFilter'
 import { getSupabase } from '@/lib/supabase'
+import KpiCard from '@/components/KpiCard'
 
 // If your project already uses xlsx (you used it in Settings), keep this import.
 // If build complains "Cannot find module 'xlsx'", tell me and I’ll switch to CSV export.
@@ -604,114 +605,30 @@ export default function EconomicsCashflowPage() {
 
         {/* KPI Cards */}
         <section style={styles.kpiGrid}>
-          <div style={styles.kpiCard}>
-            <div style={{ minWidth: 0 }}>
-              <div style={styles.kpiLabel}>Διαθέσιμο Υπόλοιπο</div>
-              <div style={styles.kpiValue}>{loading ? '—' : amountFormatter.format(KPI.availableBalance)}</div>
-              <div style={styles.kpiHint}>Τρέχον ρευστό (best-effort από κινήσεις)</div>
-            </div>
-          </div>
+          <KpiCard label="Διαθέσιμο Υπόλοιπο" value={KPI.availableBalance} loading={loading} hint="Τρέχον ρευστό (best-effort από κινήσεις)" style={styles.kpiCard} />
 
-          <div style={styles.kpiCard}>
-            <div style={{ minWidth: 0 }}>
-              <div style={styles.kpiLabel}>Αναμενόμενα Έσοδα</div>
-              <div style={styles.kpiValue}>{loading ? '—' : amountFormatter.format(KPI.expectedIncome)}</div>
-              <div style={styles.kpiHint}>Έσοδα σε πίστωση (is_credit)</div>
-            </div>
-          </div>
+          <KpiCard label="Αναμενόμενα Έσοδα" value={KPI.expectedIncome} loading={loading} hint="Έσοδα σε πίστωση (is_credit)" style={styles.kpiCard} />
 
-          <div style={styles.kpiCard}>
-            <div style={{ minWidth: 0 }}>
-              <div style={styles.kpiLabel}>Προγραμματισμένα Έξοδα</div>
-              <div style={styles.kpiValue}>{loading ? '—' : amountFormatter.format(KPI.scheduledExpense)}</div>
-              <div style={styles.kpiHint}>Έξοδα σε πίστωση (is_credit)</div>
-            </div>
-          </div>
+          <KpiCard label="Προγραμματισμένα Έξοδα" value={KPI.scheduledExpense} loading={loading} hint="Έξοδα σε πίστωση (is_credit)" style={styles.kpiCard} />
 
-          <div style={styles.kpiCard}>
-            <div style={{ minWidth: 0 }}>
-              <div style={styles.kpiLabel}>Καθαρή Ταμειακή Ροή (Μήνα)</div>
-              <div
-                style={{
-                  ...styles.kpiValue,
-                  color: KPI.netMonth + internalTransfersTotal >= 0 ? t.green : t.red,
-                }}
-              >
-                {loading ? '—' : amountFormatter.format(KPI.netMonth + internalTransfersTotal)}
-              </div>
-              <div style={styles.kpiHint}>
-                {KPI.monthStart} → {KPI.monthEnd} (incl. transfers)
-              </div>
-            </div>
-          </div>
+          <KpiCard label="Καθαρή Ταμειακή Ροή (Μήνα)" value={KPI.netMonth + internalTransfersTotal} loading={loading} hint={`${KPI.monthStart} → ${KPI.monthEnd} (incl. transfers)`} color={KPI.netMonth + internalTransfersTotal >= 0 ? t.green : t.red} style={styles.kpiCard} />
 
-          {/* Νέα κάρτα: Εσωτερικές Μεταφορές */}
-          <div
-            style={{
-              ...styles.kpiCard,
-              border: `2px dashed ${t.indigo}`,
-              background: t.isDark ? 'rgba(99,102,241,0.10)' : 'rgba(99,102,241,0.07)',
-            }}
-          >
-            <div style={{ minWidth: 0 }}>
-              <div style={{ ...styles.kpiLabel, color: t.indigo }}>Εσωτερικές Μεταφορές</div>
-              <div style={{ ...styles.kpiValue, color: t.indigo }}>{loading ? '—' : amountFormatter.format(internalTransfersTotal)}</div>
-              <div style={styles.kpiHint}>
-                Εισροές: <span style={{ color: t.green }}>{amountFormatter.format(internalTransfersIn)}</span> • Εκροές:{' '}
-                <span style={{ color: t.red }}>{amountFormatter.format(Math.abs(internalTransfersOut))}</span>
-              </div>
-            </div>
-          </div>
+          <KpiCard label="Εσωτερικές Μεταφορές" value={internalTransfersTotal} loading={loading} hint={`Εισροές: ${amountFormatter.format(internalTransfersIn)} • Εκροές: ${amountFormatter.format(Math.abs(internalTransfersOut))}`} color={t.indigo} dashed style={{ ...styles.kpiCard, background: t.isDark ? 'rgba(99,102,241,0.10)' : 'rgba(99,102,241,0.07)' }} />
 
-          {/* Οργανικά Έσοδα/Έξοδα */}
-          <div style={styles.kpiCard}>
-            <div style={{ minWidth: 0 }}>
-              <div style={styles.kpiLabel}>Οργανικά Έσοδα</div>
-              <div style={{ ...styles.kpiValue, color: t.green }}>
-                {loading ? '—' : amountFormatter.format(organicIncome.reduce((a, r) => a + r.amount, 0))}
-              </div>
-              <div style={styles.kpiHint}>Χωρίς Μεταφορές Κεφαλαίου</div>
-            </div>
-          </div>
+          <KpiCard label="Οργανικά Έσοδα" value={organicIncome.reduce((a, r) => a + r.amount, 0)} loading={loading} hint="Χωρίς Μεταφορές Κεφαλαίου" color={t.green} style={styles.kpiCard} />
 
-          <div style={styles.kpiCard}>
-            <div style={{ minWidth: 0 }}>
-              <div style={styles.kpiLabel}>Οργανικά Έξοδα</div>
-              <div style={{ ...styles.kpiValue, color: t.red }}>
-                {loading ? '—' : amountFormatter.format(organicExpense.reduce((a, r) => a + Math.abs(r.amount), 0))}
-              </div>
-              <div style={styles.kpiHint}>Χωρίς Μεταφορές Κεφαλαίου</div>
-            </div>
-          </div>
+          <KpiCard label="Οργανικά Έξοδα" value={organicExpense.reduce((a, r) => a + Math.abs(r.amount), 0)} loading={loading} hint="Χωρίς Μεταφορές Κεφαλαίου" color={t.red} style={styles.kpiCard} />
         </section>
 
         {/* Chart */}
 
         {/* Mini KPI row for chart period */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0,1fr))', gap: 10, marginTop: 12 }}> 
-          <div style={{ ...styles.kpiCard, padding: 12, minHeight: 72 }}>
-            <div style={{ minWidth: 0 }}>
-              <div style={styles.kpiLabel}>Κέρδος Περιόδου</div>
-              <div style={styles.kpiValue}>{loading ? '—' : amountFormatter.format(totalProfit)}</div>
-              <div style={styles.kpiHint}>Συνολικό κέρδος</div>
-            </div>
-          </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0,1fr))', gap: 10, marginTop: 12 }}>
+          <KpiCard label="Κέρδος Περιόδου" value={totalProfit} loading={loading} hint="Συνολικό κέρδος" style={{ ...styles.kpiCard, padding: 12, minHeight: 72 }} />
 
-          <div style={{ ...styles.kpiCard, padding: 12, minHeight: 72 }}>
-            <div style={{ minWidth: 0 }}>
-              <div style={styles.kpiLabel}>Συνολικά Έσοδα</div>
-              <div style={{ ...styles.kpiValue, color: t.green }}>{loading ? '—' : amountFormatter.format(totalRevenue)}</div>
-              <div style={styles.kpiHint}>Συνολικά Έσοδα</div>
-            </div>
-          </div>
+          <KpiCard label="Συνολικά Έσοδα" value={totalRevenue} loading={loading} hint="Συνολικά Έσοδα" color={t.green} style={{ ...styles.kpiCard, padding: 12, minHeight: 72 }} />
 
-          <div style={{ ...styles.kpiCard, padding: 12, minHeight: 72 }}>
-            <div style={{ minWidth: 0 }}>
-              <div style={styles.kpiLabel}>Συνολικά Έξοδα</div>
-              <div style={{ ...styles.kpiValue, color: t.red }}>{loading ? '—' : amountFormatter.format(totalExpenses)}</div>
-              <div style={styles.kpiHint}>Συνολικά Έξοδα</div>
-            </div>
-          </div>
+          <KpiCard label="Συνολικά Έξοδα" value={totalExpenses} loading={loading} hint="Συνολικά Έξοδα" color={t.red} style={{ ...styles.kpiCard, padding: 12, minHeight: 72 }} />
         </div>
 
         <section style={styles.premiumCard}>
