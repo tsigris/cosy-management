@@ -27,12 +27,18 @@ export async function fetchStoresForUser(userId: string): Promise<StoreCard[]> {
     throw error
   }
 
-  return (data ?? []).map((row: any) => ({
-    id: String(row.id),
-    name: String(row.name || ''),
-    income: Number(row.income) || 0,
-    expenses: Number(row.expenses) || 0,
-    profit: Number(row.profit) || 0,
-    lastUpdated: row.last_updated ?? null,
-  }))
+  return (data ?? []).map((row: any) => {
+    const income = Number(row.income) || 0
+    const expenses = Number(row.expenses) || 0
+
+    return {
+      id: String(row.id),
+      name: String(row.name || ''),
+      income,
+      expenses,
+      // Expenses are stored as negative values, so net is income + expenses.
+      profit: income + expenses,
+      lastUpdated: row.last_updated ?? null,
+    }
+  })
 }
