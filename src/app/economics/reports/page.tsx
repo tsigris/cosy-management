@@ -4,12 +4,10 @@ export const dynamic = "force-dynamic"
 import { useEffect, useMemo, useState, Suspense, useCallback } from "react"
 import { getSupabase } from "@/lib/supabase"
 import { useRouter, useSearchParams } from "next/navigation"
-import Link from "next/link"
 import EconomicsHeaderNav from "@/components/economics/EconomicsHeaderNav"
 import EconomicsPeriodFilter from "@/components/economics/EconomicsPeriodFilter"
 import EconomicsContainer from "@/components/economics/EconomicsContainer"
 import { toast, Toaster } from "sonner"
-import { ChevronLeft } from "lucide-react"
 
 const colors = {
   accentGreen: "#10b981",
@@ -18,6 +16,14 @@ const colors = {
 }
 
 type ReportsView = "summary" | "category" | "method" | "timeline" | "movements"
+
+const viewOptions: Array<{ value: ReportsView; label: string }> = [
+  { value: "summary", label: "Σύνοψη" },
+  { value: "category", label: "Κατηγορία" },
+  { value: "method", label: "Μέθοδος" },
+  { value: "timeline", label: "Χρονική" },
+  { value: "movements", label: "Κινήσεις" },
+]
 
 const isValidUUID = (id: any) => {
   const regex =
@@ -255,6 +261,38 @@ function ReportsContent() {
         onYearChange={(y) => setSelectedYear(y)}
         yearOptions={yearOptions}
       />
+
+      <div
+        style={{
+          display: "flex",
+          gap: 8,
+          flexWrap: "wrap",
+          marginBottom: 12,
+        }}
+      >
+        {viewOptions.map((opt) => {
+          const isActive = view === opt.value
+          return (
+            <button
+              key={opt.value}
+              type="button"
+              onClick={() => setView(opt.value)}
+              style={{
+                padding: "8px 12px",
+                borderRadius: 10,
+                border: "1px solid var(--border)",
+                background: isActive ? "var(--text)" : "var(--surface)",
+                color: isActive ? "var(--surfaceSolid)" : "var(--text)",
+                fontWeight: 800,
+                fontSize: 12,
+                cursor: "pointer",
+              }}
+            >
+              {opt.label}
+            </button>
+          )
+        })}
+      </div>
 
       <div style={card}>
         <div style={{ display: "flex", justifyContent: "space-between" }}>
