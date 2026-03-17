@@ -139,7 +139,7 @@ function getNextMonthlyPayDate(startDateStr: string, todayStr: string) {
     candidate = new Date(ny, nm, clampDayNextMonth)
   }
 
-  return yyyyMmDd(candidate)
+  return getBusinessDate(candidate)
 }
 
 export default function NotificationsBell({ storeId, onUpdate }: { storeId: string; onUpdate?: () => void }) {
