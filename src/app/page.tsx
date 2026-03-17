@@ -258,11 +258,6 @@ function DashboardContent() {
       if (storeData?.name) setStoreName(storeData.name)
       setZEnabled(storeData?.z_enabled !== false)
 
-      // ✅ BUSINESS WINDOW: selectedDate 07:00 → next day 06:59:59.999 (local → ISO UTC)
-      const nextDateStr = format(addDays(parseISO(selectedDate), 1), 'yyyy-MM-dd')
-      const windowStartIso = new Date(`${selectedDate}T07:00:00`).toISOString()
-      const windowEndIso = new Date(`${nextDateStr}T06:59:59.999`).toISOString()
-
       const { data: tx, error: txError } = await supabase
         .from('transactions')
         .select(`
@@ -288,7 +283,7 @@ function DashboardContent() {
   revenue_sources(name)
 `)
         .eq('store_id', storeIdFromUrl)
-        .or(`date.eq.${selectedDate},and(created_at.gte.${windowStartIso},created_at.lte.${windowEndIso})`)
+        .eq('date', selectedDate)
         .order('created_at', { ascending: false })
 
       let txRows = tx || []
@@ -320,7 +315,7 @@ function DashboardContent() {
   revenue_sources(name)
 `)
           .eq('store_id', storeIdFromUrl)
-          .or(`date.eq.${selectedDate},and(created_at.gte.${windowStartIso},created_at.lte.${windowEndIso})`)
+          .eq('date', selectedDate)
           .order('created_at', { ascending: false })
 
         if (txWithoutJoinError) throw txWithoutJoinError
