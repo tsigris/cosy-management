@@ -66,11 +66,7 @@ function ReportsContent() {
   const searchParams = useSearchParams()
 
   const storeIdFromUrl = searchParams.get("store")
-
-  if (!storeIdFromUrl || !isValidUUID(storeIdFromUrl)) {
-    router.replace("/select-store")
-    return null
-  }
+  const hasValidStore = !!storeIdFromUrl && isValidUUID(storeIdFromUrl)
 
   const [loading, setLoading] = useState(true)
   const [transactions, setTransactions] = useState<any[]>([])
@@ -82,7 +78,15 @@ function ReportsContent() {
     "month" | "year" | "30days" | "all"
   >("month")
 
+  useEffect(() => {
+    if (!hasValidStore) {
+      router.replace("/select-store")
+    }
+  }, [hasValidStore, router])
+
   const load = useCallback(async () => {
+    if (!storeIdFromUrl || !hasValidStore) return
+
     try {
       setLoading(true)
 
@@ -100,11 +104,16 @@ function ReportsContent() {
     } finally {
       setLoading(false)
     }
-  }, [storeIdFromUrl, supabase])
+  }, [storeIdFromUrl, hasValidStore, supabase])
 
   useEffect(() => {
+    if (!hasValidStore) return
     load()
-  }, [load])
+  }, [hasValidStore, load])
+
+  if (!hasValidStore) {
+    return null
+  }
 
   const yearOptions = useMemo(() => {
     const s = new Set<number>()

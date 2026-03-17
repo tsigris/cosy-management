@@ -49,21 +49,25 @@ function ProfitContent() {
 	const router = useRouter()
 	const searchParams = useSearchParams()
 	const storeIdFromUrl = searchParams.get('store')
-
-	if (!storeIdFromUrl || !isValidUUID(storeIdFromUrl)) {
-		router.replace('/select-store')
-		return null
-	}
+	const hasValidStore = !!storeIdFromUrl && isValidUUID(storeIdFromUrl)
 
 	const [loading, setLoading] = useState(true)
 	const [transactions, setTransactions] = useState<any[]>([])
 	const [period, setPeriod] = useState<'month' | 'year' | '30days' | 'all'>('month')
 	const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear())
 
+	useEffect(() => {
+		if (!hasValidStore) {
+			router.replace('/select-store')
+		}
+	}, [hasValidStore, router])
+
 	const incomeTypes = ['income', 'income_collection', 'debt_received']
 	const expenseTypes = ['expense', 'debt_payment', 'salary_advance']
 
 	const load = useCallback(async () => {
+		if (!storeIdFromUrl || !hasValidStore) return
+
 		try {
 			setLoading(true)
 			const transRes = await supabase.from('transactions').select('*').eq('store_id', storeIdFromUrl)
@@ -77,11 +81,16 @@ function ProfitContent() {
 		} finally {
 			setLoading(false)
 		}
-	}, [storeIdFromUrl, supabase])
+	}, [storeIdFromUrl, hasValidStore, supabase])
 
 	useEffect(() => {
+		if (!hasValidStore) return
 		void load()
-	}, [load])
+	}, [hasValidStore, load])
+
+	if (!hasValidStore) {
+		return null
+	}
 
 	const yearOptions = useMemo(() => {
 		const s = new Set<number>()
