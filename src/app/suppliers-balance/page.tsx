@@ -270,7 +270,7 @@ function BalancesContent() {
     try {
       setLoading(true)
 
-      const transRes = await supabase.from('transactions').select('*').eq('store_id', storeIdFromUrl)
+      const transRes = await supabase.from('transactions').select('id, created_at, date, type, amount, is_credit, supplier_id, fixed_asset_id, revenue_source_id, notes, description, category').eq('store_id', storeIdFromUrl)
       if (transRes.error) throw transRes.error
       const transactions = transRes.data || []
       setAllTransactions(transactions)
@@ -279,8 +279,8 @@ function BalancesContent() {
       // We still load entities here for performance and stability.
       if (viewMode === 'expenses') {
         const [supsRes, assetsRes] = await Promise.all([
-          supabase.from('suppliers').select('*').eq('store_id', storeIdFromUrl),
-          supabase.from('fixed_assets').select('*').eq('store_id', storeIdFromUrl),
+          supabase.from('suppliers').select('id, name, rf_code, bank_name').eq('store_id', storeIdFromUrl),
+          supabase.from('fixed_assets').select('id, name, sub_category, category').eq('store_id', storeIdFromUrl),
         ])
 
         if (supsRes.error) throw supsRes.error
@@ -333,7 +333,7 @@ function BalancesContent() {
         return
       }
 
-      const revRes = await supabase.from('revenue_sources').select('*').eq('store_id', storeIdFromUrl)
+      const revRes = await supabase.from('revenue_sources').select('id, name').eq('store_id', storeIdFromUrl)
       if (revRes.error) throw revRes.error
 
       const revenueSources = (revRes.data || []).map((r) => ({ ...r, entityType: 'revenue' }))
