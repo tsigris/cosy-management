@@ -304,7 +304,7 @@ function BalancesContent() {
       // NOTE: data calculation will happen below using selectedYear, so we compute again in an effect.
       // We still load entities here for performance and stability.
       if (viewMode === 'expenses') {
-        const suppliersSelect = 'id, store_id, name, rf_code, bank_name'
+        const suppliersSelect = 'id, store_id, name'
         const fixedAssetsSelect = 'id, store_id, name, sub_category, category'
         console.log('RUNNING QUERY: suppliers', { select: suppliersSelect })
         console.log('RUNNING QUERY: fixed_assets', { select: fixedAssetsSelect })
