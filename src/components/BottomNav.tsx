@@ -1,8 +1,7 @@
 'use client'
-import React, { Suspense, useEffect, useState } from 'react';
+import React, { Suspense } from 'react';
 import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
-import { getSupabase } from '@/lib/supabase';
 import { ui } from '@/lib/uiTheme';
 
 const colors = {
@@ -23,74 +22,17 @@ const navItems = [
 ];
 
 function NavContent() {
-  const supabase = getSupabase()
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  
-  const [permissions, setPermissions] = useState({
-    canViewAnalysis: false,
-    canViewHistory: false,
-    canEditTransactions: false
-  });
 
   const storeInUrl = searchParams.get('store');
   const storeInStorage = typeof window !== 'undefined' ? localStorage.getItem('active_store_id') : null;
   const storeId = storeInUrl || storeInStorage;
 
-  useEffect(() => {
-    const checkPermissions = async () => {
-      if (!storeId) return;
-
-      try {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) return;
-
-        const { data, error } = await supabase
-          .from('store_access')
-          .select('role, can_view_analysis, can_view_history, can_edit_transactions')
-          .eq('store_id', storeId)
-          .eq('user_id', user.id)
-          .single();
-
-        if (error) {
-          console.error('Error fetching permissions:', error);
-          return;
-        }
-
-        if (data) {
-          if (data.role === 'admin') {
-            setPermissions({
-              canViewAnalysis: true,
-              canViewHistory: true,
-              canEditTransactions: true
-            });
-          } else {
-            setPermissions({
-              canViewAnalysis: data.can_view_analysis === true,
-              canViewHistory: data.can_view_history === true,
-              canEditTransactions: data.can_edit_transactions === true
-            });
-          }
-        }
-      } catch (err) {
-        console.error(err);
-      }
-    };
-
-    checkPermissions();
-  }, [storeId]);
-
   const hideOnPaths = ['/login', '/register', '/signup', '/select-store'];
   const isFormPage = pathname.includes('/add-');
   
   if (hideOnPaths.includes(pathname) || isFormPage) return null;
-
-  const visibleNavItems = navItems.filter(item => {
-    if (item.label === 'Ανάλυση') {
-      return permissions.canViewAnalysis;
-    }
-    return true;
-  });
 
   return (
     <nav style={navWrapper}>
@@ -100,7 +42,7 @@ function NavContent() {
         .nav-item:active { transform: scale(0.9); }
       `}} />
 
-      {visibleNavItems.map((item) => {
+      {navItems.map((item) => {
         const isActive = pathname === item.path;
         const fullPath = storeId ? `${item.path}?store=${storeId}` : item.path;
 
