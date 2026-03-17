@@ -86,10 +86,10 @@ function DashboardContent() {
     autoFetch: !!storeIdFromUrl,
   })
 
-  // ✅ YTD uses BUSINESS day
-  const businessTodayStr = getBusinessDate()
-  const businessYear = String(businessTodayStr).slice(0, 4)
-  const yearStartStr = `${businessYear}-01-01`
+  // ✅ YTD uses BUSINESS day — memoized so getBusinessDate() is not called on every render
+  const businessTodayStr = useMemo(() => getBusinessDate(), [])
+  const businessYear = useMemo(() => String(businessTodayStr).slice(0, 4), [businessTodayStr])
+  const yearStartStr = useMemo(() => `${businessYear}-01-01`, [businessYear])
 
   const getEntityKeyFromTx = (t: any) => {
     const description = String(t?.description || t?.notes || '')
@@ -358,9 +358,10 @@ function DashboardContent() {
     }
   }, [selectedDate, router, storeIdFromUrl])
 
+  // storeIdFromUrl is already a dep of loadDashboard itself; no need to repeat it here
   useEffect(() => {
     loadDashboard()
-  }, [loadDashboard, storeIdFromUrl])
+  }, [loadDashboard])
 
   // ✅ Update permissions from shared hook (replaces inline store_access query)
   useEffect(() => {
@@ -372,6 +373,11 @@ function DashboardContent() {
       setCanViewAnalysis(false)
     }
   }, [accessData])
+
+  // Clear YTD cache when store changes to prevent stale data from previous store
+  useEffect(() => {
+    setYtdCache({})
+  }, [storeIdFromUrl])
 
   const handleDelete = async (id: string) => {
     if (!confirm('Οριστική διαγραφή αυτής της κίνησης;')) return
@@ -446,10 +452,11 @@ function DashboardContent() {
   const isZTransaction = useCallback((t: any) => {
     const category = String(t?.category || '').trim().toLowerCase()
     const method = getPaymentMethod(t).toLowerCase()
-    const notes = String(t?.notes || '').trim().toLowerCase()
+    // Query aliases `notes` as `description`, so read the aliased field here
+    const description = String(t?.description || '').trim().toLowerCase()
 
     const categoryLooksZ = category === 'ζ' || category === 'εσοδα ζ' || category.includes(' ζ') || category.endsWith('ζ')
-    const looksLikeDayClose = method.includes('(ζ)') || notes.includes('ζ ταμειακης') || notes === 'χωρις σημανση'
+    const looksLikeDayClose = method.includes('(ζ)') || description.includes('ζ ταμειακης') || description === 'χωρις σημανση'
 
     return categoryLooksZ || (t?.type === 'income' && looksLikeDayClose)
   }, [])
@@ -720,7 +727,7 @@ function DashboardContent() {
       </div>
 
       <div style={listContainer}>
-        <p style={listHeader}>ΚΙΝΗΣΕΙΣ ΗΜΕΡΑΣ ({Array.isArray(displayTransactions) ? displayTransactions.length : 0})</p>
+        <p style={listHeader}>ΚΙΝΗΣΕΙΣ ΗΜΕΡΑΣ ({transactions.length})</p>
 
         {loading ? (
           <div style={{ textAlign: 'center', padding: '40px' }}>
