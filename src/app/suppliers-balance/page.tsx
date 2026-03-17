@@ -281,6 +281,7 @@ function BalancesContent() {
         .gte('date', `${selectedYear}-01-01`)
         .lte('date', `${selectedYear}-12-31`)
       if (transRes.error) {
+        console.error('RAW QUERY ERROR', transRes.error)
         console.error('Suppliers balance transactions query failed', {
           message: transRes.error.message,
           details: transRes.error.details,
@@ -303,13 +304,14 @@ function BalancesContent() {
       // We still load entities here for performance and stability.
       if (viewMode === 'expenses') {
         const suppliersSelect = 'id, store_id, name, rf_code, bank_name'
-        const fixedAssetsSelect = 'id, store_id, name, sub_category, category, rf_code, bank_name'
+        const fixedAssetsSelect = 'id, store_id, name, sub_category, category'
         const [supsRes, assetsRes] = await Promise.all([
           supabase.from('suppliers').select(suppliersSelect).eq('store_id', storeIdFromUrl),
           supabase.from('fixed_assets').select(fixedAssetsSelect).eq('store_id', storeIdFromUrl),
         ])
 
         if (supsRes.error) {
+          console.error('RAW QUERY ERROR', supsRes.error)
           console.error('Suppliers balance suppliers query failed', {
             message: supsRes.error.message,
             details: supsRes.error.details,
@@ -323,6 +325,7 @@ function BalancesContent() {
           throw supsRes.error
         }
         if (assetsRes.error) {
+          console.error('RAW QUERY ERROR', assetsRes.error)
           console.error('Suppliers balance fixed_assets query failed', {
             message: assetsRes.error.message,
             details: assetsRes.error.details,
@@ -383,9 +386,10 @@ function BalancesContent() {
         return
       }
 
-      const revenueSourcesSelect = 'id, store_id, name, rf_code, bank_name'
+      const revenueSourcesSelect = 'id, store_id, name'
       const revRes = await supabase.from('revenue_sources').select(revenueSourcesSelect).eq('store_id', storeIdFromUrl)
       if (revRes.error) {
+        console.error('RAW QUERY ERROR', revRes.error)
         console.error('Suppliers balance revenue_sources query failed', {
           message: revRes.error.message,
           details: revRes.error.details,
