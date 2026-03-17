@@ -6,7 +6,8 @@ import EconomicsHeaderNav from '@/components/economics/EconomicsHeaderNav'
 import EconomicsPeriodFilter from '@/components/economics/EconomicsPeriodFilter'
 import EconomicsContainer from '@/components/economics/EconomicsContainer'
 import { getSupabase } from '@/lib/supabase'
-import { toBusinessDayDate } from '@/lib/businessDate'
+import { formatBusinessDayDate, toBusinessDayDateNormalized } from '@/lib/businessDate'
+import { currencyFormatterEUR, formatTimeEl } from '@/lib/formatters'
 import { ChevronDown, ChevronUp } from 'lucide-react'
 
 type TxRow = {
@@ -39,11 +40,6 @@ const parseTxDate = (r: any) => {
   const d = new Date(raw)
   return isNaN(d.getTime()) ? null : d
 }
-
-const toBusinessDateNormalized = (d: Date) => toBusinessDayDate(d, { normalizeToNoon: true })
-
-const formatDateEl = (d: Date) => toBusinessDateNormalized(d).toLocaleDateString('el-GR')
-const formatTime = (d: Date) => d.toLocaleTimeString('el-GR', { hour: '2-digit', minute: '2-digit' })
 
 function normalizeMethod(m?: string | null) {
   if (!m) return 'Λοιπά'
@@ -174,7 +170,7 @@ export default function EconomicsIncomePage() {
     const map = new Map<string, TxRow[]>()
     for (const r of filtered) {
       const d = parseTxDate(r)
-      const key = d ? toBusinessDateNormalized(d).toISOString().slice(0, 10) : r.date || 'unknown'
+      const key = d ? toBusinessDayDateNormalized(d).toISOString().slice(0, 10) : r.date || 'unknown'
       if (!map.has(key)) map.set(key, [])
       map.get(key)!.push(r)
     }
@@ -183,7 +179,7 @@ export default function EconomicsIncomePage() {
     return entries
   }, [filtered])
 
-  const amountFmt = useMemo(() => new Intl.NumberFormat('el-GR', { style: 'currency', currency: 'EUR' }), [])
+  const amountFmt = currencyFormatterEUR
 
   // compute KPIs: today, yesterday, month total, avg daily
   const KPIs = useMemo(() => {
@@ -390,7 +386,7 @@ export default function EconomicsIncomePage() {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div>
                   <div style={{ fontWeight: 900 }}>Τελευταίο Ζ</div>
-                  <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 6 }}>{formatDateEl(new Date(lastZ[0]))}</div>
+                  <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 6 }}>{formatBusinessDayDate(new Date(lastZ[0]))}</div>
                 </div>
 
                 <div style={{ textAlign: 'right' }}>
@@ -425,7 +421,7 @@ export default function EconomicsIncomePage() {
                 <div key={day} style={styles.dayCard as any}>
                   <div style={styles.dayHeader as any}>
                     <div style={styles.dateRow as any}>
-                      <div style={styles.dateText as any}>{formatDateEl(new Date(day))}</div>
+                      <div style={styles.dateText as any}>{formatBusinessDayDate(new Date(day))}</div>
                       {day === todayKey ? (
                         <span style={{ ...styles.badge as any, background: '#DCFCE7', color: '#166534' }}>Σήμερα</span>
                       ) : null}
@@ -460,7 +456,7 @@ export default function EconomicsIncomePage() {
                           <div style={{ display: 'flex', gap: 12, alignItems: 'center', minWidth: 0 }}>
                             <div style={{ fontSize: 12, color: 'var(--muted)', width: 64 }}>{(() => {
                               const d = parseTxDate(t)
-                              return d ? formatTime(d) : '-'
+                              return d ? formatTimeEl(d) : '-'
                             })()}</div>
                             <div style={{ minWidth: 0 }}>
                               <div style={{ fontWeight: 800, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.category || t.notes || t.type}</div>

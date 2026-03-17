@@ -7,7 +7,8 @@ import Link from 'next/link'
 import { toast, Toaster } from 'sonner'
 import { getSupabase } from '@/lib/supabase'
 import { getGoalProgress, getGoalInsights, formatDateGR } from '@/lib/goalProgress'
-import { getBusinessDate } from '@/lib/businessDate'
+import { formatIsoDate, getBusinessDate } from '@/lib/businessDate'
+import { formatAmount, formatMoneySpaced } from '@/lib/formatters'
 import {
   ChevronLeft,
   PiggyBank,
@@ -75,17 +76,6 @@ type Tx = {
 type PayMethod = 'Μετρητά' | 'Κάρτα' | 'Τράπεζα'
 
 // Helpers
-function yyyyMmDd(d: Date) {
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  return `${y}-${m}-${day}`
-}
-
-function toMoney(value: number | null | undefined) {
-  return `${Number(value || 0).toLocaleString('el-GR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`
-}
-
 function normalizeMoneyInput(raw: string) {
   return String(raw || '').replace(/\s/g, '').replace(/[^\d.,-]/g, '')
 }
@@ -106,10 +96,6 @@ function parseMoney(raw: string): number | null {
 
 function getPaymentMethod(tx: any): string {
   return String(tx?.payment_method ?? tx?.method ?? '').trim()
-}
-
-function formatMoneyInputEl(n: number) {
-  return n.toLocaleString('el-GR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
 function clamp(n: number, a: number, b: number) {
@@ -299,7 +285,7 @@ function GoalsContent() {
   const startEdit = (g: Goal) => {
     setEditingGoalId(g.id)
     setName(g.name)
-    setTargetAmount(formatMoneyInputEl(Number(g.target_amount || 0)))
+    setTargetAmount(formatAmount(Number(g.target_amount || 0)))
     setTargetDate(g.target_date || '')
     setOpenGoalModal(true)
   }
@@ -380,7 +366,7 @@ function GoalsContent() {
   const applyPreset = (n: number) => {
     const current = parseMoney(txAmount) || 0
     const next = current + n
-    setTxAmount(formatMoneyInputEl(next))
+    setTxAmount(formatAmount(next))
   }
 
   const onSaveTransaction = async () => {
@@ -576,7 +562,7 @@ function GoalsContent() {
     // suggest +3 months from today
     const d = new Date()
     d.setMonth(d.getMonth() + 3)
-    return yyyyMmDd(d)
+    return formatIsoDate(d)
   }, [])
 
   if (loading) {
@@ -615,12 +601,12 @@ function GoalsContent() {
         <div style={summaryCardStyle}>
           <div style={{ minWidth: 0 }}>
             <p style={summaryLabelStyle}>ΣΥΝΟΛΙΚΗ ΑΠΟΤΑΜΙΕΥΣΗ</p>
-            <p style={summaryValueStyle}>{toMoney(totalSaved)}</p>
+            <p style={summaryValueStyle}>{formatMoneySpaced(totalSaved)}</p>
 
             {/* ✅ "impact on cash today" (net) */}
             <div style={{ marginTop: 10, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
               <span style={chipStyle}>
-                <Clock size={14} /> Σήμερα: {toMoney(totalTodayImpact)}
+                <Clock size={14} /> Σήμερα: {formatMoneySpaced(totalTodayImpact)}
               </span>
               <span style={chipStyle}>
                 <Calendar size={14} /> Business Date: {formatDateGR(businessDate)}
@@ -688,17 +674,17 @@ function GoalsContent() {
 
                     <div style={goalTilePercent}>{progress}%</div>
                     <h3 style={goalTileName}>{g.name}</h3>
-                    <div style={goalTileAmount}>{toMoney(current)}</div>
-                    <div style={goalTileTarget}>Στόχος: {toMoney(target)}</div>
+                    <div style={goalTileAmount}>{formatMoneySpaced(current)}</div>
+                    <div style={goalTileTarget}>Στόχος: {formatMoneySpaced(target)}</div>
 
                     <div style={goalTileInfoRow}>
-                      Απομένουν: {toMoney(plan.remainingAmount)}
+                      Απομένουν: {formatMoneySpaced(plan.remainingAmount)}
                     </div>
                     <div style={goalTileInfoRow}>
-                      /ημέρα: {plan.dailyNeeded !== null ? toMoney(plan.dailyNeeded) : '-'}
+                      /ημέρα: {plan.dailyNeeded !== null ? formatMoneySpaced(plan.dailyNeeded) : '-'}
                     </div>
                     <div style={{ ...goalTileInfoRow, fontWeight: 800 }}>
-                      Σήμερα: {remainingForToday !== null ? toMoney(remainingForToday) : '-'}
+                      Σήμερα: {remainingForToday !== null ? formatMoneySpaced(remainingForToday) : '-'}
                     </div>
                     <div style={{ marginTop: 4, fontSize: 11, color: colors.secondaryText, lineHeight: 1.3 }}>
                       {getGoalInsights(g, businessDate).message}
@@ -707,7 +693,7 @@ function GoalsContent() {
                     {/* chips row */}
                     <div style={goalTileChipsRow}>
                       <span style={{ ...miniChip, borderColor: 'rgba(99,102,241,0.25)', background: 'rgba(99,102,241,0.08)', color: colors.indigo, fontSize: 11, padding: '5px 8px' }}>
-                        <Clock size={11} /> {toMoney(todayImpact)}
+                        <Clock size={11} /> {formatMoneySpaced(todayImpact)}
                       </span>
                       {!!g.target_date && (
                         <span style={{ ...dateBadgeStyle, fontSize: 10 }}>
@@ -768,7 +754,7 @@ function GoalsContent() {
                   onChange={(e) => setTargetAmount(normalizeMoneyInput(e.target.value))}
                   onBlur={() => {
                     const n = parseMoney(targetAmount)
-                    if (n) setTargetAmount(formatMoneyInputEl(n))
+                    if (n) setTargetAmount(formatAmount(n))
                   }}
                 />
               </div>
@@ -810,7 +796,7 @@ function GoalsContent() {
               <div style={{ padding: '10px 12px', background: colors.bgLight, borderRadius: 12, marginBottom: 14 }}>
                 <p style={{ margin: 0, fontWeight: 900, color: colors.primaryDark }}>{selectedGoal.name}</p>
                 <p style={{ margin: '4px 0 0', fontSize: 12, fontWeight: 700, color: colors.secondaryText }}>
-                  Διαθέσιμο Υπόλοιπο: {toMoney(selectedGoal.current_amount)}
+                  Διαθέσιμο Υπόλοιπο: {formatMoneySpaced(selectedGoal.current_amount)}
                 </p>
               </div>
 
@@ -836,7 +822,7 @@ function GoalsContent() {
                 onChange={(e) => setTxAmount(normalizeMoneyInput(e.target.value))}
                 onBlur={() => {
                   const n = parseMoney(txAmount)
-                  if (n) setTxAmount(formatMoneyInputEl(n))
+                  if (n) setTxAmount(formatAmount(n))
                 }}
               />
 
@@ -880,7 +866,7 @@ function GoalsContent() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                 <h2 style={{ margin: 0, fontWeight: 950 }}>Λεπτομέρειες Στόχου</h2>
                 <div style={{ fontSize: 12, fontWeight: 800, color: colors.secondaryText }}>
-                  {selectedGoal.name} • {toMoney(selectedGoal.current_amount)} / {toMoney(selectedGoal.target_amount)}
+                  {selectedGoal.name} • {formatMoneySpaced(selectedGoal.current_amount)} / {formatMoneySpaced(selectedGoal.target_amount)}
                 </div>
               </div>
               <button style={iconCloseBtnStyle} onClick={() => setOpenHistoryModal(false)}>
@@ -897,16 +883,16 @@ function GoalsContent() {
               const remainingForToday = getRemainingForToday(plan.dailyNeeded, plan.deltaFromExpected, todayImpact)
               const paceHint = plan.hasDate
                 ? plan.expired
-                  ? `Η ημερομηνία στόχου έχει περάσει. Υπόλοιπο: ${toMoney(plan.remaining)}`
-                  : `Απομένουν ~${plan.daysLeft} ημέρες • /ημέρα: ${toMoney(plan.perDay || 0)} • /μήνα: ${toMoney(plan.perMonth || 0)}`
+                  ? `Η ημερομηνία στόχου έχει περάσει. Υπόλοιπο: ${formatMoneySpaced(plan.remaining)}`
+                  : `Απομένουν ~${plan.daysLeft} ημέρες • /ημέρα: ${formatMoneySpaced(plan.perDay || 0)} • /μήνα: ${formatMoneySpaced(plan.perMonth || 0)}`
                 : 'Βάλε ημερομηνία στόχου για να σου δείχνει /ημέρα και /μήνα.'
 
               const paceDelta = plan.hasDate
                 ? plan.deltaFromExpected === null
                   ? null
                   : plan.deltaFromExpected >= 0
-                    ? `Μπροστά από πλάνο: ${toMoney(plan.deltaFromExpected)}`
-                    : `Πίσω από πλάνο: ${toMoney(Math.abs(plan.deltaFromExpected))}`
+                    ? `Μπροστά από πλάνο: ${formatMoneySpaced(plan.deltaFromExpected)}`
+                    : `Πίσω από πλάνο: ${formatMoneySpaced(Math.abs(plan.deltaFromExpected))}`
                 : null
 
               return (
@@ -934,10 +920,10 @@ function GoalsContent() {
                             {paceHint}
                           </div>
                           <div style={{ marginTop: 8, fontSize: 13, fontWeight: 850, color: colors.secondaryText }}>
-                            Απομένουν: {toMoney(plan.remainingAmount)} • Χρειάζονται / ημέρα: {plan.dailyNeeded !== null ? toMoney(plan.dailyNeeded) : '-'}
+                            Απομένουν: {formatMoneySpaced(plan.remainingAmount)} • Χρειάζονται / ημέρα: {plan.dailyNeeded !== null ? formatMoneySpaced(plan.dailyNeeded) : '-'}
                           </div>
                           <div style={{ marginTop: 6, fontSize: 13, fontWeight: 850, color: colors.secondaryText }}>
-                            Σήμερα να καταθέσεις: {remainingForToday !== null ? toMoney(remainingForToday) : '-'}
+                            Σήμερα να καταθέσεις: {remainingForToday !== null ? formatMoneySpaced(remainingForToday) : '-'}
                           </div>
                           <div style={{ marginTop: 6, fontSize: 12, color: colors.secondaryText }}>{getGoalInsights(selectedGoal, businessDate).message}</div>
                     {paceDelta && (
@@ -946,7 +932,7 @@ function GoalsContent() {
                       </div>
                     )}
                     <div style={{ marginTop: 8, fontSize: 12, fontWeight: 850, color: colors.secondaryText }}>
-                      Υπόλοιπο: {toMoney(Math.max(0, target - current))}
+                      Υπόλοιπο: {formatMoneySpaced(Math.max(0, target - current))}
                     </div>
                   </div>
 

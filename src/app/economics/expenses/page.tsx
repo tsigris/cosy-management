@@ -7,6 +7,7 @@ import { useEffect, useMemo, useState, useCallback } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { getSupabase } from '@/lib/supabase'
 import EconomicsHeaderNav from '@/components/economics/EconomicsHeaderNav'
+import { formatDateEl, formatMoney } from '@/lib/formatters'
 
 /* ---------------- TYPES ---------------- */
 
@@ -106,22 +107,6 @@ function filterBeneficiaries(groups: BeneficiaryGroup[], q: string): Beneficiary
   return groups.filter((g) => norm(g.key).includes(qn) || norm(g.label).includes(qn))
 }
 
-/* ---------------- NEW HELPERS (layout / display) ---------------- */
-
-function formatDateOnly(raw?: string | null): string {
-  if (!raw) return '—'
-  try {
-    const d = new Date(raw)
-    if (isNaN(d.getTime())) return '—'
-    const dd = String(d.getDate()).padStart(2, '0')
-    const mm = String(d.getMonth() + 1).padStart(2, '0')
-    const yyyy = d.getFullYear()
-    return `${dd}/${mm}/${yyyy}`
-  } catch (e) {
-    return '—'
-  }
-}
-
 function displayCategoryLabel(value?: string | null): string {
   if (!value) return '—'
   const v = String(value).trim().toLowerCase()
@@ -135,17 +120,6 @@ function displayCategoryLabel(value?: string | null): string {
     products: 'Εμπορεύματα',
   }
   return map[v] ?? value
-}
-
-function formatDate(raw?: string | null): string {
-  if (!raw) return '—'
-  try {
-    const d = new Date(raw)
-    if (isNaN(d.getTime())) return '—'
-    return d.toLocaleDateString('el-GR')
-  } catch (e) {
-    return '—'
-  }
 }
 
 /* ---------------- UI CONFIG ---------------- */
@@ -551,7 +525,7 @@ export default function EconomicsExpensesPage() {
               <div style={{ ...kpiCard, background: tone.background, borderColor: tone.border }}>
                 <div style={{ color: 'var(--muted)', fontWeight: 800 }}>{isIncomeMode ? 'Συνολικά Έσοδα' : 'Συνολικά Έξοδα'}</div>
                 <div style={{ fontWeight: 900, fontSize: 20, marginTop: 8, color: tone.valueColor }}>
-                  {Number(totalAmount).toLocaleString('el-GR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}€
+                  {formatMoney(totalAmount)}
                 </div>
               </div>
             )
@@ -564,7 +538,7 @@ export default function EconomicsExpensesPage() {
               <div style={{ ...kpiCard, background: tone.background, borderColor: tone.border }}>
                 <div style={{ color: 'var(--muted)', fontWeight: 800 }}>{isIncomeMode ? 'Έσοδα Μετρητοίς' : 'Έξοδα Μετρητοίς'}</div>
                 <div style={{ fontWeight: 900, fontSize: 20, marginTop: 8, color: tone.valueColor }}>
-                  {Number(cashAmount).toLocaleString('el-GR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}€
+                  {formatMoney(cashAmount)}
                 </div>
               </div>
             )
@@ -577,7 +551,7 @@ export default function EconomicsExpensesPage() {
               <div style={{ ...kpiCard, background: tone.background, borderColor: tone.border }}>
                 <div style={{ color: 'var(--muted)', fontWeight: 800 }}>{isIncomeMode ? 'Έσοδα Πίστωσης' : 'Έξοδα Πίστωσης'}</div>
                 <div style={{ fontWeight: 900, fontSize: 20, marginTop: 8, color: tone.valueColor }}>
-                  {Number(creditAmount).toLocaleString('el-GR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}€
+                  {formatMoney(creditAmount)}
                 </div>
               </div>
             )
@@ -590,7 +564,7 @@ export default function EconomicsExpensesPage() {
               <div style={{ ...kpiCard, background: tone.background, borderColor: tone.border }}>
                 <div style={{ color: 'var(--muted)', fontWeight: 800 }}>{isIncomeMode ? 'Μέσο Έσοδο' : 'Μέσο Έξοδο'}</div>
                 <div style={{ fontWeight: 900, fontSize: 20, marginTop: 8, color: tone.valueColor }}>
-                  {Number(avgAmount).toLocaleString('el-GR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}€
+                  {formatMoney(avgAmount)}
                 </div>
               </div>
             )
@@ -766,7 +740,7 @@ export default function EconomicsExpensesPage() {
                     <div style={{ fontWeight: 950, fontSize: 16, color: 'var(--text)' }}>{g.key}</div>
                     <div style={{ color: 'var(--muted)', fontWeight: 850, fontSize: 13 }}>{g.label}</div>
                     <div style={{ marginTop: 6, fontWeight: 950, fontSize: 18, color: 'var(--text)' }}>
-                      {Number(g.total).toLocaleString('el-GR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}€
+                      {formatMoney(g.total)}
                     </div>
                     <div style={{ fontSize: 13, color: 'var(--muted)', fontWeight: 800 }}>Κινήσεις: {Number(g.count)}</div>
                   </button>
@@ -802,7 +776,7 @@ export default function EconomicsExpensesPage() {
                   >
                     <div style={{ fontWeight: 950, fontSize: 16, color: 'var(--text)' }}>{displayCategoryLabel(g.key)}</div>
                     <div style={{ marginTop: 6, fontWeight: 950, fontSize: 18, color: 'var(--text)' }}>
-                      {Number(g.total).toLocaleString('el-GR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}€
+                      {formatMoney(g.total)}
                     </div>
                     <div style={{ fontSize: 13, color: 'var(--muted)', fontWeight: 800 }}>Κινήσεις: {Number(g.count)}</div>
                   </button>
@@ -838,7 +812,7 @@ export default function EconomicsExpensesPage() {
                     >
                       <div style={{ fontWeight: 950, fontSize: 16, color: 'var(--text)' }}>{g.key}</div>
                       <div style={{ marginTop: 6, fontWeight: 950, fontSize: 18, color: 'var(--text)' }}>
-                        {Number(g.total).toLocaleString('el-GR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}€
+                        {formatMoney(g.total)}
                       </div>
                       <div style={{ fontSize: 13, color: 'var(--muted)', fontWeight: 800 }}>Κινήσεις: {Number(g.count)}</div>
                     </button>
@@ -916,7 +890,7 @@ export default function EconomicsExpensesPage() {
                                     lineHeight: 1.35,
                                   }}
                                 >
-                                  {displayCategoryLabel(g.category)} • Τελευταία κίνηση: {formatDateOnly(g.lastDate)}
+                                  {displayCategoryLabel(g.category)} • Τελευταία κίνηση: {formatDateEl(g.lastDate)}
                                 </div>
                               </div>
 
@@ -985,14 +959,14 @@ export default function EconomicsExpensesPage() {
                                     }}
                                   >
                                     <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                      <div style={{ fontSize: 13, fontWeight: 800 }}>{formatDate(r.created_at || r.date)}</div>
+                                      <div style={{ fontSize: 13, fontWeight: 800 }}>{formatDateEl(r.created_at || r.date)}</div>
                                       <div style={{ fontSize: 13, color: 'var(--muted)' }}>
                                         {r.category ? displayCategoryLabel(r.category) : (String(r.fixed_assets?.sub_category || '').trim().toLowerCase() === 'staff' ? 'Προσωπικό' : '—')}
                                       </div>
                                     </div>
                                     <div style={{ textAlign: 'right', display: 'flex', alignItems: 'center', gap: 8 }}>
                                       {r.is_credit ? <div style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 800 }}>Πίστωση</div> : null}
-                                      <div style={{ fontWeight: 900 }}>{Math.abs(Number(r.amount) || 0).toLocaleString('el-GR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}€</div>
+                                      <div style={{ fontWeight: 900 }}>{formatMoney(Math.abs(Number(r.amount) || 0))}</div>
                                     </div>
                                   </div>
                                 ))}

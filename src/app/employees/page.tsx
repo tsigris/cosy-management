@@ -3,8 +3,9 @@ export const dynamic = 'force-dynamic'
 
 import { useEffect, useState, Suspense, useCallback, useMemo, useRef } from 'react'
 import { getSupabase } from '@/lib/supabase'
-import { toBusinessDayDate } from '@/lib/businessDate'
+import { formatBusinessDayDate, toBusinessDayDateNormalized } from '@/lib/businessDate'
 import { getEmployees } from '@/lib/employees'
+import { formatDateEl } from '@/lib/formatters'
 import PermissionGuard from '@/components/PermissionGuard'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
@@ -35,14 +36,8 @@ const parseTxDate = (t: any): Date | null => {
   return isNaN(d.getTime()) ? null : d
 }
 
-// ✅ converts a timestamp to "business day date" (07:00 -> previous date)
-const toBusinessDateNormalized = (d: Date) => toBusinessDayDate(d, { normalizeToNoon: true })
-
-const getBusinessYear = (d: Date) => toBusinessDateNormalized(d).getFullYear()
-const getBusinessMonth = (d: Date) => toBusinessDateNormalized(d).getMonth()
-
-// ✅ for UI display of "date" (business-day)
-const formatBusinessDateShort = (d: Date) => toBusinessDateNormalized(d).toLocaleDateString('el-GR')
+const getBusinessYear = (d: Date) => toBusinessDayDateNormalized(d).getFullYear()
+const getBusinessMonth = (d: Date) => toBusinessDayDateNormalized(d).getMonth()
 
 function EmployeesContent() {
   const supabase = getSupabase()
@@ -659,7 +654,7 @@ function EmployeesContent() {
       }
 
       const d = parseTxDate(t)
-      const key = d ? getBusinessYear(d) + '-' + getBusinessMonth(d) + '-' + toBusinessDateNormalized(d).getDate() : String(t.date || '')
+      const key = d ? getBusinessYear(d) + '-' + getBusinessMonth(d) + '-' + toBusinessDayDateNormalized(d).getDate() : String(t.date || '')
       if (!processedDates.has(key)) {
         // skip extracting base/overtime/bonus for tips or advances
         if (!isTip && !isAdvance) {
@@ -831,7 +826,7 @@ function EmployeesContent() {
 
   // ✅ current month label (BUSINESS MONTH)
   const currentMonthLabel = useMemo(() => {
-    const d = toBusinessDateNormalized(new Date())
+    const d = toBusinessDayDateNormalized(new Date())
     return d.toLocaleString('el-GR', { month: 'long', year: 'numeric' }).toUpperCase()
   }, [])
 
@@ -1006,7 +1001,7 @@ function EmployeesContent() {
                               <span style={{ fontWeight: 900, color: 'var(--text)', fontSize: '12px' }}>{t.name}</span>
                               <span style={{ fontSize: '10px', color: 'var(--muted)', fontWeight: 800 }}>
                                 {/* ✅ display with business-day */}
-                                {isNaN(d.getTime()) ? '—' : formatBusinessDateShort(d)}
+                                {isNaN(d.getTime()) ? '—' : formatBusinessDayDate(d)}
                               </span>
                               <span style={{ fontSize: '10px', color: 'var(--muted)', fontWeight: 900 }}>Tips</span>
                             </div>
@@ -1297,7 +1292,7 @@ function EmployeesContent() {
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
                                   <span style={{ fontWeight: 800, fontSize: '11px', color: 'var(--muted)' }}>{Number(ot.hours).toFixed(2)} ώρες</span>
                                   <span style={{ fontSize: '10px', color: 'var(--muted)', fontWeight: 700 }}>
-                                    {new Date(ot.date).toLocaleDateString('el-GR')}
+                                    {formatDateEl(ot.date)}
                                   </span>
                                 </div>
 
@@ -1368,7 +1363,7 @@ function EmployeesContent() {
                               else noteLabel = note.split('[')[1]?.replace(']', '') || 'Πληρωμή'
 
                               const d = parseTxDate(t)
-                              const dateLabel = d ? formatBusinessDateShort(d) : new Date(t.date).toLocaleDateString('el-GR')
+                              const dateLabel = d ? formatBusinessDayDate(d) : formatDateEl(t.date)
 
                               const displayAmount = Math.abs(Number(t.amount) || 0)
 

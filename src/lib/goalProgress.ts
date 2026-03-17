@@ -1,3 +1,5 @@
+import { formatDateDdMmYyyy } from '@/lib/formatters'
+
 type GoalLite = {
   id?: string
   target_amount?: number | null
@@ -100,12 +102,7 @@ export function getGoalProgress(g: GoalLite, businessDate?: string | Date) {
 export default getGoalProgress
 
 export function formatDateGR(date?: string | Date | null) {
-  if (!date) return ''
-  const d = date instanceof Date ? date : yyyyMmDdToDate(String(date)) || new Date(String(date))
-  const day = String(d.getDate()).padStart(2, '0')
-  const month = String(d.getMonth() + 1).padStart(2, '0')
-  const year = d.getFullYear()
-  return `${day}-${month}-${year}`
+  return date ? formatDateDdMmYyyy(date, '') : ''
 }
 
 export function getGoalInsights(g: GoalLite, businessDate?: string | Date) {

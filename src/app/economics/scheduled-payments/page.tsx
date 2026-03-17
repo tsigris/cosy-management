@@ -5,7 +5,9 @@ import { useSearchParams } from 'next/navigation'
 import EconomicsHeaderNav from '@/components/economics/EconomicsHeaderNav'
 import EconomicsPeriodFilter from '@/components/economics/EconomicsPeriodFilter'
 import { getSupabase } from '@/lib/supabase'
+import { formatIsoDate } from '@/lib/businessDate'
 import { getEmployees } from '@/lib/employees'
+import { formatDateEl } from '@/lib/formatters'
 
 type ScheduledPayment = {
 	id: string
@@ -26,10 +28,7 @@ function addDays(d: Date, days: number) {
 }
 
 function toISODate(d: Date) {
-	const y = d.getFullYear()
-	const m = String(d.getMonth() + 1).padStart(2, '0')
-	const day = String(d.getDate()).padStart(2, '0')
-	return `${y}-${m}-${day}`
+	return formatIsoDate(d)
 }
 
 export default function EconomicsScheduledPaymentsPage() {
@@ -234,18 +233,6 @@ export default function EconomicsScheduledPaymentsPage() {
 		}
 	}, [storeId, toDateStr, today])
 
-	const dateFormatter = useMemo(
-		() => new Intl.DateTimeFormat('el-GR', { day: '2-digit', month: '2-digit', year: 'numeric' }),
-		[],
-	)
-
-	const formatDate = (iso: string) => {
-		if (!iso) return '-'
-		const [y, m, d] = iso.split('-').map(Number)
-		if (!y || !m || !d) return '-'
-		return dateFormatter.format(new Date(y, m - 1, d))
-	}
-
 	const computeStatus = (iso: string) => {
 		const [y, m, d] = (iso || '').split('-').map(Number)
 		if (!y || !m || !d) return 'ΠΡΟΓΡΑΜΜΑΤΙΣΜΕΝΟ'
@@ -393,7 +380,7 @@ export default function EconomicsScheduledPaymentsPage() {
 													<div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
 														<div style={{ textAlign: 'right' }}>
 															<div style={{ fontWeight: 800 }}>{amountFormatter.format(g.amount)}</div>
-															<div style={{ fontSize: 12, color: 'var(--muted)' }}>{formatDate(g.due_date)}</div>
+															<div style={{ fontSize: 12, color: 'var(--muted)' }}>{formatDateEl(g.due_date, '-')}</div>
 														</div>
 														<div style={{ display: 'flex', gap: 8 }}>
 															<button style={{ padding: '6px 10px', borderRadius: 8 }}>✔ Πληρώθηκε</button>

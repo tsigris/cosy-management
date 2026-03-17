@@ -5,6 +5,7 @@ import { useEffect, useState, Suspense, useCallback, useMemo } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { getSupabase } from '@/lib/supabase'
 import { getBusinessDate } from '@/lib/businessDate'
+import { formatAmount } from '@/lib/formatters'
 import NotificationsBell from '@/components/NotificationsBell'
 import NextLink from 'next/link'
 import { format, addDays, subDays, parseISO } from 'date-fns'
@@ -562,7 +563,7 @@ function DashboardContent() {
     setExpandedTx(null)
   }
 
-  const money = (n: any) => (Number(n) || 0).toLocaleString('el-GR', { minimumFractionDigits: 2 })
+  const money = (n: any) => formatAmount(Number(n) || 0)
 
   return (
     <div style={iphoneWrapper}>
