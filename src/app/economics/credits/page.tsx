@@ -125,7 +125,9 @@ function CreditsContent() {
 
   const [allTx, setAllTx] = useState<Tx[]>([])
   const [entities, setEntities] = useState<Record<string, EntityInfo>>({})
-  const [loading, setLoading] = useState(true)
+  const [loadingTx, setLoadingTx] = useState(true)
+  const [loadingEntities, setLoadingEntities] = useState(true)
+  const isLoading = loadingTx || loadingEntities
 
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [selectedKey, setSelectedKey] = useState<string>('all')
@@ -222,7 +224,7 @@ function CreditsContent() {
     if (!storeIdFromUrl || !isValidUUID(storeIdFromUrl)) return
 
     try {
-      setLoading(true)
+      setLoadingTx(true)
       const transRes = await supabase.from('transactions').select('*').eq('store_id', storeIdFromUrl)
       if (transRes.error) {
         console.error('Transactions query error', transRes.error)
@@ -234,7 +236,7 @@ function CreditsContent() {
       console.error(e)
       toast.error('Σφάλμα φόρτωσης δεδομένων Πιστώσεων')
     } finally {
-      setLoading(false)
+      setLoadingTx(false)
     }
   }, [storeIdFromUrl, supabase])
 
@@ -242,7 +244,7 @@ function CreditsContent() {
     if (!storeIdFromUrl || !isValidUUID(storeIdFromUrl)) return
 
     try {
-      setLoading(true)
+      setLoadingEntities(true)
       const map: Record<string, EntityInfo> = {}
 
       if (viewMode === 'expenses') {
@@ -299,7 +301,7 @@ function CreditsContent() {
       console.error(e)
       toast.error('Σφάλμα φόρτωσης δεδομένων Πιστώσεων')
     } finally {
-      setLoading(false)
+      setLoadingEntities(false)
     }
   }, [storeIdFromUrl, supabase, viewMode])
 
@@ -655,7 +657,7 @@ function CreditsContent() {
 
         {/* LIST AREA */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          {loading ? (
+          {isLoading ? (
             <div style={{ textAlign: 'center', padding: '50px' }}>Υπολογισμός...</div>
           ) : creditsView === 'movements' ? (
             movements.length ? (
