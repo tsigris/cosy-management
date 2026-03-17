@@ -84,6 +84,7 @@ type Tx = {
   amount?: number | string | null
   category?: string | null
   method?: string | null
+  payment_method?: string | null
   notes?: string | null
   description?: string | null
   is_credit?: boolean | null
@@ -232,7 +233,7 @@ function CreditsContent() {
       }
 
       const transactionSelect =
-        'id, store_id, created_at, date, type, amount, category, method, notes, is_credit, supplier_id, fixed_asset_id, revenue_source_id'
+        'id, store_id, created_at, date, type, amount, category, method, payment_method:method, notes, is_credit, supplier_id, fixed_asset_id, revenue_source_id'
 
       console.log('RUNNING QUERY: transactions', { select: transactionSelect })
       let q = supabase
@@ -310,7 +311,7 @@ function CreditsContent() {
       const map: Record<string, EntityInfo> = {}
 
       if (viewMode === 'expenses') {
-        const suppliersSelect = 'id, store_id, name, rf_code, bank_name'
+        const suppliersSelect = 'id, store_id, name, bank_name'
         const fixedAssetsSelect = 'id, store_id, name, sub_category'
         console.log('RUNNING QUERY: suppliers', { select: suppliersSelect })
         console.log('RUNNING QUERY: fixed_assets', { select: fixedAssetsSelect })
