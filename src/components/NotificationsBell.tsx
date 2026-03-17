@@ -182,8 +182,8 @@ export default function NotificationsBell({ storeId, onUpdate }: { storeId: stri
     setCustomRows([])
     setStaff([])
     try {
-      const min = yyyyMmDd(new Date(Date.now() - 60 * 24 * 3600 * 1000))
-      const max = yyyyMmDd(new Date(Date.now() + 14 * 24 * 3600 * 1000))
+      const min = getBusinessDate(new Date(Date.now() - 60 * 24 * 3600 * 1000))
+      const max = getBusinessDate(new Date(Date.now() + 14 * 24 * 3600 * 1000))
 
       // 1) installments
       const { data: inst, error: instErr } = await supabase
