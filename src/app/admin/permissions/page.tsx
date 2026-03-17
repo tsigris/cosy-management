@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic'
 
 import { useEffect, useMemo, useState, Suspense, useCallback } from 'react'
 import { getSupabaseBrowser } from '@/lib/supabase-browser'
+import { getStoredActiveStoreId } from '@/lib/storeResolution'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { toast, Toaster } from 'sonner'
@@ -37,7 +38,7 @@ function PermissionsContent() {
 
   useEffect(() => {
     if (typeof window === 'undefined') return
-    setStoreFromStorage(localStorage.getItem('active_store_id') || '')
+    setStoreFromStorage(getStoredActiveStoreId() || '')
   }, [])
 
   const getAccessToken = async (): Promise<string> => {

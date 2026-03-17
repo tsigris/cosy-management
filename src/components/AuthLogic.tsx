@@ -2,6 +2,7 @@
 import { useEffect } from 'react'
 import { getSupabase } from '@/lib/supabase'
 import { useRouter, usePathname, useSearchParams } from 'next/navigation'
+import { getUrlStoreId, syncStoreToStorage, clearStoredActiveStoreId } from '@/lib/storeResolution'
 
 export function AuthLogic() {
   const supabase = getSupabase()
@@ -18,7 +19,7 @@ export function AuthLogic() {
     const publicPaths = ['/login', '/register', '/signup', '/select-store', '/stores/new']
     const isPublicPath = publicPaths.some(path => pathname.startsWith(path))
     
-    const storeInUrl = searchParams.get('store')
+    const storeInUrl = getUrlStoreId(searchParams)
     const currentPath = `${pathname}${searchParams.toString() ? `?${searchParams.toString()}` : ''}`
     const loginWithNext = `/login?next=${encodeURIComponent(currentPath || '/')}`
 
@@ -38,13 +39,13 @@ export function AuthLogic() {
       }
 
       if (storeInUrl) {
-        localStorage.setItem('active_store_id', storeInUrl)
+        syncStoreToStorage(storeInUrl)
       }
     }
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'SIGNED_OUT') {
-        localStorage.removeItem('active_store_id')
+        clearStoredActiveStoreId()
         window.location.href = '/login'
       } 
       // Αφαιρέσαμε το αυτόματο redirect στο SIGNED_IN για να μην σε πετάει από το reset-password

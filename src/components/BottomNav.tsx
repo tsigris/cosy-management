@@ -3,6 +3,7 @@ import React, { Suspense } from 'react';
 import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
 import { ui } from '@/lib/uiTheme';
+import { resolveActiveStoreId } from '@/lib/storeResolution';
 
 const colors = {
   primary: ui.text,
@@ -25,9 +26,7 @@ function NavContent() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
-  const storeInUrl = searchParams.get('store');
-  const storeInStorage = typeof window !== 'undefined' ? localStorage.getItem('active_store_id') : null;
-  const storeId = storeInUrl || storeInStorage;
+  const storeId = resolveActiveStoreId(searchParams);
 
   const hideOnPaths = ['/login', '/register', '/signup', '/select-store'];
   const isFormPage = pathname.includes('/add-');

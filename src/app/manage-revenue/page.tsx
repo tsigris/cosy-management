@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState, useCallback, Suspense } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { getSupabase } from '@/lib/supabase'
+import { resolveActiveStoreId } from '@/lib/storeResolution'
 import { toast, Toaster } from 'sonner'
 import { 
   Users, Wrench, Lightbulb, User, Package, Trash2, Plus, 
@@ -57,7 +58,7 @@ function ManageListsInner() {
   const loadData = useCallback(async () => {
     try {
       setLoading(true)
-      const activeStoreId = urlStoreId || localStorage.getItem('active_store_id')
+      const activeStoreId = resolveActiveStoreId(searchParams)
       if (!activeStoreId) return
 
       // Επιλογή πίνακα βάσει Tab
@@ -99,7 +100,7 @@ function ManageListsInner() {
 
   const handleSave = async () => {
     if (!formData.name.trim()) return toast.error('Το όνομα είναι υποχρεωτικό')
-    const activeStoreId = urlStoreId || localStorage.getItem('active_store_id')
+    const activeStoreId = resolveActiveStoreId(searchParams)
     if (!activeStoreId) return toast.error('Δεν βρέθηκε κατάστημα (store)')
     
     try {

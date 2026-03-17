@@ -15,6 +15,7 @@ import React, {
 } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
+import { getUrlStoreId } from '@/lib/storeResolution'
 import * as XLSX from 'xlsx'
 import { toast, Toaster } from 'sonner'
 import {
@@ -179,7 +180,7 @@ function SettingsContent() {
   const { theme, toggleTheme } = useTheme()
 
   const searchParams = useSearchParams()
-  const storeId = searchParams.get('store')
+  const storeId = getUrlStoreId(searchParams)
 
   // --- Profile State ---
   const [profileLoading, setProfileLoading] = useState(true)

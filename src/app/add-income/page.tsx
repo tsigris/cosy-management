@@ -4,6 +4,7 @@ export const dynamic = 'force-dynamic'
 import { useEffect, useState, Suspense, useCallback, useMemo, useRef } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { getSupabase } from '@/lib/supabase'
+import { syncStoreToStorage, getStoredActiveStoreId } from '@/lib/storeResolution'
 import Link from 'next/link'
 import { toast, Toaster } from 'sonner'
 import { ArrowUpCircle } from 'lucide-react'
@@ -176,17 +177,13 @@ function AddIncomeForm() {
     return () => document.removeEventListener('pointerdown', handler, true)
   }, [])
 
-  const getActiveStoreId = useCallback(() => {
-    const ls = typeof window !== 'undefined' ? (localStorage.getItem('active_store_id') || '').trim() : ''
+  const getActiveStoreId = useCallback((): string | null => {
     const url = (urlStoreId || '').trim()
-    if (ls) return ls
     if (url) {
-      try {
-        localStorage.setItem('active_store_id', url)
-      } catch {}
+      syncStoreToStorage(url)
       return url
     }
-    return storeId || null
+    return getStoredActiveStoreId() || storeId || null
   }, [urlStoreId, storeId])
 
   const loadFormData = useCallback(async () => {

@@ -6,6 +6,7 @@ import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { toast, Toaster } from 'sonner'
 import { getSupabaseBrowser } from '@/lib/supabase-browser'
+import { getStoredActiveStoreId } from '@/lib/storeResolution'
 
 type UserRole = 'admin' | 'user'
 type ListedRole = 'admin' | 'user' | 'staff'
@@ -27,8 +28,7 @@ export default function ManageUsersPage() {
   const hasStoreId = Boolean(storeId)
 
   useEffect(() => {
-    if (typeof window === 'undefined') return
-    setStoreFromStorage(localStorage.getItem('active_store_id') || '')
+    setStoreFromStorage(getStoredActiveStoreId() || '')
   }, [])
 
   const [email, setEmail] = useState('')

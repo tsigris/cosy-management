@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { getSupabase } from '@/lib/supabase'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
+import { getUrlStoreId, resolveActiveStoreId, clearStoredActiveStoreId } from '@/lib/storeResolution'
 
 // --- MODERN PROFESSIONAL PALETTE ---
 const colors = {
@@ -21,25 +22,17 @@ export default function SettingsMenu() {
   const router = useRouter()
   const searchParams = useSearchParams()
   
-  // ΔΙΑΒΑΖΟΥΜΕ ΤΟ ΤΡΕΧΟΝ ID ΑΠΟ ΤΟ URL ΓΙΑ ΝΑ ΤΟ ΜΕΤΑΦΕΡΟΥΜΕ ΣΤΑ LINKS
-  const currentStoreId = searchParams.get('store')
-  const [activeStoreId, setActiveStoreId] = useState<string | null>(currentStoreId)
+  // Canonical store resolution: URL param first, localStorage fallback
+  const urlStoreId = getUrlStoreId(searchParams)
+  const [resolvedStoreId, setResolvedStoreId] = useState<string | null>(urlStoreId)
 
   useEffect(() => {
-    if (currentStoreId) {
-      setActiveStoreId(currentStoreId)
-      return
-    }
-
-    if (typeof window !== 'undefined') {
-      const fromLocalStorage = localStorage.getItem('active_store_id')
-      setActiveStoreId(fromLocalStorage || null)
-    }
-  }, [currentStoreId])
+    setResolvedStoreId(resolveActiveStoreId(searchParams))
+  }, [urlStoreId])
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
-    localStorage.removeItem('active_store_id')
+    clearStoredActiveStoreId()
     sessionStorage.clear()
     window.location.href = '/login'
   }
@@ -77,25 +70,14 @@ export default function SettingsMenu() {
             <p style={sectionLabel}>Διαχείριση</p>
 
             {menuItems.map((item, index) => {
-              // ΠΡΟΣΘΗΚΗ ΤΟΥ STORE ID ΣΤΟ LINK ΓΙΑ ΝΑ ΜΗ ΧΑΝΕΤΑΙ ΤΟ ΚΑΤΑΣΤΗΜΑ
-              const fullPath = currentStoreId 
-                ? `${item.path}?store=${currentStoreId}` 
-                : item.path;
-              const isPermissionsItem = item.path === '/admin/permissions'
-              const permissionsPath = activeStoreId ? `/admin/permissions?store=${activeStoreId}` : '/admin/permissions'
-              const linkPath = isPermissionsItem ? permissionsPath : fullPath
+              // All links use the canonical resolved store id (URL-first, localStorage fallback)
+              const linkPath = resolvedStoreId ? `${item.path}?store=${resolvedStoreId}` : item.path
 
               return (
                 <div key={item.label}>
                   <Link 
                     href={linkPath}
-                    onClick={(e) => {
-                      if (isPermissionsItem && !activeStoreId) {
-                        e.preventDefault()
-                        return
-                      }
-                      setIsOpen(false)
-                    }}
+                    onClick={() => setIsOpen(false)}
                     style={linkStyle}
                     onMouseEnter={(e) => e.currentTarget.style.backgroundColor = colors.hoverBg}
                     onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
