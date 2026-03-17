@@ -120,13 +120,21 @@ function EmployeesContent() {
     try {
       if (!storeId || storeId === 'null') return
 
+      const start = new Date()
+      start.setDate(1)
+      start.setHours(0, 0, 0, 0)
+
+      const end = new Date(start)
+      end.setMonth(end.getMonth() + 1)
+
       const { data, error } = await supabase
         .from('transactions')
         .select('id,date,created_at,notes,employee_id,amount,fixed_assets(name),type')
         .eq('store_id', storeId)
-        .ilike('notes', '%tips%')
+        .eq('type', 'tip_entry')
+        .gte('date', start.toISOString().slice(0, 10))
+        .lt('date', end.toISOString().slice(0, 10))
         .order('date', { ascending: false })
-        .limit(800)
 
       if (error) {
         console.error(error)
