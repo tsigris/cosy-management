@@ -33,11 +33,30 @@ const INCOME_TYPES = new Set([
   'deposit',
 ])
 
+const DATE_ONLY_RE = /^\d{4}-\d{2}-\d{2}$/
+
+function parseFinancialDateRaw(raw: string): Date | null {
+  if (!raw) return null
+
+  // Important: tx.date is a business date. For YYYY-MM-DD, parse at local noon
+  // so 07:00 cutoff logic does not move it to the previous day.
+  if (DATE_ONLY_RE.test(raw)) {
+    const [y, m, d] = raw.split('-').map(Number)
+    if (!y || !m || !d) return null
+    return new Date(y, m - 1, d, 12, 0, 0, 0)
+  }
+
+  const parsed = new Date(raw)
+  return isNaN(parsed.getTime()) ? null : parsed
+}
+
 const parseTxDate = (r: any) => {
   if (!r) return null
   const raw = r.date
   if (!raw) return null
-  const d = toBusinessDayDate(new Date(raw), { normalizeToNoon: true })
+  const parsed = parseFinancialDateRaw(raw)
+  if (!parsed) return null
+  const d = toBusinessDayDate(parsed, { normalizeToNoon: true })
   return isNaN(d.getTime()) ? null : d
 }
 
@@ -181,6 +200,39 @@ export default function EconomicsIncomePage() {
     const entries = Array.from(map.entries()).sort((a, b) => (a[0] < b[0] ? 1 : -1))
     return entries
   }, [filtered])
+
+  useEffect(() => {
+    const hasZInCategory = (r: TxRow) => {
+      const c = String(r.category || '').toLowerCase()
+      return c.includes('z') || c.includes('ζ')
+    }
+
+    const hasZTameiakisInNotes = (r: TxRow) => {
+      const n = String(r.notes || '').toLowerCase()
+      return n.includes('z ταμειακ') || n.includes('ζ ταμειακ')
+    }
+
+    const zCategoryRows = rows.filter(hasZInCategory)
+    const zNotesRows = rows.filter(hasZTameiakisInNotes)
+    const groupedZCards = grouped
+      .filter(([, items]) => items.some((r) => hasZInCategory(r) || hasZTameiakisInNotes(r)))
+      .map(([day, items]) => ({
+        day,
+        count: items.length,
+        total: items.reduce((sum, r) => sum + Math.abs(Number(r.amount) || 0), 0),
+      }))
+
+    console.log('[Income][Z-debug] total fetched income rows', rows.filter((r) => INCOME_TYPES.has(r.type)).length)
+    console.log(
+      '[Income][Z-debug] rows where category contains Ζ or z',
+      zCategoryRows.map((r) => ({ id: r.id, date: r.date, type: r.type, category: r.category, notes: r.notes, amount: r.amount })),
+    )
+    console.log(
+      '[Income][Z-debug] rows where notes contain Z ΤΑΜΕΙΑΚΗΣ',
+      zNotesRows.map((r) => ({ id: r.id, date: r.date, type: r.type, category: r.category, notes: r.notes, amount: r.amount })),
+    )
+    console.log('[Income][Z-debug] final grouped Z cards', groupedZCards)
+  }, [rows, grouped])
 
   const amountFmt = currencyFormatterEUR
 
