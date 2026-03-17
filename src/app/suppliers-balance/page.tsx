@@ -87,10 +87,9 @@ function BalancesContent() {
       }
 
       const sub = normalize(entity?.sub_category)
-      const cat = normalize(entity?.category)
 
-      const isMaintenance = sub === 'maintenance' || cat === 'maintenance'
-      const isUtility = sub === 'utility' || cat === 'utility'
+      const isMaintenance = sub === 'maintenance'
+      const isUtility = sub === 'utility'
 
       if (isMaintenance) return { text: 'ΣΥΝΤΗΡΗΣΗ', bg: '#fef3c7', color: '#b45309' }
       if (isUtility) return { text: 'ΛΟΓΑΡΙΑΣΜΟΣ', bg: '#f1f5f9', color: colors.secondaryText }
@@ -305,7 +304,7 @@ function BalancesContent() {
       // We still load entities here for performance and stability.
       if (viewMode === 'expenses') {
         const suppliersSelect = 'id, store_id, name'
-        const fixedAssetsSelect = 'id, store_id, name, sub_category, category'
+        const fixedAssetsSelect = 'id, store_id, name, sub_category'
         console.log('RUNNING QUERY: suppliers', { select: suppliersSelect })
         console.log('RUNNING QUERY: fixed_assets', { select: fixedAssetsSelect })
         const [supsRes, assetsRes] = await Promise.all([
@@ -347,14 +346,10 @@ function BalancesContent() {
         const assets = (assetsRes.data || [])
           .filter((a) => {
             const sub = normalize(a?.sub_category)
-            const cat = normalize(a?.category)
             return (
               sub === 'maintenance' ||
               sub === 'utility' ||
-              sub === 'other' ||
-              cat === 'maintenance' ||
-              cat === 'utility' ||
-              cat === 'other'
+              sub === 'other'
             )
           })
           .map((a) => ({ ...a, entityType: 'asset' }))
