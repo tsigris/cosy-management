@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation'
 import EconomicsHeaderNav from '@/components/economics/EconomicsHeaderNav'
 import EconomicsPeriodFilter from '@/components/economics/EconomicsPeriodFilter'
 import { getSupabase } from '@/lib/supabase'
+import { getEmployees } from '@/lib/employees'
 
 type ScheduledPayment = {
 	id: string
@@ -81,13 +82,9 @@ export default function EconomicsScheduledPaymentsPage() {
 
 			try {
 				// 1) Employees (salaries) - compute next payment date from possible fields (safe fallbacks)
-				const { data: employees, error: empErr } = await supabase
-					.from('employees')
-					.select('id, name, salary, monthly_salary, pay_day, salary_day, payment_day')
-					.eq('store_id', storeId)
-					.limit(500)
+				const employees = await getEmployees(storeId)
 
-				if (!empErr && Array.isArray(employees)) {
+				if (Array.isArray(employees)) {
 					for (const e of employees as any) {
 						const salary = Number(e.salary) || Number(e.monthly_salary) || 0
 						const payDay = Number(e.pay_day) || Number(e.salary_day) || Number(e.payment_day) || 1

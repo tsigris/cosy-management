@@ -34,6 +34,7 @@ import {
 } from 'lucide-react'
 
 import { getSupabase } from '@/lib/supabase'
+import { getEmployees } from '@/lib/employees'
 import PermissionGuard from '@/components/PermissionGuard'
 import { useTheme } from '@/components/theme/ThemeProvider'
 
@@ -392,7 +393,7 @@ function SettingsContent() {
         transQuery.order('date', { ascending: false }),
         supabase.from('suppliers').select('*').eq('store_id', storeId),
         supabase.from('fixed_assets').select('*').eq('store_id', storeId),
-        supabase.from('employees').select('*').eq('store_id', storeId),
+        getEmployees(storeId),
         supabase.from('fixed_assets').select('id, name').eq('store_id', storeId),
       ])
 
@@ -425,7 +426,7 @@ function SettingsContent() {
       if (exportAllData) {
         if (sups.data?.length) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(sups.data), 'Προμηθευτές')
         if (assets.data?.length) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(assets.data), 'Πάγια')
-        if (emps.data?.length) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(emps.data), 'Υπάλληλοι')
+        if (emps?.length) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(emps), 'Υπάλληλοι')
       }
 
       XLSX.writeFile(wb, `Backup_${formData.name}_${new Date().toISOString().split('T')[0]}.xlsx`)

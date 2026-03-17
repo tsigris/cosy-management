@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState, Suspense } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { getSupabase } from '@/lib/supabase'
+import { getEmployees } from '@/lib/employees'
 
 const colors = {
   primaryDark: '#1e293b',
@@ -108,22 +109,17 @@ function OvertimeReportContent() {
         return
       }
 
-      const [otRes, empRes] = await Promise.all([
+      const [otRes, emps] = await Promise.all([
         supabase
           .from('employee_overtimes')
           .select('id, date, hours, employee_id, is_paid')
           .eq('store_id', storeId)
           .order('date', { ascending: false }),
-        supabase
-          .from('fixed_assets')
-          .select('id, name')
-          .eq('store_id', storeId)
-          .eq('sub_category', 'staff')
-          .order('name', { ascending: true }),
+        getEmployees(storeId),
       ])
 
       if (otRes.data) setOvertimes(otRes.data as OvertimeRow[])
-      if (empRes.data) setEmployees(empRes.data as EmployeeRow[])
+      setEmployees((emps || []) as any[])
     } catch (error) {
       console.error(error)
     } finally {

@@ -4,6 +4,7 @@ export const dynamic = 'force-dynamic'
 import { useEffect, useState, Suspense, useCallback, useMemo, useRef } from 'react'
 import { getSupabase } from '@/lib/supabase'
 import { toBusinessDayDate } from '@/lib/businessDate'
+import { getEmployees } from '@/lib/employees'
 import PermissionGuard from '@/components/PermissionGuard'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
@@ -213,7 +214,7 @@ function EmployeesContent() {
       if (!session?.user) return
 
       const [empsRes, transRes, otRes] = await Promise.all([
-        supabase.from('fixed_assets').select('*').eq('store_id', storeId).eq('sub_category', 'staff').order('name'),
+        getEmployees(storeId),
         supabase
           .from('transactions')
           .select('*')
@@ -223,7 +224,7 @@ function EmployeesContent() {
         supabase.from('employee_overtimes').select('*').eq('store_id', storeId).eq('is_paid', false),
       ])
 
-      if (empsRes.data) setEmployees(empsRes.data)
+      if (empsRes) setEmployees(empsRes)
       if (transRes.data) setTransactions(transRes.data)
       if (otRes.data) setOvertimes(otRes.data)
     } catch (err) {
