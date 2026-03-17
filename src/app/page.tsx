@@ -4,6 +4,7 @@ export const dynamic = 'force-dynamic'
 import { useEffect, useState, Suspense, useCallback, useMemo } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { getSupabase } from '@/lib/supabase'
+import { getBusinessDate } from '@/lib/businessDate'
 import NotificationsBell from '@/components/NotificationsBell'
 import NextLink from 'next/link'
 import { format, addDays, subDays, parseISO } from 'date-fns'
@@ -59,13 +60,6 @@ function DashboardContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const storeIdFromUrl = searchParams.get('store')
-
-  // ✅ Business day logic: before 07:00 counts as previous day
-  const getBusinessDate = () => {
-    const now = new Date()
-    if (now.getHours() < 7) now.setDate(now.getDate() - 1)
-    return format(now, 'yyyy-MM-dd')
-  }
 
   const selectedDate = searchParams.get('date') || getBusinessDate()
 

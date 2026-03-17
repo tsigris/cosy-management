@@ -6,6 +6,7 @@ import { getSupabase } from '@/lib/supabase'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { toast, Toaster } from 'sonner'
+import { toBusinessDayDate } from '@/lib/businessDate'
 import {
   ChevronLeft,
   Receipt,
@@ -43,12 +44,7 @@ const isValidUUID = (id: any) => {
 const normalize = (v: any) => String(v ?? '').trim().toLowerCase()
 
 // ✅ BUSINESS DAY HELPERS (07:00 cutoff)
-const toBusinessDayDate = (d: Date) => {
-  const bd = new Date(d)
-  if (bd.getHours() < 7) bd.setDate(bd.getDate() - 1)
-  bd.setHours(12, 0, 0, 0)
-  return bd
-}
+const toBusinessDateNormalized = (d: Date) => toBusinessDayDate(d, { normalizeToNoon: true })
 
 const getBusinessDayKey = (d: Date) => {
   const y = d.getFullYear()
@@ -140,8 +136,8 @@ function BalancesContent() {
     if (!d) return ''
     const now = new Date()
 
-    const bdNow = toBusinessDayDate(now)
-    const bdTx = toBusinessDayDate(d)
+    const bdNow = toBusinessDateNormalized(now)
+    const bdTx = toBusinessDateNormalized(d)
 
     const nowKey = getBusinessDayKey(bdNow)
     const txKey = getBusinessDayKey(bdTx)

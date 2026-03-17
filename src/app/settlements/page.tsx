@@ -13,6 +13,7 @@ import Link from 'next/link'
 import { toast, Toaster } from 'sonner'
 
 import { getSupabase } from '@/lib/supabase'
+import { getBusinessDate } from '@/lib/businessDate'
 
 import {
 
@@ -160,31 +161,8 @@ type AmountFocus = 'total' | 'installment'
 
 
 
-function yyyyMmDd(d: Date) {
-
-const y = d.getFullYear()
-
-const m = String(d.getMonth() + 1).padStart(2, '0')
-
-const day = String(d.getDate()).padStart(2, '0')
-
-return `${y}-${m}-${day}`
-
-}
-
-
-
 // ✅ Business Date (όπως στο Dashboard): πριν τις 07:00 → χθεσινή ημερομηνία
 
-function getBusinessDate() {
-
-const now = new Date()
-
-if (now.getHours() < 7) now.setDate(now.getDate() - 1)
-
-return yyyyMmDd(now)
-
-}
 
 
 

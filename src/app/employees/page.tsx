@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic'
 
 import { useEffect, useState, Suspense, useCallback, useMemo, useRef } from 'react'
 import { getSupabase } from '@/lib/supabase'
+import { toBusinessDayDate } from '@/lib/businessDate'
 import PermissionGuard from '@/components/PermissionGuard'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
@@ -24,9 +25,6 @@ const colors = {
 
 type PayBasis = 'monthly' | 'daily'
 
-// ✅ BUSINESS DAY CUTOFF (07:00)
-const BUSINESS_CUTOFF_HOUR = 7
-
 // ✅ safest date parser (handles ISO/date-only/timestamp)
 const parseTxDate = (t: any): Date | null => {
   if (!t) return null
@@ -37,19 +35,13 @@ const parseTxDate = (t: any): Date | null => {
 }
 
 // ✅ converts a timestamp to "business day date" (07:00 -> previous date)
-const toBusinessDayDate = (d: Date) => {
-  const bd = new Date(d)
-  if (bd.getHours() < BUSINESS_CUTOFF_HOUR) bd.setDate(bd.getDate() - 1)
-  // normalize to avoid time artifacts
-  bd.setHours(12, 0, 0, 0)
-  return bd
-}
+const toBusinessDateNormalized = (d: Date) => toBusinessDayDate(d, { normalizeToNoon: true })
 
-const getBusinessYear = (d: Date) => toBusinessDayDate(d).getFullYear()
-const getBusinessMonth = (d: Date) => toBusinessDayDate(d).getMonth()
+const getBusinessYear = (d: Date) => toBusinessDateNormalized(d).getFullYear()
+const getBusinessMonth = (d: Date) => toBusinessDateNormalized(d).getMonth()
 
 // ✅ for UI display of "date" (business-day)
-const formatBusinessDateShort = (d: Date) => toBusinessDayDate(d).toLocaleDateString('el-GR')
+const formatBusinessDateShort = (d: Date) => toBusinessDateNormalized(d).toLocaleDateString('el-GR')
 
 function EmployeesContent() {
   const supabase = getSupabase()
@@ -660,7 +652,7 @@ function EmployeesContent() {
       }
 
       const d = parseTxDate(t)
-      const key = d ? getBusinessYear(d) + '-' + getBusinessMonth(d) + '-' + toBusinessDayDate(d).getDate() : String(t.date || '')
+      const key = d ? getBusinessYear(d) + '-' + getBusinessMonth(d) + '-' + toBusinessDateNormalized(d).getDate() : String(t.date || '')
       if (!processedDates.has(key)) {
         // skip extracting base/overtime/bonus for tips or advances
         if (!isTip && !isAdvance) {
@@ -832,7 +824,7 @@ function EmployeesContent() {
 
   // ✅ current month label (BUSINESS MONTH)
   const currentMonthLabel = useMemo(() => {
-    const d = toBusinessDayDate(new Date())
+    const d = toBusinessDateNormalized(new Date())
     return d.toLocaleString('el-GR', { month: 'long', year: 'numeric' }).toUpperCase()
   }, [])
 

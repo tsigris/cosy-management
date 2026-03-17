@@ -6,6 +6,7 @@ import EconomicsHeaderNav from '@/components/economics/EconomicsHeaderNav'
 import EconomicsPeriodFilter from '@/components/economics/EconomicsPeriodFilter'
 import EconomicsContainer from '@/components/economics/EconomicsContainer'
 import { getSupabase } from '@/lib/supabase'
+import { toBusinessDayDate } from '@/lib/businessDate'
 import { ChevronDown, ChevronUp } from 'lucide-react'
 
 type TxRow = {
@@ -31,8 +32,6 @@ const INCOME_TYPES = new Set([
   'deposit',
 ])
 
-// BUSINESS DAY cutoff (07:00) — reuse canon used across the app
-const BUSINESS_CUTOFF_HOUR = 7
 const parseTxDate = (r: any) => {
   if (!r) return null
   const raw = r.created_at || r.date
@@ -41,14 +40,9 @@ const parseTxDate = (r: any) => {
   return isNaN(d.getTime()) ? null : d
 }
 
-const toBusinessDayDate = (d: Date) => {
-  const bd = new Date(d)
-  if (bd.getHours() < BUSINESS_CUTOFF_HOUR) bd.setDate(bd.getDate() - 1)
-  bd.setHours(12, 0, 0, 0)
-  return bd
-}
+const toBusinessDateNormalized = (d: Date) => toBusinessDayDate(d, { normalizeToNoon: true })
 
-const formatDateEl = (d: Date) => toBusinessDayDate(d).toLocaleDateString('el-GR')
+const formatDateEl = (d: Date) => toBusinessDateNormalized(d).toLocaleDateString('el-GR')
 const formatTime = (d: Date) => d.toLocaleTimeString('el-GR', { hour: '2-digit', minute: '2-digit' })
 
 function normalizeMethod(m?: string | null) {
@@ -180,7 +174,7 @@ export default function EconomicsIncomePage() {
     const map = new Map<string, TxRow[]>()
     for (const r of filtered) {
       const d = parseTxDate(r)
-      const key = d ? toBusinessDayDate(d).toISOString().slice(0, 10) : r.date || 'unknown'
+      const key = d ? toBusinessDateNormalized(d).toISOString().slice(0, 10) : r.date || 'unknown'
       if (!map.has(key)) map.set(key, [])
       map.get(key)!.push(r)
     }
@@ -194,10 +188,10 @@ export default function EconomicsIncomePage() {
   // compute KPIs: today, yesterday, month total, avg daily
   const KPIs = useMemo(() => {
     const now = new Date()
-    const todayKey = toBusinessDayDate(now).toISOString().slice(0, 10)
+    const todayKey = toBusinessDateNormalized(now).toISOString().slice(0, 10)
     const yesterday = new Date(now)
     yesterday.setDate(yesterday.getDate() - 1)
-    const yesterdayKey = toBusinessDayDate(yesterday).toISOString().slice(0, 10)
+    const yesterdayKey = toBusinessDateNormalized(yesterday).toISOString().slice(0, 10)
 
     let today = 0
     let yesterdayTotal = 0
@@ -225,10 +219,10 @@ export default function EconomicsIncomePage() {
 
   // business day keys for badges and quick lookup
   const now = new Date()
-  const todayKey = toBusinessDayDate(now).toISOString().slice(0, 10)
+  const todayKey = toBusinessDateNormalized(now).toISOString().slice(0, 10)
   const yesterdayDate = new Date(now)
   yesterdayDate.setDate(yesterdayDate.getDate() - 1)
-  const yesterdayKey = toBusinessDayDate(yesterdayDate).toISOString().slice(0, 10)
+  const yesterdayKey = toBusinessDateNormalized(yesterdayDate).toISOString().slice(0, 10)
 
   // derive cash/card breakdown for today, yesterday and current month (presentation only)
   const dayBreakdowns = useMemo(() => {

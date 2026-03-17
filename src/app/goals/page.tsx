@@ -7,6 +7,7 @@ import Link from 'next/link'
 import { toast, Toaster } from 'sonner'
 import { getSupabase } from '@/lib/supabase'
 import { getGoalProgress, getGoalInsights, formatDateGR } from '@/lib/goalProgress'
+import { getBusinessDate } from '@/lib/businessDate'
 import {
   ChevronLeft,
   PiggyBank,
@@ -79,13 +80,6 @@ function yyyyMmDd(d: Date) {
   const m = String(d.getMonth() + 1).padStart(2, '0')
   const day = String(d.getDate()).padStart(2, '0')
   return `${y}-${m}-${day}`
-}
-
-function getBusinessDate() {
-  const now = new Date()
-  // business day ends 06:59
-  if (now.getHours() < 7) now.setDate(now.getDate() - 1)
-  return yyyyMmDd(now)
 }
 
 function toMoney(value: number | null | undefined) {

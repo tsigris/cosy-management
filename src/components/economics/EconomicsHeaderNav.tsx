@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useState } from 'react'
 import EconomicsTabs from '@/components/EconomicsTabs'
 import { useSearchParams } from 'next/navigation'
 import { getSupabase } from '@/lib/supabase'
+import { getBusinessDate } from '@/lib/businessDate'
 
 type StoreHeaderRow = {
   name?: string | null
@@ -30,16 +31,6 @@ function formatDateGR(dateString: string) {
   } catch {
     return dateString
   }
-}
-
-// Helper: compute business date (7:00 AM cutoff)
-function getBusinessDate() {
-  const now = new Date()
-  if (now.getHours() < 7) now.setDate(now.getDate() - 1)
-  const y = now.getFullYear()
-  const m = String(now.getMonth() + 1).padStart(2, '0')
-  const day = String(now.getDate()).padStart(2, '0')
-  return `${y}-${m}-${day}`
 }
 
 export default function EconomicsHeaderNav({ title, subtitle, rightControl, businessDate, showTabs }: Props) {

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react'
 import { getSupabase } from '@/lib/supabase'
+import { getBusinessDate } from '@/lib/businessDate'
 import { toast } from 'sonner'
 import { Bell, X, AlertTriangle, AlertOctagon, Info, Banknote, Landmark, PlusCircle } from 'lucide-react'
 
@@ -91,13 +92,6 @@ const colors = {
   dangerText: '#be123c',
 }
 
-function yyyyMmDd(d: Date) {
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  return `${y}-${m}-${day}`
-}
-
 function daysDiff(fromDate: string, toDate: string) {
   const a = new Date(`${fromDate}T12:00:00`)
   const b = new Date(`${toDate}T12:00:00`)
@@ -113,12 +107,6 @@ function formatDateGr(dateStr: string) {
 
 function money(n: any) {
   return (Number(n) || 0).toLocaleString('el-GR', { minimumFractionDigits: 2 })
-}
-
-const getBusinessDate = () => {
-  const now = new Date()
-  if (now.getHours() < 7) now.setDate(now.getDate() - 1)
-  return yyyyMmDd(now)
 }
 
 // ✅ Correct next pay date:

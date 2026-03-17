@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState, useCallback, Suspense } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { getSupabase } from '@/lib/supabase'
+import { toBusinessDayDate } from '@/lib/businessDate'
 import { toast, Toaster } from 'sonner'
 import {
   Users,
@@ -45,12 +46,7 @@ const colors = {
   accentGreen: '#10b981',
 }
 
-const toBusinessDayDate = (d: Date) => {
-  const bd = new Date(d)
-  if (bd.getHours() < 7) bd.setDate(bd.getDate() - 1)
-  bd.setHours(12, 0, 0, 0)
-  return bd
-}
+const toBusinessDateNormalized = (d: Date) => toBusinessDayDate(d, { normalizeToNoon: true })
 
 const getBusinessDayKey = (d: Date) => {
   const y = d.getFullYear()
@@ -215,8 +211,8 @@ function ManageListsContent() {
     if (!d) return ''
     const now = new Date()
 
-    const bdNow = toBusinessDayDate(now)
-    const bdTx = toBusinessDayDate(d)
+    const bdNow = toBusinessDateNormalized(now)
+    const bdTx = toBusinessDateNormalized(d)
 
     const nowKey = getBusinessDayKey(bdNow)
     const txKey = getBusinessDayKey(bdTx)

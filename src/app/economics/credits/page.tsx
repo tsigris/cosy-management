@@ -24,6 +24,7 @@ import {
 } from 'lucide-react'
 import EconomicsHeaderNav from '@/components/economics/EconomicsHeaderNav'
 import EconomicsPeriodFilter from '@/components/economics/EconomicsPeriodFilter'
+import { toBusinessDayDate } from '@/lib/businessDate'
 
 const colors = {
   primaryDark: '#1e293b',
@@ -58,12 +59,7 @@ function isCreditLike(tx: any) {
 }
 
 // ✅ BUSINESS DAY HELPERS (07:00 cutoff)
-const toBusinessDayDate = (d: Date) => {
-  const bd = new Date(d)
-  if (bd.getHours() < 7) bd.setDate(bd.getDate() - 1)
-  bd.setHours(12, 0, 0, 0)
-  return bd
-}
+const toBusinessDateNormalized = (d: Date) => toBusinessDayDate(d, { normalizeToNoon: true })
 
 const getBusinessDayKey = (d: Date) => {
   const y = d.getFullYear()
@@ -177,8 +173,8 @@ function CreditsContent() {
   const daysAgoLabel = (d: Date | null) => {
     if (!d) return ''
     const now = new Date()
-    const bdNow = toBusinessDayDate(now)
-    const bdTx = toBusinessDayDate(d)
+    const bdNow = toBusinessDateNormalized(now)
+    const bdTx = toBusinessDateNormalized(d)
 
     const nowKey = getBusinessDayKey(bdNow)
     const txKey = getBusinessDayKey(bdTx)
@@ -463,7 +459,7 @@ function CreditsContent() {
       if (creditsView === 'date') {
         const d = getTxDate(t)
         if (!d) continue
-        const bdKey = getBusinessDayKey(toBusinessDayDate(d))
+        const bdKey = getBusinessDayKey(toBusinessDateNormalized(d))
         add(
           bdKey,
           {
