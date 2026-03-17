@@ -274,6 +274,7 @@ function BalancesContent() {
       const transactionSelect =
         'id, store_id, created_at, date, type, amount, category, notes, description, is_credit, supplier_id, fixed_asset_id, revenue_source_id'
 
+      console.log('RUNNING QUERY: transactions', { select: transactionSelect })
       const transRes = await supabase
         .from('transactions')
         .select(transactionSelect)
@@ -305,6 +306,8 @@ function BalancesContent() {
       if (viewMode === 'expenses') {
         const suppliersSelect = 'id, store_id, name, rf_code, bank_name'
         const fixedAssetsSelect = 'id, store_id, name, sub_category, category'
+        console.log('RUNNING QUERY: suppliers', { select: suppliersSelect })
+        console.log('RUNNING QUERY: fixed_assets', { select: fixedAssetsSelect })
         const [supsRes, assetsRes] = await Promise.all([
           supabase.from('suppliers').select(suppliersSelect).eq('store_id', storeIdFromUrl),
           supabase.from('fixed_assets').select(fixedAssetsSelect).eq('store_id', storeIdFromUrl),
@@ -387,6 +390,7 @@ function BalancesContent() {
       }
 
       const revenueSourcesSelect = 'id, store_id, name'
+      console.log('RUNNING QUERY: revenue_sources', { select: revenueSourcesSelect })
       const revRes = await supabase.from('revenue_sources').select(revenueSourcesSelect).eq('store_id', storeIdFromUrl)
       if (revRes.error) {
         console.error('RAW QUERY ERROR', revRes.error)
