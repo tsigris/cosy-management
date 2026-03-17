@@ -53,6 +53,14 @@ const parseTxDate = (r: any) => {
   return isNaN(d.getTime()) ? null : d
 }
 
+const parseCreatedAtTime = (r: any) => {
+  if (!r) return null
+  const raw = r.created_at
+  if (!raw) return null
+  const d = new Date(raw)
+  return isNaN(d.getTime()) ? null : d
+}
+
 function normalizeMethod(m?: string | null) {
   if (!m) return 'Λοιπά'
   const s = m.toLowerCase()
@@ -538,7 +546,7 @@ export default function EconomicsIncomePage() {
                         <div key={t.id} style={styles.txRow as any}>
                           <div style={{ display: 'flex', gap: 12, alignItems: 'center', minWidth: 0 }}>
                             <div style={{ fontSize: 12, color: 'var(--muted)', width: 64 }}>{(() => {
-                              const d = parseTxDate(t)
+                              const d = parseCreatedAtTime(t)
                               return d ? formatTimeEl(d) : '-'
                             })()}</div>
                             <div style={{ minWidth: 0 }}>
