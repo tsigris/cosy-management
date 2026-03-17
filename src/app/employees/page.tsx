@@ -259,11 +259,9 @@ function EmployeesContent() {
   }, [storeId, router])
 
   // Φιλτράρισμα λίστας βάσει showInactive
-  // Hide employees with null store_id if not main store
-  const mainStoreId = 'e50a8803-a262-4303-9e90-c116c965e683'
+  // Tenant scoping is handled by getEmployees() at the DB layer (.or store_id/null)
   const visibleEmployees = employees.filter((emp) => {
     if (!showInactive && emp.is_active === false) return false
-    if (storeId && storeId !== mainStoreId && emp.store_id == null) return false
     return true
   })
 
