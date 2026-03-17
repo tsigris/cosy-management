@@ -416,7 +416,7 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
         ((): any => {
           let q: any = supabase
             .from('transactions')
-            .select('id, date, created_at, type, amount, category, payment_method, method, notes, is_credit, supplier_id, fixed_asset_id, revenue_source_id, suppliers(id, name), fixed_assets(id, name, sub_category), revenue_sources(id, name)')
+            .select('*, suppliers(id, name), fixed_assets(id, name, sub_category), revenue_sources(id, name)')
             .eq('store_id', storeId)
 
           if (period !== 'all') {
@@ -428,7 +428,7 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
 
         supabase
           .from('transactions')
-          .select('id, date, created_at, type, amount, category, payment_method, method, notes, is_credit, supplier_id, fixed_asset_id, revenue_source_id, suppliers(id, name), fixed_assets(id, name, sub_category), revenue_sources(id, name)')
+          .select('*, suppliers(id, name), fixed_assets(id, name, sub_category), revenue_sources(id, name)')
           .eq('store_id', storeId)
           .gte('date', prevStart)
           .lte('date', prevEnd)
@@ -436,7 +436,7 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
 
         supabase
           .from('transactions')
-          .select('id, date, created_at, type, amount, category, payment_method, method, notes, is_credit, supplier_id, fixed_asset_id, revenue_source_id, suppliers(id, name), fixed_assets(id, name, sub_category), revenue_sources(id, name)')
+          .select('*, suppliers(id, name), fixed_assets(id, name, sub_category), revenue_sources(id, name)')
           .eq('store_id', storeId)
           .gte('date', monthStart)
           .lte('date', monthEnd)
@@ -1017,7 +1017,7 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
         // fetch 1 extra to detect "hasMore"
         const { data, error } = await supabase
           .from('transactions')
-          .select('id, date, created_at, type, amount, category, payment_method, method, notes, is_credit, supplier_id, fixed_asset_id, revenue_source_id, suppliers(id, name), fixed_assets(id, name, sub_category), revenue_sources(id, name)')
+          .select('*, suppliers(id, name), fixed_assets(id, name, sub_category), revenue_sources(id, name)')
           .eq('store_id', storeId)
           .gte('date', from)
           .lte('date', to)

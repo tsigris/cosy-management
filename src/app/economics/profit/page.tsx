@@ -70,7 +70,7 @@ function ProfitContent() {
 
 		try {
 			setLoading(true)
-			const transRes = await supabase.from('transactions').select('id, type, amount, date, created_at, is_deleted').eq('store_id', storeIdFromUrl)
+			const transRes = await supabase.from('transactions').select('*').eq('store_id', storeIdFromUrl)
 			if (transRes.error) throw transRes.error
 			const txs = (transRes.data || []).filter((t: any) => t.is_deleted !== true)
 			setTransactions(txs)

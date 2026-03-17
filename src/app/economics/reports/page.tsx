@@ -98,7 +98,7 @@ function ReportsContent() {
 
       const res = await supabase
         .from("transactions")
-        .select("id, date, created_at, amount, type, category, payment_method, method")
+        .select("*")
         .eq("store_id", storeIdFromUrl)
 
       if (res.error) throw res.error
