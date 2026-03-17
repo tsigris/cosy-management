@@ -6,7 +6,6 @@ import EconomicsHeaderNav from '@/components/economics/EconomicsHeaderNav'
 import EconomicsPeriodFilter from '@/components/economics/EconomicsPeriodFilter'
 import EconomicsContainer from '@/components/economics/EconomicsContainer'
 import { getSupabase } from '@/lib/supabase'
-import { formatBusinessDayDate, toBusinessDayDate, toBusinessDayDateNormalized } from '@/lib/businessDate'
 import { currencyFormatterEUR, formatTimeEl } from '@/lib/formatters'
 import { ChevronDown, ChevronUp } from 'lucide-react'
 
@@ -33,30 +32,24 @@ const INCOME_TYPES = new Set([
   'deposit',
 ])
 
-const DATE_ONLY_RE = /^\d{4}-\d{2}-\d{2}$/
+function toDateKey(d: Date) {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
 
-function parseFinancialDateRaw(raw: string): Date | null {
-  if (!raw) return null
-
-  // Important: tx.date is a business date. For YYYY-MM-DD, parse at local noon
-  // so 07:00 cutoff logic does not move it to the previous day.
-  if (DATE_ONLY_RE.test(raw)) {
-    const [y, m, d] = raw.split('-').map(Number)
-    if (!y || !m || !d) return null
-    return new Date(y, m - 1, d, 12, 0, 0, 0)
-  }
-
-  const parsed = new Date(raw)
-  return isNaN(parsed.getTime()) ? null : parsed
+function formatDateKeyEl(key: string) {
+  const [y, m, d] = key.split('-')
+  if (!y || !m || !d) return key
+  return `${d}/${m}/${y}`
 }
 
 const parseTxDate = (r: any) => {
   if (!r) return null
   const raw = r.date
   if (!raw) return null
-  const parsed = parseFinancialDateRaw(raw)
-  if (!parsed) return null
-  const d = toBusinessDayDate(parsed, { normalizeToNoon: true })
+  const d = new Date(raw)
   return isNaN(d.getTime()) ? null : d
 }
 
@@ -66,6 +59,19 @@ function normalizeMethod(m?: string | null) {
   if (s.includes('cash') || s.includes('μετρητ')) return 'Μετρητά'
   if (s.includes('card') || s.includes('κάρτα') || s.includes('pos')) return 'Κάρτα'
   return 'Λοιπά'
+}
+
+function isZRow(r: TxRow) {
+  const category = String(r.category || '').trim()
+  const notes = String(r.notes || '').toUpperCase()
+  const method = String(r.method || '').trim()
+
+  if (category === 'Εσοδα Ζ') return true
+  if (notes.includes('Ζ ΤΑΜΕΙΑΚΗΣ')) return true
+  if (notes.includes('Ζ ΤΑΜΕΙΑΚΗΣ (POS)')) return true
+  if (method === 'Μετρητά (Z)') return true
+  if (method === 'Κάρτα' && category === 'Εσοδα Ζ') return true
+  return false
 }
 
 export default function EconomicsIncomePage() {
@@ -190,59 +196,62 @@ export default function EconomicsIncomePage() {
   const grouped = useMemo(() => {
     const map = new Map<string, TxRow[]>()
     for (const r of filtered) {
-      const d = parseTxDate(r)
-      if (!d) continue
-      const key = toBusinessDayDateNormalized(d).toISOString().slice(0, 10)
+      if (!r.date) continue
+      const d = new Date(r.date)
+      if (isNaN(d.getTime())) continue
+      const key = r.date
       if (!map.has(key)) map.set(key, [])
       map.get(key)!.push(r)
     }
+
+    for (const [, items] of map) {
+      items.sort((a, b) => {
+        const aCreated = a.created_at ? new Date(a.created_at).getTime() : 0
+        const bCreated = b.created_at ? new Date(b.created_at).getTime() : 0
+        return bCreated - aCreated
+      })
+    }
+
     // sort keys descending (newest first)
     const entries = Array.from(map.entries()).sort((a, b) => (a[0] < b[0] ? 1 : -1))
     return entries
   }, [filtered])
 
-  useEffect(() => {
-    const hasZInCategory = (r: TxRow) => {
-      const c = String(r.category || '').toLowerCase()
-      return c.includes('z') || c.includes('ζ')
+  const zRows = useMemo(() => {
+    return filtered.filter((r) => isZRow(r))
+  }, [filtered])
+
+  const zGrouped = useMemo(() => {
+    const map = new Map<string, TxRow[]>()
+    for (const r of zRows) {
+      if (!r.date) continue
+      const d = new Date(r.date)
+      if (isNaN(d.getTime())) continue
+      const key = r.date
+      if (!map.has(key)) map.set(key, [])
+      map.get(key)!.push(r)
     }
 
-    const hasZTameiakisInNotes = (r: TxRow) => {
-      const n = String(r.notes || '').toLowerCase()
-      return n.includes('z ταμειακ') || n.includes('ζ ταμειακ')
+    for (const [, items] of map) {
+      items.sort((a, b) => {
+        const aCreated = a.created_at ? new Date(a.created_at).getTime() : 0
+        const bCreated = b.created_at ? new Date(b.created_at).getTime() : 0
+        return bCreated - aCreated
+      })
     }
 
-    const zCategoryRows = rows.filter(hasZInCategory)
-    const zNotesRows = rows.filter(hasZTameiakisInNotes)
-    const groupedZCards = grouped
-      .filter(([, items]) => items.some((r) => hasZInCategory(r) || hasZTameiakisInNotes(r)))
-      .map(([day, items]) => ({
-        day,
-        count: items.length,
-        total: items.reduce((sum, r) => sum + Math.abs(Number(r.amount) || 0), 0),
-      }))
-
-    console.log('[Income][Z-debug] total fetched income rows', rows.filter((r) => INCOME_TYPES.has(r.type)).length)
-    console.log(
-      '[Income][Z-debug] rows where category contains Ζ or z',
-      zCategoryRows.map((r) => ({ id: r.id, date: r.date, type: r.type, category: r.category, notes: r.notes, amount: r.amount })),
-    )
-    console.log(
-      '[Income][Z-debug] rows where notes contain Z ΤΑΜΕΙΑΚΗΣ',
-      zNotesRows.map((r) => ({ id: r.id, date: r.date, type: r.type, category: r.category, notes: r.notes, amount: r.amount })),
-    )
-    console.log('[Income][Z-debug] final grouped Z cards', groupedZCards)
-  }, [rows, grouped])
+    return Array.from(map.entries()).sort((a, b) => (a[0] < b[0] ? 1 : -1))
+  }, [zRows])
 
   const amountFmt = currencyFormatterEUR
 
   // compute KPIs: today, yesterday, month total, avg daily
   const KPIs = useMemo(() => {
     const now = new Date()
-    const todayKey = toBusinessDayDateNormalized(now).toISOString().slice(0, 10)
+    const todayKey = toDateKey(now)
     const yesterday = new Date(now)
     yesterday.setDate(yesterday.getDate() - 1)
-    const yesterdayKey = toBusinessDayDateNormalized(yesterday).toISOString().slice(0, 10)
+    const yesterdayKey = toDateKey(yesterday)
 
     let today = 0
     let yesterdayTotal = 0
@@ -270,10 +279,10 @@ export default function EconomicsIncomePage() {
 
   // business day keys for badges and quick lookup
   const now = new Date()
-  const todayKey = toBusinessDayDateNormalized(now).toISOString().slice(0, 10)
+  const todayKey = toDateKey(now)
   const yesterdayDate = new Date(now)
   yesterdayDate.setDate(yesterdayDate.getDate() - 1)
-  const yesterdayKey = toBusinessDayDateNormalized(yesterdayDate).toISOString().slice(0, 10)
+  const yesterdayKey = toDateKey(yesterdayDate)
 
   // derive cash/card breakdown for today, yesterday and current month (presentation only)
   const dayBreakdowns = useMemo(() => {
@@ -311,8 +320,27 @@ export default function EconomicsIncomePage() {
   }, [dayBreakdowns])
 
   // Last Z (most recent day with income)
-  const lastZ = grouped.length ? grouped[0] : null
-  const lastZBreak = lastZ ? dayBreakdowns.get(lastZ[0]) || { total: 0, cash: 0, card: 0, other: 0 } : null
+  const zDayBreakdowns = useMemo(() => {
+    const map = new Map<string, { total: number; cash: number; card: number; other: number }>()
+    for (const [day, items] of zGrouped) {
+      let total = 0
+      let cash = 0
+      let card = 0
+      for (const it of items) {
+        const amt = Math.abs(it.amount)
+        total += amt
+        const m = normalizeMethod(it.method)
+        if (m === 'Μετρητά') cash += amt
+        else if (m === 'Κάρτα') card += amt
+      }
+      const other = Math.max(0, total - cash - card)
+      map.set(day, { total, cash, card, other })
+    }
+    return map
+  }, [zGrouped])
+
+  const lastZ = zGrouped.length ? zGrouped[0] : null
+  const lastZBreak = lastZ ? zDayBreakdowns.get(lastZ[0]) || { total: 0, cash: 0, card: 0, other: 0 } : null
 
   // expanded days
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
@@ -441,7 +469,7 @@ export default function EconomicsIncomePage() {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div>
                   <div style={{ fontWeight: 900 }}>Τελευταίο Ζ</div>
-                  <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 6 }}>{formatBusinessDayDate(new Date(lastZ[0]))}</div>
+                  <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 6 }}>{formatDateKeyEl(lastZ[0])}</div>
                 </div>
 
                 <div style={{ textAlign: 'right' }}>
@@ -463,9 +491,9 @@ export default function EconomicsIncomePage() {
 
           {/* Daily list */}
           <div style={styles.list as any}>
-            {grouped.length === 0 && !loading ? <div style={{ color: 'var(--muted)' }}>Κανένα έσοδο στη διάρκεια.</div> : null}
+            {zGrouped.length === 0 && !loading ? <div style={{ color: 'var(--muted)' }}>Δεν υπάρχουν εγγραφές Z στη διάρκεια.</div> : null}
 
-            {grouped.map(([day, items]) => {
+            {zGrouped.map(([day, items]) => {
               const total = items.reduce((a, b) => a + Math.abs(b.amount), 0)
               const cash = items.filter((i) => normalizeMethod(i.method) === 'Μετρητά').reduce((a, b) => a + Math.abs(b.amount), 0)
               const card = items.filter((i) => normalizeMethod(i.method) === 'Κάρτα').reduce((a, b) => a + Math.abs(b.amount), 0)
@@ -476,7 +504,7 @@ export default function EconomicsIncomePage() {
                 <div key={day} style={styles.dayCard as any}>
                   <div style={styles.dayHeader as any}>
                     <div style={styles.dateRow as any}>
-                      <div style={styles.dateText as any}>{formatBusinessDayDate(new Date(day))}</div>
+                      <div style={styles.dateText as any}>{formatDateKeyEl(day)}</div>
                       {day === todayKey ? (
                         <span style={{ ...styles.badge as any, background: '#DCFCE7', color: '#166534' }}>Σήμερα</span>
                       ) : null}
