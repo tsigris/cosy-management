@@ -225,7 +225,12 @@ function CreditsContent() {
 
     try {
       setLoadingTx(true)
-      const transRes = await supabase.from('transactions').select('*').eq('store_id', storeIdFromUrl)
+      const transRes = await supabase
+        .from('transactions')
+        .select(
+          'id, created_at, date, type, amount, category, method, payment_method, notes, description, is_credit, supplier_id, fixed_asset_id, revenue_source_id',
+        )
+        .eq('store_id', storeIdFromUrl)
       if (transRes.error) {
         console.error('Transactions query error', transRes.error)
         throw transRes.error
@@ -249,8 +254,8 @@ function CreditsContent() {
 
       if (viewMode === 'expenses') {
         const [supsRes, assetsRes] = await Promise.all([
-          supabase.from('suppliers').select('*').eq('store_id', storeIdFromUrl),
-          supabase.from('fixed_assets').select('*').eq('store_id', storeIdFromUrl),
+          supabase.from('suppliers').select('id, name, rf_code, bank_name').eq('store_id', storeIdFromUrl),
+          supabase.from('fixed_assets').select('id, name, sub_category, category').eq('store_id', storeIdFromUrl),
         ])
 
         if (supsRes.error) {
@@ -282,7 +287,7 @@ function CreditsContent() {
           }
         }
       } else {
-        const revRes = await supabase.from('revenue_sources').select('*').eq('store_id', storeIdFromUrl)
+        const revRes = await supabase.from('revenue_sources').select('id, name').eq('store_id', storeIdFromUrl)
         if (revRes.error) {
           console.error('Revenue sources query error', revRes.error)
           throw revRes.error
