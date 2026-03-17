@@ -82,6 +82,25 @@ function isZRow(r: TxRow) {
   return false
 }
 
+function getPeriodDateRange(period: string, year: number): { from: string | null; to: string | null } {
+  const now = new Date()
+  if (period === 'month') {
+    const from = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10)
+    const to = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().slice(0, 10)
+    return { from, to }
+  }
+  if (period === 'year') {
+    return { from: `${year}-01-01`, to: `${year}-12-31` }
+  }
+  if (period === '30days') {
+    const d = new Date()
+    d.setDate(d.getDate() - 30)
+    return { from: d.toISOString().slice(0, 10), to: now.toISOString().slice(0, 10) }
+  }
+  // 'all' — no date bounds
+  return { from: null, to: null }
+}
+
 export default function EconomicsIncomePage() {
   const searchParams = useSearchParams()
   const storeId = searchParams.get('store')?.trim() || ''
@@ -144,13 +163,19 @@ export default function EconomicsIncomePage() {
 
       try {
         const supabase = getSupabase()
-        const { data, error } = await supabase
+        const { from: dateFrom, to: dateTo } = getPeriodDateRange(period, selectedYear)
+
+        let query = supabase
           .from('transactions')
           .select('id,created_at,amount,type,category,method,date,is_credit,notes,revenue_source_id')
           .eq('store_id', storeId)
           .order('date', { ascending: false })
           .order('created_at', { ascending: false })
-          .limit(800)
+
+        if (dateFrom) query = query.gte('date', dateFrom)
+        if (dateTo) query = query.lte('date', dateTo)
+
+        const { data, error } = await query
 
         if (error) throw error
 
@@ -179,7 +204,7 @@ export default function EconomicsIncomePage() {
     return () => {
       cancelled = true
     }
-  }, [storeId])
+  }, [storeId, period, selectedYear])
 
   // derive filtered income rows
   const filtered = useMemo(() => {
