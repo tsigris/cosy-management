@@ -6,7 +6,7 @@ import EconomicsHeaderNav from '@/components/economics/EconomicsHeaderNav'
 import EconomicsPeriodFilter from '@/components/economics/EconomicsPeriodFilter'
 import EconomicsContainer from '@/components/economics/EconomicsContainer'
 import { getSupabase } from '@/lib/supabase'
-import { formatBusinessDayDate, toBusinessDayDateNormalized } from '@/lib/businessDate'
+import { formatBusinessDayDate, toBusinessDayDate, toBusinessDayDateNormalized } from '@/lib/businessDate'
 import { currencyFormatterEUR, formatTimeEl } from '@/lib/formatters'
 import { ChevronDown, ChevronUp } from 'lucide-react'
 
@@ -37,7 +37,7 @@ const parseTxDate = (r: any) => {
   if (!r) return null
   const raw = r.date
   if (!raw) return null
-  const d = new Date(raw)
+  const d = toBusinessDayDate(new Date(raw), { normalizeToNoon: true })
   return isNaN(d.getTime()) ? null : d
 }
 

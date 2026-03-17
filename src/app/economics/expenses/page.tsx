@@ -6,6 +6,7 @@ import type { CSSProperties } from 'react'
 import { useEffect, useMemo, useState, useCallback } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { getSupabase } from '@/lib/supabase'
+import { toBusinessDayDate } from '@/lib/businessDate'
 import EconomicsHeaderNav from '@/components/economics/EconomicsHeaderNav'
 import { formatDateEl, formatMoney } from '@/lib/formatters'
 
@@ -43,7 +44,7 @@ const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/\p{Diacrit
 
 const toFinancialDate = (value?: string | null) => {
   if (!value) return null
-  const d = new Date(value)
+  const d = toBusinessDayDate(new Date(value), { normalizeToNoon: true })
   return isNaN(d.getTime()) ? null : d
 }
 

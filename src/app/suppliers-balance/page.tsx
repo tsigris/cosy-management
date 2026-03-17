@@ -105,7 +105,7 @@ function BalancesContent() {
   const getTxDate = (t: any) => {
     if (!t) return null
     const raw = t?.date
-    const d = raw ? new Date(raw) : null
+    const d = raw ? toBusinessDayDate(new Date(raw), { normalizeToNoon: true }) : null
     return d && !isNaN(d.getTime()) ? d : null
   }
 

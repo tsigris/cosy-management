@@ -154,7 +154,7 @@ function CreditsContent() {
     if (!t) return null
     const raw = t?.date
     if (!raw) return null
-    const d = new Date(raw)
+    const d = toBusinessDayDate(new Date(raw), { normalizeToNoon: true })
     return !isNaN(d.getTime()) ? d : null
   }
 
