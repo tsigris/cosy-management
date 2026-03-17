@@ -230,7 +230,7 @@ function BalancesContent() {
 
     const settlementTxs = isIncome
       ? entityTrans
-          .filter((t) => RECEIVED_TYPES.includes(String(t.type || '')))
+          .filter((t) => RECEIVED_TYPES.includes(String(t?.type || '')))
           .sort((a, b) => (getTxDate(b)?.getTime() || 0) - (getTxDate(a)?.getTime() || 0))
         : entityTrans
           .filter((t) => String(t?.type || '') === 'debt_payment')
@@ -272,7 +272,7 @@ function BalancesContent() {
       setLoading(true)
 
       const transactionSelect =
-        'id, store_id, created_at, date, type, amount, category, notes, description, is_credit, supplier_id, fixed_asset_id, revenue_source_id'
+        'id, store_id, created_at, date, type, amount, category, notes, is_credit, supplier_id, fixed_asset_id, revenue_source_id'
 
       console.log('RUNNING QUERY: transactions', { select: transactionSelect })
       const transRes = await supabase
@@ -710,7 +710,7 @@ function BalancesContent() {
                             {history.creditTxs.slice(0, 12).map((t: any) => {
                               const d = getTxDate(t)
                               const note =
-                                String(t?.notes || t?.description || '').trim() ||
+                                String(t?.notes || '').trim() ||
                                 String(t?.category || t?.type || '').trim() ||
                                 (viewMode === 'income' ? 'Απαίτηση' : 'Χρέωση')
 
@@ -745,7 +745,7 @@ function BalancesContent() {
                             {history.settlementTxs.slice(0, 10).map((t: any) => {
                               const d = getTxDate(t)
                               const note =
-                                String(t?.notes || t?.description || '').trim() ||
+                                String(t?.notes || '').trim() ||
                                 String(t?.type || '').trim() ||
                                 (viewMode === 'income' ? 'Είσπραξη' : 'Εξόφληση')
 
