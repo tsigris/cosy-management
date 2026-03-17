@@ -162,7 +162,7 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
   const yearOptions = useMemo(() => {
     const s = new Set<number>()
     for (const t of transactions) {
-      const d = t?.date ? new Date(t.date) : t?.created_at ? new Date(t.created_at) : null
+      const d = t?.date ? new Date(t.date) : null
       if (d && !isNaN(d.getTime())) s.add(d.getFullYear())
     }
     if (!s.size) s.add(new Date().getFullYear())

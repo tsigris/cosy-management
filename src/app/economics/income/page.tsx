@@ -35,7 +35,7 @@ const INCOME_TYPES = new Set([
 
 const parseTxDate = (r: any) => {
   if (!r) return null
-  const raw = r.created_at || r.date
+  const raw = r.date
   if (!raw) return null
   const d = new Date(raw)
   return isNaN(d.getTime()) ? null : d
@@ -155,6 +155,8 @@ export default function EconomicsIncomePage() {
     const q = searchQ.trim().toLowerCase()
 
     return rows.filter((r) => {
+      const d = parseTxDate(r)
+      if (!d) return false
       if (r.date < from || r.date > to) return false
       if (!INCOME_TYPES.has(r.type)) return false
       if (q) {
@@ -170,7 +172,8 @@ export default function EconomicsIncomePage() {
     const map = new Map<string, TxRow[]>()
     for (const r of filtered) {
       const d = parseTxDate(r)
-      const key = d ? toBusinessDayDateNormalized(d).toISOString().slice(0, 10) : r.date || 'unknown'
+      if (!d) continue
+      const key = toBusinessDayDateNormalized(d).toISOString().slice(0, 10)
       if (!map.has(key)) map.set(key, [])
       map.get(key)!.push(r)
     }

@@ -104,7 +104,7 @@ function BalancesContent() {
   // -----------------------------
   const getTxDate = (t: any) => {
     if (!t) return null
-    const raw = t?.date ?? t?.created_at
+    const raw = t?.date
     const d = raw ? new Date(raw) : null
     return d && !isNaN(d.getTime()) ? d : null
   }

@@ -41,6 +41,12 @@ type BeneficiaryGroup = GroupBase & {
 
 const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '')
 
+const toFinancialDate = (value?: string | null) => {
+  if (!value) return null
+  const d = new Date(value)
+  return isNaN(d.getTime()) ? null : d
+}
+
 function groupByMethod(rows: ExpenseRow[]): GroupBase[] {
   const map = new Map<string, GroupBase>()
   for (const r of rows) {
@@ -252,9 +258,8 @@ export default function EconomicsExpensesPage() {
   const filteredRowsByPeriod = useMemo(() => {
     if (!rows || !rows.length) return rows
     return rows.filter((r) => {
-      const raw = r.created_at || r.date
-      if (!raw) return false
-      const d = new Date(raw)
+      const d = toFinancialDate(r.date)
+      if (!d) return false
       if (period === 'all') return true
       if (period === 'month') {
         const start = new Date(new Date().getFullYear(), new Date().getMonth(), 1)
@@ -277,10 +282,8 @@ export default function EconomicsExpensesPage() {
   const yearOptions = useMemo(() => {
     const s = new Set<number>()
     for (const r of rows) {
-      const raw = r.created_at || r.date
-      if (!raw) continue
-      const d = new Date(raw)
-      if (!isNaN(d.getTime())) s.add(d.getFullYear())
+      const d = toFinancialDate(r.date)
+      if (d) s.add(d.getFullYear())
     }
     if (!s.size) s.add(new Date().getFullYear())
     return Array.from(s).sort((a, b) => b - a)
@@ -361,16 +364,19 @@ export default function EconomicsExpensesPage() {
       entry.count += 1
       entry.rows.push(r)
       if (r.is_credit) entry.hasCredit = true
-      const raw = r.created_at || r.date
-      if (raw) {
-        const d = new Date(raw)
-        if (!entry.lastDate || new Date(entry.lastDate) < d) entry.lastDate = raw
+      const d = toFinancialDate(r.date)
+      if (d) {
+        if (!entry.lastDate || new Date(entry.lastDate) < d) entry.lastDate = r.date
       }
     }
 
     const groups = Array.from(map.values())
     for (const g of groups) {
-      g.rows.sort((a, b) => (new Date(b.created_at || b.date).getTime() - new Date(a.created_at || a.date).getTime()))
+      g.rows.sort((a, b) => {
+        const db = toFinancialDate(b.date)
+        const da = toFinancialDate(a.date)
+        return (db?.getTime() || 0) - (da?.getTime() || 0)
+      })
     }
     return groups.sort((a, b) => b.total - a.total)
   }, [filteredMovements])
@@ -959,7 +965,7 @@ export default function EconomicsExpensesPage() {
                                     }}
                                   >
                                     <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                      <div style={{ fontSize: 13, fontWeight: 800 }}>{formatDateEl(r.created_at || r.date)}</div>
+                                      <div style={{ fontSize: 13, fontWeight: 800 }}>{r.date ? formatDateEl(r.date) : '—'}</div>
                                       <div style={{ fontSize: 13, color: 'var(--muted)' }}>
                                         {r.category ? displayCategoryLabel(r.category) : (String(r.fixed_assets?.sub_category || '').trim().toLowerCase() === 'staff' ? 'Προσωπικό' : '—')}
                                       </div>

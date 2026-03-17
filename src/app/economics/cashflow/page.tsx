@@ -213,6 +213,8 @@ export default function EconomicsCashflowPage() {
   const [period, setPeriod] = useState<'month' | 'year' | '30days' | 'all'>('month')
   const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear())
 
+  const financialRows = useMemo(() => rows.filter((r) => isValidFinancialDate(r.date)), [rows])
+
   useEffect(() => {
     // when period changes, update filterFrom/filterTo to match
     if (period === 'month') {
@@ -236,16 +238,16 @@ export default function EconomicsCashflowPage() {
   }, [period, selectedYear])
 
   // Transfers + Organic split (canonical for SaaS)
-  const internalTransfers = useMemo(() => rows.filter(isTransfer), [rows, isTransfer])
+  const internalTransfers = useMemo(() => financialRows.filter(isTransfer), [financialRows, isTransfer])
 
   const organicIncome = useMemo(
-    () => rows.filter((r) => INCOME_TYPES.has(r.type) && !isTransfer(r)),
-    [rows, isTransfer],
+    () => financialRows.filter((r) => INCOME_TYPES.has(r.type) && !isTransfer(r)),
+    [financialRows, isTransfer],
   )
 
   const organicExpense = useMemo(
-    () => rows.filter((r) => EXPENSE_TYPES.has(r.type) && !isTransfer(r)),
-    [rows, isTransfer],
+    () => financialRows.filter((r) => EXPENSE_TYPES.has(r.type) && !isTransfer(r)),
+    [financialRows, isTransfer],
   )
 
   const internalTransfersIn = useMemo(
@@ -284,7 +286,7 @@ export default function EconomicsCashflowPage() {
     let monthIncome = 0
     let monthExpense = 0
 
-    for (const r of rows) {
+    for (const r of financialRows) {
       const amt = Number(r.amount) || 0
       const abs = Math.abs(amt)
       const isInMonth = r.date >= monthStart && r.date <= monthEnd
@@ -315,7 +317,7 @@ export default function EconomicsCashflowPage() {
       monthStart,
       monthEnd,
     }
-  }, [rows])
+  }, [financialRows])
 
   // Chart data: derive monthly income/expense & running balance from the
   // same filters the ledger uses (filterFrom/filterTo/filterType/category/method).
@@ -327,7 +329,7 @@ export default function EconomicsCashflowPage() {
     const cat = filterCategory.trim()
     const met = filterMethod.trim()
 
-    const source = rows.filter((r) => {
+    const source = financialRows.filter((r) => {
       if (r.date < from || r.date > to) return false
       if (filterType === 'income' && !INCOME_TYPES.has(r.type)) return false
       if (filterType === 'expense' && !EXPENSE_TYPES.has(r.type)) return false
@@ -341,12 +343,19 @@ export default function EconomicsCashflowPage() {
     let endMonth: Date
     if (source.length) {
       const dates = source
-        .map((r) => (r.date ? new Date(r.date) : r.created_at ? new Date(r.created_at) : null))
+        .map((r) => (r.date ? new Date(r.date) : null))
         .filter((d) => d && !isNaN(d.getTime())) as Date[]
-      const minD = dates.reduce((a, b) => (a.getTime() < b.getTime() ? a : b), dates[0])
-      const maxD = dates.reduce((a, b) => (a.getTime() > b.getTime() ? a : b), dates[0])
-      startMonth = new Date(minD.getFullYear(), minD.getMonth(), 1)
-      endMonth = new Date(maxD.getFullYear(), maxD.getMonth(), 1)
+      if (dates.length) {
+        const minD = dates.reduce((a, b) => (a.getTime() < b.getTime() ? a : b), dates[0])
+        const maxD = dates.reduce((a, b) => (a.getTime() > b.getTime() ? a : b), dates[0])
+        startMonth = new Date(minD.getFullYear(), minD.getMonth(), 1)
+        endMonth = new Date(maxD.getFullYear(), maxD.getMonth(), 1)
+      } else {
+        const base = new Date()
+        base.setDate(1)
+        endMonth = new Date(base.getFullYear(), base.getMonth(), 1)
+        startMonth = new Date(base.getFullYear(), base.getMonth() - 5, 1)
+      }
     } else {
       const base = new Date()
       base.setDate(1)
@@ -442,7 +451,7 @@ export default function EconomicsCashflowPage() {
     const lineRange = Math.max(1, maxLine - minLine)
 
     return { data: all, maxBar, minLine, maxLine, lineRange }
-  }, [rows, filterFrom, filterTo, filterType, filterCategory, filterMethod, futureProjection, isTransfer])
+  }, [financialRows, filterFrom, filterTo, filterType, filterCategory, filterMethod, futureProjection, isTransfer])
 
   const uniqueCategories = useMemo(() => {
     const s = new Set<string>()
@@ -458,13 +467,13 @@ export default function EconomicsCashflowPage() {
 
   const yearOptions = useMemo(() => {
     const s = new Set<number>()
-    for (const r of rows) {
-      const d = r.date ? new Date(r.date) : r.created_at ? new Date(r.created_at) : null
+    for (const r of financialRows) {
+      const d = r.date ? new Date(r.date) : null
       if (d && !isNaN(d.getTime())) s.add(d.getFullYear())
     }
     if (!s.size) s.add(new Date().getFullYear())
     return Array.from(s).sort((a, b) => b - a)
-  }, [rows])
+  }, [financialRows])
 
   const filteredLedger = useMemo(() => {
     const from = filterFrom || '1970-01-01'
@@ -472,7 +481,7 @@ export default function EconomicsCashflowPage() {
     const cat = filterCategory.trim()
     const met = filterMethod.trim()
 
-    return rows.filter((r) => {
+    return financialRows.filter((r) => {
       if (r.date < from || r.date > to) return false
 
       // ✅ Canonical filter: income = INCOME_TYPES, expense = EXPENSE_TYPES
@@ -483,7 +492,7 @@ export default function EconomicsCashflowPage() {
       if (met && String(r.method || '').toLowerCase() !== met.toLowerCase()) return false
       return true
     })
-  }, [rows, filterFrom, filterTo, filterType, filterCategory, filterMethod])
+  }, [financialRows, filterFrom, filterTo, filterType, filterCategory, filterMethod])
 
   const statusOf = (r: TxRow) => {
     // Best-effort using existing fields:
@@ -1412,4 +1421,10 @@ function makeStyles(t: {
     statusWarn,
     statusBad,
   }
+}
+
+function isValidFinancialDate(dateStr: string) {
+  if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return false
+  const d = new Date(dateStr)
+  return !isNaN(d.getTime())
 }

@@ -16,7 +16,7 @@ const isValidUUID = (id: any) => {
 
 function getTxDate(t: any) {
 	if (!t) return null
-	const raw = t?.date ?? t?.created_at
+	const raw = t?.date
 	if (!raw) return null
 	const d = new Date(raw)
 	return isNaN(d.getTime()) ? null : d
