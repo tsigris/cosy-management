@@ -208,3 +208,6 @@ begin
   raise exception 'Not supported move: % -> %', from_type, to_type;
 end;
 $$ language plpgsql security definer;
+
+revoke execute on function move_manage_entity(uuid, text, uuid, text, text) from public;
+grant execute on function move_manage_entity(uuid, text, uuid, text, text) to authenticated;
