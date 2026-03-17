@@ -7,6 +7,7 @@ import { formatBusinessDayDate, toBusinessDayDateNormalized } from '@/lib/busine
 import { getEmployees } from '@/lib/employees'
 import { formatDateEl } from '@/lib/formatters'
 import PermissionGuard from '@/components/PermissionGuard'
+import ReadOnlyBanner from '@/components/ReadOnlyBanner'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { toast, Toaster } from 'sonner'
@@ -852,7 +853,7 @@ function EmployeesContent() {
               </div>
             </div>
 
-            {!checkingPermission && !isAdmin && <div style={readOnlyBannerStyle}>Read-only access</div>}
+            <ReadOnlyBanner isAdmin={isAdmin} isLoading={checkingPermission} />
 
             {/* ✅ CREATE TIPS MODAL */}
             {tipModal && (
@@ -1827,17 +1828,6 @@ const miniIconBtn: any = {
   color: colors.primaryDark,
 }
 const miniIconBtnDanger: any = { ...miniIconBtn, border: '1px solid #fecaca', backgroundColor: '#fef2f2', color: colors.accentRed }
-const readOnlyBannerStyle: any = {
-  marginBottom: '14px',
-  padding: '10px 12px',
-  borderRadius: '12px',
-  border: '1px solid #cbd5e1',
-  backgroundColor: '#f8fafc',
-  color: '#475569',
-  fontSize: '12px',
-  fontWeight: '800',
-  textAlign: 'center',
-}
 const pendingOtListWrap: any = { backgroundColor: '#fff7ed', border: '1px solid #fed7aa', borderRadius: '14px', padding: '12px', marginBottom: '16px' }
 const pendingOtRow: any = {
   display: 'flex',

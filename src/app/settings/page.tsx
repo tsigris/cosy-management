@@ -37,6 +37,7 @@ import {
 import { getSupabase } from '@/lib/supabase'
 import { getEmployees } from '@/lib/employees'
 import PermissionGuard from '@/components/PermissionGuard'
+import ReadOnlyBanner from '@/components/ReadOnlyBanner'
 import { useTheme } from '@/components/theme/ThemeProvider'
 
 type SectionId = 'profile' | 'business' | 'appearance' | 'backup' | 'support'
@@ -464,7 +465,7 @@ function SettingsContent() {
               </Link>
             </div>
 
-            {!checkingPermission && !isAdmin && <div style={readOnlyBannerStyle}>Read-only access</div>}
+            <ReadOnlyBanner isAdmin={isAdmin} isLoading={checkingPermission} />
 
             {/* APPEARANCE */}
             <SectionCard
@@ -798,18 +799,6 @@ const appIcon: CSSProperties = {
 
 const topTitle: CSSProperties = { fontSize: 16, fontWeight: 900, color: 'var(--text)', margin: 0 }
 const topSubtitle: CSSProperties = { fontSize: 10, fontWeight: 900, color: '#6366f1', letterSpacing: 0.6 }
-
-const readOnlyBannerStyle: CSSProperties = {
-  marginBottom: 12,
-  padding: '10px 12px',
-  borderRadius: 12,
-  border: '1px solid var(--border)',
-  background: 'var(--surface)',
-  color: 'var(--muted)',
-  fontSize: 12,
-  fontWeight: 800,
-  textAlign: 'center',
-}
 
 const closeBtn: CSSProperties = {
   width: 44,

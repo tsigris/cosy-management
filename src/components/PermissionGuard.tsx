@@ -2,15 +2,16 @@
 
 import { ReactNode, useEffect, useState } from 'react'
 import { getSupabase } from '@/lib/supabase'
+import { PermissionCheckProps } from '@/lib/clientPermissions'
 
-type PermissionGuardRenderProps = {
-  isAdmin: boolean
-  isLoading: boolean
-}
-
+/**
+ * ✅ PermissionGuard component
+ * Checks if current user is admin for the given store
+ * Consolidates store_access lookup logic (no behavior changes)
+ */
 type PermissionGuardProps = {
   storeId: string | null
-  children: (props: PermissionGuardRenderProps) => ReactNode
+  children: (props: PermissionCheckProps) => ReactNode
 }
 
 export default function PermissionGuard({ storeId, children }: PermissionGuardProps) {
