@@ -69,12 +69,14 @@ function ProfitContent() {
 	const load = useCallback(async () => {
 		if (!storeIdFromUrl || !hasValidStore) return
 
+		const transactionSelect = 'id, store_id, date, created_at, type, amount, is_deleted'
+
 		try {
 			setLoading(true)
 
 			let q = supabase
 				.from('transactions')
-				.select('id, date, created_at, type, amount, is_deleted')
+				.select(transactionSelect)
 				.eq('store_id', storeIdFromUrl)
 
 			if (period !== 'all') {
@@ -106,7 +108,21 @@ function ProfitContent() {
 			const txs = (transRes.data || []).filter((t: any) => t.is_deleted !== true)
 			setTransactions(txs)
 		} catch (err) {
-			console.error('Profit load error', err)
+			const error = err as { message?: string; details?: string; hint?: string }
+			console.error('Profit transactions query failed', {
+				message: error?.message,
+				details: error?.details,
+				hint: error?.hint,
+				query: {
+					table: 'transactions',
+					select: transactionSelect,
+					filters: {
+						store_id: storeIdFromUrl,
+						period,
+						selectedYear,
+					},
+				},
+			})
 			toast.error('Σφάλμα φόρτωσης report κέρδους')
 			setTransactions([])
 		} finally {

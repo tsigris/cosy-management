@@ -271,28 +271,70 @@ function BalancesContent() {
     try {
       setLoading(true)
 
+      const transactionSelect =
+        'id, store_id, created_at, date, type, amount, category, notes, description, is_credit, supplier_id, fixed_asset_id, revenue_source_id'
+
       const transRes = await supabase
         .from('transactions')
-        .select(
-          'id, created_at, date, type, amount, category, notes, description, is_credit, supplier_id, fixed_asset_id, revenue_source_id',
-        )
+        .select(transactionSelect)
         .eq('store_id', storeIdFromUrl)
         .gte('date', `${selectedYear}-01-01`)
         .lte('date', `${selectedYear}-12-31`)
-      if (transRes.error) throw transRes.error
+      if (transRes.error) {
+        console.error('Suppliers balance transactions query failed', {
+          message: transRes.error.message,
+          details: transRes.error.details,
+          hint: transRes.error.hint,
+          query: {
+            table: 'transactions',
+            select: transactionSelect,
+            filters: {
+              store_id: storeIdFromUrl,
+              selectedYear,
+            },
+          },
+        })
+        throw transRes.error
+      }
       const transactions = transRes.data || []
       setAllTransactions(transactions)
 
       // NOTE: data calculation will happen below using selectedYear, so we compute again in an effect.
       // We still load entities here for performance and stability.
       if (viewMode === 'expenses') {
+        const suppliersSelect = 'id, store_id, name, rf_code, bank_name'
+        const fixedAssetsSelect = 'id, store_id, name, sub_category, category, rf_code, bank_name'
         const [supsRes, assetsRes] = await Promise.all([
-          supabase.from('suppliers').select('id, name, rf_code, bank_name').eq('store_id', storeIdFromUrl),
-          supabase.from('fixed_assets').select('id, name, sub_category, category, rf_code, bank_name').eq('store_id', storeIdFromUrl),
+          supabase.from('suppliers').select(suppliersSelect).eq('store_id', storeIdFromUrl),
+          supabase.from('fixed_assets').select(fixedAssetsSelect).eq('store_id', storeIdFromUrl),
         ])
 
-        if (supsRes.error) throw supsRes.error
-        if (assetsRes.error) throw assetsRes.error
+        if (supsRes.error) {
+          console.error('Suppliers balance suppliers query failed', {
+            message: supsRes.error.message,
+            details: supsRes.error.details,
+            hint: supsRes.error.hint,
+            query: {
+              table: 'suppliers',
+              select: suppliersSelect,
+              filters: { store_id: storeIdFromUrl },
+            },
+          })
+          throw supsRes.error
+        }
+        if (assetsRes.error) {
+          console.error('Suppliers balance fixed_assets query failed', {
+            message: assetsRes.error.message,
+            details: assetsRes.error.details,
+            hint: assetsRes.error.hint,
+            query: {
+              table: 'fixed_assets',
+              select: fixedAssetsSelect,
+              filters: { store_id: storeIdFromUrl },
+            },
+          })
+          throw assetsRes.error
+        }
 
         const suppliers = (supsRes.data || []).map((s) => ({ ...s, entityType: 'supplier' }))
 
@@ -341,8 +383,21 @@ function BalancesContent() {
         return
       }
 
-      const revRes = await supabase.from('revenue_sources').select('id, name, rf_code, bank_name').eq('store_id', storeIdFromUrl)
-      if (revRes.error) throw revRes.error
+      const revenueSourcesSelect = 'id, store_id, name, rf_code, bank_name'
+      const revRes = await supabase.from('revenue_sources').select(revenueSourcesSelect).eq('store_id', storeIdFromUrl)
+      if (revRes.error) {
+        console.error('Suppliers balance revenue_sources query failed', {
+          message: revRes.error.message,
+          details: revRes.error.details,
+          hint: revRes.error.hint,
+          query: {
+            table: 'revenue_sources',
+            select: revenueSourcesSelect,
+            filters: { store_id: storeIdFromUrl },
+          },
+        })
+        throw revRes.error
+      }
 
       const revenueSources = (revRes.data || []).map((r) => ({ ...r, entityType: 'revenue' }))
 
@@ -367,7 +422,13 @@ function BalancesContent() {
 
       setData(balanceList)
     } catch (err: any) {
-      console.error(err)
+      console.error('Suppliers balance load failed', {
+        message: err?.message,
+        details: err?.details,
+        hint: err?.hint,
+        viewMode,
+        selectedYear,
+      })
       toast.error('Σφάλμα κατά τον υπολογισμό υπολοίπων')
     } finally {
       setLoading(false)

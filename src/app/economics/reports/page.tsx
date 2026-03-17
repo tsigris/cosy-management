@@ -95,12 +95,14 @@ function ReportsContent() {
   const load = useCallback(async () => {
     if (!storeIdFromUrl || !hasValidStore) return
 
+    const transactionSelect = "id, store_id, date, created_at, type, amount, category, method"
+
     try {
       setLoading(true)
 
       let q = supabase
         .from("transactions")
-        .select("id, date, created_at, type, amount, category, method, payment_method")
+        .select(transactionSelect)
         .eq("store_id", storeIdFromUrl)
 
       if (period !== "all") {
@@ -132,7 +134,21 @@ function ReportsContent() {
 
       setTransactions(res.data || [])
     } catch (err) {
-      console.error(err)
+      const error = err as { message?: string; details?: string; hint?: string }
+      console.error("Reports transactions query failed", {
+        message: error?.message,
+        details: error?.details,
+        hint: error?.hint,
+        query: {
+          table: "transactions",
+          select: transactionSelect,
+          filters: {
+            store_id: storeIdFromUrl,
+            period,
+            selectedYear,
+          },
+        },
+      })
       toast.error("Σφάλμα φόρτωσης αναφορών")
     } finally {
       setLoading(false)

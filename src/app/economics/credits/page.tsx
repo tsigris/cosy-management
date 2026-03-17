@@ -226,11 +226,13 @@ function CreditsContent() {
 
     try {
       setLoadingTx(true)
+
+      const transactionSelect =
+        'id, store_id, created_at, date, type, amount, category, method, notes, description, is_credit, supplier_id, fixed_asset_id, revenue_source_id'
+
       let q = supabase
         .from('transactions')
-        .select(
-          'id, created_at, date, type, amount, category, method, payment_method, notes, description, is_credit, supplier_id, fixed_asset_id, revenue_source_id',
-        )
+        .select(transactionSelect)
         .eq('store_id', storeIdFromUrl)
 
       if (period !== 'all') {
@@ -261,7 +263,20 @@ function CreditsContent() {
 
       const transRes = await q
       if (transRes.error) {
-        console.error('Transactions query error', transRes.error)
+        console.error('Credits transactions query failed', {
+          message: transRes.error.message,
+          details: transRes.error.details,
+          hint: transRes.error.hint,
+          query: {
+            table: 'transactions',
+            select: transactionSelect,
+            filters: {
+              store_id: storeIdFromUrl,
+              period,
+              selectedYear,
+            },
+          },
+        })
         throw transRes.error
       }
       const transactions: Tx[] = (transRes.data || []) as any
@@ -282,17 +297,37 @@ function CreditsContent() {
       const map: Record<string, EntityInfo> = {}
 
       if (viewMode === 'expenses') {
+        const suppliersSelect = 'id, store_id, name, rf_code, bank_name'
+        const fixedAssetsSelect = 'id, store_id, name, sub_category, category'
         const [supsRes, assetsRes] = await Promise.all([
-          supabase.from('suppliers').select('id, name, rf_code, bank_name').eq('store_id', storeIdFromUrl),
-          supabase.from('fixed_assets').select('id, name, sub_category, category').eq('store_id', storeIdFromUrl),
+          supabase.from('suppliers').select(suppliersSelect).eq('store_id', storeIdFromUrl),
+          supabase.from('fixed_assets').select(fixedAssetsSelect).eq('store_id', storeIdFromUrl),
         ])
 
         if (supsRes.error) {
-          console.error('Suppliers query error', supsRes.error)
+          console.error('Credits suppliers query failed', {
+            message: supsRes.error.message,
+            details: supsRes.error.details,
+            hint: supsRes.error.hint,
+            query: {
+              table: 'suppliers',
+              select: suppliersSelect,
+              filters: { store_id: storeIdFromUrl },
+            },
+          })
           throw supsRes.error
         }
         if (assetsRes.error) {
-          console.error('Fixed assets query error', assetsRes.error)
+          console.error('Credits fixed_assets query failed', {
+            message: assetsRes.error.message,
+            details: assetsRes.error.details,
+            hint: assetsRes.error.hint,
+            query: {
+              table: 'fixed_assets',
+              select: fixedAssetsSelect,
+              filters: { store_id: storeIdFromUrl },
+            },
+          })
           throw assetsRes.error
         }
 
@@ -316,9 +351,19 @@ function CreditsContent() {
           }
         }
       } else {
-        const revRes = await supabase.from('revenue_sources').select('id, name').eq('store_id', storeIdFromUrl)
+        const revenueSourcesSelect = 'id, store_id, name'
+        const revRes = await supabase.from('revenue_sources').select(revenueSourcesSelect).eq('store_id', storeIdFromUrl)
         if (revRes.error) {
-          console.error('Revenue sources query error', revRes.error)
+          console.error('Credits revenue_sources query failed', {
+            message: revRes.error.message,
+            details: revRes.error.details,
+            hint: revRes.error.hint,
+            query: {
+              table: 'revenue_sources',
+              select: revenueSourcesSelect,
+              filters: { store_id: storeIdFromUrl },
+            },
+          })
           throw revRes.error
         }
         for (const r of revRes.data || []) {
@@ -332,7 +377,12 @@ function CreditsContent() {
 
       setEntities(map)
     } catch (e: any) {
-      console.error(e)
+      console.error('Credits entities load failed', {
+        message: e?.message,
+        details: e?.details,
+        hint: e?.hint,
+        viewMode,
+      })
       toast.error('Σφάλμα φόρτωσης δεδομένων Πιστώσεων')
     } finally {
       setLoadingEntities(false)
