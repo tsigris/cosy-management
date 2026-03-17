@@ -230,6 +230,7 @@ function CreditsContent() {
       const transactionSelect =
         'id, store_id, created_at, date, type, amount, category, method, notes, description, is_credit, supplier_id, fixed_asset_id, revenue_source_id'
 
+      console.log('RUNNING QUERY: transactions', { select: transactionSelect })
       let q = supabase
         .from('transactions')
         .select(transactionSelect)
@@ -263,6 +264,7 @@ function CreditsContent() {
 
       const transRes = await q
       if (transRes.error) {
+        console.error('RAW QUERY ERROR', transRes.error)
         console.error('Credits transactions query failed', {
           message: transRes.error.message,
           details: transRes.error.details,
@@ -298,13 +300,16 @@ function CreditsContent() {
 
       if (viewMode === 'expenses') {
         const suppliersSelect = 'id, store_id, name, rf_code, bank_name'
-        const fixedAssetsSelect = 'id, store_id, name, sub_category, category'
+        const fixedAssetsSelect = 'id, store_id, name, sub_category'
+        console.log('RUNNING QUERY: suppliers', { select: suppliersSelect })
+        console.log('RUNNING QUERY: fixed_assets', { select: fixedAssetsSelect })
         const [supsRes, assetsRes] = await Promise.all([
           supabase.from('suppliers').select(suppliersSelect).eq('store_id', storeIdFromUrl),
           supabase.from('fixed_assets').select(fixedAssetsSelect).eq('store_id', storeIdFromUrl),
         ])
 
         if (supsRes.error) {
+          console.error('RAW QUERY ERROR', supsRes.error)
           console.error('Credits suppliers query failed', {
             message: supsRes.error.message,
             details: supsRes.error.details,
@@ -318,6 +323,7 @@ function CreditsContent() {
           throw supsRes.error
         }
         if (assetsRes.error) {
+          console.error('RAW QUERY ERROR', assetsRes.error)
           console.error('Credits fixed_assets query failed', {
             message: assetsRes.error.message,
             details: assetsRes.error.details,
@@ -352,8 +358,10 @@ function CreditsContent() {
         }
       } else {
         const revenueSourcesSelect = 'id, store_id, name'
+        console.log('RUNNING QUERY: revenue_sources', { select: revenueSourcesSelect })
         const revRes = await supabase.from('revenue_sources').select(revenueSourcesSelect).eq('store_id', storeIdFromUrl)
         if (revRes.error) {
+          console.error('RAW QUERY ERROR', revRes.error)
           console.error('Credits revenue_sources query failed', {
             message: revRes.error.message,
             details: revRes.error.details,
