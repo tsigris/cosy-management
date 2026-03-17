@@ -52,18 +52,9 @@ export async function getEmployees(storeId: string): Promise<EmployeeRow[]> {
 
   const { data, error } = await supabase
     .from('fixed_assets')
-    .select(`
-      id,
-      name,
-      start_date,
-      salary,
-      monthly_salary,
-      pay_day,
-      salary_day,
-      payment_day
-    `)
-    .eq('store_id', storeId)
+    .select('*')
     .eq('sub_category', 'staff')
+    .or(`store_id.eq.${storeId},store_id.is.null`)
     .order('name', { ascending: true })
 
   if (error) throw error
