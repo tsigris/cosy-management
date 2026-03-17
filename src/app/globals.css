@@ -36,6 +36,10 @@
 
   --border: rgba(15,23,42,0.08);
 
+  --border-color: var(--border);
+
+  --accent-blue: #3b82f6;
+
   --shadow: 0 10px 30px rgba(15,23,42,0.08);
 
   --bg-grad:
@@ -60,6 +64,10 @@ html[data-theme="dark"] {
   --muted: #94a3b8;
 
   --border: rgba(148,163,184,0.18);
+
+  --border-color: var(--border);
+
+  --accent-blue: #60a5fa;
 
   --shadow: 0 10px 30px rgba(0,0,0,0.45);
 
