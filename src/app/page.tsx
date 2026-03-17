@@ -1,7 +1,7 @@
 'use client'
 export const dynamic = 'force-dynamic'
 
-import { useEffect, useState, Suspense, useCallback, useMemo } from 'react'
+import { useEffect, useState, Suspense, useCallback, useMemo, useRef } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { getSupabase } from '@/lib/supabase'
 import useStoreAccess from '@/hooks/useStoreAccess'
@@ -45,10 +45,6 @@ type YtdInfo = {
   loanInstallmentsTotal?: number
 }
 
-interface Transaction {
-  [key: string]: any
-}
-
 function getPaymentMethod(tx: any): string {
   return String(tx?.payment_method ?? tx?.method ?? '').trim()
 }
@@ -78,6 +74,9 @@ function DashboardContent() {
 
   // cache YTD metrics per entity key
   const [ytdCache, setYtdCache] = useState<Record<string, YtdInfo>>({})
+  // ref-based guard: tracks keys that have been started (loading or loaded) so loadYtdForTx
+  // does not need to read ytdCache state, keeping the callback stable
+  const ytdLoadedKeys = useRef<Set<string>>(new Set())
 
   // ✅ Use shared hook for permission checking (consolidates repeated store_access queries)
   const { data: accessData } = useStoreAccess({
@@ -123,8 +122,8 @@ function DashboardContent() {
       const key = getEntityKeyFromTx(t)
       if (!key || !storeIdFromUrl) return
 
-      if (ytdCache[key]?.loading === true) return
-      if (ytdCache[key]?.loading === false) return
+      if (ytdLoadedKeys.current.has(key)) return
+      ytdLoadedKeys.current.add(key)
 
       setYtdCache((prev) => ({ ...prev, [key]: { loading: true } }))
 
@@ -230,7 +229,7 @@ function DashboardContent() {
         setYtdCache((prev) => ({ ...prev, [key]: { loading: false } }))
       }
     },
-    [storeIdFromUrl, ytdCache, yearStartStr, businessTodayStr]
+    [storeIdFromUrl, yearStartStr, businessTodayStr]
   )
 
   const loadDashboard = useCallback(async () => {
@@ -374,9 +373,10 @@ function DashboardContent() {
     }
   }, [accessData])
 
-  // Clear YTD cache when store changes to prevent stale data from previous store
+  // Clear YTD cache and ref guard when store changes to prevent stale data from previous store
   useEffect(() => {
     setYtdCache({})
+    ytdLoadedKeys.current.clear()
   }, [storeIdFromUrl])
 
   const handleDelete = async (id: string) => {
