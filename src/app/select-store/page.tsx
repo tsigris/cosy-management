@@ -183,7 +183,7 @@ function SelectStorePage() {
     const safe = Array.isArray(userStores) ? userStores : []
     const income = safe.reduce((acc, s) => acc + (Number(s?.income) || 0), 0)
     const expenses = safe.reduce((acc, s) => acc + (Number(s?.expenses) || 0), 0)
-    return { income, expenses, profit: income - expenses }
+    return { income, expenses, profit: income + expenses }
   }, [userStores])
 
   if (loading) {
