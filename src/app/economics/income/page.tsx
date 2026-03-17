@@ -184,10 +184,10 @@ export default function EconomicsIncomePage() {
   // compute KPIs: today, yesterday, month total, avg daily
   const KPIs = useMemo(() => {
     const now = new Date()
-    const todayKey = toBusinessDateNormalized(now).toISOString().slice(0, 10)
+    const todayKey = toBusinessDayDateNormalized(now).toISOString().slice(0, 10)
     const yesterday = new Date(now)
     yesterday.setDate(yesterday.getDate() - 1)
-    const yesterdayKey = toBusinessDateNormalized(yesterday).toISOString().slice(0, 10)
+    const yesterdayKey = toBusinessDayDateNormalized(yesterday).toISOString().slice(0, 10)
 
     let today = 0
     let yesterdayTotal = 0
@@ -215,10 +215,10 @@ export default function EconomicsIncomePage() {
 
   // business day keys for badges and quick lookup
   const now = new Date()
-  const todayKey = toBusinessDateNormalized(now).toISOString().slice(0, 10)
+  const todayKey = toBusinessDayDateNormalized(now).toISOString().slice(0, 10)
   const yesterdayDate = new Date(now)
   yesterdayDate.setDate(yesterdayDate.getDate() - 1)
-  const yesterdayKey = toBusinessDateNormalized(yesterdayDate).toISOString().slice(0, 10)
+  const yesterdayKey = toBusinessDayDateNormalized(yesterdayDate).toISOString().slice(0, 10)
 
   // derive cash/card breakdown for today, yesterday and current month (presentation only)
   const dayBreakdowns = useMemo(() => {
