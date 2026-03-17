@@ -27,18 +27,44 @@ export async function fetchStoresForUser(userId: string): Promise<StoreCard[]> {
     throw error
   }
 
+  const storeIds = (data ?? []).map((row: any) => String(row.id)).filter(Boolean)
+  let latestTxByStoreId: Record<string, string> = {}
+
+  if (storeIds.length > 0) {
+    const { data: txRows, error: txError } = await supabase
+      .from('transactions')
+      .select('store_id, created_at')
+      .in('store_id', storeIds)
+      .not('created_at', 'is', null)
+      .order('created_at', { ascending: false })
+
+    if (txError) {
+      console.error('fetchStoresForUser latest transactions error:', txError)
+    } else {
+      latestTxByStoreId = (txRows ?? []).reduce((acc: Record<string, string>, tx: any) => {
+        const storeId = String(tx?.store_id || '')
+        const createdAt = tx?.created_at ? String(tx.created_at) : ''
+        if (!storeId || !createdAt || acc[storeId]) return acc
+        acc[storeId] = createdAt
+        return acc
+      }, {})
+    }
+  }
+
   return (data ?? []).map((row: any) => {
     const income = Number(row.income) || 0
     const expenses = Number(row.expenses) || 0
+    const storeId = String(row.id)
+    const lastUpdated = latestTxByStoreId[storeId] ?? (row.last_updated ? String(row.last_updated) : null)
 
     return {
-      id: String(row.id),
+      id: storeId,
       name: String(row.name || ''),
       income,
       expenses,
       // Expenses are stored as negative values, so net is income + expenses.
       profit: income + expenses,
-      lastUpdated: row.last_updated ?? null,
+      lastUpdated,
     }
   })
 }
