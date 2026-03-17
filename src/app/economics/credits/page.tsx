@@ -565,7 +565,7 @@ function CreditsContent() {
       }
 
       if (creditsView === 'method') {
-        const m = String(t?.method ?? t?.payment_method ?? 'Χωρίς Μέθοδο').trim() || 'Χωρίς Μέθοδο'
+        const m = getPaymentMethodFromTx(t) || 'Χωρίς Μέθοδο'
         add(
           m,
           {
@@ -786,10 +786,10 @@ function CreditsContent() {
                             <Hash size={12} />
                             <span style={infoText}>{note}</span>
                           </div>
-                          {String(t?.method ?? t?.payment_method ?? '').trim() && (
+                          {getPaymentMethodFromTx(t) && (
                             <div style={infoRow}>
                               <CreditCard size={12} />
-                              <span style={infoText}>{String(t?.method ?? t?.payment_method ?? '').toUpperCase()}</span>
+                              <span style={infoText}>{getPaymentMethodFromTx(t).toUpperCase()}</span>
                             </div>
                           )}
                         </div>
@@ -906,7 +906,7 @@ function CreditsContent() {
                               String(t?.notes || t?.description || '').trim() ||
                               String(t?.category || t?.type || '').trim() ||
                               'Πίστωση'
-                            const method = String(t?.method ?? t?.payment_method ?? '').trim()
+                            const method = getPaymentMethodFromTx(t)
 
                             return (
                               <div key={t.id} style={txRow}>
