@@ -206,10 +206,9 @@ function CreditsContent() {
       }
 
       const sub = normalize(entity.sub_category)
-      const cat = normalize(entity.category)
 
-      const isMaintenance = sub === 'maintenance' || cat === 'maintenance'
-      const isUtility = sub === 'utility' || cat === 'utility'
+      const isMaintenance = sub === 'maintenance'
+      const isUtility = sub === 'utility'
 
       if (isMaintenance) return { text: 'ΣΥΝΤΗΡΗΣΗ', bg: '#fef3c7', color: '#b45309' }
       if (isUtility) return { text: 'ΛΟΓΑΡΙΑΣΜΟΣ', bg: '#f1f5f9', color: colors.secondaryText }
@@ -228,7 +227,7 @@ function CreditsContent() {
       setLoadingTx(true)
 
       const transactionSelect =
-        'id, store_id, created_at, date, type, amount, category, method, notes, description, is_credit, supplier_id, fixed_asset_id, revenue_source_id'
+        'id, store_id, created_at, date, type, amount, category, method, notes, is_credit, supplier_id, fixed_asset_id, revenue_source_id'
 
       console.log('RUNNING QUERY: transactions', { select: transactionSelect })
       let q = supabase
@@ -353,7 +352,6 @@ function CreditsContent() {
             name: String((a as any).name || ''),
             entityType: 'asset',
             sub_category: (a as any).sub_category ?? null,
-            category: (a as any).category ?? null,
           }
         }
       } else {
@@ -760,7 +758,7 @@ function CreditsContent() {
                 const d = getTxDate(t)
                 const ent = getTxEntityTitle(t)
                 const note =
-                  String(t?.notes || t?.description || '').trim() ||
+                  String(t?.notes || '').trim() ||
                   String(t?.category || t?.type || '').trim() ||
                   (isIncome ? 'Απαίτηση' : 'Οφειλή')
 
@@ -911,7 +909,7 @@ function CreditsContent() {
                           {g.txs.slice(0, 12).map((t) => {
                             const d = getTxDate(t)
                             const note =
-                              String(t?.notes || t?.description || '').trim() ||
+                              String(t?.notes || '').trim() ||
                               String(t?.category || t?.type || '').trim() ||
                               'Πίστωση'
                             const method = getPaymentMethodFromTx(t)
