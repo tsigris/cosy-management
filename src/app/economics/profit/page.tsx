@@ -69,7 +69,7 @@ function ProfitContent() {
 	const load = useCallback(async () => {
 		if (!storeIdFromUrl || !hasValidStore) return
 
-		const transactionSelect = 'id, store_id, date, created_at, type, amount, is_deleted'
+		const transactionSelect = 'id, store_id, date, created_at, type, amount'
 
 		try {
 			setLoading(true)
