@@ -1,68 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
+import { getAdminClient, getCallerFromHeader, assertAdminAccess } from '../_shared/auth'
 
 export const runtime = 'nodejs'
 
 type RemoveUserBody = {
   storeId?: string
   userId?: string
-}
-
-function getSupabaseUrl() {
-  return process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL
-}
-
-function getServiceRoleKey() {
-  return process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SERVICE_ROLE_KEY
-}
-
-function getAnonKey() {
-  return process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-}
-
-async function getCallerFromHeader(request: NextRequest) {
-  const url = getSupabaseUrl()
-  const anon = getAnonKey()
-
-  if (!url || !anon) {
-    throw new Error('Missing Supabase public env vars on server')
-  }
-
-  const token = request.headers.get('x-supabase-auth')?.trim() || ''
-  if (!token) return null
-
-  const callerClient = createClient(url, anon, {
-    auth: {
-      persistSession: false,
-      autoRefreshToken: false,
-      detectSessionInUrl: false,
-    },
-  })
-
-  const {
-    data: { user },
-    error,
-  } = await callerClient.auth.getUser(token)
-
-  if (error || !user) return null
-  return user
-}
-
-function getAdminClient() {
-  const url = getSupabaseUrl()
-  const serviceRoleKey = getServiceRoleKey()
-
-  if (!url || !serviceRoleKey) {
-    throw new Error('Missing SUPABASE_URL/NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY')
-  }
-
-  return createClient(url, serviceRoleKey, {
-    auth: {
-      persistSession: false,
-      autoRefreshToken: false,
-      detectSessionInUrl: false,
-    },
-  })
 }
 
 export async function POST(request: NextRequest) {
@@ -87,22 +30,8 @@ export async function POST(request: NextRequest) {
 
     const adminClient = getAdminClient()
 
-    const { data: adminAccess, error: adminAccessError } = await adminClient
-      .from('store_access')
-      .select('store_id')
-      .eq('user_id', caller.id)
-      .eq('store_id', storeId)
-      .eq('role', 'admin')
-      .limit(1)
-      .maybeSingle()
-
-    if (adminAccessError) {
-      throw adminAccessError
-    }
-
-    if (!adminAccess) {
-      return NextResponse.json({ ok: false, error: 'Δεν έχετε δικαιώματα admin για αυτό το κατάστημα.' }, { status: 403 })
-    }
+    const accessDenied = await assertAdminAccess(adminClient, caller.id, storeId)
+    if (accessDenied) return accessDenied
 
     if (caller.id === userId) {
       return NextResponse.json({ ok: false, error: 'Δεν μπορείτε να αφαιρέσετε τον εαυτό σας.' }, { status: 403 })

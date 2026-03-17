@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient, type SupabaseClient } from '@supabase/supabase-js'
+import type { SupabaseClient } from '@supabase/supabase-js'
+import { getAdminClient, getCallerFromHeader, assertAdminAccess, mapErrorMessage } from '../_shared/auth'
 
 export const runtime = 'nodejs'
 
@@ -10,17 +11,6 @@ type CreateUserBody = {
   storeId?: string
 }
 
-function getSupabaseUrl() {
-  return process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL
-}
-
-function getServiceRoleKey() {
-  return process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SERVICE_ROLE_KEY
-}
-
-function getAnonKey() {
-  return process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-}
 
 function randomPassword(length = 20) {
   const charset = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%^&*()_-+='
@@ -32,73 +22,6 @@ function isEmail(value: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
 }
 
-function mapErrorMessage(error: unknown) {
-  const message = error instanceof Error ? error.message : String(error || 'Unknown error')
-  const lower = message.toLowerCase()
-
-  if (lower.includes('invalid login credentials') || lower.includes('jwt') || lower.includes('auth session missing')) {
-    return { status: 401, message: 'Δεν υπάρχει ενεργή σύνδεση.' }
-  }
-
-  if (lower.includes('forbidden') || lower.includes('not allowed') || lower.includes('permission denied')) {
-    return { status: 403, message: 'Δεν έχετε δικαιώματα admin για αυτό το κατάστημα.' }
-  }
-
-  if (lower.includes('duplicate') || lower.includes('already exists') || lower.includes('unique constraint')) {
-    return { status: 409, message: 'Ο χρήστης υπάρχει ήδη στο κατάστημα.' }
-  }
-
-  if (lower.includes('invalid') && lower.includes('email')) {
-    return { status: 400, message: 'Μη έγκυρο email.' }
-  }
-
-  return { status: 500, message: 'Αποτυχία δημιουργίας χρήστη.' }
-}
-
-async function getCallerFromHeader(request: NextRequest) {
-  const url = getSupabaseUrl()
-  const anon = getAnonKey()
-
-  if (!url || !anon) {
-    throw new Error('Missing Supabase public env vars on server')
-  }
-
-  const token = request.headers.get('x-supabase-auth')?.trim() || ''
-  if (!token) return null
-
-  const callerClient = createClient(url, anon, {
-    auth: {
-      persistSession: false,
-      autoRefreshToken: false,
-      detectSessionInUrl: false,
-    },
-  })
-
-  const {
-    data: { user },
-    error,
-  } = await callerClient.auth.getUser(token)
-
-  if (error || !user) return null
-  return user
-}
-
-function getAdminClient() {
-  const url = getSupabaseUrl()
-  const serviceRoleKey = getServiceRoleKey()
-
-  if (!url || !serviceRoleKey) {
-    throw new Error('Missing SUPABASE_URL/NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY')
-  }
-
-  return createClient(url, serviceRoleKey, {
-    auth: {
-      persistSession: false,
-      autoRefreshToken: false,
-      detectSessionInUrl: false,
-    },
-  })
-}
 
 async function findUserByEmail(adminClient: SupabaseClient, email: string) {
   const normalizedEmail = email.toLowerCase()
@@ -146,18 +69,8 @@ export async function POST(request: NextRequest) {
 
     const adminClient = getAdminClient()
 
-    const { data: callerAccess, error: callerAccessError } = await adminClient
-      .from('store_access')
-      .select('role')
-      .eq('user_id', caller.id)
-      .eq('store_id', storeId)
-      .maybeSingle()
-
-    if (callerAccessError) throw callerAccessError
-
-    if (!callerAccess || callerAccess.role !== 'admin') {
-      return NextResponse.json({ ok: false, error: 'Δεν έχετε δικαιώματα admin για αυτό το κατάστημα.' }, { status: 403 })
-    }
+    const accessDenied = await assertAdminAccess(adminClient, caller.id, storeId)
+    if (accessDenied) return accessDenied
 
     let userId = ''
     let existingUser = await findUserByEmail(adminClient, email)
@@ -253,7 +166,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: true, userId, storeId })
   } catch (error) {
     console.error('admin/create-user error:', error)
-    const mapped = mapErrorMessage(error)
+    const mapped = mapErrorMessage(error, 'Αποτυχία δημιουργίας χρήστη.')
     return NextResponse.json({ ok: false, error: mapped.message }, { status: mapped.status })
   }
 }
