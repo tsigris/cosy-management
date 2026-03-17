@@ -34,7 +34,8 @@ const isValidUUID = (id: any) => {
 const moneyAbs = (n: any) => Math.abs(Number(n) || 0)
 
 const getTxDate = (t: any) => {
-  const raw = t?.date || t?.created_at
+  if (!t) return null
+  const raw = t?.date ?? t?.created_at
   if (!raw) return null
   const d = new Date(raw)
   return isNaN(d.getTime()) ? null : d
@@ -49,11 +50,12 @@ function groupBy(rows: any[], keyFn: (r: any) => string | null) {
   const map: Record<string, { key: string; total: number; count: number }> = {}
 
   for (const r of rows) {
+    if (!r) continue
     const k = keyFn(r) || "Άγνωστο"
 
     if (!map[k]) map[k] = { key: k, total: 0, count: 0 }
 
-    map[k].total += Number(r.amount || 0)
+    map[k].total += Number(r?.amount ?? 0)
     map[k].count += 1
   }
 
@@ -182,6 +184,7 @@ function ReportsContent() {
 
   const filteredTx = useMemo(() => {
     return transactions.filter((tx) => {
+      if (!tx) return false
       const d = getTxDate(tx)
       if (!d) return false
 
@@ -200,23 +203,23 @@ function ReportsContent() {
   const incomeTotal = useMemo(
     () =>
       filteredTx
-        .filter((t) => incomeTypes.includes(t.type))
-        .reduce((a, t) => a + Number(t.amount || 0), 0),
+        .filter((t) => incomeTypes.includes(String(t?.type || "")))
+        .reduce((a, t) => a + Number(t?.amount ?? 0), 0),
     [filteredTx]
   )
 
   const expenseTotal = useMemo(
     () =>
       filteredTx
-        .filter((t) => expenseTypes.includes(t.type))
-        .reduce((a, t) => a + Math.abs(Number(t.amount || 0)), 0),
+        .filter((t) => expenseTypes.includes(String(t?.type || "")))
+        .reduce((a, t) => a + Math.abs(Number(t?.amount ?? 0)), 0),
     [filteredTx]
   )
 
   const netTotal = incomeTotal - expenseTotal
 
   const byCategory = useMemo(
-    () => groupBy(filteredTx, (t) => String(t.category || t.type || "Άγνωστο")),
+    () => groupBy(filteredTx, (t) => String(t?.category ?? t?.type ?? "Άγνωστο")),
     [filteredTx]
   )
 
@@ -225,7 +228,7 @@ function ReportsContent() {
       groupBy(
         filteredTx,
         (t) =>
-          String((t.payment_method || t.method || "").trim() || "Άγνωστη Μέθοδος")
+          String((t?.method ?? t?.payment_method ?? "").trim() || "Άγνωστη Μέθοδος")
       ),
     [filteredTx]
   )
@@ -235,12 +238,13 @@ function ReportsContent() {
       {}
 
     for (const t of filteredTx) {
+      if (!t) continue
       const d = getTxDate(t)
       const k = d ? monthKey(d) : "Άγνωστο"
 
       if (!map[k]) map[k] = { key: k, total: 0, count: 0 }
 
-      map[k].total += Number(t.amount || 0)
+      map[k].total += Number(t?.amount ?? 0)
       map[k].count += 1
     }
 
@@ -253,11 +257,7 @@ function ReportsContent() {
     () =>
       filteredTx
         .slice()
-        .sort(
-          (a, b) =>
-            (new Date(b.date || b.created_at).getTime() || 0) -
-            (new Date(a.date || a.created_at).getTime() || 0)
-        )
+        .sort((a, b) => (getTxDate(b)?.getTime() || 0) - (getTxDate(a)?.getTime() || 0))
         .slice(0, 20),
     [filteredTx]
   )

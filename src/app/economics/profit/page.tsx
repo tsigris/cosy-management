@@ -15,7 +15,8 @@ const isValidUUID = (id: any) => {
 }
 
 function getTxDate(t: any) {
-	const raw = t?.date || t?.created_at
+	if (!t) return null
+	const raw = t?.date ?? t?.created_at
 	if (!raw) return null
 	const d = new Date(raw)
 	return isNaN(d.getTime()) ? null : d
@@ -156,6 +157,7 @@ function ProfitContent() {
 
 	const filteredTx = useMemo(() => {
 		return transactions.filter((tx) => {
+			if (!tx) return false
 			const d = getTxDate(tx)
 			if (!d) return false
 			if (period === 'all') return true
@@ -166,18 +168,25 @@ function ProfitContent() {
 		})
 	}, [transactions, period, getStartOfMonth, getStartOfYear, getLast30Days])
 
-	const totalRevenue = useMemo(() => filteredTx.filter((t) => incomeTypes.includes(t.type)).reduce((a, t) => a + Number(t.amount || 0), 0), [filteredTx])
-	const totalExpenses = useMemo(() => filteredTx.filter((t) => expenseTypes.includes(t.type)).reduce((a, t) => a + Math.abs(Number(t.amount || 0)), 0), [filteredTx])
+	const totalRevenue = useMemo(
+		() => filteredTx.filter((t) => incomeTypes.includes(String(t?.type || ''))).reduce((a, t) => a + Number(t?.amount ?? 0), 0),
+		[filteredTx],
+	)
+	const totalExpenses = useMemo(
+		() => filteredTx.filter((t) => expenseTypes.includes(String(t?.type || ''))).reduce((a, t) => a + Math.abs(Number(t?.amount ?? 0)), 0),
+		[filteredTx],
+	)
 	const totalProfit = useMemo(() => totalRevenue - totalExpenses, [totalRevenue, totalExpenses])
 
 	const byMonth = useMemo(() => {
 		const map: Record<string, { revenue: number; expenses: number }> = {}
 		for (const t of filteredTx) {
+			if (!t) continue
 			const d = getTxDate(t)
 			const k = d ? monthKeyFromDate(d) : 'unknown'
 			if (!map[k]) map[k] = { revenue: 0, expenses: 0 }
-			if (incomeTypes.includes(t.type)) map[k].revenue += Number(t.amount || 0)
-			if (expenseTypes.includes(t.type)) map[k].expenses += Math.abs(Number(t.amount || 0))
+			if (incomeTypes.includes(String(t?.type || ''))) map[k].revenue += Number(t?.amount ?? 0)
+			if (expenseTypes.includes(String(t?.type || ''))) map[k].expenses += Math.abs(Number(t?.amount ?? 0))
 		}
 		const rows = Object.entries(map).map(([key, v]) => ({ month: key, revenue: v.revenue, expenses: v.expenses, profit: v.revenue - v.expenses }))
 		return rows.sort((a, b) => String(b.month).localeCompare(String(a.month)))

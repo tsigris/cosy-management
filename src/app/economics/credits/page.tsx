@@ -148,7 +148,8 @@ function CreditsContent() {
   // DATE + YEAR HELPERS
   // -----------------------------
   const getTxDate = (t: Tx) => {
-    const raw = t?.created_at || t?.date
+    if (!t) return null
+    const raw = t?.date ?? t?.created_at
     if (!raw) return null
     const d = new Date(raw)
     return !isNaN(d.getTime()) ? d : null
@@ -360,6 +361,7 @@ function CreditsContent() {
   const creditTxs = useMemo(() => {
     const isIncome = viewMode === 'income'
     return allTx
+      .filter((t) => !!t)
       .filter((t) => isCreditLike(t))
       .filter((t) => {
         const d = getTxDate(t)
@@ -376,8 +378,8 @@ function CreditsContent() {
         return true
       })
       .filter((t) => {
-        if (isIncome) return !!t.revenue_source_id
-        return !!t.supplier_id || !!t.fixed_asset_id
+        if (isIncome) return !!t?.revenue_source_id
+        return !!t?.supplier_id || !!t?.fixed_asset_id
       })
       .sort((a, b) => (getTxDate(b)?.getTime() || 0) - (getTxDate(a)?.getTime() || 0))
   }, [allTx, viewMode, selectedYear, period])
@@ -391,6 +393,7 @@ function CreditsContent() {
     const isIncome = viewMode === 'income'
 
     for (const t of allTx) {
+      if (!t) continue
       if (!isCreditLike(t)) continue
 
       const relevantForTab = isIncome ? !!t?.revenue_source_id : !!t?.supplier_id || !!t?.fixed_asset_id
@@ -417,6 +420,7 @@ function CreditsContent() {
   // HELPERS: entity key/title per tx
   // -----------------------------
   const getTxEntityKey = (t: Tx): string | null => {
+    if (!t) return null
     if (viewMode === 'income') return t.revenue_source_id ? String(t.revenue_source_id) : null
     if (t.supplier_id) return String(t.supplier_id)
     if (t.fixed_asset_id) return String(t.fixed_asset_id)
@@ -429,7 +433,7 @@ function CreditsContent() {
 
     if (viewMode === 'income') {
       return {
-        title: String(ent?.name || t.category || t.type || 'ΠΗΓΗ ΕΣΟΔΟΥ'),
+        title: String(ent?.name || t?.category || t?.type || 'ΠΗΓΗ ΕΣΟΔΟΥ'),
         subtitle: 'Πηγή εσόδου',
         badge: { text: 'ΑΠΑΙΤΗΣΗ', bg: '#ecfdf5', color: '#065f46' },
       }
@@ -437,7 +441,7 @@ function CreditsContent() {
 
     const badge = getEntityBadge(ent || undefined)
     return {
-      title: String(ent?.name || t.category || t.type || ''),
+      title: String(ent?.name || t?.category || t?.type || ''),
       subtitle: ent?.entityType === 'supplier' ? 'Προμηθευτής' : 'Πάγιο',
       badge,
     }
@@ -451,7 +455,7 @@ function CreditsContent() {
 
     const add = (key: string, base: Omit<GroupItem, 'count' | 'total' | 'txs'>, tx: Tx) => {
       const prev = map.get(key)
-      const amt = moneyAbs(tx.amount)
+      const amt = moneyAbs(tx?.amount)
       if (!prev) {
         map.set(key, {
           key,
@@ -511,7 +515,7 @@ function CreditsContent() {
       }
 
       if (creditsView === 'method') {
-        const m = String(t.method || 'Χωρίς Μέθοδο').trim() || 'Χωρίς Μέθοδο'
+        const m = String(t?.method ?? t?.payment_method ?? 'Χωρίς Μέθοδο').trim() || 'Χωρίς Μέθοδο'
         add(
           m,
           {
@@ -698,8 +702,8 @@ function CreditsContent() {
                 const d = getTxDate(t)
                 const ent = getTxEntityTitle(t)
                 const note =
-                  String(t.notes || t.description || '').trim() ||
-                  String(t.category || t.type || '').trim() ||
+                  String(t?.notes || t?.description || '').trim() ||
+                  String(t?.category || t?.type || '').trim() ||
                   (isIncome ? 'Απαίτηση' : 'Οφειλή')
 
                 return (
@@ -732,10 +736,10 @@ function CreditsContent() {
                             <Hash size={12} />
                             <span style={infoText}>{note}</span>
                           </div>
-                          {t.method && (
+                          {String(t?.method ?? t?.payment_method ?? '').trim() && (
                             <div style={infoRow}>
                               <CreditCard size={12} />
-                              <span style={infoText}>{String(t.method).toUpperCase()}</span>
+                              <span style={infoText}>{String(t?.method ?? t?.payment_method ?? '').toUpperCase()}</span>
                             </div>
                           )}
                         </div>
@@ -849,10 +853,10 @@ function CreditsContent() {
                           {g.txs.slice(0, 12).map((t) => {
                             const d = getTxDate(t)
                             const note =
-                              String(t.notes || t.description || '').trim() ||
-                              String(t.category || t.type || '').trim() ||
+                              String(t?.notes || t?.description || '').trim() ||
+                              String(t?.category || t?.type || '').trim() ||
                               'Πίστωση'
-                            const method = String(t.method || '').trim()
+                            const method = String(t?.method ?? t?.payment_method ?? '').trim()
 
                             return (
                               <div key={t.id} style={txRow}>

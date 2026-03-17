@@ -105,7 +105,7 @@ function BalancesContent() {
   // -----------------------------
   const getTxDate = (t: any) => {
     if (!t) return null
-    const raw = t.created_at || t.date
+    const raw = t?.date ?? t?.created_at
     const d = raw ? new Date(raw) : null
     return d && !isNaN(d.getTime()) ? d : null
   }
@@ -217,9 +217,10 @@ function BalancesContent() {
     const isIncome = mode === 'income'
 
     const entityTrans = transactions
+      .filter((t) => !!t)
       .filter((t) => {
-        if (isIncome) return t.revenue_source_id === entity.id
-        return entity.entityType === 'supplier' ? t.supplier_id === entity.id : t.fixed_asset_id === entity.id
+        if (isIncome) return t?.revenue_source_id === entity.id
+        return entity.entityType === 'supplier' ? t?.supplier_id === entity.id : t?.fixed_asset_id === entity.id
       })
       .filter((t) => isTxInYear(t, year)) // ✅ YEAR FILTER
 
@@ -231,8 +232,8 @@ function BalancesContent() {
       ? entityTrans
           .filter((t) => RECEIVED_TYPES.includes(String(t.type || '')))
           .sort((a, b) => (getTxDate(b)?.getTime() || 0) - (getTxDate(a)?.getTime() || 0))
-      : entityTrans
-          .filter((t) => String(t.type || '') === 'debt_payment')
+        : entityTrans
+          .filter((t) => String(t?.type || '') === 'debt_payment')
           .sort((a, b) => (getTxDate(b)?.getTime() || 0) - (getTxDate(a)?.getTime() || 0))
 
     const latestCreditDate = creditTxs.length ? getTxDate(creditTxs[0]) : null
@@ -242,8 +243,8 @@ function BalancesContent() {
     const latestSettlementDate = latestSettlementTx ? getTxDate(latestSettlementTx) : null
     const latestSettlementAmount = latestSettlementTx ? Math.abs(Number(latestSettlementTx.amount) || 0) : null
 
-    const totalCreditAmount = creditTxs.reduce((acc, t) => acc + Math.abs(Number(t.amount) || 0), 0)
-    const totalSettlementAmount = settlementTxs.reduce((acc, t) => acc + Math.abs(Number(t.amount) || 0), 0)
+    const totalCreditAmount = creditTxs.reduce((acc, t) => acc + Math.abs(Number(t?.amount) || 0), 0)
+    const totalSettlementAmount = settlementTxs.reduce((acc, t) => acc + Math.abs(Number(t?.amount) || 0), 0)
 
     return {
       creditTxs,
@@ -313,23 +314,23 @@ function BalancesContent() {
         const allEntities = [...suppliers, ...assets]
 
         // compute balances with YEAR FILTER
-        const txYearFiltered = transactions.filter((t) => isTxInYear(t, selectedYear))
+        const txYearFiltered = transactions.filter((t) => !!t && isTxInYear(t, selectedYear))
 
         const balanceList = allEntities
           .map((entity) => {
             const isSup = entity.entityType === 'supplier'
 
             const entityTrans = txYearFiltered.filter((t) =>
-              isSup ? t.supplier_id === entity.id : t.fixed_asset_id === entity.id,
+              isSup ? t?.supplier_id === entity.id : t?.fixed_asset_id === entity.id,
             )
 
             const totalCredit = entityTrans
               .filter((t) => t.is_credit === true)
-              .reduce((acc, t) => acc + Math.abs(Number(t.amount) || 0), 0)
+              .reduce((acc, t) => acc + Math.abs(Number(t?.amount) || 0), 0)
 
             const totalPaid = entityTrans
-              .filter((t) => String(t.type || '') === 'debt_payment')
-              .reduce((acc, t) => acc + Math.abs(Number(t.amount) || 0), 0)
+              .filter((t) => String(t?.type || '') === 'debt_payment')
+              .reduce((acc, t) => acc + Math.abs(Number(t?.amount) || 0), 0)
 
             return { ...entity, balance: totalCredit - totalPaid }
           })
@@ -345,19 +346,19 @@ function BalancesContent() {
 
       const revenueSources = (revRes.data || []).map((r) => ({ ...r, entityType: 'revenue' }))
 
-      const txYearFiltered = transactions.filter((t) => isTxInYear(t, selectedYear))
+      const txYearFiltered = transactions.filter((t) => !!t && isTxInYear(t, selectedYear))
 
       const balanceList = revenueSources
         .map((src) => {
-          const srcTrans = txYearFiltered.filter((t) => t.revenue_source_id === src.id)
+          const srcTrans = txYearFiltered.filter((t) => t?.revenue_source_id === src.id)
 
           const totalCredit = srcTrans
             .filter((t) => t.is_credit === true)
-            .reduce((acc, t) => acc + Math.abs(Number(t.amount) || 0), 0)
+            .reduce((acc, t) => acc + Math.abs(Number(t?.amount) || 0), 0)
 
           const totalReceived = srcTrans
-            .filter((t) => RECEIVED_TYPES.includes(String(t.type || '')))
-            .reduce((acc, t) => acc + Math.abs(Number(t.amount) || 0), 0)
+            .filter((t) => RECEIVED_TYPES.includes(String(t?.type || '')))
+            .reduce((acc, t) => acc + Math.abs(Number(t?.amount) || 0), 0)
 
           return { ...src, balance: totalCredit - totalReceived }
         })
@@ -640,8 +641,8 @@ function BalancesContent() {
                             {history.creditTxs.slice(0, 12).map((t: any) => {
                               const d = getTxDate(t)
                               const note =
-                                String(t.notes || t.description || '').trim() ||
-                                String(t.category || t.type || '').trim() ||
+                                String(t?.notes || t?.description || '').trim() ||
+                                String(t?.category || t?.type || '').trim() ||
                                 (viewMode === 'income' ? 'Απαίτηση' : 'Χρέωση')
 
                               return (
@@ -655,7 +656,7 @@ function BalancesContent() {
                                       {note}
                                     </div>
                                   </div>
-                                  <div style={txAmount}>{Math.abs(Number(t.amount) || 0).toFixed(2)}€</div>
+                                  <div style={txAmount}>{Math.abs(Number(t?.amount) || 0).toFixed(2)}€</div>
                                 </div>
                               )
                             })}
@@ -675,8 +676,8 @@ function BalancesContent() {
                             {history.settlementTxs.slice(0, 10).map((t: any) => {
                               const d = getTxDate(t)
                               const note =
-                                String(t.notes || t.description || '').trim() ||
-                                String(t.type || '').trim() ||
+                                String(t?.notes || t?.description || '').trim() ||
+                                String(t?.type || '').trim() ||
                                 (viewMode === 'income' ? 'Είσπραξη' : 'Εξόφληση')
 
                               return (
@@ -691,7 +692,7 @@ function BalancesContent() {
                                     </div>
                                   </div>
                                   <div style={{ ...txAmount, color: colors.accentGreen }}>
-                                    {Math.abs(Number(t.amount) || 0).toFixed(2)}€
+                                    {Math.abs(Number(t?.amount) || 0).toFixed(2)}€
                                   </div>
                                 </div>
                               )
