@@ -276,6 +276,8 @@ function BalancesContent() {
           'id, created_at, date, type, amount, category, notes, description, is_credit, supplier_id, fixed_asset_id, revenue_source_id',
         )
         .eq('store_id', storeIdFromUrl)
+        .gte('date', `${selectedYear}-01-01`)
+        .lte('date', `${selectedYear}-12-31`)
       if (transRes.error) throw transRes.error
       const transactions = transRes.data || []
       setAllTransactions(transactions)

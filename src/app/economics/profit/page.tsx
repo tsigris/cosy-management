@@ -70,10 +70,37 @@ function ProfitContent() {
 
 		try {
 			setLoading(true)
-			const transRes = await supabase
+
+			let q = supabase
 				.from('transactions')
 				.select('id, date, created_at, type, amount, is_deleted')
 				.eq('store_id', storeIdFromUrl)
+
+			if (period !== 'all') {
+				const toDateKey = (d: Date) => {
+					const y = d.getFullYear()
+					const m = String(d.getMonth() + 1).padStart(2, '0')
+					const day = String(d.getDate()).padStart(2, '0')
+					return `${y}-${m}-${day}`
+				}
+
+				let fromDate = '1970-01-01'
+				if (period === 'month') {
+					const now = new Date()
+					fromDate = toDateKey(new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0))
+				} else if (period === 'year') {
+					fromDate = toDateKey(new Date(selectedYear, 0, 1, 0, 0, 0, 0))
+				} else if (period === '30days') {
+					const d = new Date()
+					d.setDate(d.getDate() - 30)
+					d.setHours(0, 0, 0, 0)
+					fromDate = toDateKey(d)
+				}
+
+				q = q.gte('date', fromDate).lte('date', '9999-12-31')
+			}
+
+			const transRes = await q
 			if (transRes.error) throw transRes.error
 			const txs = (transRes.data || []).filter((t: any) => t.is_deleted !== true)
 			setTransactions(txs)
@@ -84,7 +111,7 @@ function ProfitContent() {
 		} finally {
 			setLoading(false)
 		}
-	}, [storeIdFromUrl, hasValidStore, supabase])
+	}, [storeIdFromUrl, hasValidStore, supabase, period, selectedYear])
 
 	useEffect(() => {
 		if (!hasValidStore) return

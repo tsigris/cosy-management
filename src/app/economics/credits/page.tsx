@@ -225,12 +225,40 @@ function CreditsContent() {
 
     try {
       setLoadingTx(true)
-      const transRes = await supabase
+      let q = supabase
         .from('transactions')
         .select(
           'id, created_at, date, type, amount, category, method, payment_method, notes, description, is_credit, supplier_id, fixed_asset_id, revenue_source_id',
         )
         .eq('store_id', storeIdFromUrl)
+
+      if (period !== 'all') {
+        const toDateKey = (d: Date) => {
+          const y = d.getFullYear()
+          const m = String(d.getMonth() + 1).padStart(2, '0')
+          const day = String(d.getDate()).padStart(2, '0')
+          return `${y}-${m}-${day}`
+        }
+
+        let fromDate = '1970-01-01'
+        let toDate = '9999-12-31'
+        if (period === 'month') {
+          const now = new Date()
+          fromDate = toDateKey(new Date(now.getFullYear(), now.getMonth(), 1))
+        } else if (period === 'year') {
+          fromDate = `${selectedYear}-01-01`
+          toDate = `${selectedYear}-12-31`
+        } else if (period === '30days') {
+          const d = new Date()
+          d.setDate(d.getDate() - 30)
+          d.setHours(0, 0, 0, 0)
+          fromDate = toDateKey(d)
+        }
+
+        q = q.gte('date', fromDate).lte('date', toDate)
+      }
+
+      const transRes = await q
       if (transRes.error) {
         console.error('Transactions query error', transRes.error)
         throw transRes.error
@@ -243,7 +271,7 @@ function CreditsContent() {
     } finally {
       setLoadingTx(false)
     }
-  }, [storeIdFromUrl, supabase])
+  }, [storeIdFromUrl, supabase, period, selectedYear])
 
   const fetchEntities = useCallback(async () => {
     if (!storeIdFromUrl || !isValidUUID(storeIdFromUrl)) return
