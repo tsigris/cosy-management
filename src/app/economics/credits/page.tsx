@@ -1,7 +1,7 @@
 'use client'
 export const dynamic = 'force-dynamic'
 
-import { useEffect, useMemo, useState, Suspense, useCallback } from 'react'
+import { useEffect, useMemo, useState, Suspense, useCallback, useRef } from 'react'
 import { getSupabase } from '@/lib/supabase'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
@@ -128,6 +128,8 @@ function CreditsContent() {
   const [loadingTx, setLoadingTx] = useState(true)
   const [loadingEntities, setLoadingEntities] = useState(true)
   const isLoading = loadingTx || loadingEntities
+  const txRequestRef = useRef(0)
+  const entitiesRequestRef = useRef(0)
 
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [selectedKey, setSelectedKey] = useState<string>('all')
@@ -222,9 +224,12 @@ function CreditsContent() {
   // -----------------------------
   const fetchTransactions = useCallback(async () => {
     if (!storeIdFromUrl || !isValidUUID(storeIdFromUrl)) return
+    const requestId = ++txRequestRef.current
 
     try {
-      setLoadingTx(true)
+      if (requestId === txRequestRef.current) {
+        setLoadingTx(true)
+      }
 
       const transactionSelect =
         'id, store_id, created_at, date, type, amount, category, method, notes, is_credit, supplier_id, fixed_asset_id, revenue_source_id'
@@ -280,21 +285,28 @@ function CreditsContent() {
         })
         throw transRes.error
       }
+      if (requestId !== txRequestRef.current) return
       const transactions: Tx[] = (transRes.data || []) as any
       setAllTx(transactions)
     } catch (e: any) {
+      if (requestId !== txRequestRef.current) return
       console.error(e)
       toast.error('Σφάλμα φόρτωσης δεδομένων Πιστώσεων')
     } finally {
-      setLoadingTx(false)
+      if (requestId === txRequestRef.current) {
+        setLoadingTx(false)
+      }
     }
   }, [storeIdFromUrl, supabase, period, selectedYear])
 
   const fetchEntities = useCallback(async () => {
     if (!storeIdFromUrl || !isValidUUID(storeIdFromUrl)) return
+    const requestId = ++entitiesRequestRef.current
 
     try {
-      setLoadingEntities(true)
+      if (requestId === entitiesRequestRef.current) {
+        setLoadingEntities(true)
+      }
       const map: Record<string, EntityInfo> = {}
 
       if (viewMode === 'expenses') {
@@ -381,8 +393,10 @@ function CreditsContent() {
         }
       }
 
+      if (requestId !== entitiesRequestRef.current) return
       setEntities(map)
     } catch (e: any) {
+      if (requestId !== entitiesRequestRef.current) return
       console.error('Credits entities load failed', {
         message: e?.message,
         details: e?.details,
@@ -391,7 +405,9 @@ function CreditsContent() {
       })
       toast.error('Σφάλμα φόρτωσης δεδομένων Πιστώσεων')
     } finally {
-      setLoadingEntities(false)
+      if (requestId === entitiesRequestRef.current) {
+        setLoadingEntities(false)
+      }
     }
   }, [storeIdFromUrl, supabase, viewMode])
 
