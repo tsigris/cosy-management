@@ -1,13 +1,15 @@
 'use client'
 
-import { ReactNode, useEffect, useState } from 'react'
-import { getSupabase } from '@/lib/supabase'
+import { ReactNode } from 'react'
 import { PermissionCheckProps } from '@/lib/clientPermissions'
+import useStoreAccess from '@/hooks/useStoreAccess'
 
 /**
  * ✅ PermissionGuard component
  * Checks if current user is admin for the given store
- * Consolidates store_access lookup logic (no behavior changes)
+ * 
+ * Now uses shared useStoreAccess hook to consolidate repeated
+ * store_access queries across the application
  */
 type PermissionGuardProps = {
   storeId: string | null
@@ -15,59 +17,14 @@ type PermissionGuardProps = {
 }
 
 export default function PermissionGuard({ storeId, children }: PermissionGuardProps) {
-  const supabase = getSupabase()
-  const [isLoading, setIsLoading] = useState(true)
-  const [isAdmin, setIsAdmin] = useState(false)
+  // Use shared hook for store_access queries
+  const { data, loading: isLoading } = useStoreAccess({
+    storeId: storeId || undefined,
+    fields: 'role',
+    autoFetch: !!storeId,
+  })
 
-  useEffect(() => {
-    let isCancelled = false
-
-    async function checkAdminPermission() {
-      if (!storeId) {
-        if (!isCancelled) {
-          setIsAdmin(false)
-          setIsLoading(false)
-        }
-        return
-      }
-
-      try {
-        setIsLoading(true)
-
-        const {
-          data: { user },
-        } = await supabase.auth.getUser()
-
-        if (!user) {
-          if (!isCancelled) setIsAdmin(false)
-          return
-        }
-
-        const { data, error } = await supabase
-          .from('store_access')
-          .select('role')
-          .eq('store_id', storeId)
-          .eq('user_id', user.id)
-          .maybeSingle()
-
-        if (error) throw error
-
-        if (!isCancelled) {
-          setIsAdmin(data?.role === 'admin')
-        }
-      } catch {
-        if (!isCancelled) setIsAdmin(false)
-      } finally {
-        if (!isCancelled) setIsLoading(false)
-      }
-    }
-
-    checkAdminPermission()
-
-    return () => {
-      isCancelled = true
-    }
-  }, [storeId])
+  const isAdmin = data?.role === 'admin'
 
   return <>{children({ isAdmin, isLoading })}</>
 }

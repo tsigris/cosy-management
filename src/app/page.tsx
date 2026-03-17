@@ -4,6 +4,7 @@ export const dynamic = 'force-dynamic'
 import { useEffect, useState, Suspense, useCallback, useMemo } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { getSupabase } from '@/lib/supabase'
+import useStoreAccess from '@/hooks/useStoreAccess'
 import { getBusinessDate } from '@/lib/businessDate'
 import { formatAmount } from '@/lib/formatters'
 import NotificationsBell from '@/components/NotificationsBell'
@@ -77,6 +78,13 @@ function DashboardContent() {
 
   // cache YTD metrics per entity key
   const [ytdCache, setYtdCache] = useState<Record<string, YtdInfo>>({})
+
+  // ✅ Use shared hook for permission checking (consolidates repeated store_access queries)
+  const { data: accessData } = useStoreAccess({
+    storeId: storeIdFromUrl || undefined,
+    fields: 'role, can_view_analysis',
+    autoFetch: !!storeIdFromUrl,
+  })
 
   // ✅ YTD uses BUSINESS day
   const businessTodayStr = getBusinessDate()
@@ -347,22 +355,6 @@ function DashboardContent() {
       const map = new Map<string, any>()
       for (const row of txRows) map.set(String(row.id), row)
       setTransactions(Array.from(map.values()))
-
-      // RBAC
-      const { data: access } = await supabase
-        .from('store_access')
-        .select('role, can_view_analysis')
-        .eq('user_id', session.user.id)
-        .eq('store_id', storeIdFromUrl)
-        .maybeSingle()
-
-      if (access) {
-        setIsStoreAdmin(access.role === 'admin')
-        setCanViewAnalysis(access.role === 'admin' || access.can_view_analysis === true)
-      } else {
-        setIsStoreAdmin(false)
-        setCanViewAnalysis(false)
-      }
     } catch (err) {
       console.error('Dashboard error:', err)
       toast.error('Σφάλμα φόρτωσης Dashboard')
@@ -374,6 +366,17 @@ function DashboardContent() {
   useEffect(() => {
     loadDashboard()
   }, [loadDashboard, storeIdFromUrl])
+
+  // ✅ Update permissions from shared hook (replaces inline store_access query)
+  useEffect(() => {
+    if (accessData) {
+      setIsStoreAdmin(accessData.role === 'admin')
+      setCanViewAnalysis(accessData.role === 'admin' || accessData.can_view_analysis === true)
+    } else {
+      setIsStoreAdmin(false)
+      setCanViewAnalysis(false)
+    }
+  }, [accessData])
 
   const handleDelete = async (id: string) => {
     if (!confirm('Οριστική διαγραφή αυτής της κίνησης;')) return

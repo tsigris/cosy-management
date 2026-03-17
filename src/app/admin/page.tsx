@@ -1,40 +1,30 @@
 'use client'
 import { useEffect } from 'react'
-import { getSupabase } from '@/lib/supabase'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { toast } from 'sonner'
+import useStoreAccess from '@/hooks/useStoreAccess'
 
 function LegacyInviteRedirect() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const storeIdFromUrl = searchParams.get('store')
-  const supabase = getSupabase()
+
+  // ✅ Use shared hook to fetch first store for user (consolidates repeated query)
+  const { data: firstStore } = useStoreAccess({
+    fields: 'store_id',
+    limit: 1,
+    autoFetch: !storeIdFromUrl, // Only fetch if no storeId in URL
+  })
 
   useEffect(() => {
-    async function redirectToInvitePage() {
+    const redirect = async () => {
       if (storeIdFromUrl) {
         router.replace(`/manage-users?store=${storeIdFromUrl}`)
         return
       }
 
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
-
-      if (!user) {
-        router.replace('/login')
-        return
-      }
-
-      const { data: access } = await supabase
-        .from('store_access')
-        .select('store_id')
-        .eq('user_id', user.id)
-        .limit(1)
-        .maybeSingle()
-
-      if (access?.store_id) {
-        router.replace(`/manage-users?store=${access.store_id}`)
+      if (firstStore?.store_id) {
+        router.replace(`/manage-users?store=${firstStore.store_id}`)
         return
       }
 
@@ -42,8 +32,8 @@ function LegacyInviteRedirect() {
       router.replace('/select-store')
     }
 
-    void redirectToInvitePage()
-  }, [router, storeIdFromUrl])
+    void redirect()
+  }, [router, storeIdFromUrl, firstStore])
 
   return <div style={{ padding: '50px', textAlign: 'center' }}>Μετάβαση στη διαχείριση χρηστών...</div>
 }
