@@ -143,7 +143,23 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
   const [staffPayrollReady, setStaffPayrollReady] = useState(false)
   const [proStats, setProStats] = useState<any>(null)
   const [detailSummary, setDetailSummary] = useState<any>(null)
+  const [summaryReady, setSummaryReady] = useState(false)
+  const [zBankReady, setZBankReady] = useState(false)
+  const [proStatsReady, setProStatsReady] = useState(false)
+  const [detailSummaryReady, setDetailSummaryReady] = useState(false)
+  const [expectedOutflowsReady, setExpectedOutflowsReady] = useState(false)
   const detailSummaryRequestIdRef = useRef(0)
+  const loadDataRequestIdRef = useRef(0)
+  const summaryRequestIdRef = useRef(0)
+  const categoryBreakdownRequestIdRef = useRef(0)
+  const entitySummaryRequestIdRef = useRef(0)
+  const zBankRequestIdRef = useRef(0)
+  const staffPayrollRequestIdRef = useRef(0)
+  const proStatsRequestIdRef = useRef(0)
+  const collapsedZRequestIdRef = useRef(0)
+  const periodMovementsRequestIdRef = useRef(0)
+  const expectedOutflowsRequestIdRef = useRef(0)
+  const txSearchRequestIdRef = useRef(0)
   const [collapsedZReady, setCollapsedZReady] = useState(false)
   const [periodMovementsReady, setPeriodMovementsReady] = useState(false)
   const [zBankAmount, setZBankAmount] = useState(0)
@@ -214,15 +230,13 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
 
   const isZReport = useMemo(() => startDate === endDate, [startDate, endDate])
 
-  const norm = useCallback((v: any) => String(v ?? '').trim().toLowerCase(), [])
   const getMethod = useCallback((t: any) => getPaymentMethod(t), [])
 
   const isCreditTx = useCallback(
     (t: any) => {
-      if (t?.is_credit === true) return true
-      return norm(getMethod(t)) === 'πίστωση'
+      return t?.is_credit === true
     },
-    [getMethod, norm]
+    []
   )
 
   /* ---------------- PRINT CSS ---------------- */
@@ -389,6 +403,8 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
   /* ---------------- DATA LOAD (summary dataset) ---------------- */
 
   const loadData = useCallback(async () => {
+    const requestId = ++loadDataRequestIdRef.current
+
     if (!authChecked) {
       return
     }
@@ -446,12 +462,19 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
           .maybeSingle(),
       ])
 
+      if (requestId !== loadDataRequestIdRef.current) return
+
+      if (staffRes.error || supRes.error || revRes.error || maintRes.error || drawerRes.error) {
+        throw staffRes.error || supRes.error || revRes.error || maintRes.error || drawerRes.error
+      }
+
       setStaff(staffRes.data || [])
       setSuppliers(supRes.data || [])
       setRevenueSources(revRes.data || [])
       setMaintenanceWorkers((maintRes.data || []).filter((x: any) => String(x?.name || '').trim().length > 0))
       setDrawer(drawerRes.data || null)
     } catch (err) {
+      if (requestId !== loadDataRequestIdRef.current) return
       setStaff([])
       setSuppliers([])
       setRevenueSources([])
@@ -466,6 +489,22 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
   }, [loadData])
 
   const loadAnalysisSummary = useCallback(async () => {
+    const requestId = ++summaryRequestIdRef.current
+    setSummaryReady(false)
+    setRpcSummary({
+      income: 0,
+      expenses: 0,
+      tips: 0,
+      net_profit: 0,
+      cash_balance: 0,
+      bank_balance: 0,
+      total_balance: 0,
+      credit_outstanding: 0,
+      credit_incoming: 0,
+      savings_deposits: 0,
+      savings_withdrawals: 0,
+    })
+
     if (!authChecked || !hasSession || !storeId || storeId === 'null') {
       setRpcSummary({
         income: 0,
@@ -480,6 +519,7 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
         savings_deposits: 0,
         savings_withdrawals: 0,
       })
+      setSummaryReady(true)
       return
     }
 
@@ -494,6 +534,8 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
 
       const raw = Array.isArray(data) ? data[0] : data
       const payload = raw?.get_analysis_summary ?? raw ?? {}
+
+      if (requestId !== summaryRequestIdRef.current) return
 
       setRpcSummary({
         income: Number(payload.income || 0),
@@ -510,6 +552,7 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
       })
     } catch (err) {
       console.error('Analysis summary RPC error:', err)
+      if (requestId !== summaryRequestIdRef.current) return
       setRpcSummary({
         income: 0,
         expenses: 0,
@@ -523,6 +566,10 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
         savings_deposits: 0,
         savings_withdrawals: 0,
       })
+    } finally {
+      if (requestId === summaryRequestIdRef.current) {
+        setSummaryReady(true)
+      }
     }
   }, [storeId, startDate, endDate, supabase, authChecked, hasSession])
 
@@ -531,6 +578,7 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
   }, [loadAnalysisSummary])
 
   const loadCategoryBreakdown = useCallback(async () => {
+    const requestId = ++categoryBreakdownRequestIdRef.current
     setCategoryBreakdownReady(false)
 
     if (!authChecked || !hasSession || !storeId || storeId === 'null') {
@@ -546,6 +594,7 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
       })
       if (error) throw error
       const rows = Array.isArray(data) ? data : []
+      if (requestId !== categoryBreakdownRequestIdRef.current) return
       setCategoryBreakdownRows(
         rows.map((r: any) => ({
           category_key: String(r.category_key ?? ''),
@@ -554,9 +603,12 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
       )
     } catch (err) {
       console.error('Category breakdown RPC error:', err)
+      if (requestId !== categoryBreakdownRequestIdRef.current) return
       setCategoryBreakdownRows([])
     } finally {
-      setCategoryBreakdownReady(true)
+      if (requestId === categoryBreakdownRequestIdRef.current) {
+        setCategoryBreakdownReady(true)
+      }
     }
   }, [storeId, startDate, endDate, supabase, authChecked, hasSession])
 
@@ -565,6 +617,7 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
   }, [loadCategoryBreakdown])
 
   const loadEntitySummary = useCallback(async () => {
+    const requestId = ++entitySummaryRequestIdRef.current
     setEntitySummaryReady(false)
 
     if (!authChecked || !hasSession || !storeId || storeId === 'null') {
@@ -581,6 +634,7 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
       })
       if (error) throw error
       const rows = Array.isArray(data) ? data : []
+      if (requestId !== entitySummaryRequestIdRef.current) return
       setEntitySummaryRows(
         rows.map((r: any) => ({
           entity_id: String(r.entity_id ?? ''),
@@ -592,9 +646,12 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
       )
     } catch (err) {
       console.error('Entity summary RPC error:', err)
+      if (requestId !== entitySummaryRequestIdRef.current) return
       setEntitySummaryRows([])
     } finally {
-      setEntitySummaryReady(true)
+      if (requestId === entitySummaryRequestIdRef.current) {
+        setEntitySummaryReady(true)
+      }
     }
   }, [storeId, startDate, endDate, filterA, supabase, authChecked, hasSession])
 
@@ -603,8 +660,13 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
   }, [loadEntitySummary])
 
   const loadZBank = useCallback(async () => {
+    const requestId = ++zBankRequestIdRef.current
+    setZBankReady(false)
+    setZBankAmount(0)
+
     if (!authChecked || !hasSession || !storeId || storeId === 'null') {
       setZBankAmount(0)
+      setZBankReady(true)
       return
     }
     try {
@@ -615,10 +677,16 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
       })
       if (error) throw error
       const raw = Array.isArray(data) ? data[0] : data
+      if (requestId !== zBankRequestIdRef.current) return
       setZBankAmount(Number(raw?.total || 0))
     } catch (err) {
       console.error('Z bank RPC error:', err)
+      if (requestId !== zBankRequestIdRef.current) return
       setZBankAmount(0)
+    } finally {
+      if (requestId === zBankRequestIdRef.current) {
+        setZBankReady(true)
+      }
     }
   }, [storeId, startDate, endDate, supabase, authChecked, hasSession])
 
@@ -627,6 +695,7 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
   }, [loadZBank])
 
   const loadStaffPayroll = useCallback(async () => {
+    const requestId = ++staffPayrollRequestIdRef.current
     setStaffPayrollReady(false)
 
     if (!authChecked || !hasSession || !storeId || storeId === 'null') {
@@ -645,6 +714,7 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
       if (error) throw error
 
       const rows = Array.isArray(data) ? data : []
+      if (requestId !== staffPayrollRequestIdRef.current) return
       setStaffPayrollRows(
         rows.map((r: any) => ({
           name: String(r.name ?? ''),
@@ -653,9 +723,12 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
       )
     } catch (err) {
       console.error('Staff payroll RPC error:', err)
+      if (requestId !== staffPayrollRequestIdRef.current) return
       setStaffPayrollRows([])
     } finally {
-      setStaffPayrollReady(true)
+      if (requestId === staffPayrollRequestIdRef.current) {
+        setStaffPayrollReady(true)
+      }
     }
   }, [storeId, startDate, endDate, supabase, authChecked, hasSession])
 
@@ -664,8 +737,13 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
   }, [loadStaffPayroll])
 
   const loadProStats = useCallback(async () => {
+    const requestId = ++proStatsRequestIdRef.current
+    setProStatsReady(false)
+    setProStats(null)
+
     if (!authChecked || !hasSession || !storeId || storeId === 'null') {
       setProStats(null)
+      setProStatsReady(true)
       return
     }
     try {
@@ -676,10 +754,16 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
       })
       if (error) throw error
       const raw = Array.isArray(data) ? data[0] : data
+      if (requestId !== proStatsRequestIdRef.current) return
       setProStats(raw ?? null)
     } catch (err) {
       console.error('PRO stats RPC error:', err)
+      if (requestId !== proStatsRequestIdRef.current) return
       setProStats(null)
+    } finally {
+      if (requestId === proStatsRequestIdRef.current) {
+        setProStatsReady(true)
+      }
     }
   }, [storeId, startDate, endDate, supabase, authChecked, hasSession])
 
@@ -688,14 +772,17 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
   }, [loadProStats])
 
   const loadDetailSummary = useCallback(async () => {
+    setDetailSummaryReady(false)
     const requestId = ++detailSummaryRequestIdRef.current
 
     if (!authChecked || !hasSession || !storeId || storeId === 'null') {
       setDetailSummary(null)
+      setDetailSummaryReady(true)
       return
     }
     if (detailMode === 'none' || detailId === 'all') {
       setDetailSummary(null)
+      setDetailSummaryReady(true)
       return
     }
 
@@ -707,6 +794,7 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
       (detailMode === 'maintenance' && maintenanceWorkers.length === 0) ||
       (detailMode === 'revenue_source' && revenueSources.length === 0)
     ) {
+      setDetailSummaryReady(true)
       return
     }
 
@@ -749,10 +837,12 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
           ? (payload.creditRows ?? payload.credit_rows)
           : [],
       })
+      setDetailSummaryReady(true)
     } catch (err) {
       console.error('Detail summary RPC error:', err)
       if (requestId !== detailSummaryRequestIdRef.current) return
       setDetailSummary(null)
+      setDetailSummaryReady(true)
     }
   }, [
     storeId,
@@ -774,6 +864,7 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
   }, [loadDetailSummary])
 
   const loadCollapsedZ = useCallback(async () => {
+    const requestId = ++collapsedZRequestIdRef.current
     setCollapsedZReady(false)
 
     if (!authChecked || !hasSession || !storeId || storeId === 'null') {
@@ -792,6 +883,7 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
       if (error) throw error
 
       const rows = Array.isArray(data) ? data : []
+      if (requestId !== collapsedZRequestIdRef.current) return
       setCollapsedZRows(
         rows.map((r: any) => ({
           date: String(r.date ?? ''),
@@ -802,9 +894,12 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
       )
     } catch (err) {
       console.error('Collapsed Z RPC error:', err)
+      if (requestId !== collapsedZRequestIdRef.current) return
       setCollapsedZRows([])
     } finally {
-      setCollapsedZReady(true)
+      if (requestId === collapsedZRequestIdRef.current) {
+        setCollapsedZReady(true)
+      }
     }
   }, [storeId, startDate, endDate, supabase, authChecked, hasSession])
 
@@ -813,6 +908,7 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
   }, [loadCollapsedZ])
 
   const loadPeriodMovements = useCallback(async () => {
+    const requestId = ++periodMovementsRequestIdRef.current
     setPeriodMovementsReady(false)
 
     if (!authChecked || !hasSession || !storeId || storeId === 'null') {
@@ -831,6 +927,7 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
       if (error) throw error
 
       const rows = Array.isArray(data) ? data : []
+      if (requestId !== periodMovementsRequestIdRef.current) return
       setPeriodMovements(
         rows.map((row: any) => ({
           id: row.id,
@@ -847,9 +944,12 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
       )
     } catch (err) {
       console.error('Period movements RPC error:', err)
+      if (requestId !== periodMovementsRequestIdRef.current) return
       setPeriodMovements([])
     } finally {
-      setPeriodMovementsReady(true)
+      if (requestId === periodMovementsRequestIdRef.current) {
+        setPeriodMovementsReady(true)
+      }
     }
   }, [storeId, startDate, endDate, supabase, authChecked, hasSession])
 
@@ -858,8 +958,13 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
   }, [loadPeriodMovements])
 
   const loadExpectedOutflows = useCallback(async () => {
+    const requestId = ++expectedOutflowsRequestIdRef.current
+    setExpectedOutflowsReady(false)
+    setExpectedOutflows30d(0)
+
     if (!authChecked || !hasSession || !storeId || storeId === 'null') {
       setExpectedOutflows30d(0)
+      setExpectedOutflowsReady(true)
       return
     }
 
@@ -873,11 +978,23 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
       if (error) throw error
 
       const rows = Array.isArray(data) ? data : []
-      const total = rows.reduce((acc: number, row: any) => acc + Math.abs(Number(row.amount || 0)), 0)
+      if (requestId !== expectedOutflowsRequestIdRef.current) return
+
+      // Compatibility fallback: prefer backend total if provided; otherwise derive from rows.
+      const raw = Array.isArray(data) ? data[0] : data
+      const backendTotal = Number(raw?.total ?? raw?.expected_total ?? raw?.amount_total)
+      const total = Number.isFinite(backendTotal)
+        ? Math.abs(backendTotal)
+        : rows.reduce((acc: number, row: any) => acc + Math.abs(Number(row.amount || 0)), 0)
       setExpectedOutflows30d(total)
     } catch (err) {
       console.error('Expected outflows RPC error:', err)
+      if (requestId !== expectedOutflowsRequestIdRef.current) return
       setExpectedOutflows30d(0)
+    } finally {
+      if (requestId === expectedOutflowsRequestIdRef.current) {
+        setExpectedOutflowsReady(true)
+      }
     }
   }, [storeId, startDate, endDate, supabase, authChecked, hasSession])
 
@@ -942,6 +1059,7 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
   /* ---------------- PRO: DETAIL CARD (paid vs credit) ---------------- */
 
   const proDetailSummary = detailSummary
+  const showDetailCard = uiMode === 'pro' && detailMode !== 'none' && detailId !== 'all'
 
   const collapsedPeriodList = useMemo(() => {
     const collapsedZFromRpc = collapsedZRows.map((row) => ({
@@ -1012,7 +1130,13 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
 
   const runTxSearch = useCallback(
     async (page: number) => {
-      if (!storeId || storeId === 'null') return
+      const requestId = ++txSearchRequestIdRef.current
+      if (!storeId || storeId === 'null') {
+        setSearchResults([])
+        setSearchHasMore(false)
+        setSearchPage(0)
+        return
+      }
       setSearchLoading(true)
       try {
         const from = searchFrom
@@ -1033,6 +1157,7 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
         if (error) throw error
 
         const rows = data || []
+        if (requestId !== txSearchRequestIdRef.current) return
         const hasMore = rows.length > pageSize
         const sliced = rows.slice(0, pageSize)
 
@@ -1040,9 +1165,14 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
         setSearchHasMore(hasMore)
         setSearchPage(page)
       } catch (e) {
+        if (requestId !== txSearchRequestIdRef.current) return
+        setSearchResults([])
+        setSearchHasMore(false)
         toast.error('Σφάλμα αναζήτησης κινήσεων')
       } finally {
-        setSearchLoading(false)
+        if (requestId === txSearchRequestIdRef.current) {
+          setSearchLoading(false)
+        }
       }
     },
     [storeId, searchFrom, searchTo, pageSize, supabase]
@@ -1309,7 +1439,7 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
           >
             <div style={kpiTopRow}>
               <div style={{ ...kpiLabel, color: colors.success }}>
-                Έσοδα <span style={kpiDelta}>{fmtPct(variance.income)} vs prev</span>
+                Έσοδα <span style={kpiDelta}>{summaryReady ? `${fmtPct(variance.income)} vs prev` : 'Φόρτωση...'}</span>
               </div>
               <div style={{ ...kpiSign, color: colors.success }}>+</div>
             </div>
@@ -1331,7 +1461,7 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
           >
             <div style={kpiTopRow}>
               <div style={{ ...kpiLabel, color: colors.danger }}>
-                Έξοδα <span style={kpiDelta}>{fmtPct(variance.expenses)} vs prev</span>
+                Έξοδα <span style={kpiDelta}>{summaryReady ? `${fmtPct(variance.expenses)} vs prev` : 'Φόρτωση...'}</span>
               </div>
               <div style={{ ...kpiSign, color: colors.danger }}>-</div>
             </div>
@@ -1358,7 +1488,7 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
               <div style={{ ...kpiSign, color: '#b45309' }}>+</div>
             </div>
             <div className="print-amount-positive" style={{ ...kpiValue, color: '#b45309' }}>
-              + {moneyGR(zBankAmount)}
+              {zBankReady ? `+ ${moneyGR(zBankAmount)}` : 'Φόρτωση...'}
             </div>
             <div className="kpi-track-print-hide" style={kpiTrack}>
               <div style={{ ...kpiFill, width: '70%', background: colors.amber }} />
@@ -1377,7 +1507,7 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
             <div style={kpiTopRow}>
               <div style={{ ...kpiLabel, color: '#fff' }}>
                 {isZReport ? 'Καθαρό Ταμείο Ημέρας' : 'Καθαρό Κέρδος'}{' '}
-                <span style={{ ...kpiDelta, color: '#e5e7eb' }}>{fmtPct(variance.netProfit)} vs prev</span>
+                <span style={{ ...kpiDelta, color: '#e5e7eb' }}>{summaryReady ? `${fmtPct(variance.netProfit)} vs prev` : 'Φόρτωση...'}</span>
               </div>
               <div style={{ ...kpiSign, color: '#fff' }}>{bigKpiValue >= 0 ? '▲' : '▼'}</div>
             </div>
@@ -1385,7 +1515,7 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
               className={bigKpiValue >= 0 ? 'print-amount-positive' : 'print-amount-negative'}
               style={{ ...kpiValue, color: '#fff' }}
             >
-              {moneyGR(bigKpiValue)}
+              {summaryReady ? moneyGR(bigKpiValue) : 'Φόρτωση...'}
             </div>
             <div style={{ fontSize: 13, fontWeight: 800, opacity: 0.85, marginTop: 6 }}>
               {isZReport
@@ -1407,22 +1537,22 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
           >
             <div style={smallKpiLabel}>Κινήσεις Κουμπαρά</div>
             <div className="print-amount-positive" style={{ ...smallKpiValue, color: colors.purple }}>
-              {moneyGR(rpcSummary.savings_deposits - rpcSummary.savings_withdrawals)}
+              {summaryReady ? moneyGR(rpcSummary.savings_deposits - rpcSummary.savings_withdrawals) : 'Φόρτωση...'}
             </div>
             <div style={smallKpiHint}>
-              IN: {moneyGR(rpcSummary.savings_deposits)} • OUT: {moneyGR(rpcSummary.savings_withdrawals)}
+              {summaryReady ? `IN: ${moneyGR(rpcSummary.savings_deposits)} • OUT: ${moneyGR(rpcSummary.savings_withdrawals)}` : 'Φόρτωση...'}
             </div>
           </div>
 
           <div className="print-card" style={smallKpiCard}>
             <div style={smallKpiLabel}>Υπόλοιπο Μετρητών</div>
-            <div style={smallKpiValue}>{moneyGR(totalCashDisplay)}</div>
+            <div style={smallKpiValue}>{summaryReady ? moneyGR(totalCashDisplay) : 'Φόρτωση...'}</div>
             <div style={smallKpiHint}>{isZReport ? 'Συρτάρι ημέρας' : `As of: ${formatDateGreek(endDate)} (χωρίς Πίστωση)`}</div>
           </div>
 
           <div className="print-card" style={smallKpiCard}>
             <div style={smallKpiLabel}>Υπόλοιπο Τράπεζας</div>
-            <div style={smallKpiValue}>{moneyGR(rpcSummary.bank_balance)}</div>
+            <div style={smallKpiValue}>{summaryReady ? moneyGR(rpcSummary.bank_balance) : 'Φόρτωση...'}</div>
             <div style={smallKpiHint}>Κάρτα + Τράπεζα (χωρίς Πίστωση)</div>
           </div>
 
@@ -1436,7 +1566,7 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
           >
             <div style={smallKpiLabel}>Σύνολο Ρευστό</div>
             <div className="print-amount-positive" style={{ ...smallKpiValue, color: colors.success }}>
-              {moneyGR(rpcSummary.total_balance)}
+              {summaryReady ? moneyGR(rpcSummary.total_balance) : 'Φόρτωση...'}
             </div>
             <div style={smallKpiHint}>Cash + Bank (χωρίς Πίστωση)</div>
           </div>
@@ -1454,7 +1584,7 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
               >
                 <div style={smallKpiLabel}>Υπόλοιπο Πιστώσεων</div>
                 <div className="print-amount-negative" style={{ ...smallKpiValue, color: colors.danger }}>
-                  {moneyGR(rpcSummary.credit_outstanding)}
+                  {summaryReady ? moneyGR(rpcSummary.credit_outstanding) : 'Φόρτωση...'}
                 </div>
                 <div style={smallKpiHint}>Έξοδα σε Πίστωση (δεν μειώνουν Cash/Bank)</div>
               </div>
@@ -1469,7 +1599,7 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
               >
                 <div style={smallKpiLabel}>Expected Outflows (30d)</div>
                 <div className="print-amount-negative" style={{ ...smallKpiValue, color: colors.indigo }}>
-                  {moneyGR(expectedOutflows30d)}
+                  {expectedOutflowsReady ? moneyGR(expectedOutflows30d) : 'Φόρτωση...'}
                 </div>
                 <div style={smallKpiHint}>Μελλοντικά έξοδα (future dated). Χωρίς Πίστωση.</div>
               </div>
@@ -1566,80 +1696,88 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
         )}
 
         {/* ---------------- PRO MODE: Detail card when selecting entity ---------------- */}
-        {uiMode === 'pro' && proDetailSummary && (
+        {showDetailCard && (
           <div style={sectionCard} data-print-section="true">
-            <div style={sectionTitleRow}>
-              <div>
-                <h3 style={sectionTitle}>Καρτέλα: {proDetailSummary.name}</h3>
-                <div style={sectionSub}>
-                  Περίοδος: {rangeText} • Φίλτρο: {filterA} • Paid / Credit
-                </div>
-              </div>
-              <div style={sectionPill}>Σύνολο: {moneyGR(proDetailSummary.totalAll)}</div>
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-              <div style={smallKpiCard}>
-                <div style={smallKpiLabel}>ΠΛΗΡΩΜΕΝΑ (ΣΥΝΟΛΟ)</div>
-                <div style={{ ...smallKpiValue, color: colors.success }}>{moneyGR(proDetailSummary.paidTotal)}</div>
-                <div style={smallKpiHint}>
-                  Μετρητά: {moneyGR(proDetailSummary.paidCash)} • Τράπεζα: {moneyGR(proDetailSummary.paidBank)} • (
-                  {proDetailSummary.countPaid} κινήσεις)
-                </div>
-              </div>
-
-              <div
-                style={{
-                  ...smallKpiCard,
-                  border: '1px solid rgba(244,63,94,0.25)',
-                  background: 'linear-gradient(180deg, #fff1f2, #ffffff)',
-                }}
-              >
-                <div style={smallKpiLabel}>ΥΠΟΛΟΙΠΟ ΠΙΣΤΩΣΗΣ</div>
-                <div style={{ ...smallKpiValue, color: colors.danger }}>{moneyGR(proDetailSummary.creditTotal)}</div>
-                <div style={smallKpiHint}>({proDetailSummary.countCredit} κινήσεις σε πίστωση)</div>
-              </div>
-            </div>
-
-            <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 10 }} className="print-table-wrap">
-              {proDetailSummary.creditRows.length === 0 ? (
-                <div style={hintBox}>Δεν υπάρχουν κινήσεις σε πίστωση για την περίοδο.</div>
-              ) : (
-                <>
-                  <div style={hintBox}>
-                    <b>Πίστωση:</b> {proDetailSummary.creditRows.length} κινήσεις (δείχνω τις 10 πιο πρόσφατες)
-                  </div>
-                  <div className="print-table-head">
-                    <div>Ημερομηνία</div>
-                    <div>Περιγραφή</div>
-                    <div style={{ textAlign: 'right' }}>Ποσό</div>
-                  </div>
-                  {proDetailSummary.creditRows.slice(0, 10).map((t: any) => (
-                    <div key={`cr-${t.id}`} style={listRow}>
-                      <div className="print-row-compact">
-                        <div className="print-row-date">{formatDateGreek(t.date)}</div>
-                        <div className="print-row-notes">{String(t.notes || t.category || '').trim() || '—'}</div>
-                        <div className="print-row-amount print-amount-negative">
-                          {moneyGR(Math.abs(Number(t.amount) || 0))}
-                        </div>
-                      </div>
-                      <div className="screen-row" style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
-                        <div style={{ minWidth: 0 }}>
-                          <div style={{ fontSize: 13, fontWeight: 950, color: colors.primary }}>{formatDateGreek(t.date)}</div>
-                          <div style={{ fontSize: 12, fontWeight: 850, color: colors.secondary, marginTop: 4 }}>
-                            {String(t.notes || t.category || '').trim() || '—'}
-                          </div>
-                          <div style={{ marginTop: 6, fontSize: 12, fontWeight: 900, color: colors.danger }}>⚠️ ΠΙΣΤΩΣΗ</div>
-                        </div>
-                        <div style={{ fontSize: 14, fontWeight: 950, color: colors.danger, whiteSpace: 'nowrap' }}>
-                          {moneyGR(Math.abs(Number(t.amount) || 0))}
-                        </div>
-                      </div>
+            {!detailSummaryReady ? (
+              <div style={hintBox}>Φόρτωση...</div>
+            ) : !proDetailSummary ? (
+              <div style={hintBox}>Δεν υπάρχουν δεδομένα για τη συγκεκριμένη επιλογή.</div>
+            ) : (
+              <>
+                <div style={sectionTitleRow}>
+                  <div>
+                    <h3 style={sectionTitle}>Καρτέλα: {proDetailSummary.name}</h3>
+                    <div style={sectionSub}>
+                      Περίοδος: {rangeText} • Φίλτρο: {filterA} • Paid / Credit
                     </div>
-                  ))}
-                </>
-              )}
-            </div>
+                  </div>
+                  <div style={sectionPill}>Σύνολο: {moneyGR(proDetailSummary.totalAll)}</div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <div style={smallKpiCard}>
+                    <div style={smallKpiLabel}>ΠΛΗΡΩΜΕΝΑ (ΣΥΝΟΛΟ)</div>
+                    <div style={{ ...smallKpiValue, color: colors.success }}>{moneyGR(proDetailSummary.paidTotal)}</div>
+                    <div style={smallKpiHint}>
+                      Μετρητά: {moneyGR(proDetailSummary.paidCash)} • Τράπεζα: {moneyGR(proDetailSummary.paidBank)} • (
+                      {proDetailSummary.countPaid} κινήσεις)
+                    </div>
+                  </div>
+
+                  <div
+                    style={{
+                      ...smallKpiCard,
+                      border: '1px solid rgba(244,63,94,0.25)',
+                      background: 'linear-gradient(180deg, #fff1f2, #ffffff)',
+                    }}
+                  >
+                    <div style={smallKpiLabel}>ΥΠΟΛΟΙΠΟ ΠΙΣΤΩΣΗΣ</div>
+                    <div style={{ ...smallKpiValue, color: colors.danger }}>{moneyGR(proDetailSummary.creditTotal)}</div>
+                    <div style={smallKpiHint}>({proDetailSummary.countCredit} κινήσεις σε πίστωση)</div>
+                  </div>
+                </div>
+
+                <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 10 }} className="print-table-wrap">
+                  {proDetailSummary.creditRows.length === 0 ? (
+                    <div style={hintBox}>Δεν υπάρχουν κινήσεις σε πίστωση για την περίοδο.</div>
+                  ) : (
+                    <>
+                      <div style={hintBox}>
+                        <b>Πίστωση:</b> {proDetailSummary.creditRows.length} κινήσεις (δείχνω τις 10 πιο πρόσφατες)
+                      </div>
+                      <div className="print-table-head">
+                        <div>Ημερομηνία</div>
+                        <div>Περιγραφή</div>
+                        <div style={{ textAlign: 'right' }}>Ποσό</div>
+                      </div>
+                      {proDetailSummary.creditRows.slice(0, 10).map((t: any) => (
+                        <div key={`cr-${t.id}`} style={listRow}>
+                          <div className="print-row-compact">
+                            <div className="print-row-date">{formatDateGreek(t.date)}</div>
+                            <div className="print-row-notes">{String(t.notes || t.category || '').trim() || '—'}</div>
+                            <div className="print-row-amount print-amount-negative">
+                              {moneyGR(Math.abs(Number(t.amount) || 0))}
+                            </div>
+                          </div>
+                          <div className="screen-row" style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
+                            <div style={{ minWidth: 0 }}>
+                              <div style={{ fontSize: 13, fontWeight: 950, color: colors.primary }}>{formatDateGreek(t.date)}</div>
+                              <div style={{ fontSize: 12, fontWeight: 850, color: colors.secondary, marginTop: 4 }}>
+                                {String(t.notes || t.category || '').trim() || '—'}
+                              </div>
+                              <div style={{ marginTop: 6, fontSize: 12, fontWeight: 900, color: colors.danger }}>⚠️ ΠΙΣΤΩΣΗ</div>
+                            </div>
+                            <div style={{ fontSize: 14, fontWeight: 950, color: colors.danger, whiteSpace: 'nowrap' }}>
+                              {moneyGR(Math.abs(Number(t.amount) || 0))}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </>
+                  )}
+                </div>
+              </>
+            )}
           </div>
         )}
 
@@ -1654,6 +1792,9 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
               <div style={sectionPill}>PRO</div>
             </div>
 
+            {!proStatsReady ? (
+              <div style={hintBox}>Φόρτωση...</div>
+            ) : (
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
               <div style={smallKpiCard}>
                 <div style={smallKpiLabel}>ΔΑΝΕΙΑ (ΠΛΗΡΩΜΕΣ)</div>
@@ -1673,6 +1814,7 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
                 <div style={smallKpiHint}>Έξοδα που μοιάζουν με “ρύθμιση/εφορία”</div>
               </div>
             </div>
+            )}
 
             <div style={{ marginTop: 10, fontSize: 12, fontWeight: 850, color: colors.secondary }}>
               Αν θες 100% σωστό “Loans” και “Ρυθμίσεις”, πες μου ποιες <b>category</b> χρησιμοποιείς και θα το κάνω με αυστηρούς κανόνες.
@@ -1693,6 +1835,9 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
               <div style={sectionPill}>PRO</div>
             </div>
 
+            {!proStatsReady ? (
+              <div style={hintBox}>Φόρτωση...</div>
+            ) : (
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
               <div style={smallKpiCard}>
                 <div style={smallKpiLabel}>ΑΠΟΔΕΙΞΗ ΛΙΑΝΙΚΗΣ</div>
@@ -1757,6 +1902,7 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
                 <div style={smallKpiHint}>IN − OUT (για το συγκεκριμένο store)</div>
               </div>
             </div>
+            )}
           </div>
         )}
 
