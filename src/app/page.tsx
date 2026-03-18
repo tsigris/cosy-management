@@ -45,11 +45,85 @@ type YtdInfo = {
   loanInstallmentsTotal?: number
 }
 
-function getPaymentMethod(tx: any): string {
+type ProfileRef = {
+  username?: string | null
+} | null
+
+type NamedRef = {
+  name?: string | null
+} | null
+
+type DashboardTransaction = {
+  id: string | number
+  created_at?: string | null
+  amount?: number | string | null
+  type?: string | null
+  category?: string | null
+  description?: string | null
+  notes?: string | null
+  method?: string | null
+  payment_method?: string | null
+  date?: string | null
+  is_credit?: boolean | null
+  supplier_id?: string | null
+  fixed_asset_id?: string | null
+  revenue_source_id?: string | null
+  user_id?: string | null
+  created_by_name?: string | null
+  profiles?: ProfileRef
+  suppliers?: NamedRef
+  fixed_assets?: NamedRef
+  revenue_sources?: NamedRef
+}
+
+type ZBreakdownItem = {
+  method: string
+  amount: number
+}
+
+type DisplayNormalRow = {
+  kind: 'normal'
+  id: string
+  tx: DashboardTransaction
+}
+
+type DisplayZMasterRow = {
+  kind: 'z-master'
+  id: string
+  date: string
+  amount: number
+  created_at: string | null
+  user_label: string
+  itemsCount: number
+  breakdown: ZBreakdownItem[]
+}
+
+type DisplayTransactionRow = DisplayNormalRow | DisplayZMasterRow
+
+type EntityYtdPayload = {
+  turnover_income?: number | string | null
+  received_income?: number | string | null
+  open_income?: number | string | null
+  total_expenses?: number | string | null
+  payments?: number | string | null
+  open_expense?: number | string | null
+}
+
+type InstallmentLite = {
+  amount?: number | string | null
+  status?: string | null
+}
+
+type ProfileRowLite = {
+  id: string | number
+  username?: string | null
+}
+
+function getPaymentMethod(tx: DashboardTransaction): string {
   return String(tx?.payment_method ?? tx?.method ?? '').trim()
 }
 
-function getUserLabelFromTx(tx: any): string {
+function getUserLabelFromTx(tx: DashboardTransaction): string {
   return tx?.created_by_name || tx?.profiles?.username || 'Χρήστης'
 }
 
@@ -65,7 +139,7 @@ function DashboardContent() {
   const [isStoreAdmin, setIsStoreAdmin] = useState(false)
   const [canViewAnalysis, setCanViewAnalysis] = useState(false)
   const [storeName, setStoreName] = useState('Φορτώνει...')
-  const [transactions, setTransactions] = useState<any[]>([])
+  const [transactions, setTransactions] = useState<DashboardTransaction[]>([])
   const [loading, setLoading] = useState(true)
   const [expandedTx, setExpandedTx] = useState<string | null>(null)
 
@@ -91,7 +165,7 @@ function DashboardContent() {
   const businessYear = useMemo(() => String(businessTodayStr).slice(0, 4), [businessTodayStr])
   const yearStartStr = useMemo(() => `${businessYear}-01-01`, [businessYear])
 
-  const getEntityKeyFromTx = (t: any) => {
+  const getEntityKeyFromTx = (t: DashboardTransaction) => {
     const description = String(t?.description || t?.notes || '')
     if (description.startsWith('Πληρωμή Δόσης')) return `loan:${t.id}`
     if (t?.revenue_source_id) return `rev:${t.revenue_source_id}`
@@ -101,7 +175,7 @@ function DashboardContent() {
   }
 
   // ✅ Clean labels για κουμπαρά
-  const getEntityLabelFromTx = (t: any) => {
+  const getEntityLabelFromTx = (t: DashboardTransaction) => {
     const type = String(t?.type || '')
     if (type === 'savings_deposit') return 'ΚΑΤΑΘΕΣΗ ΚΟΥΜΠΑΡΑ'
     if (type === 'savings_withdrawal') return 'ΑΝΑΛΗΨΗ ΚΟΥΜΠΑΡΑ'
@@ -119,7 +193,7 @@ function DashboardContent() {
   }
 
   const loadYtdForTx = useCallback(
-    async (t: any) => {
+    async (t: DashboardTransaction) => {
       const key = getEntityKeyFromTx(t)
       if (!key || !storeIdFromUrl) return
 
@@ -147,8 +221,8 @@ function DashboardContent() {
 
           const { data: allInst } = await supabase.from('installments').select('amount, status').eq('settlement_id', inst.settlement_id)
 
-          const paidInst = (allInst || []).filter((i: any) => i.status === 'paid')
-          const loanPaid = paidInst.reduce((acc: number, i: any) => acc + Number(i.amount), 0)
+          const paidInst = ((allInst || []) as InstallmentLite[]).filter((i) => i.status === 'paid')
+          const loanPaid = paidInst.reduce((acc: number, i) => acc + Number(i.amount), 0)
           const loanTotal = Number(sett?.total_amount || 0)
 
           setYtdCache((prev) => ({
@@ -200,15 +274,6 @@ function DashboardContent() {
         })
 
         if (error) throw error
-
-        type EntityYtdPayload = {
-          turnover_income?: number | string | null
-          received_income?: number | string | null
-          open_income?: number | string | null
-          total_expenses?: number | string | null
-          payments?: number | string | null
-          open_expense?: number | string | null
-        }
 
         const summary = Array.isArray(data) ? data[0] : data
         const payload = (summary?.get_entity_ytd_summary ?? summary ?? {}) as EntityYtdPayload
@@ -288,7 +353,7 @@ function DashboardContent() {
 
       const { data: tx, error: txError } = txRes
 
-      let txRows = tx || []
+      let txRows = (tx || []) as DashboardTransaction[]
 
       if (txError) {
         const joinFailed = /relationship|foreign key|could not find a relationship/i.test(String(txError.message || ''))
@@ -322,8 +387,8 @@ function DashboardContent() {
 
         if (txWithoutJoinError) throw txWithoutJoinError
 
-        const baseRows = txWithoutJoin || []
-        const userIds = Array.from(new Set(baseRows.map((row: any) => String(row?.user_id || '').trim()).filter(Boolean)))
+        const baseRows = (txWithoutJoin || []) as DashboardTransaction[]
+        const userIds = Array.from(new Set(baseRows.map((row) => String(row?.user_id || '').trim()).filter(Boolean)))
 
         let profilesByUserId: Record<string, { username?: string | null }> = {}
 
@@ -333,7 +398,7 @@ function DashboardContent() {
           if (profilesError) {
             console.error('Profiles fallback load failed:', profilesError)
           } else {
-            profilesByUserId = (profileRows || []).reduce((acc: Record<string, { username?: string | null }>, profile: any) => {
+            profilesByUserId = ((profileRows || []) as ProfileRowLite[]).reduce((acc: Record<string, { username?: string | null }>, profile) => {
               acc[String(profile.id)] = {
                 username: profile.username,
               }
@@ -342,14 +407,14 @@ function DashboardContent() {
           }
         }
 
-        txRows = baseRows.map((row: any) => ({
+        txRows = baseRows.map((row) => ({
           ...row,
           profiles: profilesByUserId[String(row?.user_id || '')] || null,
         }))
       }
 
       // ✅ DEDUPE
-      const map = new Map<string, any>()
+      const map = new Map<string, DashboardTransaction>()
       for (const row of txRows) map.set(String(row.id), row)
       setTransactions(Array.from(map.values()))
     } catch (err) {
@@ -452,7 +517,7 @@ function DashboardContent() {
 
   const Z_MASTER_ROW_ID = '__z_master__'
 
-  const isZTransaction = useCallback((t: any) => {
+  const isZTransaction = useCallback((t: DashboardTransaction) => {
     const category = String(t?.category || '').trim().toLowerCase()
     const method = getPaymentMethod(t).toLowerCase()
     // Query aliases `notes` as `description`, so read the aliased field here
@@ -486,19 +551,7 @@ function DashboardContent() {
       .map(([method, amount]) => ({ method, amount }))
       .sort((a, b) => b.amount - a.amount)
 
-    const rows: Array<
-      | { kind: 'normal'; id: string; tx: any }
-      | {
-          kind: 'z-master'
-          id: string
-          date: string
-          amount: number
-          created_at: string | null
-          user_label: string
-          itemsCount: number
-          breakdown: Array<{ method: string; amount: number }>
-        }
-    > = []
+    const rows: DisplayTransactionRow[] = []
 
     let zInserted = false
 
@@ -581,7 +634,7 @@ function DashboardContent() {
     setExpandedTx(null)
   }
 
-  const money = (n: any) => formatAmount(Number(n) || 0)
+  const money = (n: number | string | null | undefined) => formatAmount(Number(n) || 0)
 
   return (
     <div style={iphoneWrapper}>
