@@ -18,13 +18,13 @@ type RpcEmployeeRow = {
   insurance_amount?: number | null
   total_monthly_cost?: number | null
   daily_cost?: number | null
-  payroll_pct_of_revenue?: number | null
+  payroll_pct_of_turnover?: number | null
 }
 
 type RpcPayload = {
   date?: string | null
   days_in_month?: number | null
-  day_revenue?: number | null
+  daily_turnover?: number | null
   total_daily_payroll?: number | null
   payroll_pct?: number | null
   status?: string | null
@@ -79,7 +79,7 @@ function PayrollPercentContent() {
 
     try {
       setLoading(true)
-      const { data, error } = await supabase.rpc('get_economics_payroll_efficiency', {
+      const { data, error } = await supabase.rpc('get_staff_payroll_pressure_summary', {
         p_store_id: storeId,
         p_date: businessDate,
       })
@@ -99,12 +99,12 @@ function PayrollPercentContent() {
         insuranceAmount: Number(r.insurance_amount || 0),
         totalMonthlyCost: Number(r.total_monthly_cost || 0),
         dailyCost: Number(r.daily_cost || 0),
-        payrollPctOfRevenue: Number(r.payroll_pct_of_revenue || 0),
+        payrollPctOfRevenue: Number(r.payroll_pct_of_turnover || 0),
       }))
 
       setRows(mappedRows)
       setEffectiveDate(String(payload.date || businessDate))
-      setDayRevenue(Number(payload.day_revenue || 0))
+      setDayRevenue(Number(payload.daily_turnover || 0))
       setDailyPayrollCost(Number(payload.total_daily_payroll || 0))
       setPayrollPct(Number(payload.payroll_pct || 0))
       setStatus(String(payload.status || ''))
