@@ -147,7 +147,7 @@ function PayrollPercentContent() {
     <div style={{ background: 'var(--bg-grad)', minHeight: '100vh', padding: 20 }}>
       <Toaster position="top-center" richColors />
       <EconomicsContainer>
-        <EconomicsHeaderNav title="Οικονομικό Κέντρο" subtitle="Μισθοδοσία % Τζίρου" businessDate={businessDate} />
+        <EconomicsHeaderNav title="Οικονομικό Κέντρο" subtitle="Μισθοδοσία % Τζίρου" />
 
         <div style={{ ...card, marginBottom: 12, display: 'grid', gap: 10 }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
