@@ -384,9 +384,7 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
   /* ---------------- DATA LOAD (summary dataset) ---------------- */
 
   const loadData = useCallback(async () => {
-    if (!authChecked) return
-    if (!hasSession || !storeId || storeId === 'null') {
-      setLoading(false)
+    if (!authChecked || !hasSession || !storeId || storeId === 'null') {
       return
     }
     try {
@@ -444,8 +442,7 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
   }, [loadData])
 
   const loadAnalysisSummary = useCallback(async () => {
-    if (!authChecked) return
-    if (!hasSession || !storeId || storeId === 'null') {
+    if (!authChecked || !hasSession || !storeId || storeId === 'null') {
       setRpcSummary({
         income: 0,
         expenses: 0,
@@ -510,8 +507,7 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
   }, [loadAnalysisSummary])
 
   const loadCategoryBreakdown = useCallback(async () => {
-    if (!authChecked) return
-    if (!hasSession || !storeId || storeId === 'null') {
+    if (!authChecked || !hasSession || !storeId || storeId === 'null') {
       setCategoryBreakdownRows([])
       return
     }
@@ -540,8 +536,7 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
   }, [loadCategoryBreakdown])
 
   const loadEntitySummary = useCallback(async () => {
-    if (!authChecked) return
-    if (!hasSession || !storeId || storeId === 'null') {
+    if (!authChecked || !hasSession || !storeId || storeId === 'null') {
       setEntitySummaryRows([])
       return
     }
@@ -574,8 +569,7 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
   }, [loadEntitySummary])
 
   const loadZBank = useCallback(async () => {
-    if (!authChecked) return
-    if (!hasSession || !storeId || storeId === 'null') {
+    if (!authChecked || !hasSession || !storeId || storeId === 'null') {
       setZBankAmount(0)
       return
     }
@@ -599,8 +593,7 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
   }, [loadZBank])
 
   const loadStaffPayroll = useCallback(async () => {
-    if (!authChecked) return
-    if (!hasSession || !storeId || storeId === 'null') {
+    if (!authChecked || !hasSession || !storeId || storeId === 'null') {
       setStaffPayrollRows([])
       return
     }
@@ -632,8 +625,7 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
   }, [loadStaffPayroll])
 
   const loadProStats = useCallback(async () => {
-    if (!authChecked) return
-    if (!hasSession || !storeId || storeId === 'null') {
+    if (!authChecked || !hasSession || !storeId || storeId === 'null') {
       setProStats(null)
       return
     }
@@ -657,8 +649,11 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
   }, [loadProStats])
 
   const loadDetailSummary = useCallback(async () => {
-    if (!authChecked) return
-    if (!hasSession || !storeId || storeId === 'null' || detailMode === 'none' || detailId === 'all') {
+    if (!authChecked || !hasSession || !storeId || storeId === 'null') {
+      setDetailSummary(null)
+      return
+    }
+    if (detailMode === 'none' || detailId === 'all') {
       setDetailSummary(null)
       return
     }
@@ -725,8 +720,7 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
   }, [loadDetailSummary])
 
   const loadCollapsedZ = useCallback(async () => {
-    if (!authChecked) return
-    if (!hasSession || !storeId || storeId === 'null') {
+    if (!authChecked || !hasSession || !storeId || storeId === 'null') {
       setCollapsedZRows([])
       return
     }
@@ -760,8 +754,7 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
   }, [loadCollapsedZ])
 
   const loadPeriodMovements = useCallback(async () => {
-    if (!authChecked) return
-    if (!hasSession || !storeId || storeId === 'null') {
+    if (!authChecked || !hasSession || !storeId || storeId === 'null') {
       setPeriodMovements([])
       return
     }
@@ -801,8 +794,7 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
   }, [loadPeriodMovements])
 
   const loadExpectedOutflows = useCallback(async () => {
-    if (!authChecked) return
-    if (!hasSession || !storeId || storeId === 'null') {
+    if (!authChecked || !hasSession || !storeId || storeId === 'null') {
       setExpectedOutflows30d(0)
       return
     }
