@@ -30,8 +30,6 @@ const colors = {
   warningText: '#92400e',
 }
 
-const INCOME_TYPES = ['income', 'income_collection', 'debt_received'] as const
-const EXPENSE_TYPES = ['expense', 'debt_payment', 'salary_advance'] as const
 const DISPLAY_INCOME_TYPES = ['income', 'income_collection', 'debt_received', 'savings_withdrawal'] as const
 
 type YtdInfo = {
@@ -151,6 +149,12 @@ function DashboardContent() {
   const [transactions, setTransactions] = useState<DashboardTransaction[]>([])
   const [loading, setLoading] = useState(true)
   const [expandedTx, setExpandedTx] = useState<string | null>(null)
+  const [totals, setTotals] = useState({
+    income: 0,
+    expense: 0,
+    credits: 0,
+    balance: 0,
+  })
 
   // ✅ Z visibility flag
   const [zEnabled, setZEnabled] = useState<boolean>(true)
@@ -434,10 +438,45 @@ function DashboardContent() {
     }
   }, [selectedDate, router, storeIdFromUrl])
 
+  const loadTotals = useCallback(async () => {
+    if (!storeIdFromUrl) return
+
+    try {
+      const { data, error } = await supabase.rpc('get_daily_totals', {
+        p_store_id: storeIdFromUrl,
+        p_date: selectedDate,
+      })
+
+      if (error) throw error
+
+      const raw = Array.isArray(data) ? data[0] : data
+      const payload = raw?.get_daily_totals ?? raw ?? {}
+
+      const income = Number(payload.income || 0)
+      const expense = Number(payload.expense || 0)
+      const credits = Number(payload.credits || 0)
+      const deposits = Number(payload.savings_deposits || 0)
+      const withdrawals = Number(payload.savings_withdrawals || 0)
+
+      setTotals({
+        income,
+        expense,
+        credits,
+        balance: income - expense - deposits + withdrawals,
+      })
+    } catch (err) {
+      console.error('Daily totals RPC error:', err)
+    }
+  }, [storeIdFromUrl, selectedDate, supabase])
+
   // storeIdFromUrl is already a dep of loadDashboard itself; no need to repeat it here
   useEffect(() => {
     loadDashboard()
   }, [loadDashboard])
+
+  useEffect(() => {
+    loadTotals()
+  }, [loadTotals])
 
   // ✅ Update permissions from shared hook (replaces inline store_access query)
   useEffect(() => {
@@ -587,52 +626,6 @@ function DashboardContent() {
 
     return rows
   }, [transactions, zTransactions, isZTransaction, selectedDate])
-
-  // ✅ Totals (ΣΩΣΤΟ FIX: Ο κουμπαράς επηρεάζει ΜΟΝΟ το ταμείο, ΟΧΙ τα επιχειρηματικά Έσοδα/Έξοδα)
-  const totals = useMemo(() => {
-    const aggregates = transactions.reduce(
-      (acc, t) => {
-        const rawType = t.type
-        const type = String(rawType || '')
-        const amount = Number(t.amount) || 0
-        const absAmount = Math.abs(amount)
-
-        if ((INCOME_TYPES as readonly string[]).includes(type)) {
-          acc.income += amount
-        }
-
-        if (rawType === 'expense' && t.is_credit === true) {
-          acc.credits += absAmount
-        } else if ((EXPENSE_TYPES as readonly string[]).includes(type)) {
-          acc.expense += absAmount
-        }
-
-        if (rawType === 'savings_deposit') {
-          acc.savingsDeposits += absAmount
-        }
-
-        if (rawType === 'savings_withdrawal') {
-          acc.savingsWithdrawals += absAmount
-        }
-
-        return acc
-      },
-      {
-        income: 0,
-        expense: 0,
-        credits: 0,
-        savingsDeposits: 0,
-        savingsWithdrawals: 0,
-      }
-    )
-
-    return {
-      income: aggregates.income,
-      expense: aggregates.expense,
-      credits: aggregates.credits,
-      balance: aggregates.income - aggregates.expense - aggregates.savingsDeposits + aggregates.savingsWithdrawals,
-    }
-  }, [transactions])
 
   const changeDate = useCallback((days: number) => {
     const current = parseISO(selectedDate)
