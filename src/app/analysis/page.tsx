@@ -11,7 +11,6 @@ import {
   startOfMonth,
   endOfMonth,
   parseISO,
-  differenceInCalendarDays,
   subDays,
   addDays,
 } from 'date-fns'
@@ -72,15 +71,6 @@ type DetailMode = 'none' | 'staff' | 'supplier' | 'revenue_source' | 'maintenanc
 type PrintMode = 'summary' | 'full'
 type UiMode = 'simple' | 'pro'
 
-type CalcBalances = {
-  cash_balance: number
-  bank_balance: number
-  total_balance: number
-  credit_outstanding: number
-  credit_incoming: number
-  as_of_date: string
-}
-
 type AnalysisRpcSummary = {
   income: number
   expenses: number
@@ -97,11 +87,6 @@ type AnalysisRpcSummary = {
 
 /* ---------------- HELPERS ---------------- */
 
-function safePctChange(curr: number, prev: number) {
-  if (!isFinite(curr) || !isFinite(prev)) return null
-  if (prev === 0) return curr === 0 ? 0 : null
-  return ((curr - prev) / Math.abs(prev)) * 100
-}
 function fmtPct(p: number | null) {
   if (p === null) return '—'
   const sign = p >= 0 ? '+' : ''
@@ -236,12 +221,6 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
     },
     [getMethod, norm]
   )
-
-  const isCashMethod = useCallback(
-    (method: string) => ['μετρητά', 'μετρητά (z)', 'χωρίς απόδειξη'].includes(norm(method)),
-    [norm]
-  )
-  const isBankMethod = useCallback((method: string) => ['κάρτα', 'τράπεζα'].includes(norm(method)), [norm])
 
   /* ---------------- PRINT CSS ---------------- */
 
