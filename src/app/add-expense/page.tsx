@@ -849,10 +849,12 @@ function AddExpenseForm() {
     }
 
     if (createTab === 'staff') {
-      const days = cMonthlyDays.trim()
-      if (!days) return toast.error('Γράψε μέρες μήνα')
-      if (cPayBasis === 'monthly' && !cMonthlySalary.trim()) return toast.error('Γράψε μισθό')
-      if (cPayBasis === 'daily' && !cDailyRate.trim()) return toast.error('Γράψε ημερομίσθιο')
+      if (cPayBasis === 'monthly') {
+        if (!cMonthlyDays.trim()) return toast.error('Γράψε μέρες μήνα')
+        if (!cMonthlySalary.trim()) return toast.error('Γράψε μισθό')
+      } else {
+        if (!cDailyRate.trim()) return toast.error('Γράψε ημερομίσθιο')
+      }
     }
 
     try {
@@ -885,7 +887,7 @@ function AddExpenseForm() {
 
       const sub_category =
         createTab === 'maintenance'
-          ? 'Maintenance'
+          ? 'maintenance'
           : createTab === 'utility'
             ? 'utility'
             : createTab === 'staff'
