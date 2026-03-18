@@ -30,6 +30,10 @@ const colors = {
   warningText: '#92400e',
 }
 
+const INCOME_TYPES = ['income', 'income_collection', 'debt_received'] as const
+const EXPENSE_TYPES = ['expense', 'debt_payment', 'salary_advance'] as const
+const DISPLAY_INCOME_TYPES = ['income', 'income_collection', 'debt_received', 'savings_withdrawal'] as const
+
 type YtdInfo = {
   loading: boolean
   turnoverIncome?: number
@@ -99,6 +103,11 @@ type DisplayZMasterRow = {
 }
 
 type DisplayTransactionRow = DisplayNormalRow | DisplayZMasterRow
+
+type CollapsedZRow = {
+  __collapsedZ: true
+  date: string
+}
 
 type EntityYtdPayload = {
   turnover_income?: number | string | null
@@ -447,7 +456,7 @@ function DashboardContent() {
     ytdLoadingKeys.current.clear()
   }, [storeIdFromUrl])
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = useCallback(async (id: string) => {
     if (!confirm('Οριστική διαγραφή αυτής της κίνησης;')) return
     if (!storeIdFromUrl) {
       toast.error('Σφάλμα καταστήματος')
@@ -462,9 +471,9 @@ function DashboardContent() {
     } catch (err) {
       toast.error('Σφάλμα κατά τη διαγραφή')
     }
-  }
+  }, [storeIdFromUrl, supabase])
 
-  const handleDeleteLoanPayment = async (txId: string) => {
+  const handleDeleteLoanPayment = useCallback(async (txId: string) => {
     if (!confirm('Οριστική διαγραφή πληρωμής δόσης; Θα γυρίσει η δόση σε εκκρεμότητα.')) return
     if (!storeIdFromUrl) {
       toast.error('Σφάλμα καταστήματος')
@@ -491,13 +500,13 @@ function DashboardContent() {
     } catch (err) {
       toast.error('Σφάλμα κατά τη διαγραφή')
     }
-  }
+  }, [storeIdFromUrl, supabase])
 
-  const handleEditZ = async (date: string) => {
+  const handleEditZ = useCallback(async (date: string) => {
     router.push(`/daily-z?store=${storeIdFromUrl}&date=${date}`)
-  }
+  }, [router, storeIdFromUrl])
 
-  const handleDeleteZ = async (date: string) => {
+  const handleDeleteZ = useCallback(async (date: string) => {
     if (!confirm('Διαγραφή Κλεισίματος Ζ;')) return
     if (!storeIdFromUrl) {
       toast.error('Σφάλμα καταστήματος')
@@ -513,7 +522,7 @@ function DashboardContent() {
 
     toast.success('Το Ζ διαγράφηκε')
     loadDashboard()
-  }
+  }, [storeIdFromUrl, supabase, loadDashboard])
 
   const Z_MASTER_ROW_ID = '__z_master__'
 
@@ -529,9 +538,9 @@ function DashboardContent() {
     return categoryLooksZ || (t?.type === 'income' && looksLikeDayClose)
   }, [])
 
-  const zTransactions = useMemo(() => (Array.isArray(transactions) ? transactions.filter((t) => isZTransaction(t)) : []), [transactions, isZTransaction])
+  const zTransactions = useMemo<DashboardTransaction[]>(() => (Array.isArray(transactions) ? transactions.filter((t) => isZTransaction(t)) : []), [transactions, isZTransaction])
 
-  const displayTransactions = useMemo(() => {
+  const displayTransactions = useMemo<DisplayTransactionRow[]>(() => {
     const zTx = zTransactions
 
     const safeTransactions = Array.isArray(transactions) ? transactions : []
@@ -547,7 +556,7 @@ function DashboardContent() {
       return acc
     }, {})
 
-    const zBreakdown = Object.entries(methodTotals)
+    const zBreakdown: ZBreakdownItem[] = Object.entries(methodTotals)
       .map(([method, amount]) => ({ method, amount }))
       .sort((a, b) => b.amount - a.amount)
 
@@ -581,8 +590,6 @@ function DashboardContent() {
 
   // ✅ Totals (ΣΩΣΤΟ FIX: Ο κουμπαράς επηρεάζει ΜΟΝΟ το ταμείο, ΟΧΙ τα επιχειρηματικά Έσοδα/Έξοδα)
   const totals = useMemo(() => {
-    const INCOME_TYPES = ['income', 'income_collection', 'debt_received']
-    const EXPENSE_TYPES = ['expense', 'debt_payment', 'salary_advance']
     const aggregates = transactions.reduce(
       (acc, t) => {
         const rawType = t.type
@@ -590,13 +597,13 @@ function DashboardContent() {
         const amount = Number(t.amount) || 0
         const absAmount = Math.abs(amount)
 
-        if (INCOME_TYPES.includes(type)) {
+        if ((INCOME_TYPES as readonly string[]).includes(type)) {
           acc.income += amount
         }
 
         if (rawType === 'expense' && t.is_credit === true) {
           acc.credits += absAmount
-        } else if (EXPENSE_TYPES.includes(type)) {
+        } else if ((EXPENSE_TYPES as readonly string[]).includes(type)) {
           acc.expense += absAmount
         }
 
@@ -627,12 +634,12 @@ function DashboardContent() {
     }
   }, [transactions])
 
-  const changeDate = (days: number) => {
+  const changeDate = useCallback((days: number) => {
     const current = parseISO(selectedDate)
     const next = days > 0 ? addDays(current, 1) : subDays(current, 1)
     router.push(`/?date=${format(next, 'yyyy-MM-dd')}&store=${storeIdFromUrl}`, { scroll: false })
     setExpandedTx(null)
-  }
+  }, [selectedDate, router, storeIdFromUrl])
 
   const money = (n: number | string | null | undefined) => formatAmount(Number(n) || 0)
 
@@ -804,22 +811,22 @@ function DashboardContent() {
         ) : (
           displayTransactions.map((row) => {
             const isZMaster = row.kind === 'z-master'
-            const t = row.kind === 'normal' ? row.tx : ({ __collapsedZ: true, date: row.date } as any)
+            const tx = row.kind === 'normal' ? row.tx : null
+            const collapsedZ: CollapsedZRow | null = row.kind === 'z-master' ? { __collapsedZ: true, date: row.date } : null
             const txId = row.id
 
-            const txTitleText = isZMaster ? 'ΚΛΕΙΣΙΜΟ Ζ' : getEntityLabelFromTx(t)
-            const entityKey = !isZMaster && t ? getEntityKeyFromTx(t) : null
+            const txTitleText = isZMaster ? 'ΚΛΕΙΣΙΜΟ Ζ' : tx ? getEntityLabelFromTx(tx) : 'ΚΛΕΙΣΙΜΟ Ζ'
+            const entityKey = tx ? getEntityKeyFromTx(tx) : null
             const ytd = entityKey ? ytdCache[entityKey] : undefined
 
             // ✅ σωστό πράσινο για ανάληψη κουμπαρά
-            const INCOME_TYPES = ['income', 'income_collection', 'debt_received', 'savings_withdrawal']
-            const isIncomeTx = isZMaster ? true : INCOME_TYPES.includes(String(t?.type))
+            const isIncomeTx = isZMaster ? true : (DISPLAY_INCOME_TYPES as readonly string[]).includes(String(tx?.type))
 
-            const txMethod = isZMaster ? 'Συγκεντρωτική εγγραφή' : t?.method
-            const txCreatedAt = isZMaster ? row.created_at : t?.created_at
+            const txMethod = isZMaster ? 'Συγκεντρωτική εγγραφή' : tx?.method
+            const txCreatedAt = isZMaster ? row.created_at : tx?.created_at
 
-            const displayUser = isZMaster ? row.user_label : t?.created_by_name || t?.profiles?.username || 'Χρήστης'
-            const txAmountValue = isZMaster ? row.amount : Number(t?.amount) || 0
+            const displayUser = isZMaster ? row.user_label : tx?.created_by_name || tx?.profiles?.username || 'Χρήστης'
+            const txAmountValue = isZMaster ? row.amount : Number(tx?.amount) || 0
 
             return (
               <div key={txId} style={{ marginBottom: '12px' }}>
@@ -832,7 +839,7 @@ function DashboardContent() {
                   onClick={() => {
                     const next = expandedTx === txId ? null : txId
                     setExpandedTx(next)
-                    if (next && !isZMaster && t) loadYtdForTx(t)
+                    if (next && !isZMaster && tx) loadYtdForTx(tx)
                   }}
                 >
                   <div style={txIconContainer(isIncomeTx)}>{isIncomeTx ? <TrendingUp size={18} /> : <TrendingDown size={18} />}</div>
@@ -840,13 +847,13 @@ function DashboardContent() {
                   <div style={{ flex: 1, marginLeft: '12px' }}>
                     <p style={txTitle}>
                       {txTitleText}
-                      {!isZMaster && t?.is_credit && <span style={creditBadgeStyle}>ΠΙΣΤΩΣΗ</span>}
+                      {!isZMaster && tx?.is_credit && <span style={creditBadgeStyle}>ΠΙΣΤΩΣΗ</span>}
                       {isZMaster && <span style={creditBadgeStyle}>{row.itemsCount} ΚΙΝΗΣΕΙΣ</span>}
                     </p>
 
-                    {!isZMaster && t?.description && (
+                    {!isZMaster && tx?.description && (
                       <p style={{ fontSize: '11px', fontWeight: 800, color: 'var(--muted)', margin: '4px 0 2px 0' }}>
-                        {t.description}
+                        {tx.description}
                       </p>
                     )}
 
@@ -875,10 +882,10 @@ function DashboardContent() {
                           </div>
                         )) : <p style={ytdHint}>Δεν βρέθηκε ανάλυση μεθόδων.</p>}
 
-                        {t.__collapsedZ && (
+                        {collapsedZ?.__collapsedZ && (
                           <div style={{ display: 'flex', gap: 10, marginTop: 12 }}>
                             <button
-                              onClick={() => handleEditZ(t.date)}
+                              onClick={() => handleEditZ(collapsedZ.date)}
                               style={{
                                 flex: 1,
                                 padding: '10px',
@@ -894,7 +901,7 @@ function DashboardContent() {
                             </button>
 
                             <button
-                              onClick={() => handleDeleteZ(t.date)}
+                              onClick={() => handleDeleteZ(collapsedZ.date)}
                               style={{
                                 flex: 1,
                                 padding: '10px',
@@ -916,12 +923,12 @@ function DashboardContent() {
                         {!entityKey?.startsWith('loan:') ? (
                           <>
                             <button
-                              onClick={() => router.push(`/add-${isIncomeTx ? 'income' : 'expense'}?editId=${t.id}&store=${storeIdFromUrl}`)}
+                              onClick={() => router.push(`/add-${isIncomeTx ? 'income' : 'expense'}?editId=${tx?.id}&store=${storeIdFromUrl}`)}
                               style={editRowBtn}
                             >
                               Επεξεργασία
                             </button>
-                            <button onClick={() => handleDelete(t.id)} style={deleteRowBtn}>
+                            <button onClick={() => tx && handleDelete(String(tx.id))} style={deleteRowBtn}>
                               Διαγραφή
                             </button>
                           </>
@@ -930,7 +937,7 @@ function DashboardContent() {
                             <button onClick={() => router.push(`/settlements?store=${storeIdFromUrl}`)} style={{ ...editRowBtn, width: '100%' }}>
                               💳 Διαχείριση Ρύθμισης
                             </button>
-                            <button onClick={() => handleDeleteLoanPayment(t.id)} style={deleteRowBtn}>
+                            <button onClick={() => tx && handleDeleteLoanPayment(String(tx.id))} style={deleteRowBtn}>
                               🗑️ Διαγραφή
                             </button>
                           </div>
