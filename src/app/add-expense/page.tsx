@@ -223,7 +223,13 @@ function AddExpenseForm() {
   const [suppliers, setSuppliers] = useState<any[]>([])
   const [fixedAssets, setFixedAssets] = useState<any[]>([])
 
-  const [dayStats, setDayStats] = useState({ income: 0, expenses: 0 })
+  const [dayStats, setDayStats] = useState({
+    income: 0,
+    expenses: 0,
+    credits: 0,
+    savingsDeposits: 0,
+    savingsWithdrawals: 0,
+  })
 
   const [selectedEntity, setSelectedEntity] = useState<SelectedEntity>(null)
 
@@ -497,7 +503,7 @@ function AddExpenseForm() {
           .select('id, name, sub_category, phone, vat_number, bank_name, iban, monthly_days, monthly_salary, daily_rate, start_date, rf_code, pay_basis')
           .eq('store_id', activeStoreId)
           .order('name'),
-        supabase.from('transactions').select('amount, type').eq('store_id', activeStoreId).eq('date', selectedDate),
+        supabase.from('transactions').select('amount, type, is_credit').eq('store_id', activeStoreId).eq('date', selectedDate),
       ])
 
       const supData = sRes.data || []
@@ -511,15 +517,35 @@ function AddExpenseForm() {
       setFixedAssets(faData)
 
       if (tRes.data) {
+        const INCOME_TYPES = ['income', 'income_collection', 'debt_received']
+        const EXPENSE_TYPES = ['expense', 'debt_payment', 'salary_advance']
+
         const inc = tRes.data
-          .filter((t: any) => t.type === 'income')
+          .filter((t: any) => INCOME_TYPES.includes(String(t.type || '')))
           .reduce((acc: number, t: any) => acc + Number(t.amount), 0)
 
         const exp = tRes.data
-          .filter((t: any) => t.type === 'expense' || t.type === 'debt_payment')
+          .filter((t: any) => {
+            const type = String(t.type || '')
+            if (!EXPENSE_TYPES.includes(type)) return false
+            if (type === 'expense' && t.is_credit === true) return false
+            return true
+          })
           .reduce((acc: number, t: any) => acc + Math.abs(Number(t.amount)), 0)
 
-        setDayStats({ income: inc, expenses: exp })
+        const credits = tRes.data
+          .filter((t: any) => String(t.type || '') === 'expense' && t.is_credit === true)
+          .reduce((acc: number, t: any) => acc + Math.abs(Number(t.amount)), 0)
+
+        const savingsDeposits = tRes.data
+          .filter((t: any) => String(t.type || '') === 'savings_deposit')
+          .reduce((acc: number, t: any) => acc + Math.abs(Number(t.amount)), 0)
+
+        const savingsWithdrawals = tRes.data
+          .filter((t: any) => String(t.type || '') === 'savings_withdrawal')
+          .reduce((acc: number, t: any) => acc + Math.abs(Number(t.amount)), 0)
+
+        setDayStats({ income: inc, expenses: exp, credits, savingsDeposits, savingsWithdrawals })
       }
 
       if (editId) {
@@ -599,7 +625,10 @@ function AddExpenseForm() {
     loadFormData()
   }, [loadFormData])
 
-  const currentBalance = useMemo(() => dayStats.income - dayStats.expenses, [dayStats])
+  const currentBalance = useMemo(
+    () => dayStats.income - dayStats.expenses - dayStats.savingsDeposits + dayStats.savingsWithdrawals,
+    [dayStats]
+  )
 
   const smartItems = useMemo<SmartItem[]>(() => {
     const sList: SmartItem[] =
@@ -902,7 +931,8 @@ function AddExpenseForm() {
         .from('transactions')
         .select('date')
         .eq('store_id', activeStoreId)
-        .eq('type', 'z_report')
+        .eq('type', 'income')
+        .eq('category', 'Εσοδα Ζ')
         .order('date', { ascending: false })
         .limit(1)
       if (error) return null
