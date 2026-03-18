@@ -90,6 +90,20 @@ type Kpis = {
   savingsWithdrawals: number
 }
 
+type AnalysisRpcSummary = {
+  income: number
+  expenses: number
+  tips: number
+  net_profit: number
+  cash_balance: number
+  bank_balance: number
+  total_balance: number
+  credit_outstanding: number
+  credit_incoming: number
+  savings_deposits: number
+  savings_withdrawals: number
+}
+
 /* ---------------- HELPERS ---------------- */
 
 function safePctChange(curr: number, prev: number) {
@@ -150,6 +164,19 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
   const [calcBalances, setCalcBalances] = useState<CalcBalances | null>(null)
 
   const [loading, setLoading] = useState(true)
+  const [rpcSummary, setRpcSummary] = useState<AnalysisRpcSummary>({
+    income: 0,
+    expenses: 0,
+    tips: 0,
+    net_profit: 0,
+    cash_balance: 0,
+    bank_balance: 0,
+    total_balance: 0,
+    credit_outstanding: 0,
+    credit_incoming: 0,
+    savings_deposits: 0,
+    savings_withdrawals: 0,
+  })
 
   // Global period (used for KPI summary)
   const [startDate, setStartDate] = useState(format(startOfMonth(new Date()), 'yyyy-MM-dd'))
@@ -515,6 +542,71 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
     loadData()
   }, [loadData])
 
+  const loadAnalysisSummary = useCallback(async () => {
+    if (!storeId || storeId === 'null') {
+      setRpcSummary({
+        income: 0,
+        expenses: 0,
+        tips: 0,
+        net_profit: 0,
+        cash_balance: 0,
+        bank_balance: 0,
+        total_balance: 0,
+        credit_outstanding: 0,
+        credit_incoming: 0,
+        savings_deposits: 0,
+        savings_withdrawals: 0,
+      })
+      return
+    }
+
+    try {
+      const { data, error } = await supabase.rpc('get_analysis_summary', {
+        p_store_id: storeId,
+        p_start_date: startDate,
+        p_end_date: endDate,
+      })
+
+      if (error) throw error
+
+      const raw = Array.isArray(data) ? data[0] : data
+      const payload = raw?.get_analysis_summary ?? raw ?? {}
+
+      setRpcSummary({
+        income: Number(payload.income || 0),
+        expenses: Number(payload.expenses || 0),
+        tips: Number(payload.tips || 0),
+        net_profit: Number(payload.net_profit || 0),
+        cash_balance: Number(payload.cash_balance || 0),
+        bank_balance: Number(payload.bank_balance || 0),
+        total_balance: Number(payload.total_balance || 0),
+        credit_outstanding: Number(payload.credit_outstanding || 0),
+        credit_incoming: Number(payload.credit_incoming || 0),
+        savings_deposits: Number(payload.savings_deposits || 0),
+        savings_withdrawals: Number(payload.savings_withdrawals || 0),
+      })
+    } catch (err) {
+      console.error('Analysis summary RPC error:', err)
+      setRpcSummary({
+        income: 0,
+        expenses: 0,
+        tips: 0,
+        net_profit: 0,
+        cash_balance: 0,
+        bank_balance: 0,
+        total_balance: 0,
+        credit_outstanding: 0,
+        credit_incoming: 0,
+        savings_deposits: 0,
+        savings_withdrawals: 0,
+      })
+    }
+  }, [storeId, startDate, endDate, supabase])
+
+  useEffect(() => {
+    loadAnalysisSummary()
+  }, [loadAnalysisSummary])
+
   /* ---------------- FILTER MODE MAPPING ---------------- */
 
   useEffect(() => {
@@ -714,24 +806,12 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
   }, [isZReport, periodTx, getMethod, isCreditTx])
 
   const bigKpiValue = useMemo(() => {
-    return isZReport ? zBreakdown.zCash + zBreakdown.blackCash - cashExpensesToday : kpis.netProfit
-  }, [isZReport, zBreakdown, cashExpensesToday, kpis.netProfit])
+    return Number(rpcSummary.net_profit || 0)
+  }, [rpcSummary.net_profit])
 
   const totalCashDisplay = useMemo(() => {
-    if (isZReport) {
-      const cashVaultDeposits = periodTx
-        .filter((t) => t.type === 'savings_deposit' && getMethod(t) === 'Μετρητά')
-        .reduce((acc, t) => acc + Math.abs(Number(t.amount) || 0), 0)
-
-      const cashVaultWithdrawals = periodTx
-        .filter((t) => t.type === 'savings_withdrawal' && getMethod(t) === 'Μετρητά')
-        .reduce((acc, t) => acc + Math.abs(Number(t.amount) || 0), 0)
-
-      return bigKpiValue - cashVaultDeposits + cashVaultWithdrawals
-    }
-
-    return Number(calcBalances?.cash_balance || 0)
-  }, [isZReport, bigKpiValue, periodTx, getMethod, calcBalances])
+    return Number(rpcSummary.cash_balance || 0)
+  }, [rpcSummary.cash_balance])
 
   /* ---------------- SIMPLE: ENTITY SUMMARIES (no huge tx list) ---------------- */
 
@@ -1379,7 +1459,7 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
               <div style={{ ...kpiSign, color: colors.success }}>+</div>
             </div>
             <div className="print-amount-positive" style={{ ...kpiValue, color: colors.success }}>
-              + {moneyGR(kpis.income)}
+              + {moneyGR(rpcSummary.income)}
             </div>
             <div className="kpi-track-print-hide" style={kpiTrack}>
               <div style={{ ...kpiFill, width: '70%', background: colors.success }} />
@@ -1401,7 +1481,7 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
               <div style={{ ...kpiSign, color: colors.danger }}>-</div>
             </div>
             <div className="print-amount-negative" style={{ ...kpiValue, color: colors.danger }}>
-              - {moneyGR(kpis.expenses)}
+              - {moneyGR(rpcSummary.expenses)}
             </div>
             <div className="kpi-track-print-hide" style={kpiTrack}>
               <div style={{ ...kpiFill, width: '70%', background: colors.danger }} />
@@ -1424,7 +1504,7 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
               <div style={{ ...kpiSign, color: '#b45309' }}>+</div>
             </div>
             <div className="print-amount-positive" style={{ ...kpiValue, color: '#b45309' }}>
-              + {moneyGR(uiMode === 'simple' ? simpleBankFromZ : kpis.tips)}
+              + {moneyGR(rpcSummary.tips)}
             </div>
             <div className="kpi-track-print-hide" style={kpiTrack}>
               <div style={{ ...kpiFill, width: '70%', background: colors.amber }} />
@@ -1473,10 +1553,10 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
           >
             <div style={smallKpiLabel}>Κινήσεις Κουμπαρά</div>
             <div className="print-amount-positive" style={{ ...smallKpiValue, color: colors.purple }}>
-              {moneyGR(kpis.savingsDeposits - kpis.savingsWithdrawals)}
+              {moneyGR(rpcSummary.savings_deposits - rpcSummary.savings_withdrawals)}
             </div>
             <div style={smallKpiHint}>
-              IN: {moneyGR(kpis.savingsDeposits)} • OUT: {moneyGR(kpis.savingsWithdrawals)}
+              IN: {moneyGR(rpcSummary.savings_deposits)} • OUT: {moneyGR(rpcSummary.savings_withdrawals)}
             </div>
           </div>
 
@@ -1488,7 +1568,7 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
 
           <div className="print-card" style={smallKpiCard}>
             <div style={smallKpiLabel}>Υπόλοιπο Τράπεζας</div>
-            <div style={smallKpiValue}>{moneyGR(calcBalances?.bank_balance || 0)}</div>
+            <div style={smallKpiValue}>{moneyGR(rpcSummary.bank_balance)}</div>
             <div style={smallKpiHint}>Κάρτα + Τράπεζα (χωρίς Πίστωση)</div>
           </div>
 
@@ -1502,7 +1582,7 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
           >
             <div style={smallKpiLabel}>Σύνολο Ρευστό</div>
             <div className="print-amount-positive" style={{ ...smallKpiValue, color: colors.success }}>
-              {moneyGR(calcBalances?.total_balance || 0)}
+              {moneyGR(rpcSummary.total_balance)}
             </div>
             <div style={smallKpiHint}>Cash + Bank (χωρίς Πίστωση)</div>
           </div>
@@ -1520,7 +1600,7 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
               >
                 <div style={smallKpiLabel}>Υπόλοιπο Πιστώσεων</div>
                 <div className="print-amount-negative" style={{ ...smallKpiValue, color: colors.danger }}>
-                  {moneyGR(calcBalances?.credit_outstanding || 0)}
+                  {moneyGR(rpcSummary.credit_outstanding)}
                 </div>
                 <div style={smallKpiHint}>Έξοδα σε Πίστωση (δεν μειώνουν Cash/Bank)</div>
               </div>
