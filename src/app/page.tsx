@@ -1,7 +1,7 @@
 'use client'
 export const dynamic = 'force-dynamic'
 
-import { useEffect, useState, Suspense, useCallback, useMemo, useRef } from 'react'
+import { useEffect, useState, Suspense, useCallback, useMemo, useRef, type CSSProperties } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { getSupabase } from '@/lib/supabase'
 import useStoreAccess from '@/hooks/useStoreAccess'
@@ -960,7 +960,7 @@ function DashboardContent() {
 }
 
 // --- STYLES ---
-const iphoneWrapper = {
+const iphoneWrapper: CSSProperties = {
   background: 'var(--bg-grad)',
   minHeight: '100%',
   width: '100%',
@@ -969,9 +969,9 @@ const iphoneWrapper = {
   touchAction: 'pan-y',
 }
 
-const headerStyle: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }
-const brandArea = { display: 'flex', alignItems: 'center', gap: '12px' }
-const logoBox = {
+const headerStyle: CSSProperties = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }
+const brandArea: CSSProperties = { display: 'flex', alignItems: 'center', gap: '12px' }
+const logoBox: CSSProperties = {
   width: '42px',
   height: '42px',
   backgroundColor: colors.primaryDark,
@@ -983,8 +983,8 @@ const logoBox = {
   fontSize: '18px',
   fontWeight: '800',
 }
-const storeTitleText = { fontSize: '16px', fontWeight: '800', margin: 0, color: colors.primaryDark }
-const switchBtnStyle: any = {
+const storeTitleText: CSSProperties = { fontSize: '16px', fontWeight: '800', margin: 0, color: colors.primaryDark }
+const switchBtnStyle: CSSProperties = {
   fontSize: '9px',
   fontWeight: '800',
   color: colors.accentBlue,
@@ -995,10 +995,10 @@ const switchBtnStyle: any = {
   cursor: 'pointer',
   textDecoration: 'none',
 }
-const dashboardSub = { fontSize: '9px', fontWeight: '800', color: colors.secondaryText, letterSpacing: '0.5px' }
-const statusDot = { width: '6px', height: '6px', background: colors.accentGreen, borderRadius: '50%' }
+const dashboardSub: CSSProperties = { fontSize: '9px', fontWeight: '800', color: colors.secondaryText, letterSpacing: '0.5px' }
+const statusDot: CSSProperties = { width: '6px', height: '6px', background: colors.accentGreen, borderRadius: '50%' }
 
-const menuToggle: any = {
+const menuToggle: CSSProperties = {
   background: colors.white,
   border: `1px solid ${colors.border}`,
   borderRadius: '12px',
@@ -1010,7 +1010,7 @@ const menuToggle: any = {
   cursor: 'pointer',
   color: colors.primaryDark,
 }
-const dropdownStyle: any = {
+const dropdownStyle: CSSProperties = {
   position: 'absolute',
   top: '50px',
   right: 0,
@@ -1022,7 +1022,7 @@ const dropdownStyle: any = {
   zIndex: 100,
   border: `1px solid ${colors.border}`,
 }
-const menuItem: any = {
+const menuItem: CSSProperties = {
   display: 'block',
   padding: '12px 15px',
   textDecoration: 'none',
@@ -1031,9 +1031,9 @@ const menuItem: any = {
   fontSize: '14px',
   borderRadius: '12px',
 }
-const menuSectionLabel = { fontSize: '10px', fontWeight: '800', color: colors.secondaryText, padding: '8px 15px 5px' }
-const menuDivider = { height: '1px', backgroundColor: colors.border, margin: '8px 0' }
-const logoutBtnStyle: any = {
+const menuSectionLabel: CSSProperties = { fontSize: '10px', fontWeight: '800', color: colors.secondaryText, padding: '8px 15px 5px' }
+const menuDivider: CSSProperties = { height: '1px', backgroundColor: colors.border, margin: '8px 0' }
+const logoutBtnStyle: CSSProperties = {
   width: '100%',
   textAlign: 'left',
   padding: '12px 15px',
@@ -1045,7 +1045,7 @@ const logoutBtnStyle: any = {
   cursor: 'pointer',
 }
 
-const dateCard = {
+const dateCard: CSSProperties = {
   background: 'var(--surface)',
   padding: '10px',
   borderRadius: '16px',
@@ -1056,11 +1056,11 @@ const dateCard = {
   border: '1px solid var(--border)',
   boxShadow: 'var(--shadow)',
 }
-const dateText = { fontSize: '13px', fontWeight: '800', color: colors.primaryDark, margin: 0 }
-const businessHint: any = { margin: '6px 0 0 0', fontSize: '10px', fontWeight: '800', color: colors.secondaryText, opacity: 0.9 }
-const dateNavBtn = { background: 'none', border: 'none', color: colors.secondaryText, cursor: 'pointer', display: 'flex', alignItems: 'center' }
+const dateText: CSSProperties = { fontSize: '13px', fontWeight: '800', color: colors.primaryDark, margin: 0 }
+const businessHint: CSSProperties = { margin: '6px 0 0 0', fontSize: '10px', fontWeight: '800', color: colors.secondaryText, opacity: 0.9 }
+const dateNavBtn: CSSProperties = { background: 'none', border: 'none', color: colors.secondaryText, cursor: 'pointer', display: 'flex', alignItems: 'center' }
 
-const heroCardStyle = {
+const heroCardStyle: CSSProperties = {
   background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
   padding: '30px 20px',
   borderRadius: '28px',
@@ -1069,12 +1069,12 @@ const heroCardStyle = {
   marginBottom: '30px',
   textAlign: 'center',
 }
-const heroLabel: any = { fontSize: '10px', fontWeight: '700', opacity: 0.5, letterSpacing: '1px', marginBottom: '10px' }
-const heroAmountText: any = { fontSize: '38px', fontWeight: '900', margin: 0 }
-const heroStatsRow: any = { display: 'flex', gap: '20px', marginTop: '25px', justifyContent: 'center' }
-const heroStatItem: any = { display: 'flex', alignItems: 'center', gap: '8px' }
-const heroStatValue = { fontSize: '15px', fontWeight: '800' }
-const statCircle = (bg: string): any => ({
+const heroLabel: CSSProperties = { fontSize: '10px', fontWeight: '700', opacity: 0.5, letterSpacing: '1px', marginBottom: '10px' }
+const heroAmountText: CSSProperties = { fontSize: '38px', fontWeight: '900', margin: 0 }
+const heroStatsRow: CSSProperties = { display: 'flex', gap: '20px', marginTop: '25px', justifyContent: 'center' }
+const heroStatItem: CSSProperties = { display: 'flex', alignItems: 'center', gap: '8px' }
+const heroStatValue: CSSProperties = { fontSize: '15px', fontWeight: '800' }
+const statCircle = (bg: string): CSSProperties => ({
   width: '24px',
   height: '24px',
   borderRadius: '50%',
@@ -1085,8 +1085,8 @@ const statCircle = (bg: string): any => ({
   color: 'white',
 })
 
-const heroCreditWrap: any = { marginTop: '18px', display: 'flex', justifyContent: 'center' }
-const heroCreditPill: any = {
+const heroCreditWrap: CSSProperties = { marginTop: '18px', display: 'flex', justifyContent: 'center' }
+const heroCreditPill: CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   gap: '10px',
@@ -1095,7 +1095,7 @@ const heroCreditPill: any = {
   background: 'rgba(255,255,255,0.08)',
   border: '1px solid rgba(255,255,255,0.14)',
 }
-const creditIconCircle: any = {
+const creditIconCircle: CSSProperties = {
   width: '28px',
   height: '28px',
   borderRadius: '10px',
@@ -1105,14 +1105,14 @@ const creditIconCircle: any = {
   justifyContent: 'center',
   color: 'white',
 }
-const heroCreditLabel: any = { fontSize: '10px', fontWeight: '900', opacity: 0.9, letterSpacing: '0.6px' }
-const heroCreditValue: any = { fontSize: '14px', fontWeight: '900' }
+const heroCreditLabel: CSSProperties = { fontSize: '10px', fontWeight: '900', opacity: 0.9, letterSpacing: '0.6px' }
+const heroCreditValue: CSSProperties = { fontSize: '14px', fontWeight: '900' }
 
-const actionGrid: any = { display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '30px' }
-const actionRow: any = { display: 'flex', gap: '12px' }
-const zRowWrap: any = { display: 'flex', justifyContent: 'center' }
+const actionGrid: CSSProperties = { display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '30px' }
+const actionRow: CSSProperties = { display: 'flex', gap: '12px' }
+const zRowWrap: CSSProperties = { display: 'flex', justifyContent: 'center' }
 
-const actionBtn: any = {
+const actionBtn: CSSProperties = {
   flex: 1,
   padding: '18px',
   borderRadius: '18px',
@@ -1123,11 +1123,11 @@ const actionBtn: any = {
   fontSize: '14px',
   boxShadow: 'var(--shadow)',
 }
-const zBtnStyle: any = { flex: 'unset', width: '100%', maxWidth: '260px' }
+const zBtnStyle: CSSProperties = { flex: 'unset', width: '100%', maxWidth: '260px' }
 
-const listContainer = { backgroundColor: 'transparent' }
-const listHeader = { fontSize: '11px', fontWeight: '900', color: colors.secondaryText, marginBottom: '15px', letterSpacing: '0.5px' }
-const txRow = {
+const listContainer: CSSProperties = { backgroundColor: 'transparent' }
+const listHeader: CSSProperties = { fontSize: '11px', fontWeight: '900', color: colors.secondaryText, marginBottom: '15px', letterSpacing: '0.5px' }
+const txRow: CSSProperties = {
   display: 'flex',
   justifyContent: 'space-between',
   alignItems: 'center',
@@ -1137,7 +1137,7 @@ const txRow = {
   cursor: 'pointer',
   boxShadow: 'var(--shadow)',
 }
-const txIconContainer = (isInc: boolean): any => ({
+const txIconContainer = (isInc: boolean): CSSProperties => ({
   width: '42px',
   height: '42px',
   borderRadius: '12px',
@@ -1147,12 +1147,12 @@ const txIconContainer = (isInc: boolean): any => ({
   alignItems: 'center',
   justifyContent: 'center',
 })
-const txTitle = { fontWeight: '800', fontSize: '14px', margin: 0, color: colors.primaryDark }
-const txMeta = { fontSize: '11px', color: colors.secondaryText, margin: 0, fontWeight: '600' }
-const txAmount = { fontWeight: '900', fontSize: '16px' }
-const creditBadgeStyle = { fontSize: '8px', marginLeft: '6px', color: colors.accentBlue, background: '#eef2ff', padding: '2px 5px', borderRadius: '4px' }
+const txTitle: CSSProperties = { fontWeight: '800', fontSize: '14px', margin: 0, color: colors.primaryDark }
+const txMeta: CSSProperties = { fontSize: '11px', color: colors.secondaryText, margin: 0, fontWeight: '600' }
+const txAmount: CSSProperties = { fontWeight: '900', fontSize: '16px' }
+const creditBadgeStyle: CSSProperties = { fontSize: '8px', marginLeft: '6px', color: colors.accentBlue, background: '#eef2ff', padding: '2px 5px', borderRadius: '4px' }
 
-const actionPanel = {
+const actionPanel: CSSProperties = {
   display: 'flex',
   gap: '10px',
   padding: '15px',
@@ -1163,25 +1163,25 @@ const actionPanel = {
   alignItems: 'stretch',
   flexWrap: 'wrap',
 }
-const editRowBtn: any = { flex: 1, padding: '10px', backgroundColor: colors.bgLight, color: colors.primaryDark, border: `1px solid ${colors.border}`, borderRadius: '10px', fontWeight: '700', fontSize: '12px', minWidth: '140px', cursor: 'pointer' }
-const deleteRowBtn: any = { flex: 1, padding: '10px', backgroundColor: '#fee2e2', color: colors.accentRed, border: 'none', borderRadius: '10px', fontWeight: '700', fontSize: '12px', minWidth: '120px', cursor: 'pointer' }
+const editRowBtn: CSSProperties = { flex: 1, padding: '10px', backgroundColor: colors.bgLight, color: colors.primaryDark, border: `1px solid ${colors.border}`, borderRadius: '10px', fontWeight: '700', fontSize: '12px', minWidth: '140px', cursor: 'pointer' }
+const deleteRowBtn: CSSProperties = { flex: 1, padding: '10px', backgroundColor: '#fee2e2', color: colors.accentRed, border: 'none', borderRadius: '10px', fontWeight: '700', fontSize: '12px', minWidth: '120px', cursor: 'pointer' }
 
-const ytdCard: any = { width: '100%', padding: '14px', borderRadius: '16px', border: `1px solid var(--border)`, background: 'var(--bg)', marginTop: '10px' }
-const ytdTitle: any = { margin: 0, fontSize: '10px', fontWeight: '900', color: colors.secondaryText, letterSpacing: '0.8px' }
-const ytdSubTitle: any = { margin: '6px 0 0 0', fontSize: '10px', fontWeight: '800', color: colors.secondaryText, opacity: 0.85 }
-const ytdRow: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', marginTop: '10px' }
-const ytdLabel: any = { fontSize: '12px', fontWeight: '800', color: colors.primaryDark }
-const ytdValue: any = { fontSize: '12px', fontWeight: '900', color: colors.primaryDark }
-const ytdValueGreen: any = { fontSize: '12px', fontWeight: '900', color: colors.accentGreen }
-const ytdValueRed: any = { fontSize: '12px', fontWeight: '900', color: colors.accentRed }
-const ytdHint: any = { margin: '10px 0 0 0', fontSize: '10px', fontWeight: '800', color: colors.secondaryText }
-const ytdLoading: any = { margin: '10px 0 0 0', fontSize: '12px', fontWeight: '800', color: colors.secondaryText }
+const ytdCard: CSSProperties = { width: '100%', padding: '14px', borderRadius: '16px', border: `1px solid var(--border)`, background: 'var(--bg)', marginTop: '10px' }
+const ytdTitle: CSSProperties = { margin: 0, fontSize: '10px', fontWeight: '900', color: colors.secondaryText, letterSpacing: '0.8px' }
+const ytdSubTitle: CSSProperties = { margin: '6px 0 0 0', fontSize: '10px', fontWeight: '800', color: colors.secondaryText, opacity: 0.85 }
+const ytdRow: CSSProperties = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', marginTop: '10px' }
+const ytdLabel: CSSProperties = { fontSize: '12px', fontWeight: '800', color: colors.primaryDark }
+const ytdValue: CSSProperties = { fontSize: '12px', fontWeight: '900', color: colors.primaryDark }
+const ytdValueGreen: CSSProperties = { fontSize: '12px', fontWeight: '900', color: colors.accentGreen }
+const ytdValueRed: CSSProperties = { fontSize: '12px', fontWeight: '900', color: colors.accentRed }
+const ytdHint: CSSProperties = { margin: '10px 0 0 0', fontSize: '10px', fontWeight: '800', color: colors.secondaryText }
+const ytdLoading: CSSProperties = { margin: '10px 0 0 0', fontSize: '12px', fontWeight: '800', color: colors.secondaryText }
 
-const zBreakdownCard: any = { width: '100%', padding: '14px', borderRadius: '16px', border: `1px solid var(--border)`, background: 'var(--bg)' }
-const zBreakdownRow: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', marginTop: '10px' }
+const zBreakdownCard: CSSProperties = { width: '100%', padding: '14px', borderRadius: '16px', border: `1px solid var(--border)`, background: 'var(--bg)' }
+const zBreakdownRow: CSSProperties = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', marginTop: '10px' }
 
-const emptyStateStyle: any = { textAlign: 'center', padding: '40px 20px', color: colors.secondaryText, fontWeight: '600', fontSize: '13px' }
-const spinnerStyle: any = { width: '24px', height: '24px', border: '3px solid #f3f3f3', borderTop: '3px solid #6366f1', borderRadius: '50%', animation: 'spin 1s linear infinite', margin: '0 auto' }
+const emptyStateStyle: CSSProperties = { textAlign: 'center', padding: '40px 20px', color: colors.secondaryText, fontWeight: '600', fontSize: '13px' }
+const spinnerStyle: CSSProperties = { width: '24px', height: '24px', border: '3px solid #f3f3f3', borderTop: '3px solid #6366f1', borderRadius: '50%', animation: 'spin 1s linear infinite', margin: '0 auto' }
 
 export default function DashboardPage() {
   return (
