@@ -384,7 +384,11 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
   /* ---------------- DATA LOAD (summary dataset) ---------------- */
 
   const loadData = useCallback(async () => {
-    if (!authChecked || !hasSession || !storeId || storeId === 'null') {
+    if (!authChecked || !storeId || storeId === 'null') {
+      return
+    }
+
+    if (!hasSession) {
       setLoading(false)
       return
     }
