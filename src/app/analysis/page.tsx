@@ -138,9 +138,12 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
   const [loading, setLoading] = useState(true)
   const [categoryBreakdownRows, setCategoryBreakdownRows] = useState<{ category_key: string; total: number }[]>([])
   const [entitySummaryRows, setEntitySummaryRows] = useState<{ entity_id: string; entity_name: string; total: number; paid: number; credit: number }[]>([])
+  const [entitySummaryReady, setEntitySummaryReady] = useState(false)
   const [staffPayrollRows, setStaffPayrollRows] = useState<{ name: string; amount: number }[]>([])
   const [proStats, setProStats] = useState<any>(null)
   const [detailSummary, setDetailSummary] = useState<any>(null)
+  const [collapsedZReady, setCollapsedZReady] = useState(false)
+  const [periodMovementsReady, setPeriodMovementsReady] = useState(false)
   const [zBankAmount, setZBankAmount] = useState(0)
   const [rpcSummary, setRpcSummary] = useState<AnalysisRpcSummary>({
     income: 0,
@@ -384,11 +387,26 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
   /* ---------------- DATA LOAD (summary dataset) ---------------- */
 
   const loadData = useCallback(async () => {
-    if (!authChecked || !storeId || storeId === 'null') {
+    if (!authChecked) {
+      return
+    }
+
+    if (!storeId || storeId === 'null') {
+      setStaff([])
+      setSuppliers([])
+      setRevenueSources([])
+      setMaintenanceWorkers([])
+      setDrawer(null)
+      setLoading(false)
       return
     }
 
     if (!hasSession) {
+      setStaff([])
+      setSuppliers([])
+      setRevenueSources([])
+      setMaintenanceWorkers([])
+      setDrawer(null)
       setLoading(false)
       return
     }
@@ -541,8 +559,11 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
   }, [loadCategoryBreakdown])
 
   const loadEntitySummary = useCallback(async () => {
+    setEntitySummaryReady(false)
+
     if (!authChecked || !hasSession || !storeId || storeId === 'null') {
       setEntitySummaryRows([])
+      setEntitySummaryReady(true)
       return
     }
     try {
@@ -566,6 +587,8 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
     } catch (err) {
       console.error('Entity summary RPC error:', err)
       setEntitySummaryRows([])
+    } finally {
+      setEntitySummaryReady(true)
     }
   }, [storeId, startDate, endDate, filterA, supabase, authChecked, hasSession])
 
@@ -663,6 +686,15 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
       return
     }
 
+    if (
+      (detailMode === 'supplier' && suppliers.length === 0) ||
+      (detailMode === 'staff' && staff.length === 0) ||
+      (detailMode === 'maintenance' && maintenanceWorkers.length === 0) ||
+      (detailMode === 'revenue_source' && revenueSources.length === 0)
+    ) {
+      return
+    }
+
     let fallbackName = '—'
     if (detailMode === 'supplier') {
       fallbackName = suppliers.find((s) => String(s.id) === String(detailId))?.name || '—'
@@ -725,8 +757,11 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
   }, [loadDetailSummary])
 
   const loadCollapsedZ = useCallback(async () => {
+    setCollapsedZReady(false)
+
     if (!authChecked || !hasSession || !storeId || storeId === 'null') {
       setCollapsedZRows([])
+      setCollapsedZReady(true)
       return
     }
 
@@ -751,6 +786,8 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
     } catch (err) {
       console.error('Collapsed Z RPC error:', err)
       setCollapsedZRows([])
+    } finally {
+      setCollapsedZReady(true)
     }
   }, [storeId, startDate, endDate, supabase, authChecked, hasSession])
 
@@ -759,8 +796,11 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
   }, [loadCollapsedZ])
 
   const loadPeriodMovements = useCallback(async () => {
+    setPeriodMovementsReady(false)
+
     if (!authChecked || !hasSession || !storeId || storeId === 'null') {
       setPeriodMovements([])
+      setPeriodMovementsReady(true)
       return
     }
 
@@ -791,6 +831,8 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
     } catch (err) {
       console.error('Period movements RPC error:', err)
       setPeriodMovements([])
+    } finally {
+      setPeriodMovementsReady(true)
     }
   }, [storeId, startDate, endDate, supabase, authChecked, hasSession])
 
@@ -898,6 +940,8 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
 
     return [...periodMovements, ...collapsedZFromRpc].sort((a, b) => String(b.date).localeCompare(String(a.date)))
   }, [periodMovements, collapsedZRows])
+
+  const collapsedPeriodReady = useMemo(() => collapsedZReady && periodMovementsReady, [collapsedZReady, periodMovementsReady])
 
   /* ---------------- PRO STATS (RPC) ---------------- */
 
@@ -1446,7 +1490,7 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
               <div style={sectionPill}>{entitySummary.length} εγγραφές</div>
             </div>
 
-            {loading ? (
+            {!entitySummaryReady ? (
               <div style={hintBox}>Φόρτωση...</div>
             ) : entitySummary.length === 0 ? (
               <div style={hintBox}>Δεν βρέθηκαν έξοδα για τα φίλτρα που επέλεξες.</div>
@@ -1915,7 +1959,7 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
               <div style={sectionPill}>{collapsedPeriodList.length} εγγραφές</div>
             </div>
 
-            {loading ? (
+            {!collapsedPeriodReady ? (
               <div style={hintBox}>Φόρτωση...</div>
             ) : collapsedPeriodList.length === 0 ? (
               <div style={hintBox}>Δεν υπάρχουν κινήσεις για το φίλτρο που επέλεξες.</div>
