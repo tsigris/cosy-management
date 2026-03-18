@@ -125,6 +125,11 @@ function getPaymentMethod(tx: any): string {
   return String(tx?.payment_method ?? tx?.method ?? '').trim()
 }
 
+function isCapitalTransferTx(t: any) {
+  const c = String(t?.category ?? '').trim().toLowerCase()
+  return c === 'μεταφορά κεφαλαίων' || c === 'μεταφορά κεφαλαίου'
+}
+
 function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?: boolean }) {
   const supabase = getSupabase()
   const router = useRouter()
@@ -136,11 +141,17 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
   const [uiMode, setUiMode] = useState<UiMode>('simple')
   const [printMode, setPrintMode] = useState<PrintMode>('full')
 
+  const [transactions, setTransactions] = useState<any[]>([])
   const [staff, setStaff] = useState<any[]>([])
   const [suppliers, setSuppliers] = useState<any[]>([])
   const [revenueSources, setRevenueSources] = useState<any[]>([])
   const [maintenanceWorkers, setMaintenanceWorkers] = useState<any[]>([])
-  const [periodMovementRows, setPeriodMovementRows] = useState<any[]>([])
+  const [collapsedZRows, setCollapsedZRows] = useState<Array<{
+    date: string
+    cash_z: number
+    card_z: number
+    total_z: number
+  }>>([])
 
   const [drawer, setDrawer] = useState<any>(null)
 
@@ -389,6 +400,7 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
       const forecastTo = format(addDays(parseISO(endDate), 30), 'yyyy-MM-dd')
 
       const [
+        txRes,
         staffRes,
         supRes,
         revRes,
@@ -396,6 +408,21 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
         drawerRes,
         expOutRes,
       ] = await Promise.all([
+        ((): any => {
+          let q: any = supabase
+            .from('transactions')
+            .select('*, suppliers(id, name), fixed_assets(id, name, sub_category), revenue_sources(id, name)')
+            .eq('store_id', storeId)
+
+          if (period !== 'all') {
+            q = q.gte('date', startDate).lte('date', endDate)
+          } else {
+            q = q.limit(2000)
+          }
+
+          return q.order('date', { ascending: false })
+        })(),
+
         supabase
           .from('fixed_assets')
           .select('id, name, sub_category')
@@ -440,6 +467,9 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
         })(),
       ])
 
+      if (txRes.error) throw txRes.error
+
+      setTransactions(txRes.data || [])
       setStaff(staffRes.data || [])
       setSuppliers(supRes.data || [])
       setRevenueSources(revRes.data || [])
@@ -733,47 +763,39 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
     loadDetailSummary()
   }, [loadDetailSummary])
 
-  const loadPeriodMovements = useCallback(async () => {
+  const loadCollapsedZ = useCallback(async () => {
     if (!storeId || storeId === 'null') {
-      setPeriodMovementRows([])
+      setCollapsedZRows([])
       return
     }
+
     try {
-      const { data, error } = await supabase.rpc('get_analysis_period_movements', {
+      const { data, error } = await supabase.rpc('get_analysis_collapsed_period', {
         p_store_id: storeId,
         p_start_date: startDate,
         p_end_date: endDate,
-        p_filter_a: filterA,
-        p_detail_mode: detailMode,
-        p_detail_id: detailId === 'all' ? null : detailId,
       })
+
       if (error) throw error
+
       const rows = Array.isArray(data) ? data : []
-      setPeriodMovementRows(
+      setCollapsedZRows(
         rows.map((r: any) => ({
-          id: r.id ?? r.row_id ?? null,
           date: String(r.date ?? ''),
-          type: String(r.type ?? ''),
-          category: String(r.category ?? ''),
-          amount: Number(r.amount || 0),
-          method: String(r.method ?? r.payment_method ?? ''),
-          notes: String(r.notes ?? ''),
-          is_credit: r.is_credit === true,
-          is_verified: r.is_verified,
-          name: String(r.name ?? r.party_name ?? r.partyName ?? ''),
-          __collapsedZ: r.__collapsedZ === true || r.is_collapsed_z === true || r.collapsed_z === true,
-          created_at: r.created_at ?? null,
+          cash_z: Number(r.cash_z || 0),
+          card_z: Number(r.card_z || 0),
+          total_z: Number(r.total_z || 0),
         }))
       )
     } catch (err) {
-      console.error('Period movements RPC error:', err)
-      setPeriodMovementRows([])
+      console.error('Collapsed Z RPC error:', err)
+      setCollapsedZRows([])
     }
-  }, [storeId, startDate, endDate, filterA, detailMode, detailId, supabase])
+  }, [storeId, startDate, endDate, supabase])
 
   useEffect(() => {
-    loadPeriodMovements()
-  }, [loadPeriodMovements])
+    loadCollapsedZ()
+  }, [loadCollapsedZ])
 
   /* ---------------- FILTER MODE MAPPING ---------------- */
 
@@ -786,6 +808,46 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
     setDetailMode(nextMode)
     setDetailId('all')
   }, [filterA])
+
+  const normalizeExpenseCategory = useCallback((t: any) => {
+    if (t.supplier_id || t.suppliers?.name) return 'Εμπορεύματα'
+    const sub = String(t.fixed_assets?.sub_category || '').trim().toLowerCase()
+    if (sub === 'staff') return 'Staff'
+    if (sub === 'utility' || sub === 'utilities') return 'Utilities'
+    if (sub === 'worker' || sub === 'maintenance') return 'Maintenance'
+    return 'Other'
+  }, [])
+
+  const filterAToKey = useCallback((fa: FilterA) => {
+    if (fa === 'Εμπορεύματα') return 'Εμπορεύματα'
+    if (fa === 'Προσωπικό') return 'Staff'
+    if (fa === 'Λογαριασμοί') return 'Utilities'
+    if (fa === 'Συντήρηση') return 'Maintenance'
+    if (fa === 'Λοιπά') return 'Other'
+    return null
+  }, [])
+
+  const periodTx = useMemo(
+    () => transactions.filter((t) => t.date >= startDate && t.date <= endDate),
+    [transactions, startDate, endDate]
+  )
+
+  const organicTransactions = useMemo(() => periodTx.filter((t) => !isCapitalTransferTx(t)), [periodTx])
+
+  const filteredTx = useMemo(() => {
+    const key = filterAToKey(filterA)
+    return organicTransactions.filter((t) => {
+      if (filterA === 'Έσοδα' && !['income', 'income_collection', 'debt_received'].includes(t.type)) return false
+      if (filterA !== 'Όλες' && filterA !== 'Έσοδα' && normalizeExpenseCategory(t) !== key) return false
+
+      if (detailMode === 'staff' && detailId !== 'all' && String(t.fixed_asset_id) !== String(detailId)) return false
+      if (detailMode === 'supplier' && detailId !== 'all' && String(t.supplier_id) !== String(detailId)) return false
+      if (detailMode === 'revenue_source' && detailId !== 'all' && String(t.revenue_source_id) !== String(detailId)) return false
+      if (detailMode === 'maintenance' && detailId !== 'all' && String(t.fixed_asset_id) !== String(detailId)) return false
+
+      return true
+    })
+  }, [organicTransactions, filterA, detailMode, detailId, filterAToKey, normalizeExpenseCategory])
 
   /* ---------------- KPI / BALANCES ---------------- */
 
@@ -832,6 +894,23 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
   /* ---------------- PRO: DETAIL CARD (paid vs credit) ---------------- */
 
   const proDetailSummary = detailSummary
+
+  const collapsedPeriodList = useMemo(() => {
+    const others = filteredTx.filter((t) => !(t.category === 'Εσοδα Ζ' && t.type === 'income'))
+
+    const collapsedZFromRpc = collapsedZRows.map((row) => ({
+      id: `z-${row.date}`,
+      date: row.date,
+      type: 'income',
+      category: 'Εσοδα Ζ',
+      amount: row.total_z,
+      method: 'Z (Σύνολο)',
+      notes: `Μετρητά (Z): ${moneyGR(row.cash_z)} • Κάρτα (POS): ${moneyGR(row.card_z)}`,
+      __collapsedZ: true,
+    }))
+
+    return [...others, ...collapsedZFromRpc].sort((a, b) => String(b.date).localeCompare(String(a.date)))
+  }, [filteredTx, collapsedZRows])
 
   /* ---------------- PRO STATS (RPC) ---------------- */
 
@@ -1846,12 +1925,12 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
                 <h3 style={sectionTitle}>Κινήσεις Περιόδου</h3>
                 <div style={sectionSub}>Ζ ως 1 κίνηση/ημέρα + υπόλοιπες με όνομα</div>
               </div>
-              <div style={sectionPill}>{periodMovementRows.length} εγγραφές</div>
+              <div style={sectionPill}>{collapsedPeriodList.length} εγγραφές</div>
             </div>
 
             {loading ? (
               <div style={hintBox}>Φόρτωση...</div>
-            ) : periodMovementRows.length === 0 ? (
+            ) : collapsedPeriodList.length === 0 ? (
               <div style={hintBox}>Δεν υπάρχουν κινήσεις για το φίλτρο που επέλεξες.</div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }} className="print-table-wrap">
@@ -1860,9 +1939,9 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
                   <div>Περιγραφή Κίνησης</div>
                   <div style={{ textAlign: 'right' }}>Ποσό</div>
                 </div>
-                {periodMovementRows.map((t: any) => {
+                {collapsedPeriodList.map((t: any) => {
                   const isCollapsedZ = !!t.__collapsedZ
-                  const name = String(t.name || '').trim() || (isCollapsedZ ? 'Z REPORT (ΣΥΝΟΛΟ)' : t.category || '-')
+                  const name = isCollapsedZ ? 'Z REPORT (ΣΥΝΟΛΟ)' : getPartyName(t)
 
                   const amt = Number(t.amount) || 0
                   const absAmt = Math.abs(amt)
