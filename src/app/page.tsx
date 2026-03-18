@@ -133,6 +133,7 @@ function DashboardContent() {
           const { data: inst } = await supabase.from('installments').select('settlement_id').eq('transaction_id', txId).maybeSingle()
 
           if (!inst?.settlement_id) {
+            ytdLoadedKeys.current.delete(key)
             setYtdCache((prev) => ({ ...prev, [key]: { loading: false } }))
             return
           }
@@ -149,6 +150,7 @@ function DashboardContent() {
           const loanPaid = paidInst.reduce((acc: number, i: any) => acc + Number(i.amount), 0)
           const loanTotal = Number(sett?.total_amount || 0)
 
+          ytdLoadedKeys.current.delete(key)
           setYtdCache((prev) => ({
             ...prev,
             [key]: {
@@ -162,6 +164,7 @@ function DashboardContent() {
           }))
         } catch (e) {
           console.error(e)
+          ytdLoadedKeys.current.delete(key)
           setYtdCache((prev) => ({ ...prev, [key]: { loading: false } }))
         }
         return
@@ -199,6 +202,7 @@ function DashboardContent() {
 
           const openIncome = creditIncome - receivedIncome
 
+          ytdLoadedKeys.current.delete(key)
           setYtdCache((prev) => ({
             ...prev,
             [key]: { loading: false, turnoverIncome, receivedIncome, openIncome },
@@ -220,12 +224,14 @@ function DashboardContent() {
 
         const openExpense = creditExpenses - payments
 
+        ytdLoadedKeys.current.delete(key)
         setYtdCache((prev) => ({
           ...prev,
           [key]: { loading: false, totalExpenses, payments, openExpense },
         }))
       } catch (e) {
         console.error(e)
+        ytdLoadedKeys.current.delete(key)
         setYtdCache((prev) => ({ ...prev, [key]: { loading: false } }))
       }
     },
