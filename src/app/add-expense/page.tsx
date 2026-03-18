@@ -487,16 +487,12 @@ function AddExpenseForm() {
 
       setStoreId(activeStoreId)
 
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('username, role')
-        .eq('id', session.user.id)
-        .maybeSingle()
+      const editTxPromise = editId
+        ? supabase.from('transactions').select('*').eq('id', editId).eq('store_id', activeStoreId).single()
+        : Promise.resolve({ data: null, error: null })
 
-      if (profile?.username) setCurrentUsername(profile.username || 'Χρήστης')
-      setRole((profile?.role as ProfileRole) || 'user')
-
-      const [sRes, fRes, tRes] = await Promise.all([
+      const [profileRes, sRes, fRes, tRes, editTxRes] = await Promise.all([
+        supabase.from('profiles').select('username, role').eq('id', session.user.id).maybeSingle(),
         supabase.from('suppliers').select('id, name, phone, vat_number, bank_name, iban').eq('store_id', activeStoreId).order('name'),
         supabase
           .from('fixed_assets')
@@ -504,7 +500,11 @@ function AddExpenseForm() {
           .eq('store_id', activeStoreId)
           .order('name'),
         supabase.from('transactions').select('amount, type, is_credit').eq('store_id', activeStoreId).eq('date', selectedDate),
+        editTxPromise,
       ])
+
+      if (profileRes.data?.username) setCurrentUsername(profileRes.data.username || 'Χρήστης')
+      setRole((profileRes.data?.role as ProfileRole) || 'user')
 
       const supData = sRes.data || []
       const faAll = fRes.data || []
@@ -549,12 +549,7 @@ function AddExpenseForm() {
       }
 
       if (editId) {
-        const { data: tx, error } = await supabase
-          .from('transactions')
-          .select('*')
-          .eq('id', editId)
-          .eq('store_id', activeStoreId)
-          .single()
+        const { data: tx, error } = editTxRes
 
         if (error) throw error
 
@@ -971,6 +966,7 @@ function AddExpenseForm() {
     if (!documentType) return toast.error('Επίλεξε τύπο παραστατικού')
 
     setLoading(true)
+    let uploadedInvoicePath: string | null = null
 
     try {
       const {
@@ -1054,7 +1050,8 @@ function AddExpenseForm() {
           contentType: imageFile.type || undefined,
         })
         if (uploadError) throw uploadError
-        payload.invoice_image = uploadData?.path || null
+        uploadedInvoicePath = uploadData?.path || null
+        payload.invoice_image = uploadedInvoicePath
       }
 
       let error: any = null
@@ -1082,6 +1079,14 @@ function AddExpenseForm() {
       router.push(`/?date=${selectedDate}&store=${getActiveStoreId() || ''}`)
       router.refresh()
     } catch (error: any) {
+      if (uploadedInvoicePath) {
+        try {
+          const { error: cleanupError } = await supabase.storage.from('invoices').remove([uploadedInvoicePath])
+          if (cleanupError) console.error('Invoice cleanup failed:', cleanupError)
+        } catch (cleanupErr) {
+          console.error('Invoice cleanup exception:', cleanupErr)
+        }
+      }
       console.error(error)
       toast.error(error?.message || 'Κάτι πήγε στραβά')
       setLoading(false)
