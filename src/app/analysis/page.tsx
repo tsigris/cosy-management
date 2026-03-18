@@ -371,15 +371,12 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
       const { data: sessionData } = await supabase.auth.getSession()
       if (!sessionData?.session) return router.push('/login')
 
-      const forecastTo = format(addDays(parseISO(endDate), 30), 'yyyy-MM-dd')
-
       const [
         staffRes,
         supRes,
         revRes,
         maintRes,
         drawerRes,
-        expOutRes,
       ] = await Promise.all([
         supabase
           .from('fixed_assets')
@@ -407,22 +404,6 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
           .order('date', { ascending: false })
           .limit(1)
           .maybeSingle(),
-
-        // Future outflows — if period === 'all' there's no meaningful endDate window,
-        // so only apply the gt/lte when period !== 'all'.
-        ((): any => {
-          let q: any = supabase
-            .from('transactions')
-            .select('amount, type, is_credit, method, category, date')
-            .eq('store_id', storeId)
-            .in('type', ['expense', 'debt_payment', 'salary_advance'])
-
-          if (period !== 'all') {
-            q = q.gt('date', endDate).lte('date', forecastTo)
-          }
-
-          return q.order('date', { ascending: true })
-        })(),
       ])
 
       setStaff(staffRes.data || [])
@@ -430,17 +411,12 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
       setRevenueSources(revRes.data || [])
       setMaintenanceWorkers((maintRes.data || []).filter((x: any) => String(x?.name || '').trim().length > 0))
       setDrawer(drawerRes.data || null)
-
-      const out = (expOutRes.data || [])
-        .filter((t: any) => !isCreditTx(t))
-        .reduce((a: number, t: any) => a + Math.abs(Number(t.amount) || 0), 0)
-      setExpectedOutflows30d(out)
     } catch (err) {
       toast.error('Σφάλμα φόρτωσης δεδομένων')
     } finally {
       setLoading(false)
     }
-  }, [router, storeId, endDate, isCreditTx, supabase, period])
+  }, [router, storeId, endDate, supabase])
 
   useEffect(() => {
     loadData()
@@ -791,6 +767,34 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
   useEffect(() => {
     loadPeriodMovements()
   }, [loadPeriodMovements])
+
+  const loadExpectedOutflows = useCallback(async () => {
+    if (!storeId || storeId === 'null') {
+      setExpectedOutflows30d(0)
+      return
+    }
+
+    try {
+      const { data, error } = await supabase.rpc('get_analysis_expected_outflows', {
+        p_store_id: storeId,
+        p_start_date: startDate,
+        p_end_date: endDate,
+      })
+
+      if (error) throw error
+
+      const rows = Array.isArray(data) ? data : []
+      const total = rows.reduce((acc: number, row: any) => acc + Math.abs(Number(row.amount || 0)), 0)
+      setExpectedOutflows30d(total)
+    } catch (err) {
+      console.error('Expected outflows RPC error:', err)
+      setExpectedOutflows30d(0)
+    }
+  }, [storeId, endDate, supabase])
+
+  useEffect(() => {
+    loadExpectedOutflows()
+  }, [loadExpectedOutflows])
 
   /* ---------------- FILTER MODE MAPPING ---------------- */
 
