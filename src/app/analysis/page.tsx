@@ -81,15 +81,6 @@ type CalcBalances = {
   as_of_date: string
 }
 
-type Kpis = {
-  income: number
-  expenses: number
-  tips: number
-  netProfit: number
-  savingsDeposits: number
-  savingsWithdrawals: number
-}
-
 type AnalysisRpcSummary = {
   income: number
   expenses: number
@@ -161,6 +152,12 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
   const [drawer, setDrawer] = useState<any>(null)
 
   const [loading, setLoading] = useState(true)
+  const [categoryBreakdownRows, setCategoryBreakdownRows] = useState<{ category_key: string; total: number }[]>([])
+  const [entitySummaryRows, setEntitySummaryRows] = useState<{ entity_id: string; entity_name: string; total: number; paid: number; credit: number }[]>([])
+  const [staffPayrollRows, setStaffPayrollRows] = useState<{ name: string; amount: number }[]>([])
+  const [proStats, setProStats] = useState<any>(null)
+  const [detailSummary, setDetailSummary] = useState<any>(null)
+  const [zBankAmount, setZBankAmount] = useState(0)
   const [rpcSummary, setRpcSummary] = useState<AnalysisRpcSummary>({
     income: 0,
     expenses: 0,
@@ -246,14 +243,6 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
     [norm]
   )
   const isBankMethod = useCallback((method: string) => ['κάρτα', 'τράπεζα'].includes(norm(method)), [norm])
-
-  // signedAmount: deposits to “κουμπαρά” are outflow from cash
-  const signedAmount = useCallback((t: any) => {
-    const raw = Number(t.amount) || 0
-    if (raw < 0) return raw
-    if (t.type === 'expense' || t.type === 'debt_payment' || t.type === 'salary_advance' || t.type === 'savings_deposit') return -Math.abs(raw)
-    return Math.abs(raw)
-  }, [])
 
   /* ---------------- PRINT CSS ---------------- */
 
@@ -570,6 +559,213 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
     loadAnalysisSummary()
   }, [loadAnalysisSummary])
 
+  const loadCategoryBreakdown = useCallback(async () => {
+    if (!storeId || storeId === 'null') {
+      setCategoryBreakdownRows([])
+      return
+    }
+    try {
+      const { data, error } = await supabase.rpc('get_analysis_category_breakdown', {
+        p_store_id: storeId,
+        p_start_date: startDate,
+        p_end_date: endDate,
+      })
+      if (error) throw error
+      const rows = Array.isArray(data) ? data : []
+      setCategoryBreakdownRows(
+        rows.map((r: any) => ({
+          category_key: String(r.category_key ?? ''),
+          total: Number(r.total || 0),
+        }))
+      )
+    } catch (err) {
+      console.error('Category breakdown RPC error:', err)
+      setCategoryBreakdownRows([])
+    }
+  }, [storeId, startDate, endDate, supabase])
+
+  useEffect(() => {
+    loadCategoryBreakdown()
+  }, [loadCategoryBreakdown])
+
+  const loadEntitySummary = useCallback(async () => {
+    if (!storeId || storeId === 'null') {
+      setEntitySummaryRows([])
+      return
+    }
+    try {
+      const { data, error } = await supabase.rpc('get_analysis_entity_summary', {
+        p_store_id: storeId,
+        p_start_date: startDate,
+        p_end_date: endDate,
+        p_filter_a: filterA,
+      })
+      if (error) throw error
+      const rows = Array.isArray(data) ? data : []
+      setEntitySummaryRows(
+        rows.map((r: any) => ({
+          entity_id: String(r.entity_id ?? ''),
+          entity_name: String(r.entity_name ?? ''),
+          total: Number(r.total || 0),
+          paid: Number(r.paid || 0),
+          credit: Number(r.credit || 0),
+        }))
+      )
+    } catch (err) {
+      console.error('Entity summary RPC error:', err)
+      setEntitySummaryRows([])
+    }
+  }, [storeId, startDate, endDate, filterA, supabase])
+
+  useEffect(() => {
+    loadEntitySummary()
+  }, [loadEntitySummary])
+
+  const loadZBank = useCallback(async () => {
+    if (!storeId || storeId === 'null') {
+      setZBankAmount(0)
+      return
+    }
+    try {
+      const { data, error } = await supabase.rpc('get_analysis_z_bank', {
+        p_store_id: storeId,
+        p_start_date: startDate,
+        p_end_date: endDate,
+      })
+      if (error) throw error
+      const raw = Array.isArray(data) ? data[0] : data
+      setZBankAmount(Number(raw?.total || 0))
+    } catch (err) {
+      console.error('Z bank RPC error:', err)
+      setZBankAmount(0)
+    }
+  }, [storeId, startDate, endDate, supabase])
+
+  useEffect(() => {
+    loadZBank()
+  }, [loadZBank])
+
+  const loadStaffPayroll = useCallback(async () => {
+    if (!storeId || storeId === 'null') {
+      setStaffPayrollRows([])
+      return
+    }
+
+    try {
+      const { data, error } = await supabase.rpc('get_analysis_staff_payroll', {
+        p_store_id: storeId,
+        p_start_date: startDate,
+        p_end_date: endDate,
+      })
+
+      if (error) throw error
+
+      const rows = Array.isArray(data) ? data : []
+      setStaffPayrollRows(
+        rows.map((r: any) => ({
+          name: String(r.name ?? ''),
+          amount: Number(r.amount || 0),
+        }))
+      )
+    } catch (err) {
+      console.error('Staff payroll RPC error:', err)
+      setStaffPayrollRows([])
+    }
+  }, [storeId, startDate, endDate, supabase])
+
+  useEffect(() => {
+    loadStaffPayroll()
+  }, [loadStaffPayroll])
+
+  const loadProStats = useCallback(async () => {
+    if (!storeId || storeId === 'null') {
+      setProStats(null)
+      return
+    }
+    try {
+      const { data, error } = await supabase.rpc('get_analysis_pro_stats', {
+        p_store_id: storeId,
+        p_start_date: startDate,
+        p_end_date: endDate,
+      })
+      if (error) throw error
+      const raw = Array.isArray(data) ? data[0] : data
+      setProStats(raw ?? null)
+    } catch (err) {
+      console.error('PRO stats RPC error:', err)
+      setProStats(null)
+    }
+  }, [storeId, startDate, endDate, supabase])
+
+  useEffect(() => {
+    loadProStats()
+  }, [loadProStats])
+
+  const loadDetailSummary = useCallback(async () => {
+    if (!storeId || storeId === 'null' || detailMode === 'none' || detailId === 'all') {
+      setDetailSummary(null)
+      return
+    }
+
+    let fallbackName = '—'
+    if (detailMode === 'supplier') {
+      fallbackName = suppliers.find((s) => String(s.id) === String(detailId))?.name || '—'
+    } else if (detailMode === 'staff') {
+      fallbackName = staff.find((s) => String(s.id) === String(detailId))?.name || '—'
+    } else if (detailMode === 'maintenance') {
+      fallbackName = maintenanceWorkers.find((m) => String(m.id) === String(detailId))?.name || '—'
+    } else if (detailMode === 'revenue_source') {
+      fallbackName = revenueSources.find((r) => String(r.id) === String(detailId))?.name || '—'
+    }
+
+    try {
+      const { data, error } = await supabase.rpc('get_analysis_detail_summary', {
+        p_store_id: storeId,
+        p_start_date: startDate,
+        p_end_date: endDate,
+        p_entity_type: detailMode,
+        p_entity_id: detailId === 'all' ? null : detailId,
+      })
+      if (error) throw error
+      const raw = Array.isArray(data) ? data[0] : data
+      const payload = raw?.get_analysis_detail_summary ?? raw ?? {}
+      setDetailSummary({
+        name: String(payload.name || fallbackName || '').trim() || '—',
+        paidCash: Number(payload.paidCash ?? payload.paid_cash ?? 0),
+        paidBank: Number(payload.paidBank ?? payload.paid_bank ?? 0),
+        paidTotal: Number(payload.paidTotal ?? payload.paid_total ?? 0),
+        creditTotal: Number(payload.creditTotal ?? payload.credit_total ?? 0),
+        countPaid: Number(payload.countPaid ?? payload.count_paid ?? 0),
+        countCredit: Number(payload.countCredit ?? payload.count_credit ?? 0),
+        totalAll: Number(payload.totalAll ?? payload.total_all ?? 0),
+        paidRows: Array.isArray(payload.paidRows ?? payload.paid_rows)
+          ? (payload.paidRows ?? payload.paid_rows)
+          : [],
+        creditRows: Array.isArray(payload.creditRows ?? payload.credit_rows)
+          ? (payload.creditRows ?? payload.credit_rows)
+          : [],
+      })
+    } catch (err) {
+      console.error('Detail summary RPC error:', err)
+      setDetailSummary(null)
+    }
+  }, [
+    storeId,
+    startDate,
+    endDate,
+    detailMode,
+    detailId,
+    suppliers,
+    staff,
+    maintenanceWorkers,
+    revenueSources,
+    supabase,
+  ])
+
+  useEffect(() => {
+    loadDetailSummary()
+  }, [loadDetailSummary])
+
   /* ---------------- FILTER MODE MAPPING ---------------- */
 
   useEffect(() => {
@@ -625,38 +821,6 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
 
   /* ---------------- KPI / BALANCES ---------------- */
 
-  const computeKpis = useCallback(
-    (rows: any[]): Kpis => {
-      const rowsNoCredit = rows.filter((t) => !isCreditTx(t))
-
-      const income = rowsNoCredit
-        .filter((t) => t.type === 'income' || t.type === 'income_collection' || t.type === 'debt_received')
-        .reduce((acc, t) => acc + (Number(t.amount) || 0), 0)
-
-      const tips = rowsNoCredit
-        .filter((t) => t.type === 'tip_entry')
-        .reduce((acc, t) => acc + Math.abs(Number(t.amount) || 0), 0)
-
-      const expenses = rowsNoCredit
-        .filter((t) => t.type === 'expense' || t.type === 'debt_payment' || t.type === 'salary_advance')
-        .reduce((acc, t) => acc + Math.abs(Number(t.amount) || 0), 0)
-
-      const savingsDeposits = rowsNoCredit
-        .filter((t) => t.type === 'savings_deposit')
-        .reduce((acc, t) => acc + Math.abs(Number(t.amount) || 0), 0)
-
-      const savingsWithdrawals = rowsNoCredit
-        .filter((t) => t.type === 'savings_withdrawal')
-        .reduce((acc, t) => acc + Math.abs(Number(t.amount) || 0), 0)
-
-      return { income, expenses, tips, netProfit: income - expenses, savingsDeposits, savingsWithdrawals }
-    },
-    [isCreditTx]
-  )
-
-  // KPIs: use organicTransactions for current period
-  const kpis = useMemo(() => computeKpis(organicTransactions), [organicTransactions, computeKpis])
-
   const variance = useMemo(
     () => ({
       income: null,
@@ -666,62 +830,6 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
     }),
     []
   )
-
-  /* ---------------- Z LOGIC (single day) ---------------- */
-
-  const zBreakdown = useMemo(() => {
-    if (!isZReport) return { zCash: 0, zPos: 0, blackCash: 0, totalTurnover: 0, blackPct: 0 }
-
-    const rows = periodTx
-      .filter((t) => t.type === 'income')
-      .map((t) => ({
-        method: getMethod(t),
-        notes: String(t.notes || '').trim(),
-        category: String(t.category || '').trim(),
-        amount: Number(t.amount) || 0,
-      }))
-      .filter((r) => r.category === 'Εσοδα Ζ')
-
-    const zCash = rows.filter((r) => r.method === 'Μετρητά (Z)').reduce((a, r) => a + r.amount, 0)
-    const zPos = rows.filter((r) => r.method === 'Κάρτα').reduce((a, r) => a + r.amount, 0)
-    const blackCash = rows
-      .filter(
-        (r) =>
-          r.category === 'Εσοδα Ζ' &&
-          (r.notes === 'ΧΩΡΙΣ ΣΗΜΑΝΣΗ' || r.method === 'Μετρητά' || r.method === 'Χωρίς Απόδειξη') &&
-          r.method !== 'Μετρητά (Z)'
-      )
-      .reduce((a, r) => a + r.amount, 0)
-
-    const totalTurnover = zCash + zPos + blackCash
-    return {
-      zCash,
-      zPos,
-      blackCash,
-      totalTurnover,
-      blackPct: totalTurnover > 0 ? (blackCash / totalTurnover) * 100 : 0,
-    }
-  }, [isZReport, periodTx, getMethod])
-
-  const simpleBankFromZ = useMemo(() => {
-    return periodTx
-      .filter((t) => t.type === 'income')
-      .filter((t) => String(t.category || '').trim() === 'Εσοδα Ζ')
-      .filter((t) => {
-        const method = getMethod(t)
-        return method === 'Κάρτα' || method === 'Τράπεζα'
-      })
-      .reduce((a, t) => a + Number(t.amount || 0), 0)
-  }, [periodTx, getMethod])
-
-  const cashExpensesToday = useMemo(() => {
-    if (!isZReport) return 0
-    return periodTx
-      .filter((t) => t.type === 'expense' || t.type === 'debt_payment' || t.type === 'salary_advance')
-      .filter((t) => getMethod(t) === 'Μετρητά')
-      .filter((t) => !isCreditTx(t))
-      .reduce((acc, t) => acc + Math.abs(Number(t.amount) || 0), 0)
-  }, [isZReport, periodTx, getMethod, isCreditTx])
 
   const bigKpiValue = useMemo(() => {
     return Number(rpcSummary.net_profit || 0)
@@ -744,260 +852,66 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
   const rangeText = useMemo(() => `${formatDateGreek(startDate)} → ${formatDateGreek(endDate)}`, [startDate, endDate])
 
   const entitySummary = useMemo(() => {
-    // Build a list of entities (paid/credit totals) depending on filterA
-    // This is the SIMPLE replacement for “show all movements”.
-    const rows = periodTx.filter((t) => ['expense', 'debt_payment', 'salary_advance'].includes(t.type))
-
-    const pickMode: DetailMode =
-      filterA === 'Εμπορεύματα'
-        ? 'supplier'
-        : filterA === 'Προσωπικό'
-          ? 'staff'
-          : filterA === 'Συντήρηση'
-            ? 'maintenance'
-            : 'none'
-
-    // If no entity filter chosen, show breakdown by category instead (top categories).
-    if (pickMode === 'none') {
-      const map: Record<string, { name: string; total: number; paid: number; credit: number }> = {}
-      for (const t of rows) {
-        if (filterA === 'Λογαριασμοί' && normalizeExpenseCategory(t) !== 'Utilities') continue
-        if (filterA === 'Λοιπά' && normalizeExpenseCategory(t) !== 'Other') continue
-        if (filterA === 'Έσοδα') continue
-
-        const key = normalizeExpenseCategory(t)
-        const name = CATEGORY_META.find((c) => c.key === key)?.label || key
-        const amt = Math.abs(Number(t.amount) || 0)
-        const credit = isCreditTx(t)
-        if (!map[key]) map[key] = { name, total: 0, paid: 0, credit: 0 }
-        map[key].total += amt
-        if (credit) map[key].credit += amt
-        else map[key].paid += amt
-      }
-      return Object.entries(map)
-        .map(([id, v]) => ({ id, ...v }))
-        .sort((a, b) => b.total - a.total)
-        .slice(0, 12)
-    }
-
-    const map: Record<string, { name: string; total: number; paid: number; credit: number }> = {}
-
-    for (const t of rows) {
-      // category filtering first (so it matches the “tab”)
-      if (filterA !== 'Όλες') {
-        const key = filterAToKey(filterA)
-        if (key && normalizeExpenseCategory(t) !== key) continue
-      }
-
-      let id = ''
-      let name = '—'
-
-      if (pickMode === 'supplier') {
-        id = String(t.supplier_id || '')
-        name =
-          t.suppliers?.name ||
-          suppliers.find((s) => String(s.id) === String(t.supplier_id))?.name ||
-          'Προμηθευτής'
-      } else if (pickMode === 'staff') {
-        id = String(t.fixed_asset_id || '')
-        name =
-          t.fixed_assets?.name ||
-          staff.find((s) => String(s.id) === String(t.fixed_asset_id))?.name ||
-          'Υπάλληλος'
-      } else if (pickMode === 'maintenance') {
-        id = String(t.fixed_asset_id || '')
-        name =
-          t.fixed_assets?.name ||
-          maintenanceWorkers.find((m) => String(m.id) === String(t.fixed_asset_id))?.name ||
-          'Μάστορας'
-      }
-
-      if (!id) continue
-
-      const amt = Math.abs(Number(t.amount) || 0)
-      const credit = isCreditTx(t)
-
-      if (!map[id]) map[id] = { name, total: 0, paid: 0, credit: 0 }
-      map[id].total += amt
-      if (credit) map[id].credit += amt
-      else map[id].paid += amt
-    }
-
-    return Object.entries(map)
-      .map(([id, v]) => ({ id, ...v }))
-      .sort((a, b) => b.total - a.total)
-      .slice(0, 20)
-  }, [
-    periodTx,
-    filterA,
-    suppliers,
-    staff,
-    maintenanceWorkers,
-    normalizeExpenseCategory,
-    filterAToKey,
-    isCreditTx,
-  ])
+    return entitySummaryRows.map((row) => ({
+      id: row.entity_id,
+      name: row.entity_name,
+      total: row.total,
+      paid: row.paid,
+      credit: row.credit,
+    }))
+  }, [entitySummaryRows])
 
   /* ---------------- PRO: DETAIL CARD (paid vs credit) ---------------- */
 
-  const proDetailSummary = useMemo(() => {
-    if (detailMode === 'none' || detailId === 'all') return null
+  const proDetailSummary = detailSummary
 
-    const rows = periodTx.filter((t) => {
-      if (detailMode === 'staff') return String(t.fixed_asset_id) === String(detailId)
-      if (detailMode === 'supplier') return String(t.supplier_id) === String(detailId)
-      if (detailMode === 'revenue_source') return String(t.revenue_source_id) === String(detailId)
-      if (detailMode === 'maintenance') return String(t.fixed_asset_id) === String(detailId)
-      return false
-    })
+  /* ---------------- PRO STATS (RPC) ---------------- */
 
-    const expenseRows = rows.filter((t) => ['expense', 'debt_payment'].includes(t.type))
-    const paidRows = expenseRows.filter((t) => !isCreditTx(t))
-    const creditRows = expenseRows.filter((t) => isCreditTx(t))
+  const proExpenseDocs = useMemo(
+    () => ({
+      retail: {
+        amount: Number(proStats?.expense_docs?.retail?.amount || 0),
+        count: Number(proStats?.expense_docs?.retail?.count || 0),
+        pct: Number(proStats?.expense_docs?.retail?.pct || 0),
+      },
+      invoice: {
+        amount: Number(proStats?.expense_docs?.invoice?.amount || 0),
+        count: Number(proStats?.expense_docs?.invoice?.count || 0),
+        pct: Number(proStats?.expense_docs?.invoice?.pct || 0),
+      },
+      no_invoice: {
+        amount: Number(proStats?.expense_docs?.no_invoice?.amount || 0),
+        count: Number(proStats?.expense_docs?.no_invoice?.count || 0),
+        pct: Number(proStats?.expense_docs?.no_invoice?.pct || 0),
+      },
+      unknown: {
+        amount: Number(proStats?.expense_docs?.unknown?.amount || 0),
+        count: Number(proStats?.expense_docs?.unknown?.count || 0),
+        pct: Number(proStats?.expense_docs?.unknown?.pct || 0),
+      },
+    }),
+    [proStats],
+  )
 
-    const paidCash = paidRows
-      .filter((t) => isCashMethod(getMethod(t)))
-      .reduce((a, t) => a + Math.abs(Number(t.amount) || 0), 0)
+  const proCapitalTransfers = useMemo(
+    () => ({
+      out: Number(proStats?.capital_transfers?.out || 0),
+      in: Number(proStats?.capital_transfers?.in || 0),
+      net: Number(proStats?.capital_transfers?.net || 0),
+      countOut: Number(proStats?.capital_transfers?.countOut ?? proStats?.capital_transfers?.count_out ?? 0),
+      countIn: Number(proStats?.capital_transfers?.countIn ?? proStats?.capital_transfers?.count_in ?? 0),
+    }),
+    [proStats],
+  )
 
-    const paidBank = paidRows
-      .filter((t) => isBankMethod(getMethod(t)))
-      .reduce((a, t) => a + Math.abs(Number(t.amount) || 0), 0)
-
-    const paidTotal = paidCash + paidBank
-    const creditTotal = creditRows.reduce((a, t) => a + Math.abs(Number(t.amount) || 0), 0)
-
-    const name =
-      detailMode === 'supplier'
-        ? suppliers.find((s) => String(s.id) === String(detailId))?.name
-        : detailMode === 'staff'
-          ? staff.find((s) => String(s.id) === String(detailId))?.name
-          : detailMode === 'maintenance'
-            ? maintenanceWorkers.find((m) => String(m.id) === String(detailId))?.name
-            : detailMode === 'revenue_source'
-              ? revenueSources.find((r) => String(r.id) === String(detailId))?.name
-              : '—'
-
-    return {
-      name: String(name || '').trim() || '—',
-      paidCash,
-      paidBank,
-      paidTotal,
-      creditTotal,
-      countPaid: paidRows.length,
-      countCredit: creditRows.length,
-      totalAll: paidTotal + creditTotal,
-      paidRows: [...paidRows].sort((a, b) => String(b.date).localeCompare(String(a.date))),
-      creditRows: [...creditRows].sort((a, b) => String(b.date).localeCompare(String(a.date))),
-    }
-  }, [
-    detailMode,
-    detailId,
-    periodTx,
-    suppliers,
-    staff,
-    maintenanceWorkers,
-    revenueSources,
-    isCreditTx,
-    isCashMethod,
-    isBankMethod,
-    getMethod,
-  ])
-
-  /* ---------------- PRO: EXTRA “PRO” CARDS (Loans / Settlements) ---------------- */
-  // Δεν αλλάζουμε βάση. Κάνουμε heuristics από category/notes.
-  const proFinanceCards = useMemo(() => {
-    const rows = periodTx.filter((t) => !isCreditTx(t))
-
-    const cat = (t: any) => String(t.category || '').trim().toLowerCase()
-    const notes = (t: any) => String(t.notes || '').trim().toLowerCase()
-
-    const isLoan = (t: any) =>
-      cat(t).includes('δάνει') || cat(t).includes('loan') || notes(t).includes('δάνει') || notes(t).includes('loan')
-
-    const isSettlement = (t: any) =>
-      cat(t).includes('ρύθμι') ||
-      cat(t).includes('εφορία') ||
-      cat(t).includes('tax') ||
-      notes(t).includes('ρύθμι') ||
-      notes(t).includes('εφορία')
-
-    const loanOut = rows
-      .filter((t) => (t.type === 'expense' || t.type === 'debt_payment' || t.type === 'salary_advance') && isLoan(t))
-      .reduce((a, t) => a + Math.abs(Number(t.amount) || 0), 0)
-
-    const loanIn = rows
-      .filter((t) => (t.type === 'income' || t.type === 'income_collection' || t.type === 'debt_received') && isLoan(t))
-      .reduce((a, t) => a + Math.abs(Number(t.amount) || 0), 0)
-
-    const settlementOut = rows
-      .filter((t) => (t.type === 'expense' || t.type === 'debt_payment' || t.type === 'salary_advance') && isSettlement(t))
-      .reduce((a, t) => a + Math.abs(Number(t.amount) || 0), 0)
-
-    return { loanOut, loanIn, settlementOut }
-  }, [periodTx, isCreditTx])
-
-  /* ---------------- ✅ NEW: PRO CARDS (Expense Docs + Capital Transfers) ---------------- */
-
-  const proExpenseDocs = useMemo(() => {
-    const rows = periodTx
-      .filter((t) => (t.type === 'expense' || t.type === 'debt_payment' || t.type === 'salary_advance'))
-      .filter((t) => !isCreditTx(t))
-      .filter((t) => !isCapitalTransferTx(t))
-
-    const detect = (t: any) => {
-      const n = String(t?.notes || '').trim().toLowerCase()
-      if (n.startsWith('απόδειξη λιανικής')) return 'retail'
-      if (n.startsWith('τιμολόγιο')) return 'invoice'
-      if (n.startsWith('χωρίς τιμολόγιο')) return 'no_invoice'
-      return 'unknown'
-    }
-
-    let total = 0
-    const buckets: Record<string, { amount: number; count: number }> = {
-      retail: { amount: 0, count: 0 },
-      invoice: { amount: 0, count: 0 },
-      no_invoice: { amount: 0, count: 0 },
-      unknown: { amount: 0, count: 0 },
-    }
-
-    for (const t of rows) {
-      const amt = Math.abs(Number(t.amount) || 0)
-      total += amt
-      const key = detect(t)
-      buckets[key].amount += amt
-      buckets[key].count += 1
-    }
-
-    const pct = (x: number) => (total > 0 ? (x / total) * 100 : 0)
-
-    return {
-      total,
-      retail: { ...buckets.retail, pct: pct(buckets.retail.amount) },
-      invoice: { ...buckets.invoice, pct: pct(buckets.invoice.amount) },
-      no_invoice: { ...buckets.no_invoice, pct: pct(buckets.no_invoice.amount) },
-      unknown: { ...buckets.unknown, pct: pct(buckets.unknown.amount) },
-    }
-  }, [periodTx, isCreditTx])
-
-  const proCapitalTransfers = useMemo(() => {
-    const rows = periodTx
-      .filter((t) => !isCreditTx(t))
-      .filter((t) => isCapitalTransferTx(t))
-
-    const outRows = rows.filter((t) => t.type === 'expense' || t.type === 'debt_payment' || t.type === 'salary_advance')
-    const inRows = rows.filter((t) => t.type === 'income' || t.type === 'income_collection' || t.type === 'debt_received')
-
-    const out = outRows.reduce((a, t) => a + Math.abs(Number(t.amount) || 0), 0)
-    const inn = inRows.reduce((a, t) => a + Math.abs(Number(t.amount) || 0), 0)
-
-    return {
-      out,
-      in: inn,
-      net: inn - out,
-      countOut: outRows.length,
-      countIn: inRows.length,
-    }
-  }, [periodTx, isCreditTx])
+  const proFinanceCards = useMemo(
+    () => ({
+      loanOut: Number(proStats?.finance?.loanOut ?? proStats?.finance?.loan_out ?? 0),
+      loanIn: Number(proStats?.finance?.loanIn ?? proStats?.finance?.loan_in ?? 0),
+      settlementOut: Number(proStats?.finance?.settlementOut ?? proStats?.finance?.settlement_out ?? 0),
+    }),
+    [proStats],
+  )
 
   /* ---------------- SIMPLE/PRO: TRANSACTION SEARCH (paged) ---------------- */
 
@@ -1124,49 +1038,26 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
 
   /* ---------------- CATEGORY BREAKDOWN ---------------- */
 
-  // Pie/Bar charts: use organicTransactions
   const categoryBreakdown = useMemo(() => {
-    const expenseTx = organicTransactions
-      .filter((t) => t.type === 'expense' || t.type === 'debt_payment' || t.type === 'salary_advance')
-      .filter((t) => !isCreditTx(t))
+    const result: Record<string, number> = {
+      'Εμπορεύματα': 0,
+      'Staff': 0,
+      'Utilities': 0,
+      'Maintenance': 0,
+      'Other': 0,
+    }
 
-    const result: Record<string, number> = {}
     let total = 0
 
-    for (const t of expenseTx) {
-      const catKey = normalizeExpenseCategory(t)
-      const val = Math.abs(Number(t.amount) || 0)
-      result[catKey] = (result[catKey] || 0) + val
-      total += val
+    for (const row of categoryBreakdownRows) {
+      const key = row.category_key
+      const value = Number(row.total || 0)
+      if (key in result) result[key] = value
+      total += value
     }
 
-    for (const c of CATEGORY_META) result[c.key] = result[c.key] || 0
     return { result, total }
-  }, [organicTransactions, normalizeExpenseCategory, isCreditTx])
-
-  /* ---------------- STAFF PAYROLL (CURRENT MONTH) ---------------- */
-
-  const staffDetailsThisMonth = useMemo(() => {
-    const monthStart = format(startOfMonth(new Date()), 'yyyy-MM-dd')
-    const monthEnd = format(endOfMonth(new Date()), 'yyyy-MM-dd')
-
-    const staffTxs = transactions
-      .filter((t) => t.date >= monthStart && t.date <= monthEnd)
-      .filter((t) => t.type === 'expense' || t.type === 'debt_payment' || t.type === 'salary_advance')
-      .filter((t) => !isCreditTx(t))
-      .filter((t) => normalizeExpenseCategory(t) === 'Staff')
-
-    const byStaff: Record<string, number> = {}
-    for (const t of staffTxs) {
-      const name =
-        t.fixed_assets?.name || staff.find((s) => String(s.id) === String(t.fixed_asset_id))?.name || 'Άγνωστος'
-      byStaff[name] = (byStaff[name] || 0) + Math.abs(Number(t.amount) || 0)
-    }
-
-    return Object.entries(byStaff)
-      .map(([name, amount]) => ({ name, amount }))
-      .sort((a, b) => b.amount - a.amount)
-  }, [transactions, normalizeExpenseCategory, staff, isCreditTx])
+  }, [categoryBreakdownRows])
 
   /* ---------------- UI ---------------- */
 
@@ -1425,7 +1316,7 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
               <div style={{ ...kpiSign, color: '#b45309' }}>+</div>
             </div>
             <div className="print-amount-positive" style={{ ...kpiValue, color: '#b45309' }}>
-              + {moneyGR(simpleBankFromZ)}
+              + {moneyGR(zBankAmount)}
             </div>
             <div className="kpi-track-print-hide" style={kpiTrack}>
               <div style={{ ...kpiFill, width: '70%', background: colors.amber }} />
@@ -1998,16 +1889,16 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
             <div style={sectionTitleRow}>
               <div>
                 <h3 style={sectionTitle}>Μισθοδοσία ανά Υπάλληλο</h3>
-                <div style={sectionSub}>Τρέχων μήνας (γρήγορη εικόνα)</div>
+                <div style={sectionSub}>Περίοδος: {rangeText}</div>
               </div>
-              <div style={sectionPill}>{format(new Date(), 'MMMM yyyy')}</div>
+              <div style={sectionPill}>{rangeText}</div>
             </div>
 
-            {staffDetailsThisMonth.length === 0 ? (
-              <div style={hintBox}>Δεν υπάρχουν εγγραφές μισθοδοσίας αυτόν τον μήνα.</div>
+            {staffPayrollRows.length === 0 ? (
+              <div style={hintBox}>Δεν υπάρχουν εγγραφές μισθοδοσίας για την επιλεγμένη περίοδο.</div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {staffDetailsThisMonth.map((s) => (
+                {staffPayrollRows.map((s) => (
                   <div key={s.name} style={rowItem}>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
                       <div
