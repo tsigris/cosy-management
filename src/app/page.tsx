@@ -579,7 +579,7 @@ function DashboardContent() {
   const changeDate = (days: number) => {
     const current = parseISO(selectedDate)
     const next = days > 0 ? addDays(current, 1) : subDays(current, 1)
-    router.push(`/?date=${format(next, 'yyyy-MM-dd')}&store=${storeIdFromUrl}`)
+    router.push(`/?date=${format(next, 'yyyy-MM-dd')}&store=${storeIdFromUrl}`, { scroll: false })
     setExpandedTx(null)
   }
 
