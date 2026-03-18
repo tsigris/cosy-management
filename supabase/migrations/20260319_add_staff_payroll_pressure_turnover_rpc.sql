@@ -26,7 +26,7 @@ SET search_path = public
 AS $function$
   with turnover as (
     select
-      coalesce(sum(abs(t.amount)), 0)::numeric as daily_turnover
+      coalesce(sum(t.amount), 0)::numeric as daily_turnover
     from public.transactions t
     where t.store_id = p_store_id
       and t.date = p_date
@@ -42,16 +42,17 @@ AS $function$
     from public.fixed_assets fa
     where fa.store_id = p_store_id
       and lower(coalesce(fa.sub_category, '')) = 'staff'
+      and coalesce(fa.is_active, true) = true
   )
   select
     s.employee_id,
     s.name,
     s.monthly_salary,
     25::numeric as insurance_pct,
-    (s.monthly_salary * 0.25)::numeric as insurance_amount,
-    (s.monthly_salary * 1.25)::numeric as total_monthly_cost,
-    ((s.monthly_salary * 1.25) / 30.0)::numeric as daily_cost,
-    tr.daily_turnover,
+    coalesce((s.monthly_salary * 0.25), 0)::numeric as insurance_amount,
+    coalesce((s.monthly_salary * 1.25), 0)::numeric as total_monthly_cost,
+    coalesce(((s.monthly_salary * 1.25) / 30.0), 0)::numeric as daily_cost,
+    coalesce(tr.daily_turnover, 0)::numeric as daily_turnover,
     case
       when tr.daily_turnover > 0 then ((((s.monthly_salary * 1.25) / 30.0) / tr.daily_turnover) * 100)::numeric
       else 0::numeric
@@ -96,7 +97,7 @@ AS $function$
       t.daily_turnover,
       t.total_daily_payroll,
       case
-        when t.daily_turnover > 0 then ((t.total_daily_payroll / t.daily_turnover) * 100)::numeric
+        when t.daily_turnover > 0 then coalesce((t.total_daily_payroll / t.daily_turnover) * 100, 0)::numeric
         else 0::numeric
       end as payroll_pct,
       case

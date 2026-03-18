@@ -39,7 +39,7 @@ type EmployeePayrollRow = {
   insuranceAmount: number
   totalMonthlyCost: number
   dailyCost: number
-  payrollPctOfRevenue: number
+  payrollPctOfTurnover: number
 }
 
 const isValidUUID = (id: any) => {
@@ -60,7 +60,7 @@ function PayrollPercentContent() {
 
   const [loading, setLoading] = useState(true)
   const [effectiveDate, setEffectiveDate] = useState('')
-  const [dayRevenue, setDayRevenue] = useState(0)
+  const [dailyTurnover, setDailyTurnover] = useState(0)
   const [dailyPayrollCost, setDailyPayrollCost] = useState(0)
   const [payrollPct, setPayrollPct] = useState(0)
   const [status, setStatus] = useState('')
@@ -99,12 +99,12 @@ function PayrollPercentContent() {
         insuranceAmount: Number(r.insurance_amount || 0),
         totalMonthlyCost: Number(r.total_monthly_cost || 0),
         dailyCost: Number(r.daily_cost || 0),
-        payrollPctOfRevenue: Number(r.payroll_pct_of_turnover || 0),
+        payrollPctOfTurnover: Number(r.payroll_pct_of_turnover || 0),
       }))
 
       setRows(mappedRows)
       setEffectiveDate(String(payload.date || businessDate))
-      setDayRevenue(Number(payload.daily_turnover || 0))
+      setDailyTurnover(Number(payload.daily_turnover || 0))
       setDailyPayrollCost(Number(payload.total_daily_payroll || 0))
       setPayrollPct(Number(payload.payroll_pct || 0))
       setStatus(String(payload.status || ''))
@@ -114,7 +114,7 @@ function PayrollPercentContent() {
       setRows([])
       setEffectiveDate(businessDate)
       setDailyPayrollCost(0)
-      setDayRevenue(0)
+      setDailyTurnover(0)
       setPayrollPct(0)
       setStatus('')
     } finally {
@@ -161,9 +161,9 @@ function PayrollPercentContent() {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 10 }}>
             <div style={{ ...card, padding: 12 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--muted)', fontWeight: 900, fontSize: 12 }}>
-                <TrendingUp size={15} /> Τζίρος Ημέρας / Z
+                <TrendingUp size={15} /> Τζίρος Ημέρας
               </div>
-              <div style={{ marginTop: 6, fontSize: 24, fontWeight: 900, color: 'var(--text)' }}>{loading ? '—' : eur(dayRevenue)}</div>
+              <div style={{ marginTop: 6, fontSize: 24, fontWeight: 900, color: 'var(--text)' }}>{loading ? '—' : eur(dailyTurnover)}</div>
             </div>
 
             <div style={{ ...card, padding: 12 }}>
@@ -214,7 +214,7 @@ function PayrollPercentContent() {
                     <Metric label={`Ασφάλιση ${pct(r.insurancePct)}`} value={eur(r.insuranceAmount)} icon={<Shield size={13} />} />
                     <Metric label="Συνολικό Μηνιαίο Κόστος" value={eur(r.totalMonthlyCost)} />
                     <Metric label="Ημερήσιο Κόστος" value={eur(r.dailyCost)} />
-                    <Metric label="% επί σημερινού τζίρου" value={pct(r.payrollPctOfRevenue)} span2 />
+                    <Metric label="% επί σημερινού τζίρου" value={pct(r.payrollPctOfTurnover)} span2 />
                   </div>
                 </div>
               ))}
