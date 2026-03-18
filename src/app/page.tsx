@@ -74,9 +74,9 @@ function DashboardContent() {
 
   // cache YTD metrics per entity key
   const [ytdCache, setYtdCache] = useState<Record<string, YtdInfo>>({})
-  // ref-based guard: tracks keys that have been started (loading or loaded) so loadYtdForTx
+  // ref-based guard: tracks keys currently in-flight so loadYtdForTx
   // does not need to read ytdCache state, keeping the callback stable
-  const ytdLoadedKeys = useRef<Set<string>>(new Set())
+  const ytdLoadingKeys = useRef<Set<string>>(new Set())
 
   // ✅ Use shared hook for permission checking (consolidates repeated store_access queries)
   const { data: accessData } = useStoreAccess({
@@ -122,8 +122,8 @@ function DashboardContent() {
       const key = getEntityKeyFromTx(t)
       if (!key || !storeIdFromUrl) return
 
-      if (ytdLoadedKeys.current.has(key)) return
-      ytdLoadedKeys.current.add(key)
+      if (ytdLoadingKeys.current.has(key)) return
+      ytdLoadingKeys.current.add(key)
 
       setYtdCache((prev) => ({ ...prev, [key]: { loading: true } }))
 
@@ -133,7 +133,7 @@ function DashboardContent() {
           const { data: inst } = await supabase.from('installments').select('settlement_id').eq('transaction_id', txId).maybeSingle()
 
           if (!inst?.settlement_id) {
-            ytdLoadedKeys.current.delete(key)
+            ytdLoadingKeys.current.delete(key)
             setYtdCache((prev) => ({ ...prev, [key]: { loading: false } }))
             return
           }
@@ -150,7 +150,7 @@ function DashboardContent() {
           const loanPaid = paidInst.reduce((acc: number, i: any) => acc + Number(i.amount), 0)
           const loanTotal = Number(sett?.total_amount || 0)
 
-          ytdLoadedKeys.current.delete(key)
+          ytdLoadingKeys.current.delete(key)
           setYtdCache((prev) => ({
             ...prev,
             [key]: {
@@ -164,7 +164,7 @@ function DashboardContent() {
           }))
         } catch (e) {
           console.error(e)
-          ytdLoadedKeys.current.delete(key)
+          ytdLoadingKeys.current.delete(key)
           setYtdCache((prev) => ({ ...prev, [key]: { loading: false } }))
         }
         return
@@ -202,7 +202,7 @@ function DashboardContent() {
 
           const openIncome = creditIncome - receivedIncome
 
-          ytdLoadedKeys.current.delete(key)
+          ytdLoadingKeys.current.delete(key)
           setYtdCache((prev) => ({
             ...prev,
             [key]: { loading: false, turnoverIncome, receivedIncome, openIncome },
@@ -224,14 +224,14 @@ function DashboardContent() {
 
         const openExpense = creditExpenses - payments
 
-        ytdLoadedKeys.current.delete(key)
+        ytdLoadingKeys.current.delete(key)
         setYtdCache((prev) => ({
           ...prev,
           [key]: { loading: false, totalExpenses, payments, openExpense },
         }))
       } catch (e) {
         console.error(e)
-        ytdLoadedKeys.current.delete(key)
+        ytdLoadingKeys.current.delete(key)
         setYtdCache((prev) => ({ ...prev, [key]: { loading: false } }))
       }
     },
@@ -382,7 +382,7 @@ function DashboardContent() {
   // Clear YTD cache and ref guard when store changes to prevent stale data from previous store
   useEffect(() => {
     setYtdCache({})
-    ytdLoadedKeys.current.clear()
+    ytdLoadingKeys.current.clear()
   }, [storeIdFromUrl])
 
   const handleDelete = async (id: string) => {
