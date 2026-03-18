@@ -161,7 +161,6 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
   const [maintenanceWorkers, setMaintenanceWorkers] = useState<any[]>([])
 
   const [drawer, setDrawer] = useState<any>(null)
-  const [calcBalances, setCalcBalances] = useState<CalcBalances | null>(null)
 
   const [loading, setLoading] = useState(true)
   const [rpcSummary, setRpcSummary] = useState<AnalysisRpcSummary>({
@@ -710,44 +709,6 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
     }),
     [kpis, kpisPrev]
   )
-
-  const calcBalancesFromRows = useCallback(
-    (rows: any[]) => {
-      let cash = 0,
-        bank = 0,
-        creditOutstanding = 0,
-        creditIncoming = 0
-
-      for (const t of rows) {
-        const method = getMethod(t)
-        const credit = isCreditTx(t)
-        const amt = signedAmount(t)
-
-        if (credit) {
-            if (t.type === 'expense' || t.type === 'debt_payment' || t.type === 'salary_advance') creditOutstanding += Math.abs(amt)
-          if (t.type === 'income' || t.type === 'income_collection' || t.type === 'debt_received')
-            creditIncoming += Math.abs(amt)
-          continue
-        }
-
-        if (isCashMethod(method)) cash += amt
-        else if (isBankMethod(method)) bank += amt
-      }
-
-      return {
-        cash_balance: cash,
-        bank_balance: bank,
-        total_balance: cash + bank,
-        credit_outstanding: creditOutstanding,
-        credit_incoming: creditIncoming,
-      }
-    },
-    [getMethod, isCreditTx, signedAmount, isCashMethod, isBankMethod]
-  )
-
-  useEffect(() => {
-    setCalcBalances({ ...calcBalancesFromRows(periodTx), as_of_date: endDate })
-  }, [periodTx, endDate, calcBalancesFromRows])
 
   /* ---------------- Z LOGIC (single day) ---------------- */
 
@@ -1498,13 +1459,13 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
           >
             <div style={kpiTopRow}>
               <div style={{ ...kpiLabel, color: '#b45309' }}>
-                {uiMode === 'simple' ? 'Στην Τράπεζα από Z' : 'Tips'}{' '}
+                Στην Τράπεζα από Z{' '}
                 <span style={kpiDelta}>{fmtPct(variance.tips)} vs prev</span>
               </div>
               <div style={{ ...kpiSign, color: '#b45309' }}>+</div>
             </div>
             <div className="print-amount-positive" style={{ ...kpiValue, color: '#b45309' }}>
-              + {moneyGR(rpcSummary.tips)}
+              + {moneyGR(simpleBankFromZ)}
             </div>
             <div className="kpi-track-print-hide" style={kpiTrack}>
               <div style={{ ...kpiFill, width: '70%', background: colors.amber }} />
