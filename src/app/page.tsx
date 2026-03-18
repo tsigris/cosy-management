@@ -171,61 +171,59 @@ function DashboardContent() {
       }
 
       try {
-        let q = supabase
-          .from('transactions')
-          .select('amount, type, is_credit, supplier_id, fixed_asset_id, revenue_source_id, date')
-          .eq('store_id', storeIdFromUrl)
-          .gte('date', yearStartStr)
-          .lte('date', businessTodayStr)
+        let entityType: 'supplier' | 'fixed_asset' | 'revenue_source' | null = null
+        let entityId = ''
 
-        if (key.startsWith('rev:')) q = q.eq('revenue_source_id', key.replace('rev:', ''))
-        if (key.startsWith('sup:')) q = q.eq('supplier_id', key.replace('sup:', ''))
-        if (key.startsWith('asset:')) q = q.eq('fixed_asset_id', key.replace('asset:', ''))
+        if (key.startsWith('sup:')) {
+          entityType = 'supplier'
+          entityId = key.replace('sup:', '')
+        } else if (key.startsWith('asset:')) {
+          entityType = 'fixed_asset'
+          entityId = key.replace('asset:', '')
+        } else if (key.startsWith('rev:')) {
+          entityType = 'revenue_source'
+          entityId = key.replace('rev:', '')
+        }
 
-        const res = await q
-        if (res.error) throw res.error
-        const rows = res.data || []
-
-        if (key.startsWith('rev:')) {
-          const turnoverIncome = rows
-            .filter((r: any) => String(r.type || '') === 'income')
-            .reduce((acc: number, r: any) => acc + Math.abs(Number(r.amount) || 0), 0)
-
-          const RECEIVED_TYPES = ['income_collection', 'debt_received']
-          const receivedIncome = rows
-            .filter((r: any) => RECEIVED_TYPES.includes(String(r.type || '')))
-            .reduce((acc: number, r: any) => acc + Math.abs(Number(r.amount) || 0), 0)
-
-          const creditIncome = rows
-            .filter((r: any) => r.is_credit === true)
-            .reduce((acc: number, r: any) => acc + Math.abs(Number(r.amount) || 0), 0)
-
-          const openIncome = creditIncome - receivedIncome
-
-          setYtdCache((prev) => ({
-            ...prev,
-            [key]: { loading: false, turnoverIncome, receivedIncome, openIncome },
-          }))
+        if (!entityType || !entityId) {
+          ytdLoadingKeys.current.delete(key)
+          setYtdCache((prev) => ({ ...prev, [key]: { loading: false } }))
           return
         }
 
-        const totalExpenses = rows
-          .filter((r: any) => String(r.type || '') === 'expense')
-          .reduce((acc: number, r: any) => acc + Math.abs(Number(r.amount) || 0), 0)
+        const { data, error } = await supabase.rpc('get_entity_ytd_summary', {
+          p_store_id: storeIdFromUrl,
+          p_entity_type: entityType,
+          p_entity_id: entityId,
+          p_date_from: yearStartStr,
+          p_date_to: businessTodayStr,
+        })
 
-        const payments = rows
-          .filter((r: any) => String(r.type || '') === 'debt_payment')
-          .reduce((acc: number, r: any) => acc + Math.abs(Number(r.amount) || 0), 0)
+        if (error) throw error
 
-        const creditExpenses = rows
-          .filter((r: any) => r.is_credit === true && String(r.type || '') === 'expense')
-          .reduce((acc: number, r: any) => acc + Math.abs(Number(r.amount) || 0), 0)
+        type EntityYtdPayload = {
+          turnover_income?: number | string | null
+          received_income?: number | string | null
+          open_income?: number | string | null
+          total_expenses?: number | string | null
+          payments?: number | string | null
+          open_expense?: number | string | null
+        }
 
-        const openExpense = creditExpenses - payments
+        const summary = Array.isArray(data) ? data[0] : data
+        const payload = (summary?.get_entity_ytd_summary ?? summary ?? {}) as EntityYtdPayload
 
         setYtdCache((prev) => ({
           ...prev,
-          [key]: { loading: false, totalExpenses, payments, openExpense },
+          [key]: {
+            loading: false,
+            turnoverIncome: Number(payload.turnover_income || 0),
+            receivedIncome: Number(payload.received_income || 0),
+            openIncome: Number(payload.open_income || 0),
+            totalExpenses: Number(payload.total_expenses || 0),
+            payments: Number(payload.payments || 0),
+            openExpense: Number(payload.open_expense || 0),
+          },
         }))
       } catch (e) {
         console.error(e)
