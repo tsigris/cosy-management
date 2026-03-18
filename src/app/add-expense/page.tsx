@@ -1,7 +1,7 @@
 'use client'
 export const dynamic = 'force-dynamic'
 
-import React, { useEffect, useState, Suspense, useCallback, useMemo, useRef } from 'react'
+import React, { useEffect, useState, Suspense, useCallback, useMemo, useRef, type CSSProperties } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { getSupabase } from '@/lib/supabase'
 import { syncStoreToStorage, getStoredActiveStoreId } from '@/lib/storeResolution'
@@ -58,11 +58,42 @@ type SmartItem = {
 type SelectedEntity = { kind: SmartKind; id: string } | null
 type CreateTab = 'suppliers' | 'utility' | 'staff' | 'maintenance' | 'other'
 
+type SupplierRow = {
+  id: string | number
+  name?: string | null
+  phone?: string | null
+  vat_number?: string | null
+  bank_name?: string | null
+  iban?: string | null
+}
+
+type FixedAssetRow = {
+  id: string | number
+  name?: string | null
+  sub_category?: string | null
+  phone?: string | null
+  vat_number?: string | null
+  bank_name?: string | null
+  iban?: string | null
+  monthly_days?: number | null
+  monthly_salary?: number | null
+  daily_rate?: number | null
+  start_date?: string | null
+  rf_code?: string | null
+  pay_basis?: 'monthly' | 'daily' | null
+}
+
+type DayStatTxRow = {
+  amount: number | string
+  type: string | null
+  is_credit?: boolean | null
+}
+
 function stripDiacritics(str: string) {
   return str.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
 }
 
-function normalizeGreek(str: any) {
+function normalizeGreek(str: unknown) {
   return stripDiacritics(String(str || ''))
     .toLowerCase()
     .trim()
@@ -139,7 +170,7 @@ function groupTitle(group: AssetGroup | 'suppliers') {
   return 'Λοιπά'
 }
 
-function groupFromSubCategory(sub: any): AssetGroup {
+function groupFromSubCategory(sub: unknown): AssetGroup {
   const raw = String(sub || '').trim()
   const s = raw.toLowerCase()
   if (s === 'staff') return 'staff'
@@ -173,8 +204,15 @@ function createTabLabel(t: CreateTab) {
 }
 
 // ✅ Harden helpers
-const clampText = (v: any, max = 300) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, max)
-const upper = (v: any) => String(v ?? '').trim().toUpperCase()
+const clampText = (v: unknown, max = 300) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, max)
+const upper = (v: unknown) => String(v ?? '').trim().toUpperCase()
+
+function getErrorMessage(err: unknown, fallback: string) {
+  if (typeof err === 'object' && err !== null && 'message' in err && typeof (err as { message?: unknown }).message === 'string') {
+    return (err as { message: string }).message
+  }
+  return fallback
+}
 
 // ✅ Amount parsing: accepts "10,50" and "10.50"
 function parseAmount(input: string) {
@@ -217,11 +255,12 @@ function AddExpenseForm() {
   const [currentUsername, setCurrentUsername] = useState('Χρήστης')
 
   const [loading, setLoading] = useState(true)
+  const [isSaving, setIsSaving] = useState(false)
 
   const [storeId, setStoreId] = useState<string | null>(urlStoreId)
 
-  const [suppliers, setSuppliers] = useState<any[]>([])
-  const [fixedAssets, setFixedAssets] = useState<any[]>([])
+  const [suppliers, setSuppliers] = useState<SupplierRow[]>([])
+  const [fixedAssets, setFixedAssets] = useState<FixedAssetRow[]>([])
 
   const [dayStats, setDayStats] = useState({
     income: 0,
@@ -346,10 +385,11 @@ function AddExpenseForm() {
 
   // close dropdown on outside
   useEffect(() => {
-    const handler = (e: any) => {
+    const handler = (e: PointerEvent) => {
       const el = smartBoxRef.current
       if (!el) return
-      if (!el.contains(e.target)) setSmartOpen(false)
+      const target = e.target as Node | null
+      if (!target || !el.contains(target)) setSmartOpen(false)
     }
     document.addEventListener('pointerdown', handler, true)
     return () => document.removeEventListener('pointerdown', handler, true)
@@ -425,7 +465,8 @@ function AddExpenseForm() {
     }
 
     const scanScrollableContainers = () => {
-      document.querySelectorAll('*').forEach(registerScrollableContainer)
+      // Scan likely scroll containers instead of the full DOM tree.
+      document.querySelectorAll('div, section, main, form').forEach(registerScrollableContainer)
     }
 
     scanScrollableContainers()
@@ -506,9 +547,9 @@ function AddExpenseForm() {
       if (profileRes.data?.username) setCurrentUsername(profileRes.data.username || 'Χρήστης')
       setRole((profileRes.data?.role as ProfileRole) || 'user')
 
-      const supData = sRes.data || []
-      const faAll = fRes.data || []
-      const faData = faAll.filter((x: any) => {
+      const supData = (sRes.data || []) as SupplierRow[]
+      const faAll = (fRes.data || []) as FixedAssetRow[]
+      const faData = faAll.filter((x) => {
         const g = groupFromSubCategory(x.sub_category)
         return g === 'staff' || g === 'maintenance' || g === 'utility' || g === 'other'
       })
@@ -517,33 +558,32 @@ function AddExpenseForm() {
       setFixedAssets(faData)
 
       if (tRes.data) {
+        const dayTx = tRes.data as DayStatTxRow[]
         const INCOME_TYPES = ['income', 'income_collection', 'debt_received']
         const EXPENSE_TYPES = ['expense', 'debt_payment', 'salary_advance']
 
-        const inc = tRes.data
-          .filter((t: any) => INCOME_TYPES.includes(String(t.type || '')))
-          .reduce((acc: number, t: any) => acc + Number(t.amount), 0)
+        const inc = dayTx.filter((t) => INCOME_TYPES.includes(String(t.type || ''))).reduce((acc: number, t) => acc + Number(t.amount), 0)
 
-        const exp = tRes.data
-          .filter((t: any) => {
+        const exp = dayTx
+          .filter((t) => {
             const type = String(t.type || '')
             if (!EXPENSE_TYPES.includes(type)) return false
             if (type === 'expense' && t.is_credit === true) return false
             return true
           })
-          .reduce((acc: number, t: any) => acc + Math.abs(Number(t.amount)), 0)
+          .reduce((acc: number, t) => acc + Math.abs(Number(t.amount)), 0)
 
-        const credits = tRes.data
-          .filter((t: any) => String(t.type || '') === 'expense' && t.is_credit === true)
-          .reduce((acc: number, t: any) => acc + Math.abs(Number(t.amount)), 0)
+        const credits = dayTx
+          .filter((t) => String(t.type || '') === 'expense' && t.is_credit === true)
+          .reduce((acc: number, t) => acc + Math.abs(Number(t.amount)), 0)
 
-        const savingsDeposits = tRes.data
-          .filter((t: any) => String(t.type || '') === 'savings_deposit')
-          .reduce((acc: number, t: any) => acc + Math.abs(Number(t.amount)), 0)
+        const savingsDeposits = dayTx
+          .filter((t) => String(t.type || '') === 'savings_deposit')
+          .reduce((acc: number, t) => acc + Math.abs(Number(t.amount)), 0)
 
-        const savingsWithdrawals = tRes.data
-          .filter((t: any) => String(t.type || '') === 'savings_withdrawal')
-          .reduce((acc: number, t: any) => acc + Math.abs(Number(t.amount)), 0)
+        const savingsWithdrawals = dayTx
+          .filter((t) => String(t.type || '') === 'savings_withdrawal')
+          .reduce((acc: number, t) => acc + Math.abs(Number(t.amount)), 0)
 
         setDayStats({ income: inc, expenses: exp, credits, savingsDeposits, savingsWithdrawals })
       }
@@ -573,12 +613,12 @@ function AddExpenseForm() {
           if (tx.supplier_id) {
             const id = String(tx.supplier_id)
             setSelectedEntity({ kind: 'supplier', id })
-            const found = supData.find((x: any) => String(x.id) === id)
+            const found = supData.find((x) => String(x.id) === id)
             setSmartQuery(found?.name || '')
           } else if (tx.fixed_asset_id) {
             const id = String(tx.fixed_asset_id)
             setSelectedEntity({ kind: 'asset', id })
-            const found = faData.find((x: any) => String(x.id) === id)
+            const found = faData.find((x) => String(x.id) === id)
             setSmartQuery(found?.name || '')
           } else {
             setSelectedEntity(null)
@@ -589,12 +629,12 @@ function AddExpenseForm() {
         if (urlSupId) {
           const id = String(urlSupId)
           setSelectedEntity({ kind: 'supplier', id })
-          const found = supData.find((x: any) => String(x.id) === id)
+          const found = supData.find((x) => String(x.id) === id)
           setSmartQuery(found?.name || '')
         } else if (urlAssetId) {
           const id = String(urlAssetId)
           setSelectedEntity({ kind: 'asset', id })
-          const found = faData.find((x: any) => String(x.id) === id)
+          const found = faData.find((x) => String(x.id) === id)
           setSmartQuery(found?.name || '')
         } else {
           setSelectedEntity(null)
@@ -608,9 +648,9 @@ function AddExpenseForm() {
           setNotes((prev) => (prev?.trim() ? prev : 'ΕΞΟΦΛΗΣΗ ΥΠΟΛΟΙΠΟΥ ΚΑΡΤΕΛΑΣ'))
         }
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error(error)
-      toast.error(error?.message || 'Σφάλμα φόρτωσης')
+      toast.error(getErrorMessage(error, 'Σφάλμα φόρτωσης'))
     } finally {
       setLoading(false)
     }
@@ -627,7 +667,7 @@ function AddExpenseForm() {
 
   const smartItems = useMemo<SmartItem[]>(() => {
     const sList: SmartItem[] =
-      suppliers?.map((s: any) => {
+      suppliers?.map((s) => {
         const name = String(s.name || '')
         const norm = normalizeGreek(name)
         const latin = greekToGreeklish(name)
@@ -647,7 +687,7 @@ function AddExpenseForm() {
       }) || []
 
     const aList: SmartItem[] =
-      fixedAssets?.map((a: any) => {
+      fixedAssets?.map((a) => {
         const name = String(a.name || '')
         const norm = normalizeGreek(name)
         const latin = greekToGreeklish(name)
@@ -728,8 +768,8 @@ function AddExpenseForm() {
   const groupedResultsSafe = useMemo(() => {
     const groups: Record<string, SmartItem[]> = {}
     for (const it of filtered) {
-      const key = it.kind === 'supplier' ? 'suppliers' : it.group || 'other'
-      const title = groupTitle(key as any)
+      const key: AssetGroup | 'suppliers' = it.kind === 'supplier' ? 'suppliers' : it.group || 'other'
+      const title = groupTitle(key)
       if (!groups[title]) groups[title] = []
       groups[title].push(it)
     }
@@ -965,7 +1005,7 @@ function AddExpenseForm() {
     if (!selectedEntity) return toast.error('Επίλεξε δικαιούχο')
     if (!documentType) return toast.error('Επίλεξε τύπο παραστατικού')
 
-    setLoading(true)
+    setIsSaving(true)
     let uploadedInvoicePath: string | null = null
 
     try {
@@ -973,19 +1013,16 @@ function AddExpenseForm() {
         data: { session },
       } = await supabase.auth.getSession()
       if (!session) {
-        setLoading(false)
         return router.push('/login')
       }
 
       const activeStoreId = getActiveStoreId()
       if (!activeStoreId) {
-        setLoading(false)
         return toast.error('Δεν βρέθηκε κατάστημα (store)')
       }
 
       const lastZ = await checkBalanceLock()
       if (lastZ && selectedDate < lastZ) {
-        setLoading(false)
         toast.error(`Η ημερομηνία είναι κλειδωμένη (τελευταίο Z: ${lastZ})`)
         return
       }
@@ -1001,7 +1038,6 @@ function AddExpenseForm() {
       if (dup) {
         const ok = window.confirm('⚠️ Πιθανό διπλό έξοδο ίδια μέρα/ποσό/δικαιούχο. Θες να συνεχίσεις;')
         if (!ok) {
-          setLoading(false)
           return
         }
       }
@@ -1019,8 +1055,7 @@ function AddExpenseForm() {
 
       const finalNotes = documentType ? documentType + (debtNote ? ' | ' + debtNote : '') : debtNote
 
-      const { data: prof } = await supabase.from('profiles').select('username').eq('id', session.user.id).maybeSingle()
-      const createdByName = (prof?.username || session.user.email?.split('@')[0] || 'Χρήστης').trim()
+      const createdByName = (currentUsername || session.user.email?.split('@')[0] || 'Χρήστης').trim()
 
       const payload: any = {
         amount: -Math.abs(amt),
@@ -1078,7 +1113,7 @@ function AddExpenseForm() {
 
       router.push(`/?date=${selectedDate}&store=${getActiveStoreId() || ''}`)
       router.refresh()
-    } catch (error: any) {
+    } catch (error: unknown) {
       if (uploadedInvoicePath) {
         try {
           const { error: cleanupError } = await supabase.storage.from('invoices').remove([uploadedInvoicePath])
@@ -1088,8 +1123,9 @@ function AddExpenseForm() {
         }
       }
       console.error(error)
-      toast.error(error?.message || 'Κάτι πήγε στραβά')
-      setLoading(false)
+      toast.error(getErrorMessage(error, 'Κάτι πήγε στραβά'))
+    } finally {
+      setIsSaving(false)
     }
   }
 
@@ -1460,15 +1496,15 @@ function AddExpenseForm() {
             <button
               type="button"
               onClick={handleSave}
-              disabled={loading}
+              disabled={loading || isSaving}
               style={{
                 ...smartSaveBtn,
                 backgroundColor: editId ? colors.accentBlue : colors.accentRed,
-                opacity: loading ? 0.75 : 1,
+                opacity: isSaving ? 0.75 : 1,
               }}
             >
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                <span style={{ fontSize: 14, fontWeight: 900 }}>{loading ? 'Αποθήκευση...' : editId ? 'Ενημέρωση' : 'Καταχώρηση'}</span>
+                <span style={{ fontSize: 14, fontWeight: 900 }}>{isSaving ? 'Αποθήκευση...' : editId ? 'Ενημέρωση' : 'Καταχώρηση'}</span>
                 <span style={{ fontSize: 14, opacity: 0.85, fontWeight: 800, marginTop: 6 }}>
                   Καθαρό ταμείο: {currentBalance.toFixed(2)}€
                 </span>
@@ -1683,7 +1719,7 @@ function AddExpenseForm() {
 }
 
 /* STYLES */
-const iphoneWrapper: any = {
+const iphoneWrapper: CSSProperties = {
   backgroundColor: colors.bgLight,
   minHeight: '100svh',
   padding: 20,
@@ -1693,7 +1729,7 @@ const iphoneWrapper: any = {
 }
 
 // ✅ ΖΗΤΗΣΕΣ: κόκκινο header για να φαίνεται ότι είναι Έξοδο
-const headerStyle: any = {
+const headerStyle: CSSProperties = {
   display: 'flex',
   justifyContent: 'space-between',
   alignItems: 'center',
@@ -1705,7 +1741,7 @@ const headerStyle: any = {
   boxShadow: '0 10px 30px rgba(220,38,38,0.25)',
 }
 
-const logoBoxStyle: any = {
+const logoBoxStyle: CSSProperties = {
   width: 42,
   height: 42,
   backgroundColor: '#7f1d1d',
@@ -1718,7 +1754,7 @@ const logoBoxStyle: any = {
   fontWeight: 900,
 }
 
-const backBtnStyle: any = {
+const backBtnStyle: CSSProperties = {
   textDecoration: 'none',
   color: 'white',
   padding: '10px 12px',
@@ -1729,10 +1765,10 @@ const backBtnStyle: any = {
   fontWeight: 900,
 }
 
-const formCard: any = { backgroundColor: colors.white, padding: 20, borderRadius: 24, border: `1px solid ${colors.border}` }
-const labelStyle: any = { fontSize: 12, fontWeight: 900, color: colors.secondaryText, display: 'block', marginBottom: 8 }
+const formCard: CSSProperties = { backgroundColor: colors.white, padding: 20, borderRadius: 24, border: `1px solid ${colors.border}` }
+const labelStyle: CSSProperties = { fontSize: 12, fontWeight: 900, color: colors.secondaryText, display: 'block', marginBottom: 8 }
 
-const inputStyle: any = {
+const inputStyle: CSSProperties = {
   width: '100%',
   padding: 14,
   borderRadius: 12,
@@ -1744,7 +1780,7 @@ const inputStyle: any = {
   boxSizing: 'border-box',
 }
 
-const selectStyle: any = {
+const selectStyle: CSSProperties = {
   width: '100%',
   padding: 14,
   borderRadius: 12,
@@ -1756,7 +1792,7 @@ const selectStyle: any = {
   boxSizing: 'border-box',
 }
 
-const methodBtn: any = {
+const methodBtn: CSSProperties = {
   flex: 1,
   padding: 14,
   borderRadius: 12,
@@ -1768,11 +1804,11 @@ const methodBtn: any = {
   color: colors.primaryDark,
 }
 
-const creditPanel: any = { backgroundColor: colors.white, padding: 16, borderRadius: 14, border: `1px solid ${colors.border}`, marginTop: 20 }
-const checkboxStyle: any = { width: 20, height: 20 }
-const checkLabel: any = { fontSize: 14, fontWeight: 900, color: colors.primaryDark }
+const creditPanel: CSSProperties = { backgroundColor: colors.white, padding: 16, borderRadius: 14, border: `1px solid ${colors.border}`, marginTop: 20 }
+const checkboxStyle: CSSProperties = { width: 20, height: 20 }
+const checkLabel: CSSProperties = { fontSize: 14, fontWeight: 900, color: colors.primaryDark }
 
-const smartSaveBtn: any = {
+const smartSaveBtn: CSSProperties = {
   width: '100%',
   padding: 16,
   color: 'var(--surface)',
@@ -1783,16 +1819,16 @@ const smartSaveBtn: any = {
   fontSize: 16,
 }
 
-const imageUploadContainer: any = {
+const imageUploadContainer: CSSProperties = {
   width: '100%',
   backgroundColor: colors.white,
   borderRadius: 14,
   border: `2px dashed ${colors.border}`,
   overflow: 'hidden',
 }
-const uploadPlaceholder: any = { display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, cursor: 'pointer' }
-const imagePreviewStyle: any = { width: '100%', height: 140, objectFit: 'cover' as const }
-const removeImageBtn: any = {
+const uploadPlaceholder: CSSProperties = { display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, cursor: 'pointer' }
+const imagePreviewStyle: CSSProperties = { width: '100%', height: 140, objectFit: 'cover' }
+const removeImageBtn: CSSProperties = {
   position: 'absolute',
   top: 8,
   right: 8,
@@ -1806,7 +1842,7 @@ const removeImageBtn: any = {
   fontWeight: 900,
 }
 
-const clearBtn: any = {
+const clearBtn: CSSProperties = {
   position: 'absolute',
   top: 10,
   right: 10,
@@ -1821,7 +1857,7 @@ const clearBtn: any = {
   color: colors.secondaryText,
 }
 
-const resultsPanel: any = {
+const resultsPanel: CSSProperties = {
   position: 'absolute',
   left: 0,
   right: 0,
@@ -1835,7 +1871,7 @@ const resultsPanel: any = {
   boxShadow: 'var(--shadow)',
 }
 
-const groupHeader: any = {
+const groupHeader: CSSProperties = {
   position: 'sticky',
   top: 0,
   zIndex: 2,
@@ -1847,7 +1883,7 @@ const groupHeader: any = {
   borderBottom: `1px solid ${colors.border}`,
 }
 
-const resultRow: any = {
+const resultRow: CSSProperties = {
   width: '100%',
   border: 'none',
   background: colors.white,
@@ -1857,7 +1893,7 @@ const resultRow: any = {
   borderBottom: `1px solid ${colors.border}`,
 }
 
-const createRow: any = {
+const createRow: CSSProperties = {
   width: '100%',
   border: 'none',
   background: colors.white,
@@ -1867,7 +1903,7 @@ const createRow: any = {
   borderBottom: `1px solid ${colors.border}`,
 }
 
-const plusPill: any = {
+const plusPill: CSSProperties = {
   width: 34,
   height: 34,
   borderRadius: 999,
@@ -1881,7 +1917,7 @@ const plusPill: any = {
   flexShrink: 0,
 }
 
-const selectedBox: any = {
+const selectedBox: CSSProperties = {
   marginTop: 12,
   padding: 12,
   borderRadius: 12,
@@ -1892,7 +1928,7 @@ const selectedBox: any = {
 }
 
 /* modal */
-const modalOverlay: any = {
+const modalOverlay: CSSProperties = {
   position: 'fixed',
   inset: 0,
   backgroundColor: colors.modalBackdrop,
@@ -1903,7 +1939,7 @@ const modalOverlay: any = {
   zIndex: 2000,
 }
 
-const modalCard: any = {
+const modalCard: CSSProperties = {
   width: '100%',
   maxWidth: 520,
   background: colors.white,
@@ -1913,7 +1949,7 @@ const modalCard: any = {
   boxShadow: 'var(--shadow)',
 }
 
-const modalCloseBtn: any = {
+const modalCloseBtn: CSSProperties = {
   width: 36,
   height: 36,
   borderRadius: 12,
@@ -1925,9 +1961,9 @@ const modalCloseBtn: any = {
   color: colors.secondaryText,
 }
 
-const modalLabel: any = { display: 'block', fontSize: 12, fontWeight: 900, color: colors.secondaryText, marginBottom: 6 }
+const modalLabel: CSSProperties = { display: 'block', fontSize: 12, fontWeight: 900, color: colors.secondaryText, marginBottom: 6 }
 
-const modalInput: any = {
+const modalInput: CSSProperties = {
   width: '100%',
   padding: 12,
   borderRadius: 12,
@@ -1939,9 +1975,9 @@ const modalInput: any = {
   boxSizing: 'border-box',
 }
 
-const modalSelect: any = { ...modalInput }
+const modalSelect: CSSProperties = { ...modalInput }
 
-const modalPrimaryBtn: any = {
+const modalPrimaryBtn: CSSProperties = {
   flex: 1,
   padding: 14,
   borderRadius: 14,
@@ -1953,7 +1989,7 @@ const modalPrimaryBtn: any = {
   fontSize: 14,
 }
 
-const modalSecondaryBtn: any = {
+const modalSecondaryBtn: CSSProperties = {
   flex: 1,
   padding: 14,
   borderRadius: 14,
@@ -1965,7 +2001,7 @@ const modalSecondaryBtn: any = {
   fontSize: 14,
 }
 
-const segBtn: any = {
+const segBtn: CSSProperties = {
   borderRadius: 14,
   border: `1px solid ${colors.border}`,
   padding: '12px 12px',
