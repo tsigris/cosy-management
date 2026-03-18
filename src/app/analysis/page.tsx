@@ -977,15 +977,12 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
 
       if (error) throw error
 
-      const rows = Array.isArray(data) ? data : []
       if (requestId !== expectedOutflowsRequestIdRef.current) return
 
-      // Compatibility fallback: prefer backend total if provided; otherwise derive from rows.
+      // Backend-authoritative total only.
       const raw = Array.isArray(data) ? data[0] : data
       const backendTotal = Number(raw?.total ?? raw?.expected_total ?? raw?.amount_total)
-      const total = Number.isFinite(backendTotal)
-        ? Math.abs(backendTotal)
-        : rows.reduce((acc: number, row: any) => acc + Math.abs(Number(row.amount || 0)), 0)
+      const total = Number.isFinite(backendTotal) ? Math.abs(backendTotal) : 0
       setExpectedOutflows30d(total)
     } catch (err) {
       console.error('Expected outflows RPC error:', err)

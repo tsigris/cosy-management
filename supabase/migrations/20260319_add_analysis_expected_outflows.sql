@@ -37,7 +37,6 @@ begin
     and t.date     > p_end_date
     and t.date    <= p_end_date + interval '30 days'
     and coalesce(t.is_credit, false) = false
-    and coalesce(t.method, '')      != 'Πίστωση'
   order by t.date asc;
 end;
 $$;
