@@ -250,20 +250,12 @@ function DashboardContent() {
       } = await supabase.auth.getSession()
       if (!session) return router.push('/login')
 
-      // store name + settings
-      const { data: storeData, error: storeErr } = await supabase
-        .from('stores')
-        .select('name, z_enabled')
-        .eq('id', storeIdFromUrl)
-        .maybeSingle()
-
-      if (storeErr) console.error(storeErr)
-      if (storeData?.name) setStoreName(storeData.name)
-      setZEnabled(storeData?.z_enabled !== false)
-
-      const { data: tx, error: txError } = await supabase
-        .from('transactions')
-        .select(`
+      // store name + settings + daily transactions (safe parallel fetch after session check)
+      const [storeRes, txRes] = await Promise.all([
+        supabase.from('stores').select('name, z_enabled').eq('id', storeIdFromUrl).maybeSingle(),
+        supabase
+          .from('transactions')
+          .select(`
   id,
   created_at,
   amount,
@@ -285,9 +277,18 @@ function DashboardContent() {
   fixed_assets(name),
   revenue_sources(name)
 `)
-        .eq('store_id', storeIdFromUrl)
-        .eq('date', selectedDate)
-        .order('created_at', { ascending: false })
+          .eq('store_id', storeIdFromUrl)
+          .eq('date', selectedDate)
+          .order('created_at', { ascending: false }),
+      ])
+
+      const { data: storeData, error: storeErr } = storeRes
+
+      if (storeErr) console.error(storeErr)
+      if (storeData?.name) setStoreName(storeData.name)
+      setZEnabled(storeData?.z_enabled !== false)
+
+      const { data: tx, error: txError } = txRes
 
       let txRows = tx || []
 
@@ -530,38 +531,48 @@ function DashboardContent() {
   // ✅ Totals (ΣΩΣΤΟ FIX: Ο κουμπαράς επηρεάζει ΜΟΝΟ το ταμείο, ΟΧΙ τα επιχειρηματικά Έσοδα/Έξοδα)
   const totals = useMemo(() => {
     const INCOME_TYPES = ['income', 'income_collection', 'debt_received']
-    const income = transactions
-      .filter((t) => INCOME_TYPES.includes(String(t.type)))
-      .reduce((acc, t) => acc + (Number(t.amount) || 0), 0)
-
     const EXPENSE_TYPES = ['expense', 'debt_payment', 'salary_advance']
+    const aggregates = transactions.reduce(
+      (acc, t) => {
+        const rawType = t.type
+        const type = String(rawType || '')
+        const amount = Number(t.amount) || 0
+        const absAmount = Math.abs(amount)
 
-    const expense = transactions
-      .filter((t) => {
-        const type = String(t.type || '')
-        if (!EXPENSE_TYPES.includes(type)) return false
-        if (type === 'expense' && t.is_credit === true) return false
-        return true
-      })
-      .reduce((acc, t) => acc + Math.abs(Number(t.amount) || 0), 0)
+        if (INCOME_TYPES.includes(type)) {
+          acc.income += amount
+        }
 
-    const credits = transactions
-      .filter((t) => t.type === 'expense' && t.is_credit === true)
-      .reduce((acc: number, t: any) => acc + Math.abs(Number(t.amount) || 0), 0)
+        if (rawType === 'expense' && t.is_credit === true) {
+          acc.credits += absAmount
+        } else if (EXPENSE_TYPES.includes(type)) {
+          acc.expense += absAmount
+        }
 
-    const savingsDeposits = transactions
-      .filter((t) => t.type === 'savings_deposit')
-      .reduce((acc, t) => acc + Math.abs(Number(t.amount) || 0), 0)
+        if (rawType === 'savings_deposit') {
+          acc.savingsDeposits += absAmount
+        }
 
-    const savingsWithdrawals = transactions
-      .filter((t) => t.type === 'savings_withdrawal')
-      .reduce((acc, t) => acc + Math.abs(Number(t.amount) || 0), 0)
+        if (rawType === 'savings_withdrawal') {
+          acc.savingsWithdrawals += absAmount
+        }
+
+        return acc
+      },
+      {
+        income: 0,
+        expense: 0,
+        credits: 0,
+        savingsDeposits: 0,
+        savingsWithdrawals: 0,
+      }
+    )
 
     return {
-      income,
-      expense,
-      credits,
-      balance: income - expense - savingsDeposits + savingsWithdrawals,
+      income: aggregates.income,
+      expense: aggregates.expense,
+      credits: aggregates.credits,
+      balance: aggregates.income - aggregates.expense - aggregates.savingsDeposits + aggregates.savingsWithdrawals,
     }
   }, [transactions])
 
