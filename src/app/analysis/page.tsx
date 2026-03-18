@@ -152,8 +152,6 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
   const [printMode, setPrintMode] = useState<PrintMode>('full')
 
   const [transactions, setTransactions] = useState<any[]>([])
-  const [prevTransactions, setPrevTransactions] = useState<any[]>([])
-  const [monthTransactions, setMonthTransactions] = useState<any[]>([])
 
   const [staff, setStaff] = useState<any[]>([])
   const [suppliers, setSuppliers] = useState<any[]>([])
@@ -256,15 +254,6 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
     if (t.type === 'expense' || t.type === 'debt_payment' || t.type === 'salary_advance' || t.type === 'savings_deposit') return -Math.abs(raw)
     return Math.abs(raw)
   }, [])
-
-  const getPrevRange = useCallback(() => {
-    const s = parseISO(startDate)
-    const e = parseISO(endDate)
-    const days = Math.max(0, differenceInCalendarDays(e, s))
-    const prevEnd = subDays(s, 1)
-    const prevStart = subDays(prevEnd, days)
-    return { prevStart: format(prevStart, 'yyyy-MM-dd'), prevEnd: format(prevEnd, 'yyyy-MM-dd') }
-  }, [startDate, endDate])
 
   /* ---------------- PRINT CSS ---------------- */
 
@@ -420,17 +409,10 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
       const { data: sessionData } = await supabase.auth.getSession()
       if (!sessionData?.session) return router.push('/login')
 
-      const { prevStart, prevEnd } = getPrevRange()
-
-      const monthStart = format(startOfMonth(new Date()), 'yyyy-MM-dd')
-      const monthEnd = format(endOfMonth(new Date()), 'yyyy-MM-dd')
-
       const forecastTo = format(addDays(parseISO(endDate), 30), 'yyyy-MM-dd')
 
       const [
         txRes,
-        prevRes,
-        monthRes,
         staffRes,
         supRes,
         revRes,
@@ -447,26 +429,12 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
 
           if (period !== 'all') {
             q = q.gte('date', startDate).lte('date', endDate)
+          } else {
+            q = q.limit(2000)
           }
 
           return q.order('date', { ascending: false })
         })(),
-
-        supabase
-          .from('transactions')
-          .select('*, suppliers(id, name), fixed_assets(id, name, sub_category), revenue_sources(id, name)')
-          .eq('store_id', storeId)
-          .gte('date', prevStart)
-          .lte('date', prevEnd)
-          .order('date', { ascending: false }),
-
-        supabase
-          .from('transactions')
-          .select('*, suppliers(id, name), fixed_assets(id, name, sub_category), revenue_sources(id, name)')
-          .eq('store_id', storeId)
-          .gte('date', monthStart)
-          .lte('date', monthEnd)
-          .order('date', { ascending: false }),
 
         supabase
           .from('fixed_assets')
@@ -513,12 +481,8 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
       ])
 
       if (txRes.error) throw txRes.error
-      if (prevRes.error) throw prevRes.error
-      if (monthRes.error) throw monthRes.error
 
       setTransactions(txRes.data || [])
-      setPrevTransactions(prevRes.data || [])
-      setMonthTransactions(monthRes.data || [])
 
       setStaff(staffRes.data || [])
       setSuppliers(supRes.data || [])
@@ -535,7 +499,7 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
     } finally {
       setLoading(false)
     }
-  }, [router, storeId, startDate, endDate, getPrevRange, isCreditTx, supabase, period])
+  }, [router, storeId, startDate, endDate, isCreditTx, supabase, period])
 
   useEffect(() => {
     loadData()
@@ -643,11 +607,6 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
   )
   const organicTransactions = useMemo(() => periodTx.filter((t) => !isCapitalTransferTx(t)), [periodTx])
 
-  const prevPeriodTx = useMemo(() => {
-    const { prevStart, prevEnd } = getPrevRange()
-    return prevTransactions.filter((t) => t.date >= prevStart && t.date <= prevEnd)
-  }, [prevTransactions, getPrevRange])
-
   // Use organicTransactions for stats/charts, but not for the transaction list
   const filteredTx = useMemo(() => {
     const key = filterAToKey(filterA)
@@ -695,19 +654,17 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
     [isCreditTx]
   )
 
-  // KPIs: use organicTransactions for current period, prevPeriodTx for previous (also organic)
+  // KPIs: use organicTransactions for current period
   const kpis = useMemo(() => computeKpis(organicTransactions), [organicTransactions, computeKpis])
-  const prevOrganicTransactions = useMemo(() => prevPeriodTx.filter((t) => !isCapitalTransferTx(t)), [prevPeriodTx])
-  const kpisPrev = useMemo(() => computeKpis(prevOrganicTransactions), [prevOrganicTransactions, computeKpis])
 
   const variance = useMemo(
     () => ({
-      income: safePctChange(kpis.income, kpisPrev.income),
-      expenses: safePctChange(kpis.expenses, kpisPrev.expenses),
-      tips: safePctChange(kpis.tips, kpisPrev.tips),
-      netProfit: safePctChange(kpis.netProfit, kpisPrev.netProfit),
+      income: null,
+      expenses: null,
+      tips: null,
+      netProfit: null,
     }),
-    [kpis, kpisPrev]
+    []
   )
 
   /* ---------------- Z LOGIC (single day) ---------------- */
@@ -1190,7 +1147,11 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
   /* ---------------- STAFF PAYROLL (CURRENT MONTH) ---------------- */
 
   const staffDetailsThisMonth = useMemo(() => {
-    const staffTxs = monthTransactions
+    const monthStart = format(startOfMonth(new Date()), 'yyyy-MM-dd')
+    const monthEnd = format(endOfMonth(new Date()), 'yyyy-MM-dd')
+
+    const staffTxs = transactions
+      .filter((t) => t.date >= monthStart && t.date <= monthEnd)
       .filter((t) => t.type === 'expense' || t.type === 'debt_payment' || t.type === 'salary_advance')
       .filter((t) => !isCreditTx(t))
       .filter((t) => normalizeExpenseCategory(t) === 'Staff')
@@ -1205,7 +1166,7 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
     return Object.entries(byStaff)
       .map(([name, amount]) => ({ name, amount }))
       .sort((a, b) => b.amount - a.amount)
-  }, [monthTransactions, normalizeExpenseCategory, staff, isCreditTx])
+  }, [transactions, normalizeExpenseCategory, staff, isCreditTx])
 
   /* ---------------- UI ---------------- */
 
@@ -1459,8 +1420,7 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
           >
             <div style={kpiTopRow}>
               <div style={{ ...kpiLabel, color: '#b45309' }}>
-                Στην Τράπεζα από Z{' '}
-                <span style={kpiDelta}>{fmtPct(variance.tips)} vs prev</span>
+                Στην Τράπεζα από Z
               </div>
               <div style={{ ...kpiSign, color: '#b45309' }}>+</div>
             </div>
