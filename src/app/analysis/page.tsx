@@ -385,6 +385,7 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
 
   const loadData = useCallback(async () => {
     if (!authChecked || !hasSession || !storeId || storeId === 'null') {
+      setLoading(false)
       return
     }
     try {
