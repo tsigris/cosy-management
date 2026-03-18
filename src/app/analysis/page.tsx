@@ -452,6 +452,11 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
       setMaintenanceWorkers((maintRes.data || []).filter((x: any) => String(x?.name || '').trim().length > 0))
       setDrawer(drawerRes.data || null)
     } catch (err) {
+      setStaff([])
+      setSuppliers([])
+      setRevenueSources([])
+      setMaintenanceWorkers([])
+      setDrawer(null)
       toast.error('Σφάλμα φόρτωσης δεδομένων')
     }
   }, [storeId, endDate, supabase, authChecked, hasSession])
@@ -694,6 +699,8 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
       return
     }
 
+    setDetailSummary(null)
+
     if (
       (detailMode === 'supplier' && suppliers.length === 0) ||
       (detailMode === 'staff' && staff.length === 0) ||
@@ -702,8 +709,6 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
     ) {
       return
     }
-
-    setDetailSummary(null)
 
     let fallbackName = '—'
     if (detailMode === 'supplier') {
