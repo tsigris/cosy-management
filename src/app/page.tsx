@@ -309,7 +309,7 @@ function DashboardContent() {
         setYtdCache((prev) => ({ ...prev, [key]: { loading: false } }))
       }
     },
-    [storeIdFromUrl, yearStartStr, businessTodayStr]
+    [storeIdFromUrl, yearStartStr, businessTodayStr, supabase]
   )
 
   const loadDashboard = useCallback(async () => {
@@ -436,7 +436,7 @@ function DashboardContent() {
     } finally {
       setLoading(false)
     }
-  }, [selectedDate, router, storeIdFromUrl])
+  }, [selectedDate, router, storeIdFromUrl, supabase])
 
   const loadTotals = useCallback(async () => {
     if (!storeIdFromUrl) return
@@ -813,7 +813,9 @@ function DashboardContent() {
             const ytd = entityKey ? ytdCache[entityKey] : undefined
 
             // ✅ σωστό πράσινο για ανάληψη κουμπαρά
-            const isIncomeTx = isZMaster ? true : (DISPLAY_INCOME_TYPES as readonly string[]).includes(String(tx?.type))
+            const isIncomeTx = isZMaster
+              ? true
+              : DISPLAY_INCOME_TYPES.includes(String(tx?.type) as (typeof DISPLAY_INCOME_TYPES)[number])
 
             const txMethod = isZMaster ? 'Συγκεντρωτική εγγραφή' : tx?.method
             const txCreatedAt = isZMaster ? row.created_at : tx?.created_at
