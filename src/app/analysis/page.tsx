@@ -195,6 +195,9 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
 
   const [expectedOutflows30d, setExpectedOutflows30d] = useState<number>(0)
 
+  const [authChecked, setAuthChecked] = useState(false)
+  const [hasSession, setHasSession] = useState(false)
+
   // Simple/Pro: Transaction search (separate, to avoid loading thousands)
   const [searchFrom, setSearchFrom] = useState(format(new Date(), 'yyyy-MM-dd'))
   const [searchTo, setSearchTo] = useState(format(new Date(), 'yyyy-MM-dd'))
@@ -361,15 +364,33 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
     if (!storeId || storeId === 'null') router.replace('/select-store')
   }, [storeId, router])
 
+  const initAuth = useCallback(async () => {
+    if (!storeId || storeId === 'null') return
+    const { data: sessionData } = await supabase.auth.getSession()
+    if (!sessionData?.session) {
+      setHasSession(false)
+      setAuthChecked(true)
+      router.push('/login')
+      return
+    }
+    setHasSession(true)
+    setAuthChecked(true)
+  }, [storeId, supabase, router])
+
+  useEffect(() => {
+    initAuth()
+  }, [initAuth])
+
   /* ---------------- DATA LOAD (summary dataset) ---------------- */
 
   const loadData = useCallback(async () => {
+    if (!authChecked) return
+    if (!hasSession || !storeId || storeId === 'null') {
+      setLoading(false)
+      return
+    }
     try {
       setLoading(true)
-      if (!storeId || storeId === 'null') return setLoading(false)
-
-      const { data: sessionData } = await supabase.auth.getSession()
-      if (!sessionData?.session) return router.push('/login')
 
       const [
         staffRes,
@@ -416,14 +437,15 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
     } finally {
       setLoading(false)
     }
-  }, [router, storeId, endDate, supabase])
+  }, [storeId, endDate, supabase, authChecked, hasSession])
 
   useEffect(() => {
     loadData()
   }, [loadData])
 
   const loadAnalysisSummary = useCallback(async () => {
-    if (!storeId || storeId === 'null') {
+    if (!authChecked) return
+    if (!hasSession || !storeId || storeId === 'null') {
       setRpcSummary({
         income: 0,
         expenses: 0,
@@ -481,14 +503,15 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
         savings_withdrawals: 0,
       })
     }
-  }, [storeId, startDate, endDate, supabase])
+  }, [storeId, startDate, endDate, supabase, authChecked, hasSession])
 
   useEffect(() => {
     loadAnalysisSummary()
   }, [loadAnalysisSummary])
 
   const loadCategoryBreakdown = useCallback(async () => {
-    if (!storeId || storeId === 'null') {
+    if (!authChecked) return
+    if (!hasSession || !storeId || storeId === 'null') {
       setCategoryBreakdownRows([])
       return
     }
@@ -510,14 +533,15 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
       console.error('Category breakdown RPC error:', err)
       setCategoryBreakdownRows([])
     }
-  }, [storeId, startDate, endDate, supabase])
+  }, [storeId, startDate, endDate, supabase, authChecked, hasSession])
 
   useEffect(() => {
     loadCategoryBreakdown()
   }, [loadCategoryBreakdown])
 
   const loadEntitySummary = useCallback(async () => {
-    if (!storeId || storeId === 'null') {
+    if (!authChecked) return
+    if (!hasSession || !storeId || storeId === 'null') {
       setEntitySummaryRows([])
       return
     }
@@ -543,14 +567,15 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
       console.error('Entity summary RPC error:', err)
       setEntitySummaryRows([])
     }
-  }, [storeId, startDate, endDate, filterA, supabase])
+  }, [storeId, startDate, endDate, filterA, supabase, authChecked, hasSession])
 
   useEffect(() => {
     loadEntitySummary()
   }, [loadEntitySummary])
 
   const loadZBank = useCallback(async () => {
-    if (!storeId || storeId === 'null') {
+    if (!authChecked) return
+    if (!hasSession || !storeId || storeId === 'null') {
       setZBankAmount(0)
       return
     }
@@ -567,14 +592,15 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
       console.error('Z bank RPC error:', err)
       setZBankAmount(0)
     }
-  }, [storeId, startDate, endDate, supabase])
+  }, [storeId, startDate, endDate, supabase, authChecked, hasSession])
 
   useEffect(() => {
     loadZBank()
   }, [loadZBank])
 
   const loadStaffPayroll = useCallback(async () => {
-    if (!storeId || storeId === 'null') {
+    if (!authChecked) return
+    if (!hasSession || !storeId || storeId === 'null') {
       setStaffPayrollRows([])
       return
     }
@@ -599,14 +625,15 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
       console.error('Staff payroll RPC error:', err)
       setStaffPayrollRows([])
     }
-  }, [storeId, startDate, endDate, supabase])
+  }, [storeId, startDate, endDate, supabase, authChecked, hasSession])
 
   useEffect(() => {
     loadStaffPayroll()
   }, [loadStaffPayroll])
 
   const loadProStats = useCallback(async () => {
-    if (!storeId || storeId === 'null') {
+    if (!authChecked) return
+    if (!hasSession || !storeId || storeId === 'null') {
       setProStats(null)
       return
     }
@@ -623,14 +650,15 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
       console.error('PRO stats RPC error:', err)
       setProStats(null)
     }
-  }, [storeId, startDate, endDate, supabase])
+  }, [storeId, startDate, endDate, supabase, authChecked, hasSession])
 
   useEffect(() => {
     loadProStats()
   }, [loadProStats])
 
   const loadDetailSummary = useCallback(async () => {
-    if (!storeId || storeId === 'null' || detailMode === 'none' || detailId === 'all') {
+    if (!authChecked) return
+    if (!hasSession || !storeId || storeId === 'null' || detailMode === 'none' || detailId === 'all') {
       setDetailSummary(null)
       return
     }
@@ -688,6 +716,8 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
     maintenanceWorkers,
     revenueSources,
     supabase,
+    authChecked,
+    hasSession,
   ])
 
   useEffect(() => {
@@ -695,7 +725,8 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
   }, [loadDetailSummary])
 
   const loadCollapsedZ = useCallback(async () => {
-    if (!storeId || storeId === 'null') {
+    if (!authChecked) return
+    if (!hasSession || !storeId || storeId === 'null') {
       setCollapsedZRows([])
       return
     }
@@ -722,14 +753,15 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
       console.error('Collapsed Z RPC error:', err)
       setCollapsedZRows([])
     }
-  }, [storeId, startDate, endDate, supabase])
+  }, [storeId, startDate, endDate, supabase, authChecked, hasSession])
 
   useEffect(() => {
     loadCollapsedZ()
   }, [loadCollapsedZ])
 
   const loadPeriodMovements = useCallback(async () => {
-    if (!storeId || storeId === 'null') {
+    if (!authChecked) return
+    if (!hasSession || !storeId || storeId === 'null') {
       setPeriodMovements([])
       return
     }
@@ -762,14 +794,15 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
       console.error('Period movements RPC error:', err)
       setPeriodMovements([])
     }
-  }, [storeId, startDate, endDate, supabase])
+  }, [storeId, startDate, endDate, supabase, authChecked, hasSession])
 
   useEffect(() => {
     loadPeriodMovements()
   }, [loadPeriodMovements])
 
   const loadExpectedOutflows = useCallback(async () => {
-    if (!storeId || storeId === 'null') {
+    if (!authChecked) return
+    if (!hasSession || !storeId || storeId === 'null') {
       setExpectedOutflows30d(0)
       return
     }
@@ -790,7 +823,7 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
       console.error('Expected outflows RPC error:', err)
       setExpectedOutflows30d(0)
     }
-  }, [storeId, endDate, supabase])
+  }, [storeId, startDate, endDate, supabase, authChecked, hasSession])
 
   useEffect(() => {
     loadExpectedOutflows()
