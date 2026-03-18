@@ -53,6 +53,25 @@ const eur = (n: number) =>
 
 const pct = (n: number) => `${Number(n || 0).toFixed(2)}%`
 
+function formatDateGR(dateString: string) {
+  if (!dateString) return dateString
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateString)
+  if (m) return `${m[3]}-${m[2]}-${m[1]}`
+  const d = new Date(dateString)
+  if (isNaN(d.getTime())) return dateString
+  const day = String(d.getDate()).padStart(2, '0')
+  const month = String(d.getMonth() + 1).padStart(2, '0')
+  const year = d.getFullYear()
+  return `${day}-${month}-${year}`
+}
+
+const statusLabelMap: Record<string, string> = {
+  perfect: 'Ιδανικό',
+  warning: 'Οριακό',
+  danger: 'Υψηλό κόστος',
+  no_turnover: 'Χωρίς τζίρο',
+}
+
 function PayrollPercentContent() {
   const supabase = getSupabase()
   const router = useRouter()
@@ -129,9 +148,10 @@ function PayrollPercentContent() {
 
   const statusMeta = useMemo(() => {
     const label = status || (payrollPct <= 25 ? 'OK' : payrollPct <= 35 ? 'WARNING' : 'DANGER')
-    if (payrollPct <= 25) return { label, bg: '#ecfdf5', color: '#166534', border: '#86efac' }
-    if (payrollPct <= 35) return { label, bg: '#fff7ed', color: '#c2410c', border: '#fdba74' }
-    return { label, bg: '#fef2f2', color: '#b91c1c', border: '#fca5a5' }
+    const displayLabel = statusLabelMap[label] || label
+    if (payrollPct <= 25) return { label: displayLabel, bg: '#ecfdf5', color: '#166534', border: '#86efac' }
+    if (payrollPct <= 35) return { label: displayLabel, bg: '#fff7ed', color: '#c2410c', border: '#fdba74' }
+    return { label: displayLabel, bg: '#fef2f2', color: '#b91c1c', border: '#fca5a5' }
   }, [payrollPct, status])
 
   if (!storeId || !isValidUUID(storeId)) return null
@@ -157,7 +177,7 @@ function PayrollPercentContent() {
               <CalendarDays size={16} />
               <span style={{ fontSize: 12, fontWeight: 900, color: 'var(--muted)' }}>ΗΜΕΡΑ</span>
             </div>
-            <span style={{ fontSize: 13, fontWeight: 900 }}>{loading ? businessDate : (effectiveDate || businessDate)}</span>
+            <span style={{ fontSize: 13, fontWeight: 900 }}>{formatDateGR(loading ? businessDate : (effectiveDate || businessDate))}</span>
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 10 }}>
