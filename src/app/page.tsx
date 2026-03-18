@@ -74,8 +74,9 @@ function DashboardContent() {
 
   // cache YTD metrics per entity key
   const [ytdCache, setYtdCache] = useState<Record<string, YtdInfo>>({})
-  // ref-based guard: tracks keys currently in-flight so loadYtdForTx
-  // does not need to read ytdCache state, keeping the callback stable
+  // ref-based lightweight request/cache guard: blocks duplicate requests while loading
+  // and after successful load; failures remove the key so retry remains possible
+  // without reading ytdCache state, keeping loadYtdForTx stable
   const ytdLoadingKeys = useRef<Set<string>>(new Set())
 
   // ✅ Use shared hook for permission checking (consolidates repeated store_access queries)
@@ -150,7 +151,6 @@ function DashboardContent() {
           const loanPaid = paidInst.reduce((acc: number, i: any) => acc + Number(i.amount), 0)
           const loanTotal = Number(sett?.total_amount || 0)
 
-          ytdLoadingKeys.current.delete(key)
           setYtdCache((prev) => ({
             ...prev,
             [key]: {
@@ -202,7 +202,6 @@ function DashboardContent() {
 
           const openIncome = creditIncome - receivedIncome
 
-          ytdLoadingKeys.current.delete(key)
           setYtdCache((prev) => ({
             ...prev,
             [key]: { loading: false, turnoverIncome, receivedIncome, openIncome },
@@ -224,7 +223,6 @@ function DashboardContent() {
 
         const openExpense = creditExpenses - payments
 
-        ytdLoadingKeys.current.delete(key)
         setYtdCache((prev) => ({
           ...prev,
           [key]: { loading: false, totalExpenses, payments, openExpense },
