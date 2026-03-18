@@ -1,7 +1,7 @@
 'use client'
 export const dynamic = 'force-dynamic'
 
-import { useEffect, useState, Suspense, useMemo, useCallback } from 'react'
+import { useEffect, useState, Suspense, useMemo, useCallback, useRef } from 'react'
 import EconomicsPeriodFilter from '@/components/economics/EconomicsPeriodFilter'
 import { getSupabase } from '@/lib/supabase'
 import Link from 'next/link'
@@ -135,13 +135,15 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
 
   const [drawer, setDrawer] = useState<any>(null)
 
-  const [loading, setLoading] = useState(true)
   const [categoryBreakdownRows, setCategoryBreakdownRows] = useState<{ category_key: string; total: number }[]>([])
+  const [categoryBreakdownReady, setCategoryBreakdownReady] = useState(false)
   const [entitySummaryRows, setEntitySummaryRows] = useState<{ entity_id: string; entity_name: string; total: number; paid: number; credit: number }[]>([])
   const [entitySummaryReady, setEntitySummaryReady] = useState(false)
   const [staffPayrollRows, setStaffPayrollRows] = useState<{ name: string; amount: number }[]>([])
+  const [staffPayrollReady, setStaffPayrollReady] = useState(false)
   const [proStats, setProStats] = useState<any>(null)
   const [detailSummary, setDetailSummary] = useState<any>(null)
+  const detailSummaryRequestIdRef = useRef(0)
   const [collapsedZReady, setCollapsedZReady] = useState(false)
   const [periodMovementsReady, setPeriodMovementsReady] = useState(false)
   const [zBankAmount, setZBankAmount] = useState(0)
@@ -397,7 +399,6 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
       setRevenueSources([])
       setMaintenanceWorkers([])
       setDrawer(null)
-      setLoading(false)
       return
     }
 
@@ -407,12 +408,9 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
       setRevenueSources([])
       setMaintenanceWorkers([])
       setDrawer(null)
-      setLoading(false)
       return
     }
     try {
-      setLoading(true)
-
       const [
         staffRes,
         supRes,
@@ -455,8 +453,6 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
       setDrawer(drawerRes.data || null)
     } catch (err) {
       toast.error('Σφάλμα φόρτωσης δεδομένων')
-    } finally {
-      setLoading(false)
     }
   }, [storeId, endDate, supabase, authChecked, hasSession])
 
@@ -530,8 +526,11 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
   }, [loadAnalysisSummary])
 
   const loadCategoryBreakdown = useCallback(async () => {
+    setCategoryBreakdownReady(false)
+
     if (!authChecked || !hasSession || !storeId || storeId === 'null') {
       setCategoryBreakdownRows([])
+      setCategoryBreakdownReady(true)
       return
     }
     try {
@@ -551,6 +550,8 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
     } catch (err) {
       console.error('Category breakdown RPC error:', err)
       setCategoryBreakdownRows([])
+    } finally {
+      setCategoryBreakdownReady(true)
     }
   }, [storeId, startDate, endDate, supabase, authChecked, hasSession])
 
@@ -621,8 +622,11 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
   }, [loadZBank])
 
   const loadStaffPayroll = useCallback(async () => {
+    setStaffPayrollReady(false)
+
     if (!authChecked || !hasSession || !storeId || storeId === 'null') {
       setStaffPayrollRows([])
+      setStaffPayrollReady(true)
       return
     }
 
@@ -645,6 +649,8 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
     } catch (err) {
       console.error('Staff payroll RPC error:', err)
       setStaffPayrollRows([])
+    } finally {
+      setStaffPayrollReady(true)
     }
   }, [storeId, startDate, endDate, supabase, authChecked, hasSession])
 
@@ -677,6 +683,8 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
   }, [loadProStats])
 
   const loadDetailSummary = useCallback(async () => {
+    const requestId = ++detailSummaryRequestIdRef.current
+
     if (!authChecked || !hasSession || !storeId || storeId === 'null') {
       setDetailSummary(null)
       return
@@ -694,6 +702,8 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
     ) {
       return
     }
+
+    setDetailSummary(null)
 
     let fallbackName = '—'
     if (detailMode === 'supplier') {
@@ -717,6 +727,7 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
       if (error) throw error
       const raw = Array.isArray(data) ? data[0] : data
       const payload = raw?.get_analysis_detail_summary ?? raw ?? {}
+      if (requestId !== detailSummaryRequestIdRef.current) return
       setDetailSummary({
         name: String(payload.name || fallbackName || '').trim() || '—',
         paidCash: Number(payload.paidCash ?? payload.paid_cash ?? 0),
@@ -735,6 +746,7 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
       })
     } catch (err) {
       console.error('Detail summary RPC error:', err)
+      if (requestId !== detailSummaryRequestIdRef.current) return
       setDetailSummary(null)
     }
   }, [
@@ -1873,7 +1885,9 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
               <div style={sectionPill}>Σύνολο: {moneyGR(categoryBreakdown.total)}</div>
             </div>
 
-            {categoryBreakdown.total <= 0 ? (
+            {!categoryBreakdownReady ? (
+              <div style={hintBox}>Φόρτωση...</div>
+            ) : categoryBreakdown.total <= 0 ? (
               <div style={hintBox}>Δεν υπάρχουν έξοδα στην επιλεγμένη περίοδο.</div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -1919,7 +1933,9 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
               <div style={sectionPill}>{rangeText}</div>
             </div>
 
-            {staffPayrollRows.length === 0 ? (
+            {!staffPayrollReady ? (
+              <div style={hintBox}>Φόρτωση...</div>
+            ) : staffPayrollRows.length === 0 ? (
               <div style={hintBox}>Δεν υπάρχουν εγγραφές μισθοδοσίας για την επιλεγμένη περίοδο.</div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
