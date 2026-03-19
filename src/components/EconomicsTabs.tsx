@@ -2,8 +2,18 @@
 
 import Link from 'next/link'
 import { usePathname, useSearchParams } from 'next/navigation'
+import { useEffect, useRef } from 'react'
 import type { CSSProperties } from 'react'
-import { Wallet, TrendingDown, Receipt, BarChart3, CalendarDays, LineChart, Coins, Users } from 'lucide-react'
+import {
+  Wallet,
+  TrendingDown,
+  Receipt,
+  BarChart3,
+  CalendarDays,
+  LineChart,
+  Coins,
+  Users,
+} from 'lucide-react'
 
 type TabItem = {
   label: string
@@ -26,17 +36,26 @@ const tabs: TabItem[] = [
 export default function EconomicsTabs() {
   const pathname = usePathname()
   const searchParams = useSearchParams()
+  const activeTabRef = useRef<HTMLAnchorElement | null>(null)
 
   const withQueryParams = (path: string) => {
-    // preserve ALL query params (store, date, range, etc.)
     const qs = searchParams?.toString() || ''
     return qs ? `${path}?${qs}` : path
   }
 
   const isActivePath = (tabPath: string) => {
-    // exact match + safe support for nested routes
     return pathname === tabPath || pathname?.startsWith(`${tabPath}/`)
   }
+
+  useEffect(() => {
+    if (!activeTabRef.current) return
+
+    activeTabRef.current.scrollIntoView({
+      behavior: 'smooth',
+      inline: 'center',
+      block: 'nearest',
+    })
+  }, [pathname])
 
   return (
     <div style={tabsStickyWrap}>
@@ -44,10 +63,12 @@ export default function EconomicsTabs() {
         {tabs.map((tab) => {
           const isActive = isActivePath(tab.path)
           const Icon = tab.Icon
+
           return (
             <Link
               key={tab.path}
               href={withQueryParams(tab.path)}
+              ref={isActive ? activeTabRef : null}
               style={{ ...tabBtn, ...(isActive ? tabBtnActive : null) }}
             >
               <div style={tabInner}>
