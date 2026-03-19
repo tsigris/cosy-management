@@ -36,7 +36,9 @@ const tabs: TabItem[] = [
 export default function EconomicsTabs() {
   const pathname = usePathname()
   const searchParams = useSearchParams()
-  const activeTabRef = useRef<HTMLAnchorElement | null>(null)
+
+  const scrollerRef = useRef<HTMLDivElement | null>(null)
+  const tabRefs = useRef<Record<string, HTMLAnchorElement | null>>({})
 
   const withQueryParams = (path: string) => {
     const qs = searchParams?.toString() || ''
@@ -48,18 +50,30 @@ export default function EconomicsTabs() {
   }
 
   useEffect(() => {
-    if (!activeTabRef.current) return
+    const activeTab = tabs.find((tab) => isActivePath(tab.path))
+    const container = scrollerRef.current
+    const activeEl = activeTab ? tabRefs.current[activeTab.path] : null
 
-    activeTabRef.current.scrollIntoView({
-      behavior: 'smooth',
-      inline: 'center',
-      block: 'nearest',
+    if (!container || !activeEl) return
+
+    const run = () => {
+      const left =
+        activeEl.offsetLeft - container.clientWidth / 2 + activeEl.clientWidth / 2
+
+      container.scrollTo({
+        left: Math.max(0, left),
+        behavior: 'smooth',
+      })
+    }
+
+    requestAnimationFrame(() => {
+      requestAnimationFrame(run)
     })
   }, [pathname])
 
   return (
     <div style={tabsStickyWrap}>
-      <div style={tabsScroller}>
+      <div ref={scrollerRef} style={tabsScroller}>
         {tabs.map((tab) => {
           const isActive = isActivePath(tab.path)
           const Icon = tab.Icon
@@ -68,7 +82,9 @@ export default function EconomicsTabs() {
             <Link
               key={tab.path}
               href={withQueryParams(tab.path)}
-              ref={isActive ? activeTabRef : null}
+              ref={(el) => {
+                tabRefs.current[tab.path] = el
+              }}
               style={{ ...tabBtn, ...(isActive ? tabBtnActive : null) }}
             >
               <div style={tabInner}>
@@ -94,16 +110,22 @@ const tabsStickyWrap: CSSProperties = {
   background: 'var(--surface)',
   backdropFilter: 'blur(6px)',
   boxShadow: 'var(--shadow)',
+  width: '100%',
+  minWidth: 0,
+  overflow: 'hidden',
 }
 
 const tabsScroller: CSSProperties = {
   display: 'flex',
   gap: 8,
   overflowX: 'auto',
+  overflowY: 'hidden',
   WebkitOverflowScrolling: 'touch',
   scrollbarWidth: 'none',
   msOverflowStyle: 'none',
   whiteSpace: 'nowrap',
+  width: '100%',
+  minWidth: 0,
 }
 
 const tabBtn: CSSProperties = {
