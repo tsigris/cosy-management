@@ -70,6 +70,30 @@ function formatDateGR(dateString: string) {
   return `${day}-${month}-${year}`
 }
 
+function isValidDateKey(value: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false
+  const [y, m, d] = value.split('-').map(Number)
+  const dt = new Date(y, m - 1, d)
+  return dt.getFullYear() === y && dt.getMonth() === m - 1 && dt.getDate() === d
+}
+
+function toDateKey(d: Date) {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+function getTodayKey() {
+  return toDateKey(new Date())
+}
+
+function getSevenDaysAgoKey() {
+  const d = new Date()
+  d.setDate(d.getDate() - 7)
+  return toDateKey(d)
+}
+
 const statusLabelMap: Record<string, string> = {
   perfect: 'Ιδανικό',
   warning: 'Οριακό',
@@ -101,19 +125,16 @@ function PayrollPercentContent() {
     return Array.from({ length: 8 }, (_, i) => current - i)
   }, [])
 
-  const toDateKey = useCallback((d: Date) => {
-    const y = d.getFullYear()
-    const m = String(d.getMonth() + 1).padStart(2, '0')
-    const day = String(d.getDate()).padStart(2, '0')
-    return `${y}-${m}-${day}`
-  }, [])
-
   useEffect(() => {
     if (!storeId || !isValidUUID(storeId)) router.replace('/select-store')
   }, [storeId, router])
 
   useEffect(() => {
     const now = new Date()
+    const queryStart = searchParams.get('start') || ''
+    const queryEnd = searchParams.get('end') || ''
+    const safeEnd = isValidDateKey(queryEnd) ? queryEnd : getTodayKey()
+    const safeStart = isValidDateKey(queryStart) ? queryStart : getSevenDaysAgoKey()
     const end = businessDate
 
     if (period === 'month') {
@@ -134,9 +155,9 @@ function PayrollPercentContent() {
       return
     }
 
-    setStartDate('1970-01-01')
-    setEndDate(end)
-  }, [period, selectedYear, businessDate, toDateKey])
+    setStartDate(safeStart)
+    setEndDate(safeEnd)
+  }, [period, selectedYear, businessDate, searchParams])
 
   const load = useCallback(async () => {
     if (!storeId || !isValidUUID(storeId) || !startDate || !endDate) return

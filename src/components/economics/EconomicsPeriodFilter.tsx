@@ -29,13 +29,23 @@ export function getLast30Days(): Date {
   return d
 }
 
+function isValidDateKey(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false
+  const [y, m, d] = value.split('-').map(Number)
+  const dt = new Date(y, m - 1, d)
+  return dt.getFullYear() === y && dt.getMonth() === m - 1 && dt.getDate() === d
+}
+
 export default function EconomicsPeriodFilter({ period, onPeriodChange, selectedYear, onYearChange, yearOptions = [] }: Props) {
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
 
-  const queryStart = searchParams?.get('start') || ''
-  const queryEnd = searchParams?.get('end') || ''
+  const rawQueryStart = searchParams?.get('start') || ''
+  const rawQueryEnd = searchParams?.get('end') || ''
+  const queryStart = isValidDateKey(rawQueryStart) ? rawQueryStart : ''
+  const queryEnd = isValidDateKey(rawQueryEnd) ? rawQueryEnd : ''
+
   const [start, setStart] = useState(queryStart)
   const [end, setEnd] = useState(queryEnd)
 
@@ -101,7 +111,7 @@ export default function EconomicsPeriodFilter({ period, onPeriodChange, selected
           }}
           style={{ ...viewBtn, background: period === 'all' ? 'var(--surface)' : 'transparent' }}
         >
-          Από - Έως
+          Από – Έως
         </button>
       </div>
 
