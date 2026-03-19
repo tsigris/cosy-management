@@ -84,7 +84,7 @@ function EmployeesContent() {
 
   // States για days-off modal
   const [dayOffModal, setDayOffModal] = useState<{ empId: string; name: string } | null>(null)
-  const [dayOffDate, setDayOffDate] = useState(new Date().toISOString().split('T')[0])
+  const [dayOffDates, setDayOffDates] = useState<string[]>([new Date().toISOString().split('T')[0]])
 
   // Quick Tips (create)
   const [tipModal, setTipModal] = useState<{ empId: string; name: string } | null>(null)
@@ -558,7 +558,7 @@ function EmployeesContent() {
   }
 
   async function handleAddDayOff() {
-    if (!dayOffModal || !dayOffDate) return
+    if (!dayOffModal) return
 
     let tenantStoreId: string
     try {
@@ -568,21 +568,32 @@ function EmployeesContent() {
       return
     }
 
-    const alreadyExists = employeeDaysOff.some(
-      (row) => row.employee_id === dayOffModal.empId && getDayOffDateValue(row).slice(0, 10) === dayOffDate,
-    )
-    if (alreadyExists) {
-      toast.error('Υπάρχει ήδη ρεπό για αυτή την ημερομηνία.')
+    const normalizedDates = Array.from(new Set(dayOffDates.map((d) => String(d || '').slice(0, 10)).filter(Boolean)))
+    if (normalizedDates.length === 0) {
+      toast.error('Πρόσθεσε τουλάχιστον μία ημερομηνία.')
       return
     }
 
-    const dayOffPayload: Record<string, string> = {
-      employee_id: dayOffModal.empId,
-      store_id: tenantStoreId,
-      [employeeDayOffDateColumn]: dayOffDate,
+    const existingDates = new Set(
+      employeeDaysOff
+        .filter((row) => row.employee_id === dayOffModal.empId)
+        .map((row) => getDayOffDateValue(row).slice(0, 10))
+        .filter(Boolean),
+    )
+
+    const datesToInsert = normalizedDates.filter((d) => !existingDates.has(d))
+    if (datesToInsert.length === 0) {
+      toast.error('Οι επιλεγμένες ημερομηνίες υπάρχουν ήδη.')
+      return
     }
 
-    const { error } = await supabase.from('employee_days_off').insert([dayOffPayload])
+    const dayOffPayloads = datesToInsert.map((d) => ({
+      employee_id: dayOffModal.empId,
+      store_id: tenantStoreId,
+      off_date: d,
+    }))
+
+    const { error } = await supabase.from('employee_days_off').insert(dayOffPayloads)
 
     if (error) {
       console.error(error)
@@ -590,9 +601,32 @@ function EmployeesContent() {
       return
     }
 
-    toast.success(`Καταχωρήθηκε ρεπό για ${dayOffModal.name}`)
+    const skippedCount = normalizedDates.length - datesToInsert.length
+    toast.success(skippedCount > 0 ? `Καταχωρήθηκαν ${datesToInsert.length} ρεπό (${skippedCount} παραλείφθηκαν).` : `Καταχωρήθηκαν ${datesToInsert.length} ρεπό για ${dayOffModal.name}`)
     setDayOffModal(null)
-    setDayOffDate(new Date().toISOString().split('T')[0])
+    setDayOffDates([new Date().toISOString().split('T')[0]])
+    fetchInitialData()
+  }
+
+  async function handleDeleteDayOff(dayOffId: string) {
+    if (!confirm('Να διαγραφεί αυτό το ρεπό;')) return
+
+    let tenantStoreId: string
+    try {
+      tenantStoreId = requireTenantStoreId()
+    } catch (error) {
+      console.error(error)
+      return
+    }
+
+    const { error } = await supabase.from('employee_days_off').delete().eq('id', dayOffId).eq('store_id', tenantStoreId)
+    if (error) {
+      console.error(error)
+      toast.error('Αποτυχία διαγραφής ρεπό.')
+      return
+    }
+
+    toast.success('Το ρεπό διαγράφηκε ✅')
     fetchInitialData()
   }
 
@@ -1063,19 +1097,48 @@ function EmployeesContent() {
                 <div style={modalCard}>
                   <h3 style={{ margin: 0, fontSize: '16px' }}>Καταγραφή Ρεπό</h3>
                   <p style={{ fontSize: '12px', color: 'var(--muted)' }}>{dayOffModal.name}</p>
-                  <input
-                    type="date"
-                    value={dayOffDate}
-                    onChange={(e) => setDayOffDate(e.target.value)}
-                    style={{ ...inputStyle, marginTop: '15px' }}
-                    autoFocus
-                  />
+
+                  <div style={{ marginTop: '15px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    {dayOffDates.map((dateValue, idx) => (
+                      <div key={`${dateValue}-${idx}`} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <input
+                          type="date"
+                          value={dateValue}
+                          onChange={(e) => {
+                            const next = [...dayOffDates]
+                            next[idx] = e.target.value
+                            setDayOffDates(next)
+                          }}
+                          style={{ ...inputStyle, marginTop: 0, flex: 1 }}
+                          autoFocus={idx === 0}
+                        />
+                        {dayOffDates.length > 1 && (
+                          <button
+                            type="button"
+                            style={miniIconBtnDanger}
+                            title="Αφαίρεση ημερομηνίας"
+                            onClick={() => setDayOffDates((prev) => prev.filter((_, i) => i !== idx))}
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setDayOffDates((prev) => [...prev, new Date().toISOString().split('T')[0]])}
+                    style={{ ...cancelBtnSmall, width: '100%', marginTop: '10px' }}
+                  >
+                    + ΠΡΟΣΘΗΚΗ ΗΜΕΡΟΜΗΝΙΑΣ
+                  </button>
 
                   <div style={{ display: 'flex', gap: '10px', marginTop: '20px' }}>
                     <button
                       onClick={() => {
                         setDayOffModal(null)
-                        setDayOffDate(new Date().toISOString().split('T')[0])
+                        setDayOffDates([new Date().toISOString().split('T')[0]])
                       }}
                       style={cancelBtnSmall}
                     >
@@ -1391,7 +1454,7 @@ function EmployeesContent() {
                               onClick={(e) => {
                                 e.stopPropagation()
                                 setDayOffModal({ empId: emp.id, name: emp.name })
-                                setDayOffDate(new Date().toISOString().split('T')[0])
+                                setDayOffDates([new Date().toISOString().split('T')[0]])
                               }}
                               style={quickDayOffBtn}
                             >
@@ -1460,6 +1523,34 @@ function EmployeesContent() {
                             <p style={{ margin: '5px 0 0 0', fontWeight: 900, color: 'var(--text)', fontSize: '11px' }}>
                               Τελικός μισθός: {finalSalary.toFixed(2)}€
                             </p>
+                          )}
+
+                          {dayOffRowsThisMonth.length > 0 && (
+                            <div style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                              {dayOffRowsThisMonth.map((row) => (
+                                <div
+                                  key={row.id}
+                                  style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between',
+                                    backgroundColor: 'var(--surface)',
+                                    border: '1px solid var(--border)',
+                                    borderRadius: '10px',
+                                    padding: '6px 8px',
+                                  }}
+                                >
+                                  <span style={{ fontWeight: 800, color: 'var(--muted)', fontSize: '11px' }}>
+                                    {formatShortDayMonth(getDayOffDateValue(row))}
+                                  </span>
+                                  {isAdmin && (
+                                    <button style={miniIconBtnDanger} title="Διαγραφή ρεπό" onClick={() => handleDeleteDayOff(row.id)}>
+                                      <Trash2 size={16} />
+                                    </button>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
                           )}
                         </div>
 
