@@ -1,6 +1,9 @@
 begin;
 
--- 1) Recreate views with security_invoker instead of security_definer
+-- =========================================
+-- 1) Recreate views with security_invoker
+--    instead of SECURITY DEFINER
+-- =========================================
 do $$
 declare
   v_name text;
@@ -39,7 +42,9 @@ begin
 end
 $$;
 
--- 2) Enable RLS on store_members
+-- =========================================
+-- 2) ENABLE RLS ON store_members
+-- =========================================
 alter table public.store_members enable row level security;
 
 drop policy if exists store_members_select_own on public.store_members;
@@ -51,9 +56,8 @@ using (
   public.store_members.user_id = auth.uid()
 );
 
--- Optional: allow only owners/admins of same store to manage memberships
-drop policy if exists store_members_insert_admin on public.store_members;
-create policy store_members_insert_admin
+drop policy if exists store_members_insert_owner on public.store_members;
+create policy store_members_insert_owner
 on public.store_members
 for insert
 to authenticated
@@ -63,12 +67,12 @@ with check (
     from public.store_members sm
     where sm.user_id = auth.uid()
       and sm.store_id = public.store_members.store_id
-      and sm.role in ('owner', 'admin')
+      and sm.role = 'owner'
   )
 );
 
-drop policy if exists store_members_update_admin on public.store_members;
-create policy store_members_update_admin
+drop policy if exists store_members_update_owner on public.store_members;
+create policy store_members_update_owner
 on public.store_members
 for update
 to authenticated
@@ -78,7 +82,7 @@ using (
     from public.store_members sm
     where sm.user_id = auth.uid()
       and sm.store_id = public.store_members.store_id
-      and sm.role in ('owner', 'admin')
+      and sm.role = 'owner'
   )
 )
 with check (
@@ -87,12 +91,12 @@ with check (
     from public.store_members sm
     where sm.user_id = auth.uid()
       and sm.store_id = public.store_members.store_id
-      and sm.role in ('owner', 'admin')
+      and sm.role = 'owner'
   )
 );
 
-drop policy if exists store_members_delete_admin on public.store_members;
-create policy store_members_delete_admin
+drop policy if exists store_members_delete_owner on public.store_members;
+create policy store_members_delete_owner
 on public.store_members
 for delete
 to authenticated
@@ -102,11 +106,13 @@ using (
     from public.store_members sm
     where sm.user_id = auth.uid()
       and sm.store_id = public.store_members.store_id
-      and sm.role in ('owner', 'admin')
+      and sm.role = 'owner'
   )
 );
 
--- 3) Enable RLS on employee_days_off
+-- =========================================
+-- 3) ENABLE RLS ON employee_days_off
+-- =========================================
 alter table public.employee_days_off enable row level security;
 
 drop policy if exists employee_days_off_select_store_member on public.employee_days_off;
