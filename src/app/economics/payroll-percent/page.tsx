@@ -106,6 +106,8 @@ function PayrollPercentContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const storeId = searchParams.get('store')
+  const queryStart = searchParams.get('start') || ''
+  const queryEnd = searchParams.get('end') || ''
 
   const [loading, setLoading] = useState(true)
   const [period, setPeriod] = useState<Period>('month')
@@ -131,8 +133,6 @@ function PayrollPercentContent() {
 
   useEffect(() => {
     const now = new Date()
-    const queryStart = searchParams.get('start') || ''
-    const queryEnd = searchParams.get('end') || ''
     const safeEnd = isValidDateKey(queryEnd) ? queryEnd : getTodayKey()
     const safeStart = isValidDateKey(queryStart) ? queryStart : getSevenDaysAgoKey()
     const end = businessDate
@@ -157,19 +157,21 @@ function PayrollPercentContent() {
 
     setStartDate(safeStart)
     setEndDate(safeEnd)
-  }, [period, selectedYear, businessDate, searchParams])
+  }, [period, selectedYear, businessDate, queryStart, queryEnd])
 
   const load = useCallback(async () => {
     if (!storeId || !isValidUUID(storeId) || !startDate || !endDate) return
     const requestId = ++requestIdRef.current
+    const rpcStart = isValidDateKey(startDate) ? startDate : getSevenDaysAgoKey()
+    const rpcEnd = isValidDateKey(endDate) ? endDate : getTodayKey()
 
     try {
       setLoading(true)
 
       const { data, error } = await supabase.rpc('get_staff_payroll_pressure_period_summary', {
         p_store_id: storeId,
-        p_start_date: startDate,
-        p_end_date: endDate,
+        p_start_date: rpcStart,
+        p_end_date: rpcEnd,
       })
 
       if (requestId !== requestIdRef.current) return
@@ -191,9 +193,12 @@ function PayrollPercentContent() {
         payrollPctOfTurnover: Number(r.payroll_pct_of_turnover || 0),
       }))
 
+      const nextStart = isValidDateKey(String(payload.start_date || '')) ? String(payload.start_date) : rpcStart
+      const nextEnd = isValidDateKey(String(payload.end_date || '')) ? String(payload.end_date) : rpcEnd
+
       setRows(mappedRows)
-      setStartDate(String(payload.start_date || startDate))
-      setEndDate(String(payload.end_date || endDate))
+      setStartDate(nextStart)
+      setEndDate(nextEnd)
       setPeriodTurnover(Number(payload.period_turnover || 0))
       setTotalPeriodPayroll(Number(payload.total_period_payroll || 0))
       setPayrollPct(Number(payload.payroll_pct || 0))
