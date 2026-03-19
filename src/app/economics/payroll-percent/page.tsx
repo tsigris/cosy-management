@@ -183,7 +183,7 @@ function PayrollPercentContent() {
           businessDate={businessDate}
         />
 
-        <div style={{ ...card, marginBottom: 12, display: 'grid', gap: 10 }}>
+        <div style={{ ...card, marginTop: 6, marginBottom: 12, display: 'grid', gap: 10 }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <CalendarDays size={16} />
