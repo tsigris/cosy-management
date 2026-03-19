@@ -6,6 +6,7 @@ import { getSupabase } from '@/lib/supabase'
 import { useRouter, useSearchParams } from 'next/navigation'
 import EconomicsHeaderNav from '@/components/economics/EconomicsHeaderNav'
 import EconomicsContainer from '@/components/economics/EconomicsContainer'
+import EconomicsPeriodFilter, { getStartOfMonth, getStartOfYear, getLast30Days } from '@/components/economics/EconomicsPeriodFilter'
 import { getBusinessDate } from '@/lib/businessDate'
 import { toast, Toaster } from 'sonner'
 import { Users, TrendingUp, Shield, CalendarDays } from 'lucide-react'
@@ -18,14 +19,16 @@ type RpcEmployeeRow = {
   insurance_amount?: number | null
   total_monthly_cost?: number | null
   daily_cost?: number | null
+  period_cost?: number | null
   payroll_pct_of_turnover?: number | null
 }
 
 type RpcPayload = {
-  date?: string | null
-  days_in_month?: number | null
-  daily_turnover?: number | null
-  total_daily_payroll?: number | null
+  start_date?: string | null
+  end_date?: string | null
+  days_in_period?: number | null
+  period_turnover?: number | null
+  total_period_payroll?: number | null
   payroll_pct?: number | null
   status?: string | null
   rows?: RpcEmployeeRow[] | null
@@ -39,8 +42,11 @@ type EmployeePayrollRow = {
   insuranceAmount: number
   totalMonthlyCost: number
   dailyCost: number
+  periodCost: number
   payrollPctOfTurnover: number
 }
+
+type Period = 'month' | 'year' | '30days' | 'all'
 
 const isValidUUID = (id: any) => {
   const regex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -78,30 +84,71 @@ function PayrollPercentContent() {
   const storeId = searchParams.get('store')
 
   const [loading, setLoading] = useState(true)
-  const [effectiveDate, setEffectiveDate] = useState('')
-  const [dailyTurnover, setDailyTurnover] = useState(0)
-  const [dailyPayrollCost, setDailyPayrollCost] = useState(0)
+  const [period, setPeriod] = useState<Period>('month')
+  const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear())
+  const [startDate, setStartDate] = useState('')
+  const [endDate, setEndDate] = useState('')
+  const [periodTurnover, setPeriodTurnover] = useState(0)
+  const [totalPeriodPayroll, setTotalPeriodPayroll] = useState(0)
   const [payrollPct, setPayrollPct] = useState(0)
   const [status, setStatus] = useState('')
   const [rows, setRows] = useState<EmployeePayrollRow[]>([])
 
   const businessDate = useMemo(() => getBusinessDate(), [])
   const requestIdRef = useRef(0)
+  const yearOptions = useMemo(() => {
+    const current = new Date().getFullYear()
+    return Array.from({ length: 8 }, (_, i) => current - i)
+  }, [])
+
+  const toDateKey = useCallback((d: Date) => {
+    const y = d.getFullYear()
+    const m = String(d.getMonth() + 1).padStart(2, '0')
+    const day = String(d.getDate()).padStart(2, '0')
+    return `${y}-${m}-${day}`
+  }, [])
 
   useEffect(() => {
     if (!storeId || !isValidUUID(storeId)) router.replace('/select-store')
   }, [storeId, router])
 
+  useEffect(() => {
+    const now = new Date()
+    const end = businessDate
+
+    if (period === 'month') {
+      setStartDate(toDateKey(getStartOfMonth()))
+      setEndDate(end)
+      return
+    }
+
+    if (period === 'year') {
+      setStartDate(toDateKey(getStartOfYear(selectedYear)))
+      setEndDate(selectedYear === now.getFullYear() ? end : `${selectedYear}-12-31`)
+      return
+    }
+
+    if (period === '30days') {
+      setStartDate(toDateKey(getLast30Days()))
+      setEndDate(end)
+      return
+    }
+
+    setStartDate('1970-01-01')
+    setEndDate(end)
+  }, [period, selectedYear, businessDate, toDateKey])
+
   const load = useCallback(async () => {
-    if (!storeId || !isValidUUID(storeId)) return
+    if (!storeId || !isValidUUID(storeId) || !startDate || !endDate) return
     const requestId = ++requestIdRef.current
 
     try {
       setLoading(true)
 
-      const { data, error } = await supabase.rpc('get_staff_payroll_pressure_summary', {
+      const { data, error } = await supabase.rpc('get_staff_payroll_pressure_period_summary', {
         p_store_id: storeId,
-        p_date: businessDate,
+        p_start_date: startDate,
+        p_end_date: endDate,
       })
 
       if (requestId !== requestIdRef.current) return
@@ -119,28 +166,29 @@ function PayrollPercentContent() {
         insuranceAmount: Number(r.insurance_amount || 0),
         totalMonthlyCost: Number(r.total_monthly_cost || 0),
         dailyCost: Number(r.daily_cost || 0),
+        periodCost: Number(r.period_cost || 0),
         payrollPctOfTurnover: Number(r.payroll_pct_of_turnover || 0),
       }))
 
       setRows(mappedRows)
-      setEffectiveDate(String(payload.date || businessDate))
-      setDailyTurnover(Number(payload.daily_turnover || 0))
-      setDailyPayrollCost(Number(payload.total_daily_payroll || 0))
+      setStartDate(String(payload.start_date || startDate))
+      setEndDate(String(payload.end_date || endDate))
+      setPeriodTurnover(Number(payload.period_turnover || 0))
+      setTotalPeriodPayroll(Number(payload.total_period_payroll || 0))
       setPayrollPct(Number(payload.payroll_pct || 0))
       setStatus(String(payload.status || ''))
     } catch (err) {
       console.error('Payroll % load error', err)
       toast.error('Σφάλμα φόρτωσης μισθοδοσίας % τζίρου')
       setRows([])
-      setEffectiveDate(businessDate)
-      setDailyPayrollCost(0)
-      setDailyTurnover(0)
+      setTotalPeriodPayroll(0)
+      setPeriodTurnover(0)
       setPayrollPct(0)
       setStatus('')
     } finally {
       if (requestId === requestIdRef.current) setLoading(false)
     }
-  }, [storeId, supabase, businessDate])
+  }, [storeId, supabase, startDate, endDate])
 
   useEffect(() => {
     void load()
@@ -183,33 +231,41 @@ function PayrollPercentContent() {
           businessDate={businessDate}
         />
 
+        <EconomicsPeriodFilter
+          period={period}
+          onPeriodChange={(p) => setPeriod(p)}
+          selectedYear={selectedYear}
+          onYearChange={(y) => setSelectedYear(y)}
+          yearOptions={yearOptions}
+        />
+
         <div style={{ ...card, marginTop: 6, marginBottom: 12, display: 'grid', gap: 10 }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <CalendarDays size={16} />
-              <span style={{ fontSize: 12, fontWeight: 900, color: 'var(--muted)' }}>ΗΜΕΡΑ</span>
+              <span style={{ fontSize: 12, fontWeight: 900, color: 'var(--muted)' }}>ΠΕΡΙΟΔΟΣ</span>
             </div>
             <span style={{ fontSize: 13, fontWeight: 900 }}>
-              {formatDateGR(loading ? businessDate : (effectiveDate || businessDate))}
+              {`${formatDateGR(startDate)} - ${formatDateGR(endDate)}`}
             </span>
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 10 }}>
             <div style={{ ...card, padding: 12 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--muted)', fontWeight: 900, fontSize: 12 }}>
-                <TrendingUp size={15} /> Τζίρος Ημέρας
+                <TrendingUp size={15} /> Τζίρος Περιόδου
               </div>
               <div style={{ marginTop: 6, fontSize: 24, fontWeight: 900, color: 'var(--text)' }}>
-                {loading ? '—' : eur(dailyTurnover)}
+                {loading ? '—' : eur(periodTurnover)}
               </div>
             </div>
 
             <div style={{ ...card, padding: 12 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--muted)', fontWeight: 900, fontSize: 12 }}>
-                <Users size={15} /> Συνολικό Ημερήσιο Κόστος Μισθοδοσίας
+                <Users size={15} /> Συνολικό Κόστος Μισθοδοσίας Περιόδου
               </div>
               <div style={{ marginTop: 6, fontSize: 24, fontWeight: 900, color: 'var(--text)' }}>
-                {loading ? '—' : eur(dailyPayrollCost)}
+                {loading ? '—' : eur(totalPeriodPayroll)}
               </div>
             </div>
 
@@ -276,7 +332,8 @@ function PayrollPercentContent() {
                     />
                     <Metric label="Συνολικό Μηνιαίο Κόστος" value={eur(r.totalMonthlyCost)} />
                     <Metric label="Ημερήσιο Κόστος" value={eur(r.dailyCost)} />
-                    <Metric label="% επί σημερινού τζίρου" value={pct(r.payrollPctOfTurnover)} span2 />
+                    <Metric label="Κόστος Περιόδου" value={eur(r.periodCost)} />
+                    <Metric label="% επί τζίρου περιόδου" value={pct(r.payrollPctOfTurnover)} span2 />
                   </div>
                 </div>
               ))}
