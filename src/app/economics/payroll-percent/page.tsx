@@ -6,6 +6,7 @@ import { getSupabase } from '@/lib/supabase'
 import { useRouter, useSearchParams } from 'next/navigation'
 import EconomicsHeaderNav from '@/components/economics/EconomicsHeaderNav'
 import EconomicsContainer from '@/components/economics/EconomicsContainer'
+import EconomicsTabs from '@/components/EconomicsTabs'
 import { getBusinessDate } from '@/lib/businessDate'
 import { toast, Toaster } from 'sonner'
 import { Users, TrendingUp, Shield, CalendarDays } from 'lucide-react'
@@ -181,7 +182,10 @@ function PayrollPercentContent() {
           title="Οικονομικό Κέντρο"
           subtitle="Μισθοδοσία % Τζίρου"
           businessDate={businessDate}
+          showTabs={false}
         />
+
+        <EconomicsTabs />
 
         <div style={{ ...card, marginBottom: 12, display: 'grid', gap: 10 }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
