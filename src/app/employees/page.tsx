@@ -437,6 +437,27 @@ function EmployeesContent() {
     return (accruedPayrollMonthToDate / revenueTotalForSelectedPeriod) * 100
   }, [accruedPayrollMonthToDate, revenueTotalForSelectedPeriod])
 
+  const payrollPctVisual = useMemo(() => {
+    if (payrollPercentOfRevenue <= 30) {
+      return {
+        card: { border: '1px solid #86efac', backgroundColor: '#f0fdf4' },
+        valueColor: '#15803d',
+      }
+    }
+
+    if (payrollPercentOfRevenue <= 35) {
+      return {
+        card: { border: '1px solid #fecdd3', backgroundColor: '#fff1f2' },
+        valueColor: '#e11d48',
+      }
+    }
+
+    return {
+      card: { border: '1px solid #ef4444', backgroundColor: '#fee2e2' },
+      valueColor: '#b91c1c',
+    }
+  }, [payrollPercentOfRevenue])
+
   // ✅ Toggle Active/Inactive (Supabase)  (fixed_assets)
   async function toggleActive(empId: string, currentValue: boolean | null | undefined) {
     let tenantStoreId: string
@@ -1339,9 +1360,9 @@ function EmployeesContent() {
                 <p style={kpiCardValue}>{accruedPayrollMonthToDate.toFixed(2)}€</p>
               </div>
 
-              <div style={kpiCard}>
+              <div style={{ ...kpiCard, ...payrollPctVisual.card }}>
                 <p style={kpiCardLabel}>ΜΙΣΘΟΔΟΣΙΑ % ΤΖΙΡΟΥ</p>
-                <p style={kpiCardValue}>{payrollPercentOfRevenue.toFixed(1)}%</p>
+                <p style={{ ...kpiCardValue, color: payrollPctVisual.valueColor }}>{payrollPercentOfRevenue.toFixed(1)}%</p>
               </div>
 
               <div style={kpiCard}>
@@ -1513,6 +1534,12 @@ function EmployeesContent() {
                 const finalSalary = isMonthlyEmployee ? Math.max(monthlySalary - salaryDeduction, 0) : 0
                 const daysOffLabel = dayOffRowsThisMonth.map((row) => formatShortDayMonth(getDayOffDateValue(row))).join(', ')
                 const dailyCost = isMonthlyEmployee && monthlyDays > 0 ? monthlySalary / monthlyDays : Number(emp.daily_rate ?? 0)
+                const yearDaysOffCount = (daysOffByEmployee[emp.id] || []).filter((row) => {
+                  const d = new Date(getDayOffDateValue(row))
+                  if (isNaN(d.getTime())) return false
+                  const businessDate = toBusinessDayDateNormalized(d)
+                  return businessDate.getFullYear() === selectedBusinessMonth.year
+                }).length
 
                 return (
                   <div key={emp.id} style={{ ...employeeCard, opacity: isInactive ? 0.6 : 1 }}>
@@ -1651,6 +1678,11 @@ function EmployeesContent() {
                               Τελικός μισθός: {finalSalary.toFixed(2)}€
                             </p>
                           )}
+
+                          <div style={daysOffTotalCard}>
+                            <p style={daysOffTotalCardLabel}>ΣΥΝΟΛΟ ΡΕΠΟ</p>
+                            <p style={daysOffTotalCardValue}>{yearDaysOffCount}</p>
+                          </div>
 
                           {dayOffRowsThisMonth.length > 0 && (
                             <div style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
@@ -2336,6 +2368,28 @@ const daysOffStatsWrap: any = {
   borderRadius: '14px',
   padding: '12px',
   marginBottom: '16px',
+}
+const daysOffTotalCard: any = {
+  marginTop: '10px',
+  padding: '10px',
+  borderRadius: '12px',
+  border: '1px solid #dbeafe',
+  backgroundColor: '#eff6ff',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+}
+const daysOffTotalCardLabel: any = {
+  margin: 0,
+  fontWeight: 900,
+  fontSize: '10px',
+  color: '#1e3a8a',
+}
+const daysOffTotalCardValue: any = {
+  margin: 0,
+  fontWeight: 900,
+  fontSize: '16px',
+  color: '#1d4ed8',
 }
 const pendingOtListWrap: any = { backgroundColor: '#fff7ed', border: '1px solid #fed7aa', borderRadius: '14px', padding: '12px', marginBottom: '16px' }
 const pendingOtRow: any = {
