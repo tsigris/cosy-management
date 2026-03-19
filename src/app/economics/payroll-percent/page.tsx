@@ -6,6 +6,7 @@ import { getSupabase } from '@/lib/supabase'
 import { useRouter, useSearchParams } from 'next/navigation'
 import EconomicsHeaderNav from '@/components/economics/EconomicsHeaderNav'
 import EconomicsContainer from '@/components/economics/EconomicsContainer'
+import EconomicsTabs from '@/components/EconomicsTabs'
 import { getBusinessDate } from '@/lib/businessDate'
 import { toast, Toaster } from 'sonner'
 import { Users, TrendingUp, Shield, CalendarDays } from 'lucide-react'
@@ -98,6 +99,7 @@ function PayrollPercentContent() {
 
     try {
       setLoading(true)
+
       const { data, error } = await supabase.rpc('get_staff_payroll_pressure_summary', {
         p_store_id: storeId,
         p_date: businessDate,
@@ -146,10 +148,18 @@ function PayrollPercentContent() {
   }, [load])
 
   const statusMeta = useMemo(() => {
-    const label = status || (payrollPct <= 25 ? 'OK' : payrollPct <= 35 ? 'WARNING' : 'DANGER')
-    const displayLabel = statusLabelMap[label] || label
-    if (payrollPct <= 25) return { label: displayLabel, bg: '#ecfdf5', color: '#166534', border: '#86efac' }
-    if (payrollPct <= 35) return { label: displayLabel, bg: '#fff7ed', color: '#c2410c', border: '#fdba74' }
+    const rawLabel = status || (payrollPct <= 25 ? 'perfect' : payrollPct <= 35 ? 'warning' : 'danger')
+    const displayLabel = statusLabelMap[rawLabel] || rawLabel
+
+    if (rawLabel === 'no_turnover') {
+      return { label: displayLabel, bg: '#f3f4f6', color: '#4b5563', border: '#d1d5db' }
+    }
+    if (payrollPct <= 25) {
+      return { label: displayLabel, bg: '#ecfdf5', color: '#166534', border: '#86efac' }
+    }
+    if (payrollPct <= 35) {
+      return { label: displayLabel, bg: '#fff7ed', color: '#c2410c', border: '#fdba74' }
+    }
     return { label: displayLabel, bg: '#fef2f2', color: '#b91c1c', border: '#fca5a5' }
   }, [payrollPct, status])
 
@@ -166,8 +176,16 @@ function PayrollPercentContent() {
   return (
     <div style={{ background: 'var(--bg-grad)', minHeight: '100vh', padding: 20 }}>
       <Toaster position="top-center" richColors />
+
       <EconomicsContainer>
-        <EconomicsHeaderNav title="Οικονομικό Κέντρο" subtitle="Μισθοδοσία % Τζίρου" businessDate={businessDate} />
+        <EconomicsHeaderNav
+          title="Οικονομικό Κέντρο"
+          subtitle="Μισθοδοσία % Τζίρου"
+          businessDate={businessDate}
+          showTabs={false}
+        />
+
+        <EconomicsTabs />
 
         <div style={{ ...card, marginBottom: 12, display: 'grid', gap: 10 }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
@@ -175,7 +193,9 @@ function PayrollPercentContent() {
               <CalendarDays size={16} />
               <span style={{ fontSize: 12, fontWeight: 900, color: 'var(--muted)' }}>ΗΜΕΡΑ</span>
             </div>
-            <span style={{ fontSize: 13, fontWeight: 900 }}>{formatDateGR(loading ? businessDate : (effectiveDate || businessDate))}</span>
+            <span style={{ fontSize: 13, fontWeight: 900 }}>
+              {formatDateGR(loading ? businessDate : (effectiveDate || businessDate))}
+            </span>
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 10 }}>
@@ -183,19 +203,26 @@ function PayrollPercentContent() {
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--muted)', fontWeight: 900, fontSize: 12 }}>
                 <TrendingUp size={15} /> Τζίρος Ημέρας
               </div>
-              <div style={{ marginTop: 6, fontSize: 24, fontWeight: 900, color: 'var(--text)' }}>{loading ? '—' : eur(dailyTurnover)}</div>
+              <div style={{ marginTop: 6, fontSize: 24, fontWeight: 900, color: 'var(--text)' }}>
+                {loading ? '—' : eur(dailyTurnover)}
+              </div>
             </div>
 
             <div style={{ ...card, padding: 12 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--muted)', fontWeight: 900, fontSize: 12 }}>
                 <Users size={15} /> Συνολικό Ημερήσιο Κόστος Μισθοδοσίας
               </div>
-              <div style={{ marginTop: 6, fontSize: 24, fontWeight: 900, color: 'var(--text)' }}>{loading ? '—' : eur(dailyPayrollCost)}</div>
+              <div style={{ marginTop: 6, fontSize: 24, fontWeight: 900, color: 'var(--text)' }}>
+                {loading ? '—' : eur(dailyPayrollCost)}
+              </div>
             </div>
 
             <div style={{ ...card, padding: 12 }}>
               <div style={{ color: 'var(--muted)', fontWeight: 900, fontSize: 12 }}>Μισθοδοσία % Τζίρου</div>
-              <div style={{ marginTop: 6, fontSize: 28, fontWeight: 900, color: 'var(--text)' }}>{loading ? '—' : pct(payrollPct)}</div>
+              <div style={{ marginTop: 6, fontSize: 28, fontWeight: 900, color: 'var(--text)' }}>
+                {loading ? '—' : pct(payrollPct)}
+              </div>
+
               {!loading && (
                 <span
                   style={{
@@ -221,17 +248,36 @@ function PayrollPercentContent() {
           <div style={{ fontSize: 14, fontWeight: 900, marginBottom: 10 }}>Ανά Εργαζόμενο</div>
 
           {loading ? (
-            <div style={{ padding: 20, textAlign: 'center', color: 'var(--muted)', fontWeight: 800 }}>Φόρτωση...</div>
+            <div style={{ padding: 20, textAlign: 'center', color: 'var(--muted)', fontWeight: 800 }}>
+              Φόρτωση...
+            </div>
           ) : rows.length === 0 ? (
-            <div style={{ padding: 20, textAlign: 'center', color: 'var(--muted)', fontWeight: 800 }}>Δεν βρέθηκαν εργαζόμενοι.</div>
+            <div style={{ padding: 20, textAlign: 'center', color: 'var(--muted)', fontWeight: 800 }}>
+              Δεν βρέθηκαν εργαζόμενοι.
+            </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               {rows.map((r) => (
-                <div key={r.id} style={{ border: '1px solid var(--border)', borderRadius: 14, padding: 12, background: 'var(--surface)' }}>
-                  <div style={{ fontSize: 14, fontWeight: 900, color: 'var(--text)', marginBottom: 8 }}>{r.name}</div>
+                <div
+                  key={r.id}
+                  style={{
+                    border: '1px solid var(--border)',
+                    borderRadius: 14,
+                    padding: 12,
+                    background: 'var(--surface)',
+                  }}
+                >
+                  <div style={{ fontSize: 14, fontWeight: 900, color: 'var(--text)', marginBottom: 8 }}>
+                    {r.name}
+                  </div>
+
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                     <Metric label="Μηνιαίος Μισθός" value={eur(r.monthlySalary)} />
-                    <Metric label={`Ασφάλιση ${pct(r.insurancePct)}`} value={eur(r.insuranceAmount)} icon={<Shield size={13} />} />
+                    <Metric
+                      label={`Ασφάλιση ${pct(r.insurancePct)}`}
+                      value={eur(r.insuranceAmount)}
+                      icon={<Shield size={13} />}
+                    />
                     <Metric label="Συνολικό Μηνιαίο Κόστος" value={eur(r.totalMonthlyCost)} />
                     <Metric label="Ημερήσιο Κόστος" value={eur(r.dailyCost)} />
                     <Metric label="% επί σημερινού τζίρου" value={pct(r.payrollPctOfTurnover)} span2 />
@@ -246,14 +292,43 @@ function PayrollPercentContent() {
   )
 }
 
-function Metric({ label, value, icon, span2 = false }: { label: string; value: string; icon?: React.ReactNode; span2?: boolean }) {
+function Metric({
+  label,
+  value,
+  icon,
+  span2 = false,
+}: {
+  label: string
+  value: string
+  icon?: React.ReactNode
+  span2?: boolean
+}) {
   return (
-    <div style={{ border: '1px solid var(--border)', borderRadius: 10, padding: 10, gridColumn: span2 ? 'span 2' : 'span 1' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--muted)', fontSize: 11, fontWeight: 900 }}>
+    <div
+      style={{
+        border: '1px solid var(--border)',
+        borderRadius: 10,
+        padding: 10,
+        gridColumn: span2 ? 'span 2' : 'span 1',
+      }}
+    >
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 6,
+          color: 'var(--muted)',
+          fontSize: 11,
+          fontWeight: 900,
+        }}
+      >
         {icon}
         <span>{label}</span>
       </div>
-      <div style={{ marginTop: 4, fontSize: 14, fontWeight: 900, color: 'var(--text)' }}>{value}</div>
+
+      <div style={{ marginTop: 4, fontSize: 14, fontWeight: 900, color: 'var(--text)' }}>
+        {value}
+      </div>
     </div>
   )
 }
