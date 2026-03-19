@@ -1,6 +1,6 @@
 begin;
 
--- Recreate target views with invoker security while preserving existing SELECT definitions.
+-- 1) Recreate views with security_invoker instead of security_definer
 do $$
 declare
   v_name text;
@@ -18,15 +18,15 @@ declare
 begin
   foreach v_name in array v_views loop
     if to_regclass(format('public.%I', v_name)) is null then
-      raise notice 'Skipping view %.% (not found)', 'public', v_name;
+      raise notice 'Skipping view public.% (not found)', v_name;
       continue;
     end if;
 
     select pg_get_viewdef(to_regclass(format('public.%I', v_name)), true)
-      into v_def;
+    into v_def;
 
     if v_def is null or length(trim(v_def)) = 0 then
-      raise notice 'Skipping view %.% (no definition found)', 'public', v_name;
+      raise notice 'Skipping view public.% (no definition found)', v_name;
       continue;
     end if;
 
@@ -39,154 +39,138 @@ begin
 end
 $$;
 
--- Enable RLS and add store-scoped policies on store_members.
-do $$
-begin
-  if to_regclass('public.store_members') is not null then
-    alter table public.store_members enable row level security;
+-- 2) Enable RLS on store_members
+alter table public.store_members enable row level security;
 
-    drop policy if exists store_members_store_scope_select on public.store_members;
-    create policy store_members_store_scope_select
-    on public.store_members
-    for select
-    to authenticated
-    using (
-      exists (
-        select 1
-        from public.store_access sa
-        where sa.user_id = auth.uid()
-          and sa.store_id = store_id
-      )
-    );
+drop policy if exists store_members_select_own on public.store_members;
+create policy store_members_select_own
+on public.store_members
+for select
+to authenticated
+using (
+  public.store_members.user_id = auth.uid()
+);
 
-    drop policy if exists store_members_store_scope_insert on public.store_members;
-    create policy store_members_store_scope_insert
-    on public.store_members
-    for insert
-    to authenticated
-    with check (
-      exists (
-        select 1
-        from public.store_access sa
-        where sa.user_id = auth.uid()
-          and sa.store_id = store_id
-      )
-    );
+-- Optional: allow only owners/admins of same store to manage memberships
+drop policy if exists store_members_insert_admin on public.store_members;
+create policy store_members_insert_admin
+on public.store_members
+for insert
+to authenticated
+with check (
+  exists (
+    select 1
+    from public.store_members sm
+    where sm.user_id = auth.uid()
+      and sm.store_id = public.store_members.store_id
+      and sm.role in ('owner', 'admin')
+  )
+);
 
-    drop policy if exists store_members_store_scope_update on public.store_members;
-    create policy store_members_store_scope_update
-    on public.store_members
-    for update
-    to authenticated
-    using (
-      exists (
-        select 1
-        from public.store_access sa
-        where sa.user_id = auth.uid()
-          and sa.store_id = store_id
-      )
-    )
-    with check (
-      exists (
-        select 1
-        from public.store_access sa
-        where sa.user_id = auth.uid()
-          and sa.store_id = store_id
-      )
-    );
+drop policy if exists store_members_update_admin on public.store_members;
+create policy store_members_update_admin
+on public.store_members
+for update
+to authenticated
+using (
+  exists (
+    select 1
+    from public.store_members sm
+    where sm.user_id = auth.uid()
+      and sm.store_id = public.store_members.store_id
+      and sm.role in ('owner', 'admin')
+  )
+)
+with check (
+  exists (
+    select 1
+    from public.store_members sm
+    where sm.user_id = auth.uid()
+      and sm.store_id = public.store_members.store_id
+      and sm.role in ('owner', 'admin')
+  )
+);
 
-    drop policy if exists store_members_store_scope_delete on public.store_members;
-    create policy store_members_store_scope_delete
-    on public.store_members
-    for delete
-    to authenticated
-    using (
-      exists (
-        select 1
-        from public.store_access sa
-        where sa.user_id = auth.uid()
-          and sa.store_id = store_id
-      )
-    );
-  else
-    raise notice 'Skipping table public.store_members (not found)';
-  end if;
-end
-$$;
+drop policy if exists store_members_delete_admin on public.store_members;
+create policy store_members_delete_admin
+on public.store_members
+for delete
+to authenticated
+using (
+  exists (
+    select 1
+    from public.store_members sm
+    where sm.user_id = auth.uid()
+      and sm.store_id = public.store_members.store_id
+      and sm.role in ('owner', 'admin')
+  )
+);
 
--- Enable RLS and add store-scoped policies on employee_days_off.
-do $$
-begin
-  if to_regclass('public.employee_days_off') is not null then
-    alter table public.employee_days_off enable row level security;
+-- 3) Enable RLS on employee_days_off
+alter table public.employee_days_off enable row level security;
 
-    drop policy if exists employee_days_off_store_scope_select on public.employee_days_off;
-    create policy employee_days_off_store_scope_select
-    on public.employee_days_off
-    for select
-    to authenticated
-    using (
-      exists (
-        select 1
-        from public.store_access sa
-        where sa.user_id = auth.uid()
-          and sa.store_id = store_id
-      )
-    );
+drop policy if exists employee_days_off_select_store_member on public.employee_days_off;
+create policy employee_days_off_select_store_member
+on public.employee_days_off
+for select
+to authenticated
+using (
+  exists (
+    select 1
+    from public.store_members sm
+    where sm.user_id = auth.uid()
+      and sm.store_id = public.employee_days_off.store_id
+  )
+);
 
-    drop policy if exists employee_days_off_store_scope_insert on public.employee_days_off;
-    create policy employee_days_off_store_scope_insert
-    on public.employee_days_off
-    for insert
-    to authenticated
-    with check (
-      exists (
-        select 1
-        from public.store_access sa
-        where sa.user_id = auth.uid()
-          and sa.store_id = store_id
-      )
-    );
+drop policy if exists employee_days_off_insert_store_member on public.employee_days_off;
+create policy employee_days_off_insert_store_member
+on public.employee_days_off
+for insert
+to authenticated
+with check (
+  exists (
+    select 1
+    from public.store_members sm
+    where sm.user_id = auth.uid()
+      and sm.store_id = public.employee_days_off.store_id
+  )
+);
 
-    drop policy if exists employee_days_off_store_scope_update on public.employee_days_off;
-    create policy employee_days_off_store_scope_update
-    on public.employee_days_off
-    for update
-    to authenticated
-    using (
-      exists (
-        select 1
-        from public.store_access sa
-        where sa.user_id = auth.uid()
-          and sa.store_id = store_id
-      )
-    )
-    with check (
-      exists (
-        select 1
-        from public.store_access sa
-        where sa.user_id = auth.uid()
-          and sa.store_id = store_id
-      )
-    );
+drop policy if exists employee_days_off_update_store_member on public.employee_days_off;
+create policy employee_days_off_update_store_member
+on public.employee_days_off
+for update
+to authenticated
+using (
+  exists (
+    select 1
+    from public.store_members sm
+    where sm.user_id = auth.uid()
+      and sm.store_id = public.employee_days_off.store_id
+  )
+)
+with check (
+  exists (
+    select 1
+    from public.store_members sm
+    where sm.user_id = auth.uid()
+      and sm.store_id = public.employee_days_off.store_id
+  )
+);
 
-    drop policy if exists employee_days_off_store_scope_delete on public.employee_days_off;
-    create policy employee_days_off_store_scope_delete
-    on public.employee_days_off
-    for delete
-    to authenticated
-    using (
-      exists (
-        select 1
-        from public.store_access sa
-        where sa.user_id = auth.uid()
-          and sa.store_id = store_id
-      )
-    );
-  else
-    raise notice 'Skipping table public.employee_days_off (not found)';
-  end if;
-end
-$$;
+drop policy if exists employee_days_off_delete_store_member on public.employee_days_off;
+create policy employee_days_off_delete_store_member
+on public.employee_days_off
+for delete
+to authenticated
+using (
+  exists (
+    select 1
+    from public.store_members sm
+    where sm.user_id = auth.uid()
+      and sm.store_id = public.employee_days_off.store_id
+  )
+);
 
 commit;
