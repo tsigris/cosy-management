@@ -65,6 +65,7 @@ function EmployeesContent() {
   const [transactions, setTransactions] = useState<any[]>([])
   const [overtimes, setOvertimes] = useState<any[]>([])
   const [employeeDaysOff, setEmployeeDaysOff] = useState<any[]>([])
+  const [employeeDayOffDateColumn, setEmployeeDayOffDateColumn] = useState<'off_date' | 'date'>('date')
   const [loading, setLoading] = useState(true)
 
   const [isAdding, setIsAdding] = useState(false)
@@ -120,9 +121,24 @@ function EmployeesContent() {
     bank_name: 'Εθνική Τράπεζα',
     monthly_salary: '',
     daily_rate: '',
-    monthly_days: '25', // ✅ default
+    monthly_days: '26', // ✅ default
     start_date: new Date().toISOString().split('T')[0],
   })
+
+  const getDayOffDateValue = useCallback(
+    (row: any) => String(row?.[employeeDayOffDateColumn] ?? row?.off_date ?? row?.date ?? ''),
+    [employeeDayOffDateColumn],
+  )
+
+  const detectDayOffDateColumn = useCallback(async (): Promise<'off_date' | 'date'> => {
+    const offDateProbe = await supabase.from('employee_days_off').select('off_date').limit(1)
+    if (!offDateProbe.error) return 'off_date'
+
+    const dateProbe = await supabase.from('employee_days_off').select('date').limit(1)
+    if (!dateProbe.error) return 'date'
+
+    return 'date'
+  }, [])
 
   // ✅ Redirect if storeId is missing/invalid
   useEffect(() => {
@@ -237,6 +253,10 @@ function EmployeesContent() {
       } = await supabase.auth.getSession()
       if (!session?.user) return
 
+      const dayOffDateColumn = await detectDayOffDateColumn()
+      setEmployeeDayOffDateColumn(dayOffDateColumn)
+      const dayOffSelect = dayOffDateColumn === 'off_date' ? 'id, employee_id, store_id, off_date' : 'id, employee_id, store_id, date'
+
       const [empsRes, transRes, otRes, dayOffRes] = await Promise.all([
         getEmployees(storeId),
         supabase
@@ -246,7 +266,7 @@ function EmployeesContent() {
           .not('fixed_asset_id', 'is', null)
           .order('date', { ascending: false }),
         supabase.from('employee_overtimes').select('*').eq('store_id', storeId).eq('is_paid', false),
-        supabase.from('employee_days_off').select('id, employee_id, date').eq('store_id', storeId).order('date', { ascending: true }),
+        supabase.from('employee_days_off').select(dayOffSelect).eq('store_id', storeId).order(dayOffDateColumn, { ascending: true }),
       ])
 
       if (empsRes) setEmployees(empsRes)
@@ -258,7 +278,7 @@ function EmployeesContent() {
     } finally {
       setLoading(false)
     }
-  }, [storeId])
+  }, [storeId, detectDayOffDateColumn])
 
   useEffect(() => {
     fetchInitialData()
@@ -549,20 +569,20 @@ function EmployeesContent() {
     }
 
     const alreadyExists = employeeDaysOff.some(
-      (row) => row.employee_id === dayOffModal.empId && String(row.date).slice(0, 10) === dayOffDate,
+      (row) => row.employee_id === dayOffModal.empId && getDayOffDateValue(row).slice(0, 10) === dayOffDate,
     )
     if (alreadyExists) {
       toast.error('Υπάρχει ήδη ρεπό για αυτή την ημερομηνία.')
       return
     }
 
-    const { error } = await supabase.from('employee_days_off').insert([
-      {
-        employee_id: dayOffModal.empId,
-        store_id: tenantStoreId,
-        date: dayOffDate,
-      },
-    ])
+    const dayOffPayload: Record<string, string> = {
+      employee_id: dayOffModal.empId,
+      store_id: tenantStoreId,
+      [employeeDayOffDateColumn]: dayOffDate,
+    }
+
+    const { error } = await supabase.from('employee_days_off').insert([dayOffPayload])
 
     if (error) {
       console.error(error)
@@ -889,7 +909,7 @@ function EmployeesContent() {
       bank_name: 'Εθνική Τράπεζα',
       monthly_salary: '',
       daily_rate: '',
-      monthly_days: '25',
+      monthly_days: '26',
       start_date: new Date().toISOString().split('T')[0],
     })
     setPayBasis('monthly')
@@ -1295,18 +1315,19 @@ function EmployeesContent() {
                 const isMonthlyEmployee = (emp.pay_basis || 'monthly') === 'monthly'
                 const dayOffRowsThisMonth = (daysOffByEmployee[emp.id] || [])
                   .filter((row) => {
-                    const d = new Date(row.date)
+                    const rowDate = getDayOffDateValue(row)
+                    const d = new Date(rowDate)
                     if (isNaN(d.getTime())) return false
                     const businessDate = toBusinessDayDateNormalized(d)
                     return businessDate.getFullYear() === selectedBusinessMonth.year && businessDate.getMonth() === selectedBusinessMonth.month
                   })
-                  .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+                  .sort((a, b) => new Date(getDayOffDateValue(a)).getTime() - new Date(getDayOffDateValue(b)).getTime())
                 const actualDaysOff = dayOffRowsThisMonth.length
                 const extraDaysOff = Math.max(actualDaysOff - includedDaysOff, 0)
                 const dailyRateForDeduction = isMonthlyEmployee && monthlyDays > 0 ? monthlySalary / monthlyDays : 0
                 const salaryDeduction = isMonthlyEmployee ? extraDaysOff * dailyRateForDeduction : 0
                 const finalSalary = isMonthlyEmployee ? Math.max(monthlySalary - salaryDeduction, 0) : 0
-                const daysOffLabel = dayOffRowsThisMonth.map((row) => formatShortDayMonth(String(row.date))).join(', ')
+                const daysOffLabel = dayOffRowsThisMonth.map((row) => formatShortDayMonth(getDayOffDateValue(row))).join(', ')
 
                 return (
                   <div key={emp.id} style={{ ...employeeCard, opacity: isInactive ? 0.6 : 1 }}>
@@ -1575,7 +1596,7 @@ function EmployeesContent() {
                                   bank_name: emp.bank_name || 'Εθνική Τράπεζα',
                                   monthly_salary: monthlySalaryValue,
                                   daily_rate: dailyRateValue,
-                                  monthly_days: emp.monthly_days != null ? String(emp.monthly_days) : '25',
+                                  monthly_days: emp.monthly_days != null ? String(emp.monthly_days) : '26',
                                   start_date: emp.start_date || new Date().toISOString().split('T')[0],
                                 })
                                 setEditingId(emp.id)
