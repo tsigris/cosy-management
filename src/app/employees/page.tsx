@@ -40,6 +40,21 @@ const parseTxDate = (t: any): Date | null => {
 const getBusinessYear = (d: Date) => toBusinessDayDateNormalized(d).getFullYear()
 const getBusinessMonth = (d: Date) => toBusinessDayDateNormalized(d).getMonth()
 
+const getIncludedDaysOff = (workDaysPerMonth: number) => {
+  if (workDaysPerMonth === 30) return 0
+  if (workDaysPerMonth === 26) return 4
+  if (workDaysPerMonth === 22) return 8
+  return 0
+}
+
+const formatShortDayMonth = (dateInput: string) => {
+  const d = new Date(dateInput)
+  if (isNaN(d.getTime())) return '—'
+  const day = String(d.getDate()).padStart(2, '0')
+  const month = String(d.getMonth() + 1).padStart(2, '0')
+  return `${day}/${month}`
+}
+
 function EmployeesContent() {
   const supabase = getSupabase()
   const router = useRouter()
@@ -49,6 +64,7 @@ function EmployeesContent() {
   const [employees, setEmployees] = useState<any[]>([])
   const [transactions, setTransactions] = useState<any[]>([])
   const [overtimes, setOvertimes] = useState<any[]>([])
+  const [employeeDaysOff, setEmployeeDaysOff] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
 
   const [isAdding, setIsAdding] = useState(false)
@@ -64,6 +80,10 @@ function EmployeesContent() {
   // States για overtime modal
   const [otModal, setOtModal] = useState<{ empId: string; name: string } | null>(null)
   const [otHours, setOtHours] = useState('')
+
+  // States για days-off modal
+  const [dayOffModal, setDayOffModal] = useState<{ empId: string; name: string } | null>(null)
+  const [dayOffDate, setDayOffDate] = useState(new Date().toISOString().split('T')[0])
 
   // Quick Tips (create)
   const [tipModal, setTipModal] = useState<{ empId: string; name: string } | null>(null)
@@ -217,7 +237,7 @@ function EmployeesContent() {
       } = await supabase.auth.getSession()
       if (!session?.user) return
 
-      const [empsRes, transRes, otRes] = await Promise.all([
+      const [empsRes, transRes, otRes, dayOffRes] = await Promise.all([
         getEmployees(storeId),
         supabase
           .from('transactions')
@@ -226,11 +246,13 @@ function EmployeesContent() {
           .not('fixed_asset_id', 'is', null)
           .order('date', { ascending: false }),
         supabase.from('employee_overtimes').select('*').eq('store_id', storeId).eq('is_paid', false),
+        supabase.from('employee_days_off').select('id, employee_id, date').eq('store_id', storeId).order('date', { ascending: true }),
       ])
 
       if (empsRes) setEmployees(empsRes)
       if (transRes.data) setTransactions(transRes.data)
       if (otRes.data) setOvertimes(otRes.data)
+      if (dayOffRes.data) setEmployeeDaysOff(dayOffRes.data)
     } catch (err) {
       console.error(err)
     } finally {
@@ -260,6 +282,16 @@ function EmployeesContent() {
     if (!showInactive && emp.is_active === false) return false
     return true
   })
+
+  const daysOffByEmployee = useMemo(() => {
+    return employeeDaysOff.reduce((acc: Record<string, any[]>, row: any) => {
+      const employeeId = String(row.employee_id || '')
+      if (!employeeId) return acc
+      if (!acc[employeeId]) acc[employeeId] = []
+      acc[employeeId].push(row)
+      return acc
+    }, {})
+  }, [employeeDaysOff])
 
   // ✅ HERO KPI: Σύνολο πληρωμών υπαλλήλων τρέχοντος ΜΗΝΑ (BUSINESS MONTH) (EXCLUDES tips)
   const currentMonthPayrollTotal = useMemo(() => {
@@ -502,6 +534,45 @@ function EmployeesContent() {
     }
 
     toast.success('Η υπερωρία διαγράφηκε ✅')
+    fetchInitialData()
+  }
+
+  async function handleAddDayOff() {
+    if (!dayOffModal || !dayOffDate) return
+
+    let tenantStoreId: string
+    try {
+      tenantStoreId = requireTenantStoreId()
+    } catch (error) {
+      console.error(error)
+      return
+    }
+
+    const alreadyExists = employeeDaysOff.some(
+      (row) => row.employee_id === dayOffModal.empId && String(row.date).slice(0, 10) === dayOffDate,
+    )
+    if (alreadyExists) {
+      toast.error('Υπάρχει ήδη ρεπό για αυτή την ημερομηνία.')
+      return
+    }
+
+    const { error } = await supabase.from('employee_days_off').insert([
+      {
+        employee_id: dayOffModal.empId,
+        store_id: tenantStoreId,
+        date: dayOffDate,
+      },
+    ])
+
+    if (error) {
+      console.error(error)
+      toast.error('Αποτυχία αποθήκευσης ρεπό.')
+      return
+    }
+
+    toast.success(`Καταχωρήθηκε ρεπό για ${dayOffModal.name}`)
+    setDayOffModal(null)
+    setDayOffDate(new Date().toISOString().split('T')[0])
     fetchInitialData()
   }
 
@@ -831,6 +902,11 @@ function EmployeesContent() {
     return d.toLocaleString('el-GR', { month: 'long', year: 'numeric' }).toUpperCase()
   }, [])
 
+  const selectedBusinessMonth = useMemo(() => {
+    const d = toBusinessDayDateNormalized(new Date())
+    return { year: d.getFullYear(), month: d.getMonth() }
+  }, [])
+
   const isEditMode = Boolean(editingId)
 
   return (
@@ -957,6 +1033,38 @@ function EmployeesContent() {
                   <button onClick={handleQuickOvertimeAndPayNow} style={payNowBtnSmall}>
                     ΚΑΤΑΧΩΡΗΣΗ & ΠΛΗΡΩΜΗ ΤΩΡΑ
                   </button>
+                </div>
+              </div>
+            )}
+
+            {/* DAYS OFF MODAL */}
+            {dayOffModal && (
+              <div style={modalOverlay}>
+                <div style={modalCard}>
+                  <h3 style={{ margin: 0, fontSize: '16px' }}>Καταγραφή Ρεπό</h3>
+                  <p style={{ fontSize: '12px', color: 'var(--muted)' }}>{dayOffModal.name}</p>
+                  <input
+                    type="date"
+                    value={dayOffDate}
+                    onChange={(e) => setDayOffDate(e.target.value)}
+                    style={{ ...inputStyle, marginTop: '15px' }}
+                    autoFocus
+                  />
+
+                  <div style={{ display: 'flex', gap: '10px', marginTop: '20px' }}>
+                    <button
+                      onClick={() => {
+                        setDayOffModal(null)
+                        setDayOffDate(new Date().toISOString().split('T')[0])
+                      }}
+                      style={cancelBtnSmall}
+                    >
+                      ΑΚΥΡΟ
+                    </button>
+                    <button onClick={handleAddDayOff} style={saveBtnSmall}>
+                      ΑΠΟΘΗΚΕΥΣΗ
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
@@ -1181,6 +1289,24 @@ function EmployeesContent() {
                   .filter((ot) => ot.employee_id === emp.id)
                   .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
                 const isInactive = emp.is_active === false
+                const monthlyDays = Number(emp.work_days_per_month ?? emp.monthly_days ?? 0)
+                const includedDaysOff = getIncludedDaysOff(monthlyDays)
+                const monthlySalary = Number(emp.monthly_salary ?? 0)
+                const isMonthlyEmployee = (emp.pay_basis || 'monthly') === 'monthly'
+                const dayOffRowsThisMonth = (daysOffByEmployee[emp.id] || [])
+                  .filter((row) => {
+                    const d = new Date(row.date)
+                    if (isNaN(d.getTime())) return false
+                    const businessDate = toBusinessDayDateNormalized(d)
+                    return businessDate.getFullYear() === selectedBusinessMonth.year && businessDate.getMonth() === selectedBusinessMonth.month
+                  })
+                  .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+                const actualDaysOff = dayOffRowsThisMonth.length
+                const extraDaysOff = Math.max(actualDaysOff - includedDaysOff, 0)
+                const dailyRateForDeduction = isMonthlyEmployee && monthlyDays > 0 ? monthlySalary / monthlyDays : 0
+                const salaryDeduction = isMonthlyEmployee ? extraDaysOff * dailyRateForDeduction : 0
+                const finalSalary = isMonthlyEmployee ? Math.max(monthlySalary - salaryDeduction, 0) : 0
+                const daysOffLabel = dayOffRowsThisMonth.map((row) => formatShortDayMonth(String(row.date))).join(', ')
 
                 return (
                   <div key={emp.id} style={{ ...employeeCard, opacity: isInactive ? 0.6 : 1 }}>
@@ -1239,6 +1365,17 @@ function EmployeesContent() {
                             >
                               +💰 Tips
                             </button>
+
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setDayOffModal({ empId: emp.id, name: emp.name })
+                                setDayOffDate(new Date().toISOString().split('T')[0])
+                              }}
+                              style={quickDayOffBtn}
+                            >
+                              + Ρεπό
+                            </button>
                           </>
                         )}
 
@@ -1281,6 +1418,26 @@ function EmployeesContent() {
                           {pendingOt > 0 && (
                             <p style={{ margin: '8px 0 0 0', fontWeight: '800', color: 'var(--muted)', fontSize: '11px' }}>
                               ⚠️ ΕΚΚΡΕΜΟΥΝ: {pendingOt} ώρες υπερωρίας
+                            </p>
+                          )}
+                        </div>
+
+                        <div style={daysOffStatsWrap}>
+                          <p style={{ margin: 0, fontWeight: '800', color: 'var(--muted)', fontSize: '11px' }}>
+                            Ρεπό μήνα: {daysOffLabel || '—'}
+                          </p>
+                          <p style={{ margin: '5px 0 0 0', fontWeight: 800, color: 'var(--muted)', fontSize: '11px' }}>
+                            Σύνολο ρεπό: {actualDaysOff} / {includedDaysOff}
+                          </p>
+                          <p style={{ margin: '5px 0 0 0', fontWeight: 800, color: 'var(--muted)', fontSize: '11px' }}>
+                            Extra ρεπό: {extraDaysOff}
+                          </p>
+                          <p style={{ margin: '5px 0 0 0', fontWeight: 800, color: 'var(--muted)', fontSize: '11px' }}>
+                            Αφαίρεση: {salaryDeduction.toFixed(2)}€
+                          </p>
+                          {isMonthlyEmployee && (
+                            <p style={{ margin: '5px 0 0 0', fontWeight: 900, color: 'var(--text)', fontSize: '11px' }}>
+                              Τελικός μισθός: {finalSalary.toFixed(2)}€
                             </p>
                           )}
                         </div>
@@ -1771,6 +1928,16 @@ const quickTipBtn: any = {
   fontWeight: '800',
   cursor: 'pointer',
 }
+const quickDayOffBtn: any = {
+  backgroundColor: '#eef2ff',
+  color: '#3730a3',
+  border: '1px solid #c7d2fe',
+  padding: '10px 12px',
+  borderRadius: '10px',
+  fontSize: '11px',
+  fontWeight: '800',
+  cursor: 'pointer',
+}
 
 const modalOverlay: any = {
   position: 'fixed',
@@ -1828,6 +1995,13 @@ const miniIconBtn: any = {
   color: colors.primaryDark,
 }
 const miniIconBtnDanger: any = { ...miniIconBtn, border: '1px solid #fecaca', backgroundColor: '#fef2f2', color: colors.accentRed }
+const daysOffStatsWrap: any = {
+  backgroundColor: '#f8fafc',
+  border: '1px solid #e2e8f0',
+  borderRadius: '14px',
+  padding: '12px',
+  marginBottom: '16px',
+}
 const pendingOtListWrap: any = { backgroundColor: '#fff7ed', border: '1px solid #fed7aa', borderRadius: '14px', padding: '12px', marginBottom: '16px' }
 const pendingOtRow: any = {
   display: 'flex',
