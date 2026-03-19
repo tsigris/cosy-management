@@ -76,6 +76,7 @@ function EmployeesContent() {
   const [payBasis, setPayBasis] = useState<PayBasis>('monthly')
   const [viewYear, setViewYear] = useState(new Date().getFullYear())
   const [kpiPeriod, setKpiPeriod] = useState<'today' | 'month'>('month')
+  const [storeDisplayName, setStoreDisplayName] = useState('Κατάστημα')
 
   // Active / Inactive
   const [showInactive, setShowInactive] = useState(false)
@@ -259,7 +260,7 @@ function EmployeesContent() {
       setEmployeeDayOffDateColumn(dayOffDateColumn)
       const dayOffSelect = dayOffDateColumn === 'off_date' ? 'id, employee_id, store_id, off_date' : 'id, employee_id, store_id, date'
 
-      const [empsRes, transRes, otRes, dayOffRes, allStoreTransRes] = await Promise.all([
+      const [empsRes, transRes, otRes, dayOffRes, allStoreTransRes, storeRes] = await Promise.all([
         getEmployees(storeId),
         supabase
           .from('transactions')
@@ -270,6 +271,7 @@ function EmployeesContent() {
         supabase.from('employee_overtimes').select('*').eq('store_id', storeId).eq('is_paid', false),
         supabase.from('employee_days_off').select(dayOffSelect).eq('store_id', storeId).order(dayOffDateColumn, { ascending: true }),
         supabase.from('transactions').select('id,amount,date,created_at,category,type,notes,fixed_asset_id').eq('store_id', storeId),
+        supabase.from('stores').select('name').eq('id', storeId).maybeSingle(),
       ])
 
       if (empsRes) setEmployees(empsRes)
@@ -277,6 +279,7 @@ function EmployeesContent() {
       if (allStoreTransRes.data) setAllStoreTransactions(allStoreTransRes.data)
       if (otRes.data) setOvertimes(otRes.data)
       if (dayOffRes.data) setEmployeeDaysOff(dayOffRes.data)
+      setStoreDisplayName(String(storeRes.data?.name || '').trim() || 'Κατάστημα')
     } catch (err) {
       console.error(err)
     } finally {
@@ -1062,7 +1065,7 @@ function EmployeesContent() {
               <button type="button" onClick={() => setKpiPeriod('month')} style={kpiPeriod === 'month' ? headerFilterChipActive : headerFilterChip}>
                 Month
               </button>
-              <span style={{ ...headerFilterChip, cursor: 'default' }}>Store: {storeId || '—'}</span>
+              <span style={{ ...headerFilterChip, cursor: 'default' }}>Store: {storeDisplayName.toUpperCase()}</span>
             </div>
 
             <ReadOnlyBanner isAdmin={isAdmin} isLoading={checkingPermission} />
@@ -1500,97 +1503,91 @@ function EmployeesContent() {
                         padding: '18px',
                         cursor: 'pointer',
                         display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
+                        flexDirection: 'column',
+                        alignItems: 'stretch',
+                        gap: '10px',
                       }}
                     >
-                      <div style={{ flex: 1 }}>
-                        <p style={{ fontWeight: '700', color: 'var(--text)', fontSize: '16px', margin: 0 }}>
-                          {String(emp.name || '').toUpperCase()}
-                        </p>
+                      <p style={{ fontWeight: '700', color: 'var(--text)', fontSize: '16px', margin: 0 }}>
+                        {String(emp.name || '').toUpperCase()}
+                      </p>
 
-                        <p style={employeeCostLine}>
-                          {isMonthlyEmployee ? `ΜΙΣΘΟΣ: ${monthlySalary.toFixed(2)}€` : `ΗΜΕΡΟΜΙΣΘΙΟ: ${Number(emp.daily_rate ?? 0).toFixed(2)}€`} • ΚΟΣΤΟΣ/ΗΜΕΡΑ:{' '}
-                          {dailyCost.toFixed(2)}€
-                        </p>
-
-                        <div style={{ marginTop: '6px', display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
-                          <span
-                            style={{
-                              ...badgeStyle,
-                              backgroundColor: 'var(--surface)',
-                              color: 'var(--muted)',
-                            }}
-                          >
-                            {daysLeft === null ? 'ΟΡΙΣΕ ΗΜ. ΠΡΟΣΛΗΨΗΣ' : daysLeft === 0 ? 'ΣΗΜΕΡΑ 💰' : `ΣΕ ${daysLeft} ΗΜΕΡΕΣ 📅`}
-                          </span>
-
-                          {pendingOt > 0 && (
-                            <span style={{ ...badgeStyle, backgroundColor: 'var(--surface)', color: 'var(--muted)' }}>⏱️ {pendingOt} ΩΡΕΣ</span>
-                          )}
-                          <span style={{ ...badgeStyle, backgroundColor: '#eef2ff', color: '#3730a3' }}>
-                            ΡΕΠΟ {actualDaysOff}/{includedDaysOff}
-                          </span>
-                          {isMonthlyEmployee && (
-                            <span style={{ ...badgeStyle, backgroundColor: '#ecfdf5', color: '#047857' }}>ΤΕΛΙΚΟΣ {finalSalary.toFixed(2)}€</span>
-                          )}
-                          {isInactive && <span style={{ ...badgeStyle, backgroundColor: 'var(--surface)', color: 'var(--muted)' }}>ΑΝΕΝΕΡΓΟΣ</span>}
-                        </div>
+                      <div style={employeeMetaRow}>
+                        <span style={employeeMetaPill}>
+                          {isMonthlyEmployee ? `ΜΙΣΘΟΣ ${monthlySalary.toFixed(2)}€` : `ΗΜΕΡΟΜΙΣΘΙΟ ${Number(emp.daily_rate ?? 0).toFixed(2)}€`}
+                        </span>
+                        <span style={employeeMetaPill}>ΚΟΣΤΟΣ/ΗΜΕΡΑ {dailyCost.toFixed(2)}€</span>
+                        {isMonthlyEmployee && <span style={employeeMetaPill}>ΜΕΡΕΣ {monthlyDays}</span>}
                       </div>
 
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        {!isInactive && (
-                          <>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                setOtModal({ empId: emp.id, name: emp.name })
-                              }}
-                              style={quickOtBtn}
-                            >
-                              + ⏱️
-                            </button>
-
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                setTipModal({ empId: emp.id, name: emp.name })
-                              }}
-                              style={quickTipBtn}
-                            >
-                              +💰 Tips
-                            </button>
-
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                setDayOffModal({ empId: emp.id, name: emp.name })
-                                setDayOffDates([new Date().toISOString().split('T')[0]])
-                              }}
-                              style={quickDayOffBtn}
-                            >
-                              + Ρεπό
-                            </button>
-                          </>
-                        )}
-
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', alignItems: 'stretch' }}>
-                          <Link
-                            href={`/pay-employee?id=${emp.id}&name=${encodeURIComponent(emp.name || '')}&store=${storeId}`}
-                            onClick={(e) => e.stopPropagation()}
-                            style={payBtnStyle}
+                      {!isInactive && (
+                        <div style={employeeQuickActionsRow}>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setOtModal({ empId: emp.id, name: emp.name })
+                            }}
+                            style={{ ...quickOtBtn, flex: 1 }}
                           >
-                            ΠΛΗΡΩΜΗ
-                          </Link>
+                            + ⏱️
+                          </button>
 
-                          <Link
-                            href={`/pay-employee?id=${emp.id}&name=${encodeURIComponent(emp.name || '')}&store=${storeId}&mode=advance`}
-                            onClick={(e) => e.stopPropagation()}
-                            style={advanceBtnStyle}
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setTipModal({ empId: emp.id, name: emp.name })
+                            }}
+                            style={{ ...quickTipBtn, flex: 1 }}
                           >
-                            ΠΡΟΚΑΤΑΒΟΛΗ
-                          </Link>
+                            +💰 Tips
+                          </button>
+
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setDayOffModal({ empId: emp.id, name: emp.name })
+                              setDayOffDates([new Date().toISOString().split('T')[0]])
+                            }}
+                            style={{ ...quickDayOffBtn, flex: 1 }}
+                          >
+                            + Ρεπό
+                          </button>
                         </div>
+                      )}
+
+                      <div style={employeePaymentsRow}>
+                        <Link
+                          href={`/pay-employee?id=${emp.id}&name=${encodeURIComponent(emp.name || '')}&store=${storeId}`}
+                          onClick={(e) => e.stopPropagation()}
+                          style={{ ...payBtnStyle, flex: 1, textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                        >
+                          ΠΛΗΡΩΜΗ
+                        </Link>
+
+                        <Link
+                          href={`/pay-employee?id=${emp.id}&name=${encodeURIComponent(emp.name || '')}&store=${storeId}&mode=advance`}
+                          onClick={(e) => e.stopPropagation()}
+                          style={{ ...advanceBtnStyle, flex: 1, textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                        >
+                          ΠΡΟΚΑΤΑΒΟΛΗ
+                        </Link>
+                      </div>
+
+                      <div style={{ ...employeeMiniSummaryRow, marginTop: 0 }}>
+                        <span
+                          style={{
+                            ...badgeStyle,
+                            backgroundColor: 'var(--surface)',
+                            color: 'var(--muted)',
+                          }}
+                        >
+                          {daysLeft === null ? 'ΟΡΙΣΕ ΗΜ. ΠΡΟΣΛΗΨΗΣ' : daysLeft === 0 ? 'ΣΗΜΕΡΑ 💰' : `ΣΕ ${daysLeft} ΗΜΕΡΕΣ 📅`}
+                        </span>
+
+                        {pendingOt > 0 && <span style={{ ...badgeStyle, backgroundColor: 'var(--surface)', color: 'var(--muted)' }}>⏱️ {pendingOt} ΩΡΕΣ</span>}
+                        <span style={{ ...badgeStyle, backgroundColor: '#eef2ff', color: '#3730a3' }}>ΡΕΠΟ {actualDaysOff}/{includedDaysOff}</span>
+                        {isMonthlyEmployee && <span style={{ ...badgeStyle, backgroundColor: '#ecfdf5', color: '#047857' }}>ΤΕΛΙΚΟΣ {finalSalary.toFixed(2)}€</span>}
+                        {isInactive && <span style={{ ...badgeStyle, backgroundColor: 'var(--surface)', color: 'var(--muted)' }}>ΑΝΕΝΕΡΓΟΣ</span>}
                       </div>
                     </div>
 
@@ -2086,6 +2083,42 @@ const employeeCostLine: any = {
   color: 'var(--muted)',
   fontSize: '10px',
   fontWeight: 800,
+}
+
+const employeeMetaRow: any = {
+  display: 'flex',
+  gap: '6px',
+  flexWrap: 'wrap',
+  alignItems: 'center',
+}
+
+const employeeMetaPill: any = {
+  fontSize: '10px',
+  fontWeight: 800,
+  color: 'var(--muted)',
+  backgroundColor: 'var(--surface)',
+  border: '1px solid var(--border)',
+  borderRadius: '10px',
+  padding: '5px 8px',
+}
+
+const employeeQuickActionsRow: any = {
+  display: 'flex',
+  gap: '8px',
+  alignItems: 'center',
+}
+
+const employeePaymentsRow: any = {
+  display: 'flex',
+  gap: '8px',
+  alignItems: 'stretch',
+}
+
+const employeeMiniSummaryRow: any = {
+  display: 'flex',
+  gap: '8px',
+  flexWrap: 'wrap',
+  alignItems: 'center',
 }
 
 const filterContainer: any = {
