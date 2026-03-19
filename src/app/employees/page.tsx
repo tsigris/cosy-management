@@ -63,6 +63,7 @@ function EmployeesContent() {
 
   const [employees, setEmployees] = useState<any[]>([])
   const [transactions, setTransactions] = useState<any[]>([])
+  const [allStoreTransactions, setAllStoreTransactions] = useState<any[]>([])
   const [overtimes, setOvertimes] = useState<any[]>([])
   const [employeeDaysOff, setEmployeeDaysOff] = useState<any[]>([])
   const [employeeDayOffDateColumn, setEmployeeDayOffDateColumn] = useState<'off_date' | 'date'>('date')
@@ -74,6 +75,7 @@ function EmployeesContent() {
 
   const [payBasis, setPayBasis] = useState<PayBasis>('monthly')
   const [viewYear, setViewYear] = useState(new Date().getFullYear())
+  const [kpiPeriod, setKpiPeriod] = useState<'today' | 'month'>('month')
 
   // Active / Inactive
   const [showInactive, setShowInactive] = useState(false)
@@ -257,7 +259,7 @@ function EmployeesContent() {
       setEmployeeDayOffDateColumn(dayOffDateColumn)
       const dayOffSelect = dayOffDateColumn === 'off_date' ? 'id, employee_id, store_id, off_date' : 'id, employee_id, store_id, date'
 
-      const [empsRes, transRes, otRes, dayOffRes] = await Promise.all([
+      const [empsRes, transRes, otRes, dayOffRes, allStoreTransRes] = await Promise.all([
         getEmployees(storeId),
         supabase
           .from('transactions')
@@ -267,10 +269,12 @@ function EmployeesContent() {
           .order('date', { ascending: false }),
         supabase.from('employee_overtimes').select('*').eq('store_id', storeId).eq('is_paid', false),
         supabase.from('employee_days_off').select(dayOffSelect).eq('store_id', storeId).order(dayOffDateColumn, { ascending: true }),
+        supabase.from('transactions').select('id,amount,date,created_at,category,type,notes,fixed_asset_id').eq('store_id', storeId),
       ])
 
       if (empsRes) setEmployees(empsRes)
       if (transRes.data) setTransactions(transRes.data)
+      if (allStoreTransRes.data) setAllStoreTransactions(allStoreTransRes.data)
       if (otRes.data) setOvertimes(otRes.data)
       if (dayOffRes.data) setEmployeeDaysOff(dayOffRes.data)
     } catch (err) {
@@ -342,6 +346,74 @@ function EmployeesContent() {
       })
       .reduce((acc: number, t: any) => acc + (Math.abs(Number(t.amount)) || 0), 0)
   }, [transactions, employees])
+
+  const kpiDateContext = useMemo(() => {
+    const now = toBusinessDayDateNormalized(new Date())
+    return {
+      year: now.getFullYear(),
+      month: now.getMonth(),
+      date: now.getDate(),
+    }
+  }, [])
+
+  const payrollTotalForSelectedPeriod = useMemo(() => {
+    const staffIds = new Set(employees.map((e: any) => String(e.id)))
+
+    return transactions
+      .filter((t: any) => {
+        if (!t?.fixed_asset_id) return false
+        if (!staffIds.has(String(t.fixed_asset_id))) return false
+
+        const d = parseTxDate(t)
+        if (!d) return false
+
+        const businessDate = toBusinessDayDateNormalized(d)
+        const sameMonth = businessDate.getFullYear() === kpiDateContext.year && businessDate.getMonth() === kpiDateContext.month
+        if (!sameMonth) return false
+
+        if (kpiPeriod === 'today' && businessDate.getDate() !== kpiDateContext.date) return false
+
+        const note = String(t.notes || '')
+        const txType = String(t.type || '')
+        const isTip = /tips/i.test(note) || txType === 'tip_entry'
+        if (isTip) return false
+
+        return true
+      })
+      .reduce((acc: number, t: any) => acc + (Math.abs(Number(t.amount)) || 0), 0)
+  }, [transactions, employees, kpiDateContext, kpiPeriod])
+
+  const revenueTotalForSelectedPeriod = useMemo(() => {
+    return allStoreTransactions
+      .filter((t: any) => {
+        const d = parseTxDate(t)
+        if (!d) return false
+
+        const businessDate = toBusinessDayDateNormalized(d)
+        const sameMonth = businessDate.getFullYear() === kpiDateContext.year && businessDate.getMonth() === kpiDateContext.month
+        if (!sameMonth) return false
+
+        if (kpiPeriod === 'today' && businessDate.getDate() !== kpiDateContext.date) return false
+
+        const amount = Number(t.amount) || 0
+        if (amount <= 0) return false
+
+        const note = String(t.notes || '')
+        const txType = String(t.type || '')
+        const category = String(t.category || '').toLowerCase()
+        const isTip = /tips/i.test(note) || txType === 'tip_entry'
+        if (isTip) return false
+        if (category === 'staff') return false
+
+        return true
+      })
+      .reduce((acc: number, t: any) => acc + (Number(t.amount) || 0), 0)
+  }, [allStoreTransactions, kpiDateContext, kpiPeriod])
+
+  const payrollPercentOfRevenue = useMemo(() => {
+    if (revenueTotalForSelectedPeriod <= 0) return 0
+    return (payrollTotalForSelectedPeriod / revenueTotalForSelectedPeriod) * 100
+  }, [payrollTotalForSelectedPeriod, revenueTotalForSelectedPeriod])
 
   // ✅ Toggle Active/Inactive (Supabase)  (fixed_assets)
   async function toggleActive(empId: string, currentValue: boolean | null | undefined) {
@@ -971,16 +1043,26 @@ function EmployeesContent() {
 
           <div style={{ maxWidth: '500px', margin: '0 auto', paddingBottom: '100px' }}>
             {/* HEADER */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
                 <div style={logoBoxStyle}>👥</div>
-                <h1 style={{ fontWeight: '800', fontSize: '22px', margin: 0, color: 'var(--text)' }}>Υπάλληλοι</h1>
+                <h1 style={{ fontWeight: '800', fontSize: '22px', margin: 0, color: 'var(--text)' }}>Προσωπικό</h1>
 
                 {/* ✅ Back link preserves SaaS context */}
                 <Link href={`/?store=${storeId}`} style={backBtnStyle}>
                   ✕
                 </Link>
               </div>
+            </div>
+
+            <div style={headerFiltersRow}>
+              <button type="button" onClick={() => setKpiPeriod('today')} style={kpiPeriod === 'today' ? headerFilterChipActive : headerFilterChip}>
+                Today
+              </button>
+              <button type="button" onClick={() => setKpiPeriod('month')} style={kpiPeriod === 'month' ? headerFilterChipActive : headerFilterChip}>
+                Month
+              </button>
+              <span style={{ ...headerFilterChip, cursor: 'default' }}>Store: {storeId || '—'}</span>
             </div>
 
             <ReadOnlyBanner isAdmin={isAdmin} isLoading={checkingPermission} />
@@ -1229,6 +1311,23 @@ function EmployeesContent() {
               </div>
             )}
 
+            <div style={kpiGridWrap}>
+              <div style={kpiCard}>
+                <p style={kpiCardLabel}>TOTAL PAYROLL ({kpiPeriod === 'today' ? 'TODAY' : 'MONTH'})</p>
+                <p style={kpiCardValue}>{payrollTotalForSelectedPeriod.toFixed(2)}€</p>
+              </div>
+
+              <div style={kpiCard}>
+                <p style={kpiCardLabel}>PAYROLL % REVENUE</p>
+                <p style={kpiCardValue}>{payrollPercentOfRevenue.toFixed(1)}%</p>
+              </div>
+
+              <div style={kpiCard}>
+                <p style={kpiCardLabel}>ΣΥΝΟΛΟ ΠΡΟΣΩΠΙΚΟΥ</p>
+                <p style={kpiCardValue}>{employees.length}</p>
+              </div>
+            </div>
+
             {/* ADD + SHOW INACTIVE */}
             <div style={{ display: 'flex', gap: '10px', marginBottom: '14px' }}>
               {isAdmin && (
@@ -1391,6 +1490,7 @@ function EmployeesContent() {
                 const salaryDeduction = isMonthlyEmployee ? extraDaysOff * dailyRateForDeduction : 0
                 const finalSalary = isMonthlyEmployee ? Math.max(monthlySalary - salaryDeduction, 0) : 0
                 const daysOffLabel = dayOffRowsThisMonth.map((row) => formatShortDayMonth(getDayOffDateValue(row))).join(', ')
+                const dailyCost = isMonthlyEmployee && monthlyDays > 0 ? monthlySalary / monthlyDays : Number(emp.daily_rate ?? 0)
 
                 return (
                   <div key={emp.id} style={{ ...employeeCard, opacity: isInactive ? 0.6 : 1 }}>
@@ -1409,6 +1509,11 @@ function EmployeesContent() {
                           {String(emp.name || '').toUpperCase()}
                         </p>
 
+                        <p style={employeeCostLine}>
+                          {isMonthlyEmployee ? `ΜΙΣΘΟΣ: ${monthlySalary.toFixed(2)}€` : `ΗΜΕΡΟΜΙΣΘΙΟ: ${Number(emp.daily_rate ?? 0).toFixed(2)}€`} • ΚΟΣΤΟΣ/ΗΜΕΡΑ:{' '}
+                          {dailyCost.toFixed(2)}€
+                        </p>
+
                         <div style={{ marginTop: '6px', display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
                           <span
                             style={{
@@ -1422,6 +1527,12 @@ function EmployeesContent() {
 
                           {pendingOt > 0 && (
                             <span style={{ ...badgeStyle, backgroundColor: 'var(--surface)', color: 'var(--muted)' }}>⏱️ {pendingOt} ΩΡΕΣ</span>
+                          )}
+                          <span style={{ ...badgeStyle, backgroundColor: '#eef2ff', color: '#3730a3' }}>
+                            ΡΕΠΟ {actualDaysOff}/{includedDaysOff}
+                          </span>
+                          {isMonthlyEmployee && (
+                            <span style={{ ...badgeStyle, backgroundColor: '#ecfdf5', color: '#047857' }}>ΤΕΛΙΚΟΣ {finalSalary.toFixed(2)}€</span>
                           )}
                           {isInactive && <span style={{ ...badgeStyle, backgroundColor: 'var(--surface)', color: 'var(--muted)' }}>ΑΝΕΝΕΡΓΟΣ</span>}
                         </div>
@@ -1774,6 +1885,59 @@ const backBtnStyle: any = {
   border: '1px solid var(--border)',
 }
 
+const headerFiltersRow: any = {
+  display: 'flex',
+  gap: '8px',
+  marginBottom: '14px',
+  flexWrap: 'wrap',
+}
+
+const headerFilterChip: any = {
+  border: '1px solid var(--border)',
+  backgroundColor: 'var(--surface)',
+  color: 'var(--muted)',
+  padding: '7px 10px',
+  borderRadius: '12px',
+  fontWeight: 800,
+  fontSize: '10px',
+}
+
+const headerFilterChipActive: any = {
+  ...headerFilterChip,
+  backgroundColor: colors.primaryDark,
+  color: 'white',
+  border: `1px solid ${colors.primaryDark}`,
+}
+
+const kpiGridWrap: any = {
+  display: 'grid',
+  gridTemplateColumns: '1fr 1fr',
+  gap: '10px',
+  marginBottom: '14px',
+}
+
+const kpiCard: any = {
+  backgroundColor: 'var(--surface)',
+  border: '1px solid var(--border)',
+  borderRadius: '16px',
+  padding: '12px',
+  boxShadow: '0 8px 20px rgba(15, 23, 42, 0.06)',
+}
+
+const kpiCardLabel: any = {
+  margin: 0,
+  color: 'var(--muted)',
+  fontSize: '9px',
+  fontWeight: 900,
+}
+
+const kpiCardValue: any = {
+  margin: '6px 0 0 0',
+  color: 'var(--text)',
+  fontSize: '18px',
+  fontWeight: 900,
+}
+
 const payBtnStyle: any = {
   backgroundColor: colors.accentBlue,
   color: 'white',
@@ -1916,6 +2080,13 @@ const employeeCard: any = {
 }
 
 const badgeStyle: any = { fontSize: '9px', fontWeight: '700', padding: '4px 10px', borderRadius: '6px' }
+
+const employeeCostLine: any = {
+  margin: '5px 0 0 0',
+  color: 'var(--muted)',
+  fontSize: '10px',
+  fontWeight: 800,
+}
 
 const filterContainer: any = {
   display: 'flex',
