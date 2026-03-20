@@ -54,7 +54,7 @@ begin
       fa.sub_category
     from public.transactions t
     left join public.fixed_assets fa
-      on fa.id = t.fixed_asset_id
+      on (fa.id = t.employee_id or fa.id = t.fixed_asset_id)
     where t.store_id = p_store_id
       and t.date >= p_start_date
       and t.date <= p_end_date
@@ -127,7 +127,7 @@ with rows_base as (
     and t.date >= p_start_date
     and t.date <= p_end_date
     and (
-      (p_entity_type = 'staff' and t.fixed_asset_id = p_entity_id)
+      (p_entity_type = 'staff' and (t.employee_id = p_entity_id or t.fixed_asset_id = p_entity_id))
       or
       (p_entity_type = 'maintenance' and t.fixed_asset_id = p_entity_id)
       or
@@ -229,6 +229,7 @@ begin
       t.type,
       t.is_credit,
       t.supplier_id,
+      t.employee_id,
       t.fixed_asset_id,
       t.category,
       s.name as supplier_name,
@@ -238,7 +239,7 @@ begin
     left join public.suppliers s
       on s.id = t.supplier_id
     left join public.fixed_assets fa
-      on fa.id = t.fixed_asset_id
+        on (fa.id = t.employee_id or fa.id = t.fixed_asset_id)
     where t.store_id = p_store_id
       and t.date >= p_start_date
       and t.date <= p_end_date
@@ -247,6 +248,10 @@ begin
   normalized as (
     select
       *,
+      case
+        when lower(coalesce(fixed_asset_sub_category, '')) = 'staff' then coalesce(employee_id, fixed_asset_id)
+        else fixed_asset_id
+      end as resolved_asset_id,
       case
         when supplier_id is not null then 'Εμπορεύματα'
         when lower(coalesce(fixed_asset_sub_category, '')) = 'staff' then 'Staff'
@@ -273,7 +278,7 @@ begin
   select
     case
       when p_filter_a = 'Εμπορεύματα' then coalesce(supplier_id::text, '')
-      when p_filter_a = 'Προσωπικό' then coalesce(fixed_asset_id::text, '')
+      when p_filter_a = 'Προσωπικό' then coalesce(resolved_asset_id::text, '')
       when p_filter_a = 'Συντήρηση' then coalesce(fixed_asset_id::text, '')
       else normalized_category
     end as entity_id,
@@ -302,6 +307,7 @@ begin
         then coalesce(
           case
             when p_filter_a = 'Εμπορεύματα' then supplier_id::text
+            when p_filter_a = 'Προσωπικό' then resolved_asset_id::text
             else fixed_asset_id::text
           end,
           ''
@@ -521,7 +527,7 @@ AS $function$
     coalesce(sum(abs(t.amount)), 0)::numeric as amount
   from public.transactions t
   left join public.fixed_assets fa
-    on fa.id = t.fixed_asset_id
+    on (fa.id = t.employee_id or fa.id = t.fixed_asset_id)
   where t.store_id = p_store_id
     and t.date >= p_start_date
     and t.date <= p_end_date
@@ -551,7 +557,7 @@ AS $function$
     coalesce(sum(abs(t.amount)), 0)::numeric as amount
   from public.transactions t
   left join public.fixed_assets fa
-    on fa.id = t.fixed_asset_id
+    on (fa.id = t.employee_id or fa.id = t.fixed_asset_id)
   where t.store_id = p_store_id
     and extract(year from t.date) = p_year
     and extract(month from t.date) = p_month

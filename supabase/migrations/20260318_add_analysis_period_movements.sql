@@ -49,7 +49,7 @@ begin
       when t.revenue_source_id is not null then coalesce(rs.name, 'Πηγή Εσόδων')
       when lower(coalesce(fa.sub_category, '')) = 'staff' then coalesce(fa.name, 'Υπάλληλος')
       when t.supplier_id is not null then coalesce(s.name, 'Προμηθευτής')
-      when t.fixed_asset_id is not null then coalesce(fa.name, '-')
+      when coalesce(t.employee_id, t.fixed_asset_id) is not null then coalesce(fa.name, '-')
       when t.type = 'tip_entry' then coalesce(fa.name, 'Tips')
       else coalesce(nullif(trim(t.category), ''), '-')
     end as party_name,
@@ -61,7 +61,7 @@ begin
     on s.id = t.supplier_id
    and s.store_id = p_store_id
   left join public.fixed_assets fa
-    on fa.id = t.fixed_asset_id
+    on (fa.id = t.employee_id or fa.id = t.fixed_asset_id)
    and fa.store_id = p_store_id
   left join public.revenue_sources rs
     on rs.id = t.revenue_source_id
