@@ -21,8 +21,11 @@ type ExpenseRow = {
   category?: string | null
   is_credit?: boolean | null
   created_at?: string | null
+  employee_id?: string | null
+  fixed_asset_id?: string | null
   suppliers?: { name?: string | null } | null
   fixed_assets?: { name?: string | null; sub_category?: string | null } | null
+  employee_fixed_asset?: { name?: string | null; sub_category?: string | null } | null
 }
 
 type DrilldownFilter = { type: 'beneficiary' | 'category' | 'method'; value: string } | null
@@ -182,7 +185,7 @@ export default function EconomicsExpensesPage() {
         }
 
         const q =
-          'id, date, amount, type, method, category, is_credit, created_at, suppliers:suppliers(name), fixed_assets:fixed_assets(name, sub_category)'
+          'id, date, amount, type, method, category, is_credit, created_at, employee_id, fixed_asset_id, suppliers(name), fixed_assets:fixed_assets!transactions_fixed_asset_id_fkey(name, sub_category), employee_fixed_asset:fixed_assets!transactions_employee_id_fixed_assets_fkey(name, sub_category)'
 
         // Fetch canonical expense types + salary advances
         const byType = await supabase
@@ -198,7 +201,7 @@ export default function EconomicsExpensesPage() {
           .from('transactions')
           .select(q)
           .eq('store_id', storeId)
-          .not('fixed_asset_id', 'is', null)
+          .or('fixed_asset_id.not.is.null,employee_id.not.is.null')
           .order('date', { ascending: false })
           .limit(1000)
 
@@ -219,9 +222,11 @@ export default function EconomicsExpensesPage() {
         for (const r of (byType.data || [])) pushRow(r)
 
         for (const r of (byFixedAssets.data || [])) {
-          const fa = Array.isArray(r.fixed_assets) ? r.fixed_assets[0] : r.fixed_assets
-          if (!fa) continue
-          if (String(fa.sub_category || '').trim().toLowerCase() === 'staff') pushRow(r)
+          const employeeAsset = Array.isArray(r.employee_fixed_asset) ? r.employee_fixed_asset[0] : r.employee_fixed_asset
+          const fixedAsset = Array.isArray(r.fixed_assets) ? r.fixed_assets[0] : r.fixed_assets
+          const resolvedAsset = employeeAsset || fixedAsset
+          if (!resolvedAsset) continue
+          if (String(resolvedAsset.sub_category || '').trim().toLowerCase() === 'staff') pushRow(r)
         }
 
         const data = Array.from(combined.values())
@@ -230,7 +235,10 @@ export default function EconomicsExpensesPage() {
           ? (data as any[]).map((row) => ({
               ...row,
               suppliers: Array.isArray(row.suppliers) ? row.suppliers[0] : row.suppliers,
-              fixed_assets: Array.isArray(row.fixed_assets) ? row.fixed_assets[0] : row.fixed_assets,
+              fixed_assets: (Array.isArray(row.employee_fixed_asset) ? row.employee_fixed_asset[0] : row.employee_fixed_asset)
+                || (Array.isArray(row.fixed_assets) ? row.fixed_assets[0] : row.fixed_assets)
+                || null,
+              employee_fixed_asset: Array.isArray(row.employee_fixed_asset) ? row.employee_fixed_asset[0] : row.employee_fixed_asset,
             }))
           : []
 
@@ -331,7 +339,7 @@ export default function EconomicsExpensesPage() {
     }
 
     return filtered
-  }, [rows, activeFilter])
+  }, [filteredRowsByPeriod, activeFilter])
 
   // Grouped movements for compact accordion view (group by beneficiary)
   const groupedMovements = useMemo(() => {
