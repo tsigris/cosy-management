@@ -29,6 +29,18 @@ begin
       on public.transactions (store_id, date, type);
   end if;
 
+  -- transactions (store_id, employee_id, type)
+  if not exists (
+    select 1
+    from pg_indexes
+    where schemaname = 'public'
+      and tablename = 'transactions'
+      and indexdef ilike '%(store_id, employee_id, type)%'
+  ) then
+    create index if not exists idx_transactions_store_employee_type
+      on public.transactions (store_id, employee_id, type);
+  end if;
+
   -- employee_days_off (store_id, employee_id, off_date)
   if exists (
     select 1
