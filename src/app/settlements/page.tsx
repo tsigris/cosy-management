@@ -1465,22 +1465,6 @@ data: { session },
 
 if (!session) throw new Error('Η συνεδρία έληξε. Συνδέσου ξανά.')
 
-
-
-const raw =
-
-session.user.user_metadata?.username ||
-
-session.user.user_metadata?.full_name ||
-
-session.user.email ||
-
-'Χρήστης'
-
-const userName = String(raw).includes('@') ? String(raw).split('@')[0] : String(raw)
-
-
-
 const businessToday = getBusinessDate()
 
 
@@ -1497,69 +1481,29 @@ selectedSettlement.name
 
 }${selectedSettlement.rf_code ? ` (RF: ${selectedSettlement.rf_code})` : ''}`
 
+const { error: installmentRpcErr } = await supabase.rpc('installment_payment_atomic', {
 
+p_store_id: storeId,
 
-const { data: transactionRow, error: transErr } = await supabase
+p_installment_id: selectedInstallment.id,
 
-.from('transactions')
+p_amount: Math.abs(parsedPay as number),
 
-.insert([
+p_method: paymentMethod,
 
-{
+p_category: category,
 
-store_id: storeId,
+p_date: businessToday,
 
-user_id: session.user.id,
+p_notes: notes,
 
-created_by_name: userName,
-
-type: 'expense',
-
-amount: -Math.abs(parsedPay as number),
-
-method: paymentMethod,
-
-category,
-
-notes,
-
-date: businessToday,
-
-},
-
-])
-
-.select('id')
-
-.single()
-
-
-
-if (transErr) throw transErr
-
-
-
-const { error: installmentErr } = await supabase
-
-.from('installments')
-
-.update({
-
-status: 'paid',
-
-transaction_id: transactionRow.id,
-
-amount: Math.abs(parsedPay as number),
+p_type: 'expense',
 
 })
 
-.eq('id', selectedInstallment.id)
-
-.eq('store_id', storeId)
 
 
-
-if (installmentErr) throw installmentErr
+if (installmentRpcErr) throw installmentRpcErr
 
 
 

@@ -76,7 +76,7 @@ function PayEmployeeContent() {
       const { data: advanceRows, error: advanceError } = await supabase
         .from('transactions')
         .select('amount')
-        .eq('fixed_asset_id', empId)
+        .eq('employee_id', empId)
         .eq('store_id', storeId)
         .eq('type', 'salary_advance')
         .eq('is_settled', false);
@@ -122,7 +122,7 @@ function PayEmployeeContent() {
           type: 'salary_advance',
           category: 'Staff',
           method: paymentMethod,
-          fixed_asset_id: empId,
+          employee_id: empId,
           store_id: storeId,
           date: date,
           notes: notes,
@@ -142,57 +142,34 @@ function PayEmployeeContent() {
         return toast.error('Οι προκαταβολές είναι περισσότερες από το υπολογισμένο ποσό')
       }
 
+      if (netPayable <= 0) {
+        setLoading(false)
+        return toast.error('Το ποσό πληρωμής πρέπει να είναι μεγαλύτερο από 0')
+      }
+
       const agreementLabel = agreementType === 'monthly' ? 'Μισθός' : 'Ημερομίσθιο';
       const daysOrAbsencesLabel = agreementType === 'monthly' ? `Απουσίες: ${absences}` : `Ημέρες: ${workedDays}`;
       const notes = `Εκκαθάριση ${empName || ''} | ${agreementLabel} | Ημέρες/Απουσίες: ${daysOrAbsencesLabel}`;
 
-      // 1. Καταγραφή στα Transactions (net after advances) — only when there's a positive net payable
-      if (netPayable > 0) {
-        const { error: transError } = await supabase.from('transactions').insert([{
-          amount: -Math.abs(netPayable),
-          type: 'expense',
-          category: 'Staff',
-          method: paymentMethod,
-          fixed_asset_id: empId,
-          store_id: storeId,
-          date: date,
-          notes: notes
-        }]);
+      const { error: payrollError } = await supabase.rpc('payroll_payment_atomic', {
+        p_store_id: storeId,
+        p_employee_id: empId,
+        p_amount: netPayable,
+        p_method: paymentMethod,
+        p_category: 'Staff',
+        p_date: date,
+        p_notes: notes,
+        p_settle_advances: true,
+        p_settle_overtimes: true,
+        p_settle_tips: false,
+      })
 
-        if (transError) throw transError;
-      }
-
-      // 2. After payment (or when netPayable === 0), mark advances as settled for this employee/store
-      const { error: settleError } = await supabase
-        .from('transactions')
-        .update({ is_settled: true })
-        .eq('store_id', storeId)
-        .eq('fixed_asset_id', empId)
-        .eq('type', 'salary_advance')
-        .eq('is_settled', false);
-
-      if (settleError) {
-        console.error('Failed to mark advances settled', settleError)
-        throw settleError
-      }
-
-      // 3. Μηδενισμός υπερωριών (Mark as paid)
-      const { error: overtimeSettleError } = await supabase
-        .from('employee_overtimes')
-        .update({ is_paid: true })
-        .eq('employee_id', empId)
-        .eq('store_id', storeId)
-        .eq('is_paid', false)
-
-      if (overtimeSettleError) {
-        console.error('Failed to settle overtimes', overtimeSettleError)
-        throw overtimeSettleError
-      }
+      if (payrollError) throw payrollError
 
       toast.success('Η πληρωμή καταχωρήθηκε και οι υπερωρίες εκκαθαρίστηκαν!');
       router.push(`/employees?store=${storeId}`);
     } catch (err: any) {
-      toast.error(err.message);
+      toast.error(err?.message || 'Αποτυχία πληρωμής');
     } finally {
       setLoading(false);
     }
