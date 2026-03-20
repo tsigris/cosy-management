@@ -598,47 +598,18 @@ function EmployeesContent() {
 
     try {
       const today = new Date().toISOString().split('T')[0]
-      const { data: insertedOt, error: overtimeError } = await supabase
-        .from('employee_overtimes')
-        .insert([
-          {
-            employee_id: otModal.empId,
-            store_id: tenantStoreId,
-            hours: hoursNum,
-            date: today,
-            is_paid: true,
-          },
-        ])
-        .select('id')
-        .single()
+      const { error: overtimePayErr } = await supabase.rpc('overtime_pay_now_atomic', {
+        p_store_id: tenantStoreId,
+        p_employee_id: otModal.empId,
+        p_hours: hoursNum,
+        p_payment_amount: amountNum,
+        p_method: 'Μετρητά',
+        p_date: today,
+        p_notes: `Άμεση πληρωμή υπερωρίας: ${hoursNum} ώρες`,
+        p_category: 'Staff',
+      })
 
-      if (overtimeError) {
-        console.error(overtimeError)
-        toast.error('Αποτυχία καταγραφής και άμεσης πληρωμής υπερωρίας.')
-        return
-      }
-
-      const { error: transactionError } = await supabase.from('transactions').insert([
-        {
-          store_id: tenantStoreId,
-          fixed_asset_id: otModal.empId,
-          amount: amountNum,
-          type: 'expense',
-          category: 'Staff',
-          method: 'Μετρητά',
-          date: today,
-          notes: `Άμεση πληρωμή υπερωρίας: ${hoursNum} ώρες`,
-        },
-      ])
-
-      if (transactionError) {
-        console.error(transactionError)
-        if (insertedOt?.id) {
-          await supabase.from('employee_overtimes').delete().eq('id', insertedOt.id).eq('store_id', tenantStoreId)
-        }
-        toast.error('Η υπερωρία καταγράφηκε, αλλά απέτυχε η συναλλαγή πληρωμής.')
-        return
-      }
+      if (overtimePayErr) throw overtimePayErr
 
       toast.success(`Καταχωρήθηκε και πληρώθηκε άμεσα υπερωρία ${hoursNum} ωρών.`)
       setOtModal(null)

@@ -386,51 +386,28 @@ function GoalsContent() {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) throw new Error('Η συνεδρία έληξε')
 
-      const rawUser =
-        (session.user.user_metadata as any)?.username ||
-        (session.user.user_metadata as any)?.full_name ||
-        session.user.email ||
-        'Χρήστης'
-
-      const userName = String(rawUser).split('@')[0]
-
-      const delta = txAction === 'deposit' ? amount : -amount
-
-      // 1) Atomic goal update via RPC
-      const { data: newAmount, error: goalErr } = await supabase.rpc('increment_goal_amount', {
-        goal_id: selectedGoal.id,
-        store_id: storeId,
-        amount: delta,
-      })
-      if (goalErr) throw goalErr
-
-      // 2) Insert transaction in ledger
-      // deposit => money leaves wallet => negative
-      // withdraw => money returns to wallet => positive
-      const dbAmount = txAction === 'deposit' ? -amount : amount
-      const dbType = txAction === 'deposit' ? 'savings_deposit' : 'savings_withdrawal'
-      const dbNotes =
+      const action = txAction === 'deposit' ? 'deposit' : 'withdraw'
+      const customNotes =
         txAction === 'deposit'
           ? `Κατάθεση στον Κουμπαρά: ${selectedGoal.name}`
           : `Ανάληψη από Κουμπαρά: ${selectedGoal.name}`
 
-      const methodValue = txMethod // Μετρητά / Κάρτα / Τράπεζα
+      const { data: goalTxData, error: goalTxErr } = await supabase.rpc('goal_transaction_atomic', {
+        p_store_id: storeId,
+        p_goal_id: selectedGoal.id,
+        p_action: action,
+        p_amount: amount,
+        p_method: txMethod,
+        p_date: getBusinessDate(),
+        p_notes: customNotes,
+        p_category: 'Αποταμίευση',
+      })
+      if (goalTxErr) throw goalTxErr
 
-      const { error: txErr } = await supabase.from('transactions').insert([
-        {
-          store_id: storeId,
-          goal_id: selectedGoal.id,
-          user_id: session.user.id,
-          created_by_name: userName,
-          type: dbType,
-          amount: dbAmount,
-          method: methodValue,
-          category: 'Αποταμίευση',
-          notes: dbNotes,
-          date: getBusinessDate(),
-        },
-      ])
-      if (txErr) throw txErr
+      const goalTxRow = Array.isArray(goalTxData) ? goalTxData[0] : goalTxData
+      const nextAmount = Number(goalTxRow?.new_amount ?? 0)
+      const nextStatus = String(goalTxRow?.new_status || 'active') as 'active' | 'completed'
+      const dbAmount = txAction === 'deposit' ? -amount : amount
 
       toast.success(txAction === 'deposit' ? 'Η κατάθεση ολοκληρώθηκε!' : 'Η ανάληψη ολοκληρώθηκε!')
       setOpenTxModal(false)
@@ -439,14 +416,7 @@ function GoalsContent() {
       setGoals((prev) =>
         prev.map((g) => {
           if (g.id === selectedGoal.id) {
-            const updatedAmount = Number(newAmount)
-            const finalStatus =
-              g.status === 'completed' && updatedAmount < Number(g.target_amount)
-                ? 'completed'
-                : updatedAmount >= Number(g.target_amount)
-                  ? 'completed'
-                  : 'active'
-            return { ...g, current_amount: updatedAmount, status: finalStatus }
+            return { ...g, current_amount: nextAmount, status: nextStatus }
           }
           return g
         })
@@ -454,18 +424,11 @@ function GoalsContent() {
 
       setSelectedGoal((prev) => {
         if (!prev || prev.id !== selectedGoal.id) return prev
-        const updatedAmount = Number(newAmount)
-        const finalStatus =
-          prev.status === 'completed' && updatedAmount < Number(prev.target_amount)
-            ? 'completed'
-            : updatedAmount >= Number(prev.target_amount)
-              ? 'completed'
-              : 'active'
 
         return {
           ...prev,
-          current_amount: updatedAmount,
-          status: finalStatus,
+          current_amount: nextAmount,
+          status: nextStatus,
         }
       })
 

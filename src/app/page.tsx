@@ -520,18 +520,11 @@ function DashboardContent() {
     }
 
     try {
-      const { data: installment, error: installmentError } = await supabase.from('installments').select('id').eq('transaction_id', txId).maybeSingle()
-
-      if (installmentError) throw installmentError
-
-      if (installment?.id) {
-        const { error: updateError } = await supabase.from('installments').update({ status: 'pending', transaction_id: null }).eq('id', installment.id)
-
-        if (updateError) throw updateError
-      }
-
-      const { error: deleteError } = await supabase.from('transactions').delete().eq('id', txId).eq('store_id', storeIdFromUrl)
-      if (deleteError) throw deleteError
+      const { error: unpayErr } = await supabase.rpc('installment_unpay_atomic', {
+        p_store_id: storeIdFromUrl,
+        p_transaction_id: txId,
+      })
+      if (unpayErr) throw unpayErr
 
       setTransactions((prev) => prev.filter((t) => String(t.id) !== String(txId)))
       setExpandedTx(null)

@@ -477,42 +477,26 @@ export default function NotificationsBell({ storeId, onUpdate }: { storeId: stri
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) throw new Error('Η συνεδρία έληξε. Συνδέσου ξανά.')
 
-      const raw = session.user.user_metadata?.username || session.user.user_metadata?.full_name || session.user.email || 'Χρήστης'
-      const userName = String(raw).includes('@') ? String(raw).split('@')[0] : String(raw)
-
       const amount = Math.abs(Number(selectedInst.amount || 0))
       if (!amount) throw new Error('Μη έγκυρο ποσό')
 
       const today = getBusinessDate()
       const notes = `Πληρωμή Δόσης #${selectedInst.installment_number}: ${selectedSet.name}${selectedSet.rf_code ? ` (RF: ${selectedSet.rf_code})` : ''}`
 
-      const { data: tx, error: txErr } = await supabase
-        .from('transactions')
-        .insert([
-          {
-            store_id: storeId,
-            user_id: session.user.id,
-            created_by_name: userName,
-            type: 'expense',
-            amount: -amount,
-            method: paymentMethod,
-            category: 'Λοιπά',
-            notes,
-            date: today,
-          },
-        ])
-        .select('id')
-        .single()
+      const category = selectedSet.type === 'loan' ? 'Δάνεια' : 'Ρυθμίσεις'
 
-      if (txErr) throw txErr
+      const { error: installmentRpcErr } = await supabase.rpc('installment_payment_atomic', {
+        p_store_id: storeId,
+        p_installment_id: selectedInst.id,
+        p_amount: amount,
+        p_method: paymentMethod,
+        p_category: category,
+        p_date: today,
+        p_notes: notes,
+        p_type: 'expense',
+      })
 
-      const { error: upErr } = await supabase
-        .from('installments')
-        .update({ status: 'paid', transaction_id: tx.id })
-        .eq('id', selectedInst.id)
-        .eq('store_id', storeId)
-
-      if (upErr) throw upErr
+      if (installmentRpcErr) throw installmentRpcErr
 
       toast.success('Η δόση πληρώθηκε')
       setPayOpen(false)
