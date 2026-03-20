@@ -1190,7 +1190,7 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
         )
 
       if (String(t.fixed_assets?.sub_category || '').toLowerCase() === 'staff')
-        return t.fixed_assets?.name || staff.find((s) => String(s.id) === String(t.fixed_asset_id))?.name || 'Υπάλληλος'
+        return t.fixed_assets?.name || staff.find((s) => String(s.id) === String(t.employee_id || t.fixed_asset_id || ''))?.name || 'Υπάλληλος'
 
       if (t.suppliers?.name || t.supplier_id)
         return t.suppliers?.name || suppliers.find((s) => String(s.id) === String(t.supplier_id))?.name || 'Προμηθευτής'
@@ -1198,7 +1198,7 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
       if (t.fixed_asset_id)
         return t.fixed_assets?.name || maintenanceWorkers.find((m) => String(m.id) === String(t.fixed_asset_id))?.name || '-'
 
-      if (t.type === 'tip_entry') return staff.find((s) => String(s.id) === String(t.fixed_asset_id))?.name || 'Tips'
+      if (t.type === 'tip_entry') return staff.find((s) => String(s.id) === String(t.employee_id || t.fixed_asset_id || ''))?.name || 'Tips'
 
       return t.category || '-'
     },

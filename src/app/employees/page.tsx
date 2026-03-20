@@ -850,7 +850,7 @@ function EmployeesContent() {
   // - tips ΔΕΝ υπολογίζονται στο stats.total (ΣΥΝΟΛΟ ΕΤΟΥΣ)
   const getYearlyStats = (id: string) => {
     const yearTrans = transactions.filter((t) => {
-      if (String(t.fixed_asset_id || '') !== id && String(t.employee_id || '') !== id) return false
+      if (String(t.employee_id || '') !== id && String(t.fixed_asset_id || '') !== id) return false
       const d = parseTxDate(t)
       if (!d) return false
       return getBusinessYear(d) === viewYear
@@ -1755,7 +1755,7 @@ function EmployeesContent() {
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '20px' }}>
                           {transactions
                             .filter((t) => {
-                              if (String(t.fixed_asset_id || '') !== emp.id && String(t.employee_id || '') !== emp.id) return false
+                              if (String(t.employee_id || '') !== emp.id && String(t.fixed_asset_id || '') !== emp.id) return false
                               const d = parseTxDate(t)
                               if (!d) return false
                               return getBusinessYear(d) === viewYear

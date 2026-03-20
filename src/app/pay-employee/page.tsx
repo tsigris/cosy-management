@@ -76,10 +76,10 @@ function PayEmployeeContent() {
       const { data: advanceRows, error: advanceError } = await supabase
         .from('transactions')
         .select('amount')
-        .eq('employee_id', empId)
         .eq('store_id', storeId)
         .eq('type', 'salary_advance')
-        .eq('is_settled', false);
+        .eq('is_settled', false)
+        .or(`employee_id.eq.${empId},fixed_asset_id.eq.${empId}`);
 
       if (advanceError) throw advanceError;
       const totalAdvance = (advanceRows || []).reduce((sum, r) => sum + Math.abs(Number(r.amount) || 0), 0);

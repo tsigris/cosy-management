@@ -68,6 +68,7 @@ type DashboardTransaction = {
   date?: string | null
   is_credit?: boolean | null
   supplier_id?: string | null
+  employee_id?: string | null
   fixed_asset_id?: string | null
   revenue_source_id?: string | null
   user_id?: string | null
@@ -183,6 +184,7 @@ function DashboardContent() {
     if (description.startsWith('Πληρωμή Δόσης')) return `loan:${t.id}`
     if (t?.revenue_source_id) return `rev:${t.revenue_source_id}`
     if (t?.supplier_id) return `sup:${t.supplier_id}`
+    if (t?.employee_id) return `asset:${t.employee_id}`
     if (t?.fixed_asset_id) return `asset:${t.fixed_asset_id}`
     return null
   }
@@ -342,6 +344,7 @@ function DashboardContent() {
   date,
   is_credit,
   supplier_id,
+  employee_id,
   fixed_asset_id,
   revenue_source_id,
   user_id,
@@ -386,6 +389,7 @@ function DashboardContent() {
   date,
   is_credit,
   supplier_id,
+  employee_id,
   fixed_asset_id,
   revenue_source_id,
   user_id,
