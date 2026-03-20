@@ -24,6 +24,7 @@ import {
 } from 'lucide-react'
 import EconomicsHeaderNav from '@/components/economics/EconomicsHeaderNav'
 import EconomicsPeriodFilter from '@/components/economics/EconomicsPeriodFilter'
+import EconomicsContainer from '@/components/economics/EconomicsContainer'
 import { toBusinessDayDate } from '@/lib/businessDate'
 
 const colors = {
@@ -666,7 +667,7 @@ function CreditsContent() {
   return (
     <div style={iphoneWrapper}>
       <Toaster position="top-center" richColors />
-      <div style={{ maxWidth: '520px', margin: '0 auto', paddingBottom: '120px' }}>
+      <EconomicsContainer>
         <EconomicsHeaderNav
           title={headerTitle}
           subtitle={headerSubtitle}
@@ -1014,7 +1015,7 @@ function CreditsContent() {
             <div style={emptyStateStyle}>Δεν υπάρχουν πιστώσεις για το {selectedYear}</div>
           )}
         </div>
-      </div>
+      </EconomicsContainer>
     </div>
   )
 }
