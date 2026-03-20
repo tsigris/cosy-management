@@ -308,7 +308,9 @@ begin
 
   v_next_amount := v_current_amount + v_delta;
 
-  if v_next_amount >= v_target_amount and v_target_amount > 0 then
+  if lower(v_prev_status) = 'completed' then
+    v_next_status := 'completed';
+  elsif v_next_amount >= v_target_amount and v_target_amount > 0 then
     v_next_status := 'completed';
   else
     v_next_status := 'active';
