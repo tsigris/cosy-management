@@ -164,7 +164,7 @@ function EmployeesContent() {
 
       const { data, error } = await supabase
         .from('transactions')
-        .select('id,date,created_at,notes,employee_id,amount,fixed_assets(name),type')
+        .select('id,date,created_at,notes,employee_id,fixed_asset_id,amount,fixed_assets(name),type')
         .eq('store_id', storeId)
         .eq('type', 'tip_entry')
         .gte('date', start.toISOString().slice(0, 10))
@@ -179,6 +179,7 @@ function EmployeesContent() {
       const now = new Date()
       const currentBusinessYear = getBusinessYear(now)
       const currentBusinessMonth = getBusinessMonth(now)
+      const employeeNamesById = new Map(employees.map((e: any) => [String(e.id), String(e.name || '')]))
 
       let monthlyTips = 0
 
@@ -191,7 +192,7 @@ function EmployeesContent() {
           if (!d) {
             return {
               id: t.id,
-              name: t?.fixed_assets?.name || '—',
+              name: employeeNamesById.get(String(t.employee_id || '')) || employeeNamesById.get(String(t.fixed_asset_id || '')) || t?.fixed_assets?.name || '—',
               date: t.date,
               amount: 0,
               note,
@@ -209,7 +210,7 @@ function EmployeesContent() {
 
           return {
             id: t.id,
-            name: t?.fixed_assets?.name || '—',
+            name: employeeNamesById.get(String(t.employee_id || '')) || employeeNamesById.get(String(t.fixed_asset_id || '')) || t?.fixed_assets?.name || '—',
             date: t.date,
             amount,
             note,
@@ -241,7 +242,7 @@ function EmployeesContent() {
     } catch (e) {
       console.error(e)
     }
-  }, [storeId])
+  }, [storeId, employees])
 
   const fetchInitialData = useCallback(async () => {
     setLoading(true)
@@ -266,11 +267,11 @@ function EmployeesContent() {
           .from('transactions')
           .select('*')
           .eq('store_id', storeId)
-          .not('fixed_asset_id', 'is', null)
+          .or('fixed_asset_id.not.is.null,employee_id.not.is.null')
           .order('date', { ascending: false }),
         supabase.from('employee_overtimes').select('*').eq('store_id', storeId).eq('is_paid', false),
         supabase.from('employee_days_off').select(dayOffSelect).eq('store_id', storeId).order(dayOffDateColumn, { ascending: true }),
-        supabase.from('transactions').select('id,amount,date,created_at,category,type,notes,fixed_asset_id').eq('store_id', storeId),
+        supabase.from('transactions').select('id,amount,date,created_at,category,type,notes,employee_id,fixed_asset_id').eq('store_id', storeId),
         supabase.from('stores').select('name').eq('id', storeId).maybeSingle(),
       ])
 
@@ -331,8 +332,10 @@ function EmployeesContent() {
 
     return transactions
       .filter((t: any) => {
-        if (!t?.fixed_asset_id) return false
-        if (!staffIds.has(String(t.fixed_asset_id))) return false
+        const txEmployeeId = String(t?.employee_id || '')
+        const txFixedAssetId = String(t?.fixed_asset_id || '')
+        if (!txEmployeeId && !txFixedAssetId) return false
+        if (!staffIds.has(txEmployeeId) && !staffIds.has(txFixedAssetId)) return false
 
         const d = parseTxDate(t)
         if (!d) return false
@@ -739,6 +742,7 @@ function EmployeesContent() {
     const { error } = await supabase.from('transactions').insert([
       {
         store_id: tenantStoreId,
+        employee_id: tipModal.empId,
         fixed_asset_id: tipModal.empId,
         amount: amountNum,
         type: 'tip_entry', // ✅ tips as dedicated type
@@ -846,7 +850,7 @@ function EmployeesContent() {
   // - tips ΔΕΝ υπολογίζονται στο stats.total (ΣΥΝΟΛΟ ΕΤΟΥΣ)
   const getYearlyStats = (id: string) => {
     const yearTrans = transactions.filter((t) => {
-      if (t.fixed_asset_id !== id) return false
+      if (String(t.fixed_asset_id || '') !== id && String(t.employee_id || '') !== id) return false
       const d = parseTxDate(t)
       if (!d) return false
       return getBusinessYear(d) === viewYear
@@ -966,7 +970,7 @@ function EmployeesContent() {
     setLoading(false)
   }
 
-  // ✅ Delete staff: delete transactions by fixed_asset_id, then delete fixed_assets
+  // ✅ Delete staff: transition cleanup by employee_id OR fixed_asset_id, then delete fixed_assets
   async function deleteEmployee(id: string, name: string) {
     if (!confirm(`Οριστική διαγραφή του/της ${name}; Θα σβηστεί και το ιστορικό.`)) return
 
@@ -980,7 +984,11 @@ function EmployeesContent() {
 
     setLoading(true)
 
-    const { error: transErr } = await supabase.from('transactions').delete().eq('fixed_asset_id', id).eq('store_id', tenantStoreId)
+    const { error: transErr } = await supabase
+      .from('transactions')
+      .delete()
+      .eq('store_id', tenantStoreId)
+      .or(`employee_id.eq.${id},fixed_asset_id.eq.${id}`)
     if (transErr) {
       console.error(transErr)
       toast.error('Αποτυχία διαγραφής συναλλαγών.')
@@ -1747,7 +1755,7 @@ function EmployeesContent() {
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '20px' }}>
                           {transactions
                             .filter((t) => {
-                              if (t.fixed_asset_id !== emp.id) return false
+                              if (String(t.fixed_asset_id || '') !== emp.id && String(t.employee_id || '') !== emp.id) return false
                               const d = parseTxDate(t)
                               if (!d) return false
                               return getBusinessYear(d) === viewYear
