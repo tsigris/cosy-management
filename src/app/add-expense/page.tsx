@@ -1069,6 +1069,7 @@ function AddExpenseForm() {
         store_id: activeStoreId,
         supplier_id: selectedEntity.kind === 'supplier' ? selectedEntity.id : null,
         fixed_asset_id: selectedEntity.kind === 'asset' ? selectedEntity.id : null,
+        employee_id: selectedEntity.kind === 'asset' && category === 'Staff' ? selectedEntity.id : null,
         category,
         created_by_name: clampText(createdByName, 60),
         notes: finalNotes,

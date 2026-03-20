@@ -123,6 +123,7 @@ function PayEmployeeContent() {
           category: 'Staff',
           method: paymentMethod,
           employee_id: empId,
+          fixed_asset_id: empId,
           store_id: storeId,
           date: date,
           notes: notes,
