@@ -353,7 +353,7 @@ function DashboardContent() {
     username
   ),
   suppliers(name),
-  fixed_assets(name),
+  fixed_assets:fixed_assets!transactions_fixed_asset_id_fkey(name),
   revenue_sources(name)
 `)
           .eq('store_id', storeIdFromUrl)
@@ -395,7 +395,7 @@ function DashboardContent() {
   user_id,
   created_by_name,
   suppliers(name),
-  fixed_assets(name),
+  fixed_assets:fixed_assets!transactions_fixed_asset_id_fkey(name),
   revenue_sources(name)
 `)
           .eq('store_id', storeIdFromUrl)
