@@ -31,7 +31,7 @@ type PayBasis = 'monthly' | 'daily'
 // ✅ safest date parser (handles ISO/date-only/timestamp)
 const parseTxDate = (t: any): Date | null => {
   if (!t) return null
-  const raw = t.created_at || t.date
+  const raw = t.date || t.created_at
   if (!raw) return null
   const d = new Date(raw)
   return isNaN(d.getTime()) ? null : d
