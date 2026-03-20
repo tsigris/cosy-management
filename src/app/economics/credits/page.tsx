@@ -654,7 +654,7 @@ function CreditsContent() {
 
   const viewLabel =
     creditsView === 'entity'
-      ? 'Ανά Οντότητα'
+      ? 'Ανά Δικαιούχο'
       : creditsView === 'date'
         ? 'Ανά Ημέρα'
         : creditsView === 'method'
@@ -704,9 +704,9 @@ function CreditsContent() {
           <button
             onClick={() => setCreditsView('entity')}
             style={{ ...viewBtn, background: creditsView === 'entity' ? 'var(--surface)' : 'transparent' }}
-            title="Ανά Οντότητα"
+            title="Ανά Δικαιούχο"
           >
-            <Layers size={14} /> Οντότητα
+            <Layers size={14} /> Δικαιούχο
           </button>
           <button
             onClick={() => setCreditsView('date')}
