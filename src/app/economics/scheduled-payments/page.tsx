@@ -415,7 +415,7 @@ export default function EconomicsScheduledPaymentsPage() {
 															<div style={{ fontSize: 12, color: 'var(--muted)' }}>{formatDateEl(g.due_date, '-')}</div>
 														</div>
 														<div style={{ display: 'flex', gap: 8 }}>
-															<button style={{ padding: '6px 10px', borderRadius: 8 }}>✔ Πληρώθηκε</button>
+															<button style={{ padding: '6px 10px', borderRadius: 8 }}>Εκκρεμεί</button>
 															<button style={{ padding: '6px 10px', borderRadius: 8 }}>✏ Επεξεργασία</button>
 															<button style={{ padding: '6px 10px', borderRadius: 8 }}>➡ Μεταφορά</button>
 														</div>
