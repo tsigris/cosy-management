@@ -5,7 +5,7 @@ import { useSearchParams } from 'next/navigation'
 import EconomicsHeaderNav from '@/components/economics/EconomicsHeaderNav'
 import EconomicsPeriodFilter from '@/components/economics/EconomicsPeriodFilter'
 import { getSupabase } from '@/lib/supabase'
-import { formatIsoDate } from '@/lib/businessDate'
+import { formatIsoDate, toBusinessDayDateNormalized } from '@/lib/businessDate'
 import { getEmployees } from '@/lib/employees'
 import { formatDateEl } from '@/lib/formatters'
 
@@ -17,6 +17,9 @@ type ScheduledPayment = {
 	due_date: string // YYYY-MM-DD
 	source: string
 	notes?: string | null
+	status?: string | null
+	is_paid?: boolean | null
+	transaction_id?: string | null
 }
 
 type ThemeName = 'light' | 'dark'
@@ -55,7 +58,7 @@ export default function EconomicsScheduledPaymentsPage() {
 	const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear())
 
 	const today = useMemo(() => {
-		const d = new Date()
+		const d = toBusinessDayDateNormalized(new Date())
 		d.setHours(0, 0, 0, 0)
 		return d
 	}, [])
@@ -117,7 +120,7 @@ export default function EconomicsScheduledPaymentsPage() {
 				try {
 					const { data: taxes, error: taxErr } = await supabase
 						.from('tax_installments')
-						.select('id, amount, due_date, description')
+						.select('*')
 						.eq('store_id', storeId)
 						.lte('due_date', toDateStr)
 						.limit(500)
@@ -133,6 +136,9 @@ export default function EconomicsScheduledPaymentsPage() {
 								due_date: String(t.due_date).slice(0, 10),
 								source: 'tax_installments',
 								notes: null,
+								status: t.status ?? null,
+								is_paid: typeof t.is_paid === 'boolean' ? t.is_paid : null,
+								transaction_id: t.transaction_id ?? null,
 							})
 						}
 					}
@@ -144,7 +150,7 @@ export default function EconomicsScheduledPaymentsPage() {
 				try {
 					const { data: expenses, error: expErr } = await supabase
 						.from('expenses')
-						.select('id, title, amount, due_date, supplier_id, category, notes')
+						.select('*')
 						.eq('store_id', storeId)
 						.lte('due_date', toDateStr)
 						.limit(800)
@@ -164,6 +170,9 @@ export default function EconomicsScheduledPaymentsPage() {
 								due_date: String(ex.due_date).slice(0, 10),
 								source: 'expenses',
 								notes: ex.notes || null,
+								status: ex.status ?? null,
+								is_paid: typeof ex.is_paid === 'boolean' ? ex.is_paid : null,
+								transaction_id: ex.transaction_id ?? null,
 							})
 						}
 					}
@@ -175,7 +184,7 @@ export default function EconomicsScheduledPaymentsPage() {
 				try {
 					const { data: txs, error: txErr } = await supabase
 						.from('transactions')
-						.select('id, description, amount, due_date, type, suppliers:suppliers(name), notes')
+						.select('*')
 						.eq('store_id', storeId)
 						.lte('due_date', toDateStr)
 						.limit(800)
@@ -183,7 +192,7 @@ export default function EconomicsScheduledPaymentsPage() {
 					if (!txErr && Array.isArray(txs)) {
 						for (const t of txs as any) {
 							if (!t.due_date) continue
-							const cat = t.suppliers ? 'Προμηθευτές' : t.type === 'expense' ? 'Λοιπά' : 'Λοιπά'
+							const cat = t.supplier_id ? 'Προμηθευτές' : t.type === 'expense' ? 'Λοιπά' : 'Λοιπά'
 							results.push({
 								id: `tx-${t.id}`,
 								title: t.description || t.notes || 'Πληρωμή',
@@ -192,6 +201,9 @@ export default function EconomicsScheduledPaymentsPage() {
 								due_date: String(t.due_date).slice(0, 10),
 								source: 'transactions',
 								notes: t.notes || null,
+								status: t.status ?? null,
+								is_paid: typeof t.is_paid === 'boolean' ? t.is_paid : null,
+								transaction_id: t.transaction_id ?? null,
 							})
 						}
 					}
@@ -249,6 +261,24 @@ export default function EconomicsScheduledPaymentsPage() {
 		return 'ΠΡΟΓΡΑΜΜΑΤΙΣΜΕΝΟ'
 	}
 
+	const normalizePaymentStatus = (row: ScheduledPayment) => String(row.status || '').trim().toLowerCase()
+
+	const isPaidPayment = (row: ScheduledPayment) => {
+		const status = normalizePaymentStatus(row)
+		if (status) return status === 'paid'
+		if (typeof row.is_paid === 'boolean') return row.is_paid === true
+		if (row.transaction_id) return true
+		return false
+	}
+
+	const isPendingPayment = (row: ScheduledPayment) => {
+		const status = normalizePaymentStatus(row)
+		if (status) return status === 'pending'
+		if (typeof row.is_paid === 'boolean') return row.is_paid === false
+		if (row.transaction_id) return false
+		return !isPaidPayment(row)
+	}
+
 	const filteredItems = useMemo(() => {
 		return items.filter((it) => {
 			if (filter === 'all') return true
@@ -259,6 +289,8 @@ export default function EconomicsScheduledPaymentsPage() {
 			return true
 		})
 	}, [items, filter])
+
+	const pendingItems = useMemo(() => filteredItems.filter((it) => isPendingPayment(it)), [filteredItems])
 
 	// Summary cards
 	const summary = useMemo(() => {
@@ -271,7 +303,7 @@ export default function EconomicsScheduledPaymentsPage() {
 		let totalAmt = 0
 		let totalCount = 0
 
-		for (const it of filteredItems) {
+		for (const it of pendingItems) {
 			const status = computeStatus(it.due_date)
 			const amt = Number(it.amount) || 0
 			totalAmt += amt
@@ -291,7 +323,7 @@ export default function EconomicsScheduledPaymentsPage() {
 		}
 
 		return { overdueAmt, overdueCount, todayAmt, todayCount, next7Amt, next7Count, totalAmt, totalCount }
-	}, [filteredItems])
+	}, [pendingItems])
 
 	const amountFormatter = useMemo(() => new Intl.NumberFormat('el-GR', { style: 'currency', currency: 'EUR' }), [])
 
@@ -355,13 +387,13 @@ export default function EconomicsScheduledPaymentsPage() {
 				<div style={{ marginTop: 18 }}>
 					{loading ? (
 						<div>Φόρτωση...</div>
-					) : filteredItems.length === 0 ? (
+					) : pendingItems.length === 0 ? (
 						<div style={{ color: 'var(--muted)' }}>Κανένα προγραμματισμένο στοιχείο.</div>
 					) : (
 						// Grouping: ΛΗΞΙΠΡΟΘΕΣΜΟ, ΣΗΜΕΡΑ, ΑΥΡΙΟ, ΑΥΤΗ ΤΗΝ ΕΒΔΟΜΑΔΑ, ΕΠΟΜΕΝΕΣ ΠΛΗΡΩΜΕΣ
 						<div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
 							{['ΛΗΞΙΠΡΟΘΕΣΜΟ', 'ΣΗΜΕΡΑ', 'ΑΥΡΙΟ', 'ΑΥΤΗ ΤΗΝ ΕΒΔΟΜΑΔΑ', 'ΕΠΟΜΕΝΕΣ ΠΛΗΡΩΜΕΣ'].map((section) => {
-								const group = filteredItems.filter((it) => {
+								const group = pendingItems.filter((it) => {
 									const status = computeStatus(it.due_date)
 									if (section === 'ΕΠΟΜΕΝΕΣ ΠΛΗΡΩΜΕΣ') return status === 'ΠΡΟΓΡΑΜΜΑΤΙΣΜΕΝΟ' || status === 'ΕΠΟΜΕΝΟ ΜΗΝΑ'
 									return status === section
