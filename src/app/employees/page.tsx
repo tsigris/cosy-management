@@ -164,7 +164,7 @@ function EmployeesContent() {
 
       const { data, error } = await supabase
         .from('transactions')
-        .select('id,date,created_at,notes,employee_id,fixed_asset_id,amount,fixed_assets(name),type')
+        .select('id,date,created_at,notes,employee_id,fixed_asset_id,amount,type')
         .eq('store_id', storeId)
         .eq('type', 'tip_entry')
         .gte('date', start.toISOString().slice(0, 10))
