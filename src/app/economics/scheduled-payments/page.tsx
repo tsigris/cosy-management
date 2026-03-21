@@ -53,9 +53,17 @@ export default function EconomicsScheduledPaymentsPage() {
 
 	const [loading, setLoading] = useState(true)
 	const [items, setItems] = useState<ScheduledPayment[]>([])
-	const [filter, setFilter] = useState<'all' | 'salaries' | 'tax' | 'suppliers' | 'bills'>('all')
+	const [filter, setFilter] = useState<'all' | 'salaries' | 'tax' | 'suppliers' | 'bills' | 'settlements_loans'>('all')
 	const [period, setPeriod] = useState<'month' | 'year' | '30days' | 'all'>('30days')
 	const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear())
+	const [isMobile, setIsMobile] = useState(false)
+
+	useEffect(() => {
+		const onResize = () => setIsMobile(window.innerWidth < 768)
+		onResize()
+		window.addEventListener('resize', onResize)
+		return () => window.removeEventListener('resize', onResize)
+	}, [])
 
 	const today = useMemo(() => {
 		const d = toBusinessDayDateNormalized(new Date())
@@ -211,6 +219,49 @@ export default function EconomicsScheduledPaymentsPage() {
 					// ignore
 				}
 
+				// 5) settlements/installments (pending only, installments as source of truth)
+				try {
+					const [{ data: settlements, error: settlementsErr }, { data: installments, error: installmentsErr }] = await Promise.all([
+						supabase.from('settlements').select('id, name, type, rf_code, store_id').eq('store_id', storeId).limit(2000),
+						supabase
+							.from('installments')
+							.select('id, settlement_id, installment_number, due_date, amount, status, transaction_id, store_id')
+							.eq('store_id', storeId)
+							.eq('status', 'pending')
+							.is('transaction_id', null)
+							.lte('due_date', toDateStr)
+							.limit(3000),
+					])
+
+					if (!settlementsErr && !installmentsErr && Array.isArray(installments)) {
+						const settlementMap = new Map(
+							(Array.isArray(settlements) ? settlements : []).map((s: any) => [String(s.id), s]),
+						)
+
+						for (const inst of installments as any) {
+							if (!inst?.due_date) continue
+							const settlement = settlementMap.get(String(inst.settlement_id || ''))
+							const settlementType = String(settlement?.type || '').toLowerCase()
+							const isLoan = settlementType === 'loan'
+							const settlementName = String(settlement?.name || '').trim() || '—'
+							const titlePrefix = isLoan ? 'Δάνειο' : 'Ρύθμιση'
+							results.push({
+								id: `inst-${inst.id}`,
+								title: `${titlePrefix}: ${settlementName}`,
+								amount: Number(inst.amount) || 0,
+								category: isLoan ? 'Δάνεια' : 'Ρυθμίσεις',
+								due_date: String(inst.due_date).slice(0, 10),
+								source: 'installments',
+								notes: String(settlement?.rf_code || '').trim() || settlementName,
+								status: String(inst.status || ''),
+								transaction_id: inst.transaction_id ?? null,
+							})
+						}
+					}
+				} catch (e) {
+					// ignore
+				}
+
 				if (!cancelled) {
 					// limit to window: include overdue and up to +30 days
 					const filtered = results.filter((r) => {
@@ -286,6 +337,7 @@ export default function EconomicsScheduledPaymentsPage() {
 			if (filter === 'tax') return it.category === 'Δόσεις Εφορίας / Ρύθμισης'
 			if (filter === 'suppliers') return it.category === 'Προμηθευτές'
 			if (filter === 'bills') return it.category === 'Λογαριασμοί'
+			if (filter === 'settlements_loans') return it.category === 'Ρυθμίσεις' || it.category === 'Δάνεια'
 			return true
 		})
 	}, [items, filter])
@@ -382,6 +434,7 @@ export default function EconomicsScheduledPaymentsPage() {
 					<button onClick={() => setFilter('tax')} style={{ padding: '8px 12px', borderRadius: 999, border: filter === 'tax' ? '1px solid var(--text)' : '1px solid var(--border)' }}>Εφορία</button>
 					<button onClick={() => setFilter('suppliers')} style={{ padding: '8px 12px', borderRadius: 999, border: filter === 'suppliers' ? '1px solid var(--text)' : '1px solid var(--border)' }}>Προμηθευτές</button>
 					<button onClick={() => setFilter('bills')} style={{ padding: '8px 12px', borderRadius: 999, border: filter === 'bills' ? '1px solid var(--text)' : '1px solid var(--border)' }}>Λογαριασμοί</button>
+					<button onClick={() => setFilter('settlements_loans')} style={{ padding: '8px 12px', borderRadius: 999, border: filter === 'settlements_loans' ? '1px solid var(--text)' : '1px solid var(--border)' }}>Ρυθμίσεις/Δάνεια</button>
 				</div>
 
 				<div style={{ marginTop: 18 }}>
@@ -404,22 +457,42 @@ export default function EconomicsScheduledPaymentsPage() {
 										<div style={{ fontSize: 13, fontWeight: 800, marginBottom: 8 }}>{section}</div>
 										<div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
 											{group.map((g) => (
-												<div key={g.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 12, borderRadius: 12, background: 'var(--surface)', boxShadow: 'var(--shadow)' }}>
-													<div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-														<div style={{ fontWeight: 800 }}>{g.title}</div>
-														<div style={{ fontSize: 13, color: 'var(--muted)' }}>{g.category}</div>
-													</div>
-													<div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-														<div style={{ textAlign: 'right' }}>
-															<div style={{ fontWeight: 800 }}>{amountFormatter.format(g.amount)}</div>
-															<div style={{ fontSize: 12, color: 'var(--muted)' }}>{formatDateEl(g.due_date, '-')}</div>
-														</div>
-														<div style={{ display: 'flex', gap: 8 }}>
-															<button style={{ padding: '6px 10px', borderRadius: 8 }}>Εκκρεμεί</button>
-															<button style={{ padding: '6px 10px', borderRadius: 8 }}>✏ Επεξεργασία</button>
-															<button style={{ padding: '6px 10px', borderRadius: 8 }}>➡ Μεταφορά</button>
-														</div>
-													</div>
+												<div key={g.id} style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', alignItems: isMobile ? 'stretch' : 'center', justifyContent: 'space-between', gap: isMobile ? 10 : 12, padding: 12, borderRadius: 12, background: 'var(--surface)', boxShadow: 'var(--shadow)', overflow: 'hidden' }}>
+													{isMobile ? (
+														<>
+															<div style={{ fontWeight: 800, lineHeight: 1.25, wordBreak: 'break-word' }}>{g.title}</div>
+															<div style={{ fontSize: 13, color: 'var(--muted)' }}>{g.category}</div>
+															<div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+																<div style={{ fontWeight: 800 }}>{amountFormatter.format(g.amount)}</div>
+																<div style={{ fontSize: 12, color: 'var(--muted)' }}>{formatDateEl(g.due_date, '-')}</div>
+															</div>
+															<div>
+																<span style={{ display: 'inline-flex', alignItems: 'center', padding: '6px 10px', borderRadius: 999, border: '1px solid var(--border)', fontSize: 12, fontWeight: 700 }}>Εκκρεμεί</span>
+															</div>
+															<div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+																<button style={{ padding: '6px 10px', borderRadius: 8 }}>✏ Επεξεργασία</button>
+																<button style={{ padding: '6px 10px', borderRadius: 8 }}>➡ Μεταφορά</button>
+															</div>
+														</>
+													) : (
+														<>
+															<div style={{ display: 'flex', gap: 12, alignItems: 'center', minWidth: 0 }}>
+																<div style={{ fontWeight: 800, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{g.title}</div>
+																<div style={{ fontSize: 13, color: 'var(--muted)' }}>{g.category}</div>
+															</div>
+															<div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+																<div style={{ textAlign: 'right' }}>
+																	<div style={{ fontWeight: 800 }}>{amountFormatter.format(g.amount)}</div>
+																	<div style={{ fontSize: 12, color: 'var(--muted)' }}>{formatDateEl(g.due_date, '-')}</div>
+																</div>
+																<span style={{ display: 'inline-flex', alignItems: 'center', padding: '6px 10px', borderRadius: 999, border: '1px solid var(--border)', fontSize: 12, fontWeight: 700 }}>Εκκρεμεί</span>
+																<div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+																	<button style={{ padding: '6px 10px', borderRadius: 8 }}>✏ Επεξεργασία</button>
+																	<button style={{ padding: '6px 10px', borderRadius: 8 }}>➡ Μεταφορά</button>
+																</div>
+															</div>
+														</>
+													)}
 												</div>
 											))}
 										</div>
