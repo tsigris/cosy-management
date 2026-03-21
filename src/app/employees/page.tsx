@@ -324,8 +324,10 @@ function EmployeesContent() {
   // ✅ HERO KPI: Σύνολο πληρωμών υπαλλήλων τρέχοντος ΜΗΝΑ (BUSINESS MONTH) (EXCLUDES tips)
   const currentMonthPayrollTotal = useMemo(() => {
     const now = new Date()
-    const y = getBusinessYear(now)
-    const m = getBusinessMonth(now)
+    const todayBusinessDate = toBusinessDayDateNormalized(now)
+    const y = todayBusinessDate.getFullYear()
+    const m = todayBusinessDate.getMonth()
+    const day = todayBusinessDate.getDate()
 
     // μόνο υπάλληλοι που υπάρχουν στον πίνακα fixed_assets staff (για ασφάλεια)
     const staffIds = new Set(employees.map((e: any) => String(e.id)))
@@ -340,7 +342,12 @@ function EmployeesContent() {
         const d = parseTxDate(t)
         if (!d) return false
 
-        if (getBusinessYear(d) !== y || getBusinessMonth(d) !== m) return false
+        const businessDate = toBusinessDayDateNormalized(d)
+        if (kpiPeriod === 'today') {
+          if (businessDate.getFullYear() !== y || businessDate.getMonth() !== m || businessDate.getDate() !== day) return false
+        } else {
+          if (businessDate.getFullYear() !== y || businessDate.getMonth() !== m) return false
+        }
 
         // exclude tips (και παλιές/νέες εγγραφές)
         const note = String(t.notes || '')
@@ -351,7 +358,7 @@ function EmployeesContent() {
         return true
       })
       .reduce((acc: number, t: any) => acc + (Math.abs(Number(t.amount)) || 0), 0)
-  }, [transactions, employees])
+  }, [transactions, employees, kpiPeriod])
 
   const kpiDateContext = useMemo(() => {
     const now = toBusinessDayDateNormalized(new Date())
@@ -365,6 +372,7 @@ function EmployeesContent() {
 
   const accruedPayrollMonthToDate = useMemo(() => {
     const msPerDay = 1000 * 60 * 60 * 24
+    const isTodayPeriod = kpiPeriod === 'today'
 
     return employees.reduce((acc: number, emp: any) => {
       const startRaw = emp?.start_date
@@ -374,7 +382,7 @@ function EmployeesContent() {
       if (isNaN(startDate.getTime())) return acc
       if (startDate > kpiDateContext.today) return acc
 
-      const periodStart = startDate < kpiDateContext.monthStart ? kpiDateContext.monthStart : startDate
+      const periodStart = isTodayPeriod ? kpiDateContext.today : startDate < kpiDateContext.monthStart ? kpiDateContext.monthStart : startDate
       if (periodStart > kpiDateContext.today) return acc
 
       const elapsedDays = Math.floor((kpiDateContext.today.getTime() - periodStart.getTime()) / msPerDay) + 1
@@ -394,20 +402,34 @@ function EmployeesContent() {
 
       const dailyCost = monthlySalary / monthlyDays
       const includedDaysOff = getIncludedDaysOff(monthlyDays)
-      const actualDaysOff = (daysOffByEmployee[emp.id] || []).filter((row) => {
+      const daysOffRowsUpToToday = (daysOffByEmployee[emp.id] || []).filter((row) => {
         const rowDate = toBusinessDayDateNormalized(new Date(getDayOffDateValue(row)))
         if (isNaN(rowDate.getTime())) return false
         if (rowDate.getFullYear() !== kpiDateContext.year || rowDate.getMonth() !== kpiDateContext.month) return false
         return rowDate <= kpiDateContext.today
-      }).length
+      })
+
+      const actualDaysOff = daysOffRowsUpToToday.length
 
       const extraDaysOff = Math.max(actualDaysOff - includedDaysOff, 0)
       const baseAccrued = dailyCost * elapsedDays
       const deduction = extraDaysOff * dailyCost
 
+      if (isTodayPeriod) {
+        const actualDaysOffBeforeToday = daysOffRowsUpToToday.filter((row) => {
+          const rowDate = toBusinessDayDateNormalized(new Date(getDayOffDateValue(row)))
+          return rowDate < kpiDateContext.today
+        }).length
+
+        const extraBeforeToday = Math.max(actualDaysOffBeforeToday - includedDaysOff, 0)
+        const todayExtraDaysOff = Math.max(extraDaysOff - extraBeforeToday, 0)
+        const todayAccrued = dailyCost - todayExtraDaysOff * dailyCost
+        return acc + Math.max(todayAccrued, 0)
+      }
+
       return acc + Math.max(baseAccrued - deduction, 0)
     }, 0)
-  }, [employees, daysOffByEmployee, getDayOffDateValue, kpiDateContext])
+  }, [employees, daysOffByEmployee, getDayOffDateValue, kpiDateContext, kpiPeriod])
 
   const revenueTotalForSelectedPeriod = useMemo(() => {
     return allStoreTransactions
@@ -416,9 +438,17 @@ function EmployeesContent() {
         if (!d) return false
 
         const businessDate = toBusinessDayDateNormalized(d)
-        const sameMonth = businessDate.getFullYear() === kpiDateContext.year && businessDate.getMonth() === kpiDateContext.month
-        if (!sameMonth) return false
-        if (businessDate > kpiDateContext.today) return false
+        if (kpiPeriod === 'today') {
+          const isToday =
+            businessDate.getFullYear() === kpiDateContext.year &&
+            businessDate.getMonth() === kpiDateContext.month &&
+            businessDate.getDate() === kpiDateContext.today.getDate()
+          if (!isToday) return false
+        } else {
+          const sameMonth = businessDate.getFullYear() === kpiDateContext.year && businessDate.getMonth() === kpiDateContext.month
+          if (!sameMonth) return false
+          if (businessDate > kpiDateContext.today) return false
+        }
 
         const amount = Number(t.amount) || 0
         if (amount <= 0) return false
@@ -433,7 +463,7 @@ function EmployeesContent() {
         return true
       })
       .reduce((acc: number, t: any) => acc + (Number(t.amount) || 0), 0)
-  }, [allStoreTransactions, kpiDateContext])
+  }, [allStoreTransactions, kpiDateContext, kpiPeriod])
 
   const payrollPercentOfRevenue = useMemo(() => {
     if (revenueTotalForSelectedPeriod <= 0) return 0
