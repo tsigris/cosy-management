@@ -485,7 +485,7 @@ export default function NotificationsBell({ storeId, onUpdate }: { storeId: stri
 
       const category = selectedSet.type === 'loan' ? 'Δάνεια' : 'Ρυθμίσεις'
 
-      const { error: installmentRpcErr } = await supabase.rpc('installment_payment_atomic', {
+      const installmentPaymentPayload = {
         p_store_id: storeId,
         p_installment_id: selectedInst.id,
         p_amount: amount,
@@ -494,9 +494,33 @@ export default function NotificationsBell({ storeId, onUpdate }: { storeId: stri
         p_date: today,
         p_notes: notes,
         p_type: 'expense',
+      }
+
+      console.log('INSTALLMENT PAYMENT INPUT', {
+        amount,
+        method: paymentMethod,
+        p_date: today,
+        installment_id: selectedInst.id,
+        store_id: storeId,
+        payload: installmentPaymentPayload,
       })
 
-      if (installmentRpcErr) throw installmentRpcErr
+      console.log('PAYMENT DATE CHECK', {
+        p_date: today,
+        now: new Date().toISOString(),
+      })
+
+      const { data, error: installmentRpcErr } = await supabase.rpc('installment_payment_atomic', installmentPaymentPayload)
+
+      if (installmentRpcErr) {
+        console.error('INSTALLMENT PAYMENT ERROR FULL:', installmentRpcErr)
+        console.error('MESSAGE:', installmentRpcErr.message)
+        console.error('DETAILS:', installmentRpcErr.details)
+        console.error('HINT:', installmentRpcErr.hint)
+        throw installmentRpcErr
+      }
+
+      console.log('INSTALLMENT PAYMENT SUCCESS', data)
 
       toast.success('Η δόση πληρώθηκε')
       setPayOpen(false)
@@ -505,9 +529,13 @@ export default function NotificationsBell({ storeId, onUpdate }: { storeId: stri
 
       await loadNotifications()
       if (onUpdate) onUpdate()
-    } catch (e: any) {
-      console.error(e)
-      toast.error(e?.message || 'Αποτυχία πληρωμής')
+    } catch (err: any) {
+      console.error('INSTALLMENT PAYMENT CATCH:', err)
+
+      toast.error(
+        err?.message ||
+        'Σφάλμα πληρωμής (δες console)'
+      )
     } finally {
       setSavingPayment(false)
     }

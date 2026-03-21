@@ -1481,7 +1481,7 @@ selectedSettlement.name
 
 }${selectedSettlement.rf_code ? ` (RF: ${selectedSettlement.rf_code})` : ''}`
 
-const { error: installmentRpcErr } = await supabase.rpc('installment_payment_atomic', {
+const installmentPaymentPayload = {
 
 p_store_id: storeId,
 
@@ -1499,11 +1499,35 @@ p_notes: notes,
 
 p_type: 'expense',
 
+}
+
+console.log('INSTALLMENT PAYMENT INPUT', {
+amount: Math.abs(parsedPay as number),
+method: paymentMethod,
+p_date: businessToday,
+installment_id: selectedInstallment.id,
+store_id: storeId,
+payload: installmentPaymentPayload,
 })
 
+console.log('PAYMENT DATE CHECK', {
+p_date: businessToday,
+now: new Date().toISOString(),
+})
+
+const { data, error: installmentRpcErr } = await supabase.rpc('installment_payment_atomic', installmentPaymentPayload)
 
 
-if (installmentRpcErr) throw installmentRpcErr
+
+if (installmentRpcErr) {
+console.error('INSTALLMENT PAYMENT ERROR FULL:', installmentRpcErr)
+console.error('MESSAGE:', installmentRpcErr.message)
+console.error('DETAILS:', installmentRpcErr.details)
+console.error('HINT:', installmentRpcErr.hint)
+throw installmentRpcErr
+}
+
+console.log('INSTALLMENT PAYMENT SUCCESS', data)
 
 
 
@@ -1519,9 +1543,14 @@ await loadData()
 
 if (onUpdate) onUpdate()
 
-} catch (error: unknown) {
+} catch (err: any) {
 
-toast.error(getErrorMessage(error) || 'Αποτυχία πληρωμής δόσης')
+console.error('INSTALLMENT PAYMENT CATCH:', err)
+
+toast.error(
+err?.message ||
+'Σφάλμα πληρωμής (δες console)'
+)
 
 } finally {
 
