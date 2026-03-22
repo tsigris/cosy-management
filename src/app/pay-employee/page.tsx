@@ -38,6 +38,7 @@ function PayEmployeeContent() {
   
   const [bonus, setBonus] = useState<string>('')
   const [extraOvertimeEuro, setExtraOvertimeEuro] = useState<string>('')
+  const [agreedExtraSalary, setAgreedExtraSalary] = useState<number>(0)
   const [pendingOvertimeHours, setPendingOvertimeHours] = useState<number>(0)
   const [advanceAmount, setAdvanceAmount] = useState<string>('')
   const [bankAmount, setBankAmount] = useState<string>('')
@@ -53,7 +54,7 @@ function PayEmployeeContent() {
       setLoading(true)
       const { data: emp, error } = await supabase
         .from('fixed_assets')
-        .select('pay_basis, monthly_salary, daily_rate, monthly_days')
+        .select('pay_basis, monthly_salary, daily_rate, monthly_days, agreed_extra_salary')
         .eq('id', empId)
         .eq('store_id', storeId)
         .single();
@@ -62,6 +63,7 @@ function PayEmployeeContent() {
         setAgreementType(emp.pay_basis || 'monthly');
         setBaseAmount(emp.pay_basis === 'monthly' ? (emp.monthly_salary || 0) : (emp.daily_rate || 0));
         setAgreementDays(emp.monthly_days || 26);
+        setAgreedExtraSalary(Number(emp.agreed_extra_salary || 0));
       }
 
       const businessAsOfDate = getTodayDateISO()
@@ -87,6 +89,7 @@ function PayEmployeeContent() {
         setPendingOvertimeHours(Number(rpcRow.pending_overtime_hours || 0))
         setAbsences(Number(rpcRow.extra_days_off_current_month || 0))
         setExtraOvertimeEuro(Number(rpcRow.pending_overtime_amount || 0).toFixed(2))
+        setAgreedExtraSalary(Number(rpcRow.agreed_extra_salary || emp?.agreed_extra_salary || 0))
       }
 
       const { data: overtimeRows, error: overtimeError } = await supabase
@@ -130,12 +133,14 @@ function PayEmployeeContent() {
     return workedDays * baseAmount;
   };
 
-  const grossPayable = calculateCurrentBase() + (Number(bonus) || 0) + (Number(extraOvertimeEuro) || 0);
-  const rawNetPayable = grossPayable - (advanceTotal || 0);
-  const netPayable = Math.max(0, rawNetPayable);
+  const manualBonus = Number(bonus) || 0
+  const manualOvertime = Number(extraOvertimeEuro) || 0
+  const computedGrossPayable = calculateCurrentBase() + manualOvertime
+  const computedRawRemainingPayroll = computedGrossPayable - (advanceTotal || 0)
 
   const hasRpcSummary = mode !== 'advance' && agreementType === 'monthly' && Boolean(payrollSummaryRow)
   const rpcMonthlySalary = Number(payrollSummaryRow?.monthly_salary || 0)
+  const rpcAgreedExtraSalary = Number(payrollSummaryRow?.agreed_extra_salary || 0)
   const rpcTotalAdvances = Number(payrollSummaryRow?.total_advances || 0)
   const rpcPendingOvertimeHours = Number(payrollSummaryRow?.pending_overtime_hours || 0)
   const rpcPendingOvertimeAmount = Number(payrollSummaryRow?.pending_overtime_amount || 0)
@@ -147,10 +152,13 @@ function PayEmployeeContent() {
   const rpcRemainingPay = Number(payrollSummaryRow?.remaining_pay || 0)
   const rpcComputedAmount = rpcMonthlySalary + rpcPendingOvertimeAmount - rpcDaysOffDeduction
 
-  const effectiveGrossPayable = hasRpcSummary ? rpcComputedAmount : grossPayable
+  const effectiveGrossPayable = hasRpcSummary ? rpcComputedAmount : computedGrossPayable
+  const effectiveAgreedExtraSalary = hasRpcSummary ? rpcAgreedExtraSalary : agreedExtraSalary
   const effectiveAdvanceTotal = hasRpcSummary ? rpcTotalAdvances : advanceTotal
-  const effectiveRawNetPayable = hasRpcSummary ? rpcRemainingPay : rawNetPayable
-  const effectiveNetPayable = hasRpcSummary ? rpcRemainingPay : netPayable
+  const effectiveRawRemainingPayroll = hasRpcSummary ? rpcRemainingPay : computedRawRemainingPayroll
+  const effectiveRemainingPayroll = Math.max(0, effectiveRawRemainingPayroll)
+  const effectiveRawNetPayable = effectiveRawRemainingPayroll + effectiveAgreedExtraSalary + manualBonus
+  const effectiveNetPayable = Math.max(0, effectiveRawNetPayable)
   const bankAmountNum = Number(bankAmount) || 0
   const cashAmount = Math.max(0, effectiveNetPayable - bankAmountNum)
 
@@ -189,8 +197,8 @@ function PayEmployeeContent() {
         return;
       }
 
-      // normal final payment (subtract advances)
-      if (effectiveRawNetPayable < 0) {
+      // normal final payment (remaining payroll + agreed extra + manual bonus)
+      if (effectiveRawRemainingPayroll < 0) {
         setLoading(false)
         return toast.error('Οι προκαταβολές είναι περισσότερες από το υπολογισμένο ποσό')
       }
@@ -205,7 +213,7 @@ function PayEmployeeContent() {
         return toast.error('Το ποσό τράπεζας δεν μπορεί να είναι μεγαλύτερο από το σύνολο')
       }
 
-      const agreementLabel = agreementType === 'monthly' ? 'Μισθός' : 'Ημερομίσθιο';
+      const agreementLabel = agreementType === 'monthly' ? 'Βασικός Μισθός' : 'Ημερομίσθιο';
       const daysOrAbsencesLabel = agreementType === 'monthly' ? `Απουσίες: ${absences}` : `Ημέρες: ${workedDays}`;
       const notes = `Εκκαθάριση ${empName || ''} | ${agreementLabel} | Ημέρες/Απουσίες: ${daysOrAbsencesLabel}`;
 
@@ -323,7 +331,7 @@ function PayEmployeeContent() {
                       />
                     </div>
                     <div style={inputGroup}>
-                      <label style={smallLabel}>ΒΑΣΙΚΟΣ ΜΙΣΘΟΣ</label>
+                      <label style={smallLabel}>Βασικός Μισθός</label>
                       <div style={staticValue}>{(hasRpcSummary ? rpcMonthlySalary : baseAmount).toFixed(2)}€</div>
                     </div>
                   </>
@@ -355,7 +363,12 @@ function PayEmployeeContent() {
               <div style={{...divider, margin: '20px 0'}} />
 
               <div style={inputGroup}>
-                <label style={smallLabel}>BONUS / ΕΞΤΡΑ (€)</label>
+                <label style={smallLabel}>Συμφωνημένο Extra</label>
+                <div style={staticValue}>{effectiveAgreedExtraSalary.toFixed(2)}€</div>
+              </div>
+
+              <div style={inputGroup}>
+                <label style={smallLabel}>Bonus</label>
                 <input type="number" value={bonus} onChange={e => setBonus(e.target.value)} style={inputStyle} placeholder="0.00" />
               </div>
 
@@ -403,6 +416,18 @@ function PayEmployeeContent() {
                 <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
                   <span style={resultLabel}>ΠΡΟΚΑΤΑΒΟΛΕΣ</span>
                   <span style={resultValue}>{effectiveAdvanceTotal.toFixed(2)}€</span>
+                </div>
+                <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
+                  <span style={resultLabel}>ΥΠΟΛΟΙΠΟ ΜΙΣΘΟΔΟΣΙΑΣ</span>
+                  <span style={resultValue}>{effectiveRemainingPayroll.toFixed(2)}€</span>
+                </div>
+                <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
+                  <span style={resultLabel}>Συμφωνημένο Extra</span>
+                  <span style={resultValue}>{effectiveAgreedExtraSalary.toFixed(2)}€</span>
+                </div>
+                <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
+                  <span style={resultLabel}>Bonus</span>
+                  <span style={resultValue}>{manualBonus.toFixed(2)}€</span>
                 </div>
                 <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
                   <span style={resultLabel}>ΤΕΛΙΚΟ ΠΛΗΡΩΤΕΟ</span>
@@ -453,7 +478,7 @@ function PayEmployeeContent() {
 
           <button
             onClick={handleFinalPayment}
-            disabled={loading || (mode === 'advance' ? Number(advanceAmount) <= 0 : effectiveRawNetPayable < 0)}
+            disabled={loading || (mode === 'advance' ? Number(advanceAmount) <= 0 : effectiveRawRemainingPayroll < 0)}
             style={payBtn}
           >
             {loading

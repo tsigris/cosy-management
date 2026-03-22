@@ -16,6 +16,7 @@ type RpcEmployeeRow = {
   employee_id?: string | null
   name?: string | null
   monthly_salary?: number | null
+  agreed_extra_salary?: number | null
   insurance_pct?: number | null
   insurance_amount?: number | null
   total_monthly_cost?: number | null
@@ -39,6 +40,7 @@ type EmployeePayrollRow = {
   id: string
   name: string
   monthlySalary: number
+  agreedExtraSalary: number
   insurancePct: number
   insuranceAmount: number
   totalMonthlyCost: number
@@ -179,6 +181,7 @@ function PayrollPercentContent() {
         id: String(r.employee_id || crypto.randomUUID()),
         name: String(r.name || 'Άγνωστος'),
         monthlySalary: Number(r.monthly_salary || 0),
+        agreedExtraSalary: Number(r.agreed_extra_salary || 0),
         insurancePct: Number(r.insurance_pct || 0),
         insuranceAmount: Number(r.insurance_amount || 0),
         totalMonthlyCost: Number(r.total_monthly_cost || 0),
@@ -344,7 +347,8 @@ function PayrollPercentContent() {
                   </div>
 
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                    <Metric label="Μηνιαίος Μισθός" value={eur(r.monthlySalary)} />
+                    <Metric label="Βασικός Μισθός" value={eur(r.monthlySalary)} />
+                    <Metric label="Συμφωνημένο Extra" value={eur(r.agreedExtraSalary)} />
                     <Metric
                       label={`Ασφάλιση ${pct(r.insurancePct)}`}
                       value={eur(r.insuranceAmount)}

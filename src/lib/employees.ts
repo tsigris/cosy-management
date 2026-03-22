@@ -6,6 +6,7 @@ interface EmployeeRow {
   start_date?: string | null
   salary?: number | null
   monthly_salary?: number | null
+  agreed_extra_salary?: number | null
   pay_day?: number | null
   salary_day?: number | null
   payment_day?: number | null

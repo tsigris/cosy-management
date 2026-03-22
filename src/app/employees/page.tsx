@@ -124,6 +124,7 @@ function EmployeesContent() {
     iban: '',
     bank_name: 'Εθνική Τράπεζα',
     monthly_salary: '',
+    agreed_extra_salary: '0',
     daily_rate: '',
     monthly_days: '26', // ✅ default
     start_date: getTodayDateISO(),
@@ -975,6 +976,7 @@ function EmployeesContent() {
     start_date: string | null
     pay_basis: PayBasis
     monthly_salary: number | null
+    agreed_extra_salary: number
     daily_rate: number | null
     monthly_days: number
     is_active: boolean
@@ -1002,6 +1004,7 @@ function EmployeesContent() {
     }
 
     const monthlySalaryNum = Number(formData.monthly_salary)
+    const agreedExtraSalaryNum = Number(formData.agreed_extra_salary)
     const dailyRateNum = Number(formData.daily_rate)
 
     const payload: FixedAssetStaffPayload = {
@@ -1011,6 +1014,7 @@ function EmployeesContent() {
       start_date: formData.start_date || null,
       pay_basis: payBasis,
       monthly_salary: payBasis === 'monthly' && Number.isFinite(monthlySalaryNum) ? monthlySalaryNum : null,
+      agreed_extra_salary: payBasis === 'monthly' && Number.isFinite(agreedExtraSalaryNum) ? agreedExtraSalaryNum : 0,
       daily_rate: payBasis === 'daily' && Number.isFinite(dailyRateNum) ? dailyRateNum : null,
       monthly_days: monthlyDaysNum,
       is_active: true,
@@ -1101,6 +1105,7 @@ function EmployeesContent() {
       iban: '',
       bank_name: 'Εθνική Τράπεζα',
       monthly_salary: '',
+      agreed_extra_salary: '0',
       daily_rate: '',
       monthly_days: '26',
       start_date: getTodayDateISO(),
@@ -1465,7 +1470,7 @@ function EmployeesContent() {
                   {/* Salary/Daily + Monthly Days (if monthly) */}
                   <div style={{ display: 'flex', gap: '12px', flex: 1 }}>
                     <div style={{ flex: 1 }}>
-                      <label style={labelStyle}>{payBasis === 'monthly' ? 'Μισθός (€) *' : 'Ημερομίσθιο (€) *'}</label>
+                      <label style={labelStyle}>{payBasis === 'monthly' ? 'Βασικός Μισθός' : 'Ημερομίσθιο (€) *'}</label>
                       <div style={amountInputWrap}>
                         <input
                           type="number"
@@ -1489,6 +1494,26 @@ function EmployeesContent() {
                         <span style={euroAdornmentStyle}>€</span>
                       </div>
                     </div>
+
+                    {payBasis === 'monthly' && (
+                      <div style={{ flex: 1 }}>
+                        <label style={labelStyle}>Συμφωνημένο Extra</label>
+                        <div style={amountInputWrap}>
+                          <input
+                            type="number"
+                            inputMode="decimal"
+                            value={formData.agreed_extra_salary}
+                            onFocus={(e) => {
+                              if (e.target.value === '0') setFormData({ ...formData, agreed_extra_salary: '' })
+                            }}
+                            onChange={(e) => setFormData({ ...formData, agreed_extra_salary: e.target.value })}
+                            style={amountInputStyle}
+                            placeholder="0"
+                          />
+                          <span style={euroAdornmentStyle}>€</span>
+                        </div>
+                      </div>
+                    )}
 
                     {payBasis === 'monthly' && (
                       <div style={{ flex: 1 }}>
@@ -1560,6 +1585,7 @@ function EmployeesContent() {
                 const isInactive = emp.is_active === false
                 const monthlyDays = Number(emp.work_days_per_month ?? emp.monthly_days ?? 0)
                 const monthlySalary = Number(emp.monthly_salary ?? 0)
+                const agreedExtraSalary = Number(emp.agreed_extra_salary ?? 0)
                 const isMonthlyEmployee = (emp.pay_basis || 'monthly') === 'monthly'
                 const dayOffRowsThisMonth = (daysOffByEmployee[emp.id] || [])
                   .filter((row) => {
@@ -1628,8 +1654,9 @@ function EmployeesContent() {
 
                       <div style={employeeMetaRow}>
                         <span style={employeeMetaPill}>
-                          {isMonthlyEmployee ? `ΜΙΣΘΟΣ ${monthlySalary.toFixed(2)}€` : `ΗΜΕΡΟΜΙΣΘΙΟ ${Number(emp.daily_rate ?? 0).toFixed(2)}€`}
+                          {isMonthlyEmployee ? `Βασικός Μισθός ${monthlySalary.toFixed(2)}€` : `ΗΜΕΡΟΜΙΣΘΙΟ ${Number(emp.daily_rate ?? 0).toFixed(2)}€`}
                         </span>
+                        {isMonthlyEmployee && <span style={employeeMetaPill}>{`Συμφωνημένο Extra ${agreedExtraSalary.toFixed(2)}€`}</span>}
                         <span style={employeeMetaPill}>ΚΟΣΤΟΣ/ΗΜΕΡΑ {dailyCost.toFixed(2)}€</span>
                         {isMonthlyEmployee && <span style={employeeMetaPill}>ΜΕΡΕΣ {monthlyDays}</span>}
                       </div>
@@ -1922,6 +1949,7 @@ function EmployeesContent() {
                                   iban: emp.iban || '',
                                   bank_name: emp.bank_name || 'Εθνική Τράπεζα',
                                   monthly_salary: monthlySalaryValue,
+                                  agreed_extra_salary: String(emp.agreed_extra_salary ?? 0),
                                   daily_rate: dailyRateValue,
                                   monthly_days: emp.monthly_days != null ? String(emp.monthly_days) : '26',
                                   start_date: emp.start_date || getTodayDateISO(),
