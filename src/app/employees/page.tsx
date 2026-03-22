@@ -67,6 +67,7 @@ function EmployeesContent() {
   const [overtimes, setOvertimes] = useState<any[]>([])
   const [employeeDaysOff, setEmployeeDaysOff] = useState<any[]>([])
   const [employeeDayOffDateColumn, setEmployeeDayOffDateColumn] = useState<'off_date' | 'date'>('date')
+  const [payrollCardsByEmployeeId, setPayrollCardsByEmployeeId] = useState<Record<string, any>>({})
   const [loading, setLoading] = useState(true)
 
   const [isAdding, setIsAdding] = useState(false)
@@ -261,7 +262,9 @@ function EmployeesContent() {
       setEmployeeDayOffDateColumn(dayOffDateColumn)
       const dayOffSelect = dayOffDateColumn === 'off_date' ? 'id, employee_id, store_id, off_date' : 'id, employee_id, store_id, date'
 
-      const [empsRes, transRes, otRes, dayOffRes, allStoreTransRes, storeRes] = await Promise.all([
+      const businessAsOfDate = toBusinessDayDateNormalized(new Date()).toISOString().slice(0, 10)
+
+      const [empsRes, transRes, otRes, dayOffRes, allStoreTransRes, payrollSummaryRes, storeRes] = await Promise.all([
         getEmployees(storeId),
         supabase
           .from('transactions')
@@ -272,6 +275,10 @@ function EmployeesContent() {
         supabase.from('employee_overtimes').select('*').eq('store_id', storeId).eq('is_paid', false),
         supabase.from('employee_days_off').select(dayOffSelect).eq('store_id', storeId).order(dayOffDateColumn, { ascending: true }),
         supabase.from('transactions').select('id,amount,date,created_at,category,type,notes,employee_id,fixed_asset_id').eq('store_id', storeId),
+        supabase.rpc('get_employee_payroll_cards_summary', {
+          p_store_id: storeId,
+          p_as_of_date: businessAsOfDate,
+        }),
         supabase.from('stores').select('name').eq('id', storeId).maybeSingle(),
       ])
 
@@ -280,6 +287,18 @@ function EmployeesContent() {
       if (allStoreTransRes.data) setAllStoreTransactions(allStoreTransRes.data)
       if (otRes.data) setOvertimes(otRes.data)
       if (dayOffRes.data) setEmployeeDaysOff(dayOffRes.data)
+      if (payrollSummaryRes.error) {
+        console.error(payrollSummaryRes.error)
+      }
+      if (payrollSummaryRes.data) {
+        const nextMap = (payrollSummaryRes.data as any[]).reduce((acc: Record<string, any>, row: any) => {
+          const key = String(row?.employee_id || '')
+          if (!key) return acc
+          acc[key] = row
+          return acc
+        }, {})
+        setPayrollCardsByEmployeeId(nextMap)
+      }
       setStoreDisplayName(String(storeRes.data?.name || '').trim() || 'Κατάστημα')
     } catch (err) {
       console.error(err)
@@ -1532,13 +1551,14 @@ function EmployeesContent() {
                 const yearlyStats = getYearlyStats(emp.id)
                 const isSelected = selectedEmpId === emp.id
                 const daysLeft = getDaysUntilPayment(emp.start_date)
-                const pendingOt = getPendingOtHours(emp.id)
+                const payrollSummary = payrollCardsByEmployeeId[emp.id]
+                const pendingOt = Number(payrollSummary?.pending_overtime_hours ?? 0)
                 const pendingOtItems = overtimes
                   .filter((ot) => ot.employee_id === emp.id)
                   .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
                 const isInactive = emp.is_active === false
                 const monthlyDays = Number(emp.work_days_per_month ?? emp.monthly_days ?? 0)
-                const includedDaysOff = getIncludedDaysOff(monthlyDays)
+                const includedDaysOff = Number(payrollSummary?.included_days_off ?? 0)
                 const monthlySalary = Number(emp.monthly_salary ?? 0)
                 const isMonthlyEmployee = (emp.pay_basis || 'monthly') === 'monthly'
                 const dayOffRowsThisMonth = (daysOffByEmployee[emp.id] || [])
@@ -1550,24 +1570,16 @@ function EmployeesContent() {
                     return businessDate.getFullYear() === selectedBusinessMonth.year && businessDate.getMonth() === selectedBusinessMonth.month
                   })
                   .sort((a, b) => new Date(getDayOffDateValue(a)).getTime() - new Date(getDayOffDateValue(b)).getTime())
-                const actualDaysOff = dayOffRowsThisMonth.length
-                const extraDaysOff = Math.max(actualDaysOff - includedDaysOff, 0)
-                const dailyRateForDeduction = isMonthlyEmployee && monthlyDays > 0 ? monthlySalary / monthlyDays : 0
-                const daysOffDeduction = isMonthlyEmployee ? extraDaysOff * dailyRateForDeduction : 0
+                const actualDaysOff = Number(payrollSummary?.actual_days_off_current_month ?? 0)
+                const extraDaysOff = Number(payrollSummary?.extra_days_off_current_month ?? 0)
+                const daysOffDeduction = Number(payrollSummary?.days_off_deduction ?? 0)
                 const daysOffLabel = dayOffRowsThisMonth.map((row) => formatShortDayMonth(getDayOffDateValue(row))).join(', ')
-                const dailyCost = isMonthlyEmployee && monthlyDays > 0 ? monthlySalary / monthlyDays : Number(emp.daily_rate ?? 0)
-                const hourlyRate = isMonthlyEmployee ? dailyCost / 8 : 0
-                const totalAdvances = transactions
-                  .filter((t) => {
-                    if (String(t.employee_id || '') !== emp.id && String(t.fixed_asset_id || '') !== emp.id) return false
-                    return String(t.type || '') === 'salary_advance'
-                  })
-                  .reduce((acc, t) => acc + Math.abs(Number(t.amount) || 0), 0)
-                const pendingOtHours = Number(pendingOt || 0)
-                const pendingOtAmount = isMonthlyEmployee ? pendingOtHours * hourlyRate : 0
-                const remainingPay = isMonthlyEmployee
-                  ? monthlySalary - totalAdvances + pendingOtAmount - daysOffDeduction
-                  : 0
+                const dailyCost = Number(payrollSummary?.daily_cost ?? 0)
+                const hourlyRate = Number(payrollSummary?.hourly_cost ?? 0)
+                const totalAdvances = Number(payrollSummary?.total_advances ?? 0)
+                const pendingOtHours = Number(payrollSummary?.pending_overtime_hours ?? 0)
+                const pendingOtAmount = Number(payrollSummary?.pending_overtime_amount ?? 0)
+                const remainingPay = Number(payrollSummary?.remaining_pay ?? 0)
                 const yearDaysOffCount = (daysOffByEmployee[emp.id] || []).filter((row) => {
                   const d = new Date(getDayOffDateValue(row))
                   if (isNaN(d.getTime())) return false
