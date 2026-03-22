@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState, Suspense } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { getSupabase } from '@/lib/supabase'
+import { parseLocalDateOnly } from '@/lib/businessDate'
 import { getEmployees } from '@/lib/employees'
 
 const colors = {
@@ -181,7 +182,7 @@ function OvertimeReportContent() {
               <div key={row.id} style={cardStyle} data-print-row="true">
                 <div style={rowLineStyle}>
                   <span style={labelStyle}>Ημερομηνία</span>
-                  <span style={valueStyle}>{new Date(row.date).toLocaleDateString('el-GR')}</span>
+                  <span style={valueStyle}>{parseLocalDateOnly(row.date).toLocaleDateString('el-GR')}</span>
                 </div>
 
                 <div style={rowLineStyle}>
