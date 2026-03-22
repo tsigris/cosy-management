@@ -6,7 +6,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { getSupabase } from '@/lib/supabase'
 import useStoreAccess from '@/hooks/useStoreAccess'
 import { getTodayDateISO } from '@/lib/businessDate'
-import { formatAmount } from '@/lib/formatters'
+import { formatAmount, formatDateDMY } from '@/lib/formatters'
 import NotificationsBell from '@/components/NotificationsBell'
 import NextLink from 'next/link'
 import { format, addDays, subDays, parseISO } from 'date-fns'
@@ -178,6 +178,7 @@ function DashboardContent() {
   const businessTodayStr = useMemo(() => getTodayDateISO(), [])
   const businessYear = useMemo(() => String(businessTodayStr).slice(0, 4), [businessTodayStr])
   const yearStartStr = useMemo(() => `${businessYear}-01-01`, [businessYear])
+  const formattedToday = formatDateDMY(new Date())
 
   const getEntityKeyFromTx = (t: DashboardTransaction) => {
     const description = String(t?.description || t?.notes || '')
@@ -730,7 +731,7 @@ function DashboardContent() {
         <div style={{ textAlign: 'center' }}>
           <p style={dateText}>{format(parseISO(selectedDate), 'EEEE, d MMMM', { locale: el }).toUpperCase()}</p>
           <p style={businessHint}>
-            YTD: {yearStartStr} → {businessTodayStr}
+            {formattedToday}
           </p>
         </div>
         <button onClick={() => changeDate(1)} style={dateNavBtn}>
