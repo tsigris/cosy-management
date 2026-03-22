@@ -42,8 +42,6 @@ function PayEmployeeContent() {
   const [advanceAmount, setAdvanceAmount] = useState<string>('')
   const [advanceTotal, setAdvanceTotal] = useState<number>(0)
   const [payrollSummaryRow, setPayrollSummaryRow] = useState<any | null>(null)
-  const [debugAuthUid, setDebugAuthUid] = useState<string | null>(null)
-  const [payrollRpcDebugError, setPayrollRpcDebugError] = useState<any | null>(null)
   const [paymentMethod, setPaymentMethod] = useState<'Μετρητά' | 'Τράπεζα'>('Μετρητά')
   const [date, setDate] = useState(new Date().toISOString().split('T')[0])
   const [loading, setLoading] = useState(true)
@@ -65,12 +63,6 @@ function PayEmployeeContent() {
         setAgreementDays(emp.monthly_days || 26);
       }
 
-      const { data: authUserData, error: authUserError } = await supabase.auth.getUser()
-      setDebugAuthUid(authUserData?.user?.id || null)
-      console.log('[pay-employee] authUserError', authUserError)
-      console.log('[pay-employee] authUser', authUserData?.user || null)
-      console.log('[pay-employee] authUid', authUserData?.user?.id || null)
-
       const businessAsOfDate = toBusinessDayDateNormalized(new Date()).toISOString().slice(0, 10)
       const { data: rpcRowData, error: payrollRpcError } = await supabase.rpc('get_employee_payroll_card_for_employee', {
         p_store_id: storeId,
@@ -78,16 +70,10 @@ function PayEmployeeContent() {
         p_as_of_date: businessAsOfDate,
       }).maybeSingle()
       const rpcRow = (rpcRowData as any) || null
-      setPayrollRpcDebugError(payrollRpcError || null)
 
       if (payrollRpcError) {
         console.error('[pay-employee] payroll RPC load failed', payrollRpcError)
       }
-
-      console.log('[pay-employee] empId', empId)
-      console.log('[pay-employee] storeId', storeId)
-      console.log('[pay-employee] payrollRpcError', payrollRpcError)
-      console.log('[pay-employee] rpcRow', rpcRow)
 
       setPayrollSummaryRow(rpcRow || null)
 
@@ -253,15 +239,6 @@ function PayEmployeeContent() {
               <p style={subTitleStyle}>{empName?.toUpperCase()}</p>
               {mode !== 'advance' && (
                 <span style={hasRpcSummary ? rpcBadgeOk : rpcBadgeFallback}>{hasRpcSummary ? 'RPC OK' : 'RPC FALLBACK'}</span>
-              )}
-              {mode !== 'advance' && (
-                <div style={debugBox}>
-                  <div>auth uid: {debugAuthUid || 'null'}</div>
-                  <div>store id: {storeId || 'null'}</div>
-                  <div>employee id: {empId || 'null'}</div>
-                  <div>rpc row: {payrollSummaryRow ? 'yes' : 'no'}</div>
-                  <div>rpc error: {payrollRpcDebugError ? JSON.stringify(payrollRpcDebugError) : 'none'}</div>
-                </div>
               )}
             </div>
           </div>
@@ -436,19 +413,6 @@ const overtimeHint: any = { marginTop: '8px', display: 'flex', alignItems: 'cent
 const rpcSummaryBox: any = { marginTop: '12px', padding: '12px', borderRadius: '12px', border: `1px solid ${colors.border}`, backgroundColor: colors.bgLight };
 const rpcSummaryTitle: any = { margin: '0 0 8px 0', fontSize: '11px', fontWeight: '900', color: colors.primaryDark };
 const rpcSummaryLine: any = { margin: '4px 0 0 0', fontSize: '11px', fontWeight: '700', color: colors.secondaryText };
-const debugBox: any = {
-  marginTop: '10px',
-  padding: '10px 12px',
-  borderRadius: '12px',
-  border: '1px solid #e2e8f0',
-  backgroundColor: '#f8fafc',
-  fontSize: '11px',
-  fontWeight: '700',
-  color: '#475569',
-  display: 'flex',
-  flexDirection: 'column',
-  gap: '4px',
-}
 const methodToggleWrap: any = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', backgroundColor: colors.bgLight, border: `1px solid ${colors.border}`, borderRadius: '12px', padding: '4px' };
 const methodToggleBtn: any = { border: 'none', borderRadius: '8px', padding: '10px 12px', fontSize: '13px', fontWeight: '800', backgroundColor: 'transparent', color: colors.secondaryText, cursor: 'pointer' };
 const methodToggleBtnActive: any = { backgroundColor: colors.white, color: colors.primaryDark, boxShadow: '0 1px 2px rgba(0,0,0,0.08)' };

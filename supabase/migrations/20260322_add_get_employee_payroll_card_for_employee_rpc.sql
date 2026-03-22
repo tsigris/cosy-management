@@ -58,7 +58,7 @@ begin
     with base_employee as (
       select
         fa.id as employee_id,
-        coalesce(fa.monthly_salary, fa.salary, 0)::numeric as monthly_salary,
+        coalesce(fa.monthly_salary, 0)::numeric as monthly_salary,
         coalesce(fa.monthly_days, 0)::integer as monthly_days
       from public.fixed_assets fa
       where fa.sub_category = 'staff'
@@ -167,7 +167,7 @@ begin
     with base_employee as (
       select
         fa.id as employee_id,
-        coalesce(fa.monthly_salary, fa.salary, 0)::numeric as monthly_salary,
+        coalesce(fa.monthly_salary, 0)::numeric as monthly_salary,
         coalesce(fa.monthly_days, 0)::integer as monthly_days
       from public.fixed_assets fa
       where fa.sub_category = 'staff'
