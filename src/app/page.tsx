@@ -730,7 +730,7 @@ function DashboardContent() {
         <div style={{ textAlign: 'center' }}>
           <p style={dateText}>{format(parseISO(selectedDate), 'EEEE, d MMMM', { locale: el }).toUpperCase()}</p>
           <p style={businessHint}>
-            Λογιστική μέρα έως 06:59 • YTD: {yearStartStr} → {businessTodayStr}
+            YTD: {yearStartStr} → {businessTodayStr}
           </p>
         </div>
         <button onClick={() => changeDate(1)} style={dateNavBtn}>
