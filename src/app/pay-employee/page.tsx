@@ -66,6 +66,7 @@ function PayEmployeeContent() {
       }
 
       const { data: authUserData, error: authUserError } = await supabase.auth.getUser()
+      setDebugAuthUid(authUserData?.user?.id || null)
       console.log('[pay-employee] authUserError', authUserError)
       console.log('[pay-employee] authUser', authUserData?.user || null)
       console.log('[pay-employee] authUid', authUserData?.user?.id || null)
@@ -77,6 +78,7 @@ function PayEmployeeContent() {
         p_as_of_date: businessAsOfDate,
       }).maybeSingle()
       const rpcRow = (rpcRowData as any) || null
+      setPayrollRpcDebugError(payrollRpcError || null)
 
       if (payrollRpcError) {
         console.error('[pay-employee] payroll RPC load failed', payrollRpcError)
@@ -252,6 +254,15 @@ function PayEmployeeContent() {
               {mode !== 'advance' && (
                 <span style={hasRpcSummary ? rpcBadgeOk : rpcBadgeFallback}>{hasRpcSummary ? 'RPC OK' : 'RPC FALLBACK'}</span>
               )}
+              {mode !== 'advance' && (
+                <div style={debugBox}>
+                  <div>auth uid: {debugAuthUid || 'null'}</div>
+                  <div>store id: {storeId || 'null'}</div>
+                  <div>employee id: {empId || 'null'}</div>
+                  <div>rpc row: {payrollSummaryRow ? 'yes' : 'no'}</div>
+                  <div>rpc error: {payrollRpcDebugError ? JSON.stringify(payrollRpcDebugError) : 'none'}</div>
+                </div>
+              )}
             </div>
           </div>
           <Link href={`/employees?store=${storeId}`} style={backBtnStyle}><ChevronLeft size={20} /></Link>
@@ -425,6 +436,19 @@ const overtimeHint: any = { marginTop: '8px', display: 'flex', alignItems: 'cent
 const rpcSummaryBox: any = { marginTop: '12px', padding: '12px', borderRadius: '12px', border: `1px solid ${colors.border}`, backgroundColor: colors.bgLight };
 const rpcSummaryTitle: any = { margin: '0 0 8px 0', fontSize: '11px', fontWeight: '900', color: colors.primaryDark };
 const rpcSummaryLine: any = { margin: '4px 0 0 0', fontSize: '11px', fontWeight: '700', color: colors.secondaryText };
+const debugBox: any = {
+  marginTop: '10px',
+  padding: '10px 12px',
+  borderRadius: '12px',
+  border: '1px solid #e2e8f0',
+  backgroundColor: '#f8fafc',
+  fontSize: '11px',
+  fontWeight: '700',
+  color: '#475569',
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '4px',
+}
 const methodToggleWrap: any = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', backgroundColor: colors.bgLight, border: `1px solid ${colors.border}`, borderRadius: '12px', padding: '4px' };
 const methodToggleBtn: any = { border: 'none', borderRadius: '8px', padding: '10px 12px', fontSize: '13px', fontWeight: '800', backgroundColor: 'transparent', color: colors.secondaryText, cursor: 'pointer' };
 const methodToggleBtnActive: any = { backgroundColor: colors.white, color: colors.primaryDark, boxShadow: '0 1px 2px rgba(0,0,0,0.08)' };
