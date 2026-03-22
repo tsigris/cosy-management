@@ -449,11 +449,13 @@ function EmployeesContent() {
       const monthlyDays = Number(emp.work_days_per_month ?? emp.monthly_days ?? 0)
       const isMonthlyEmployee = (emp.pay_basis || 'monthly') === 'monthly'
       const monthlySalary = Number(emp.monthly_salary ?? 0)
+      const agreedExtraSalary = Number(emp.agreed_extra_salary ?? 0)
+      const agreedMonthlyPay = monthlySalary + agreedExtraSalary
       const dailyRate = Number(emp.daily_rate ?? 0)
 
       const perDayCost = isMonthlyEmployee
-        ? monthlyDays > 0 && Number.isFinite(monthlySalary) && monthlySalary > 0
-          ? monthlySalary / monthlyDays
+        ? monthlyDays > 0 && Number.isFinite(agreedMonthlyPay) && agreedMonthlyPay > 0
+          ? agreedMonthlyPay / monthlyDays
           : 0
         : Number.isFinite(dailyRate) && dailyRate > 0
           ? dailyRate
@@ -503,11 +505,13 @@ function EmployeesContent() {
       const monthlyDays = Number(emp.work_days_per_month ?? emp.monthly_days ?? 0)
       const isMonthlyEmployee = (emp.pay_basis || 'monthly') === 'monthly'
       const monthlySalary = Number(emp.monthly_salary ?? 0)
+      const agreedExtraSalary = Number(emp.agreed_extra_salary ?? 0)
+      const agreedMonthlyPay = monthlySalary + agreedExtraSalary
       const dailyRate = Number(emp.daily_rate ?? 0)
 
       const dailyCost = isMonthlyEmployee
-        ? monthlyDays > 0 && Number.isFinite(monthlySalary) && monthlySalary > 0
-          ? monthlySalary / monthlyDays
+        ? monthlyDays > 0 && Number.isFinite(agreedMonthlyPay) && agreedMonthlyPay > 0
+          ? agreedMonthlyPay / monthlyDays
           : 0
         : Number.isFinite(dailyRate) && dailyRate > 0
           ? dailyRate
@@ -1667,6 +1671,7 @@ function EmployeesContent() {
                 const monthlyDays = Number(emp.work_days_per_month ?? emp.monthly_days ?? 0)
                 const monthlySalary = Number(emp.monthly_salary ?? 0)
                 const agreedExtraSalary = Number(emp.agreed_extra_salary ?? 0)
+                const agreedMonthlyPay = monthlySalary + agreedExtraSalary
                 const isMonthlyEmployee = (emp.pay_basis || 'monthly') === 'monthly'
                 const dayOffRowsThisMonth = (daysOffByEmployee[emp.id] || [])
                   .filter((row) => {
@@ -1686,7 +1691,7 @@ function EmployeesContent() {
                 const includedDaysOffLocal = getIncludedDaysOff(monthlyDays)
                 const actualDaysOffLocal = dayOffRowsThisMonth.length
                 const extraDaysOffLocal = Math.max(actualDaysOffLocal - includedDaysOffLocal, 0)
-                const dailyCostLocal = isMonthlyEmployee && monthlyDays > 0 ? monthlySalary / monthlyDays : Number(emp.daily_rate ?? 0)
+                const dailyCostLocal = isMonthlyEmployee && monthlyDays > 0 ? agreedMonthlyPay / monthlyDays : Number(emp.daily_rate ?? 0)
                 const hourlyRateLocal = isMonthlyEmployee ? dailyCostLocal / 8 : 0
                 const totalAdvancesLocal = transactions
                   .filter((t) => {
@@ -1702,7 +1707,7 @@ function EmployeesContent() {
                 const includedDaysOff = hasPayrollSummary ? Number(payrollSummary?.included_days_off ?? 0) : includedDaysOffLocal
                 const actualDaysOff = hasPayrollSummary ? Number(payrollSummary?.actual_days_off_current_month ?? 0) : actualDaysOffLocal
                 const extraDaysOff = hasPayrollSummary ? Number(payrollSummary?.extra_days_off_current_month ?? 0) : extraDaysOffLocal
-                const dailyCost = hasPayrollSummary ? Number(payrollSummary?.daily_cost ?? 0) : dailyCostLocal
+                const dailyCost = isMonthlyEmployee ? dailyCostLocal : hasPayrollSummary ? Number(payrollSummary?.daily_cost ?? 0) : dailyCostLocal
                 const hourlyRate = hasPayrollSummary ? Number(payrollSummary?.hourly_cost ?? 0) : hourlyRateLocal
                 const totalAdvances = hasPayrollSummary ? Number(payrollSummary?.total_advances ?? 0) : totalAdvancesLocal
                 const pendingOtHours = hasPayrollSummary ? Number(payrollSummary?.pending_overtime_hours ?? 0) : pendingOtHoursLocal

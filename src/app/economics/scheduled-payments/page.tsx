@@ -96,7 +96,10 @@ export default function EconomicsScheduledPaymentsPage() {
 
 				if (Array.isArray(employees)) {
 					for (const e of employees as any) {
-						const salary = Number(e.salary) || Number(e.monthly_salary) || 0
+						const isMonthlyEmployee = String(e.pay_basis || 'monthly') === 'monthly'
+						const baseSalary = Number(e.monthly_salary) || Number(e.salary) || 0
+						const agreedExtraSalary = Number(e.agreed_extra_salary) || 0
+						const salary = isMonthlyEmployee ? baseSalary + agreedExtraSalary : Number(e.daily_rate) || 0
 						const payDay = Number(e.pay_day) || Number(e.salary_day) || Number(e.payment_day) || 1
 						if (!payDay || salary === 0) continue
 
