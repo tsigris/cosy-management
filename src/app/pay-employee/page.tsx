@@ -4,6 +4,7 @@ export const dynamic = 'force-dynamic'
 import { useEffect, useState, Suspense, useCallback } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { getSupabase } from '@/lib/supabase'
+import { toBusinessDayDateNormalized } from '@/lib/businessDate'
 import Link from 'next/link'
 import { toast, Toaster } from 'sonner'
 import { ChevronLeft, Calculator, Clock, Banknote } from 'lucide-react'
@@ -40,6 +41,7 @@ function PayEmployeeContent() {
   const [pendingOvertimeHours, setPendingOvertimeHours] = useState<number>(0)
   const [advanceAmount, setAdvanceAmount] = useState<string>('')
   const [advanceTotal, setAdvanceTotal] = useState<number>(0)
+  const [payrollSummaryRow, setPayrollSummaryRow] = useState<any | null>(null)
   const [paymentMethod, setPaymentMethod] = useState<'Μετρητά' | 'Τράπεζα'>('Μετρητά')
   const [date, setDate] = useState(new Date().toISOString().split('T')[0])
   const [loading, setLoading] = useState(true)
@@ -61,6 +63,30 @@ function PayEmployeeContent() {
         setAgreementDays(emp.monthly_days || 26);
       }
 
+      const businessAsOfDate = toBusinessDayDateNormalized(new Date()).toISOString().slice(0, 10)
+      const { data: payrollRows, error: payrollRpcError } = await supabase.rpc('get_employee_payroll_cards_summary', {
+        p_store_id: storeId,
+        p_as_of_date: businessAsOfDate,
+      })
+
+      if (payrollRpcError) {
+        console.error('[pay-employee] payroll RPC load failed', payrollRpcError)
+      }
+
+      const rpcRow = (payrollRows || []).find((row: any) => String(row.employee_id || '') === String(empId || '')) || null
+      setPayrollSummaryRow(rpcRow)
+
+      if (rpcRow) {
+        const rpcMonthlySalary = Number(rpcRow.monthly_salary || 0)
+        const rpcMonthlyDays = Number(rpcRow.monthly_days || 26)
+        setBaseAmount(rpcMonthlySalary)
+        setAgreementDays(rpcMonthlyDays)
+        setAdvanceTotal(Number(rpcRow.total_advances || 0))
+        setPendingOvertimeHours(Number(rpcRow.pending_overtime_hours || 0))
+        setAbsences(Number(rpcRow.extra_days_off_current_month || 0))
+        setExtraOvertimeEuro(Number(rpcRow.pending_overtime_amount || 0).toFixed(2))
+      }
+
       const { data: overtimeRows, error: overtimeError } = await supabase
         .from('employee_overtimes')
         .select('hours')
@@ -68,9 +94,10 @@ function PayEmployeeContent() {
         .eq('store_id', storeId)
         .eq('is_paid', false);
 
-      if (overtimeError) throw overtimeError;
-      const totalPendingHours = (overtimeRows || []).reduce((sum, row) => sum + (Number(row.hours) || 0), 0);
-      setPendingOvertimeHours(totalPendingHours);
+      if (!rpcRow && !overtimeError) {
+        const totalPendingHours = (overtimeRows || []).reduce((sum, row) => sum + (Number(row.hours) || 0), 0);
+        setPendingOvertimeHours(totalPendingHours);
+      }
 
       // Fetch existing salary advances for this employee in this store
       const { data: advanceRows, error: advanceError } = await supabase
@@ -81,10 +108,13 @@ function PayEmployeeContent() {
         .eq('is_settled', false)
         .or(`employee_id.eq.${empId},fixed_asset_id.eq.${empId}`);
 
-      if (advanceError) throw advanceError;
-      const totalAdvance = (advanceRows || []).reduce((sum, r) => sum + Math.abs(Number(r.amount) || 0), 0);
-      setAdvanceTotal(totalAdvance);
-    } catch (err) { console.error(err) } finally { setLoading(false) }
+      if (!rpcRow && !advanceError) {
+        const totalAdvance = (advanceRows || []).reduce((sum, r) => sum + Math.abs(Number(r.amount) || 0), 0);
+        setAdvanceTotal(totalAdvance);
+      }
+    } catch (_err) {
+      // keep fallback behavior without failing the page
+    } finally { setLoading(false) }
   }, [empId, storeId])
 
   useEffect(() => { loadEmployeeData() }, [loadEmployeeData])
@@ -101,6 +131,24 @@ function PayEmployeeContent() {
   const grossPayable = calculateCurrentBase() + (Number(bonus) || 0) + (Number(extraOvertimeEuro) || 0);
   const rawNetPayable = grossPayable - (advanceTotal || 0);
   const netPayable = Math.max(0, rawNetPayable);
+
+  const hasRpcSummary = mode !== 'advance' && agreementType === 'monthly' && Boolean(payrollSummaryRow)
+  const rpcMonthlySalary = Number(payrollSummaryRow?.monthly_salary || 0)
+  const rpcTotalAdvances = Number(payrollSummaryRow?.total_advances || 0)
+  const rpcPendingOvertimeHours = Number(payrollSummaryRow?.pending_overtime_hours || 0)
+  const rpcPendingOvertimeAmount = Number(payrollSummaryRow?.pending_overtime_amount || 0)
+  const rpcHourlyCost = Number(payrollSummaryRow?.hourly_cost || 0)
+  const rpcIncludedDaysOff = Number(payrollSummaryRow?.included_days_off || 0)
+  const rpcActualDaysOff = Number(payrollSummaryRow?.actual_days_off_current_month || 0)
+  const rpcExtraDaysOff = Number(payrollSummaryRow?.extra_days_off_current_month || 0)
+  const rpcDaysOffDeduction = Number(payrollSummaryRow?.days_off_deduction || 0)
+  const rpcRemainingPay = Number(payrollSummaryRow?.remaining_pay || 0)
+  const rpcComputedAmount = rpcMonthlySalary + rpcPendingOvertimeAmount - rpcDaysOffDeduction
+
+  const effectiveGrossPayable = hasRpcSummary ? rpcComputedAmount : grossPayable
+  const effectiveAdvanceTotal = hasRpcSummary ? rpcTotalAdvances : advanceTotal
+  const effectiveRawNetPayable = hasRpcSummary ? rpcRemainingPay : rawNetPayable
+  const effectiveNetPayable = hasRpcSummary ? rpcRemainingPay : netPayable
 
   async function handleFinalPayment() {
     if (!storeId) return toast.error('Σφάλμα καταστήματος');
@@ -138,12 +186,12 @@ function PayEmployeeContent() {
       }
 
       // normal final payment (subtract advances)
-      if (rawNetPayable < 0) {
+      if (effectiveRawNetPayable < 0) {
         setLoading(false)
         return toast.error('Οι προκαταβολές είναι περισσότερες από το υπολογισμένο ποσό')
       }
 
-      if (netPayable <= 0) {
+      if (effectiveNetPayable <= 0) {
         setLoading(false)
         return toast.error('Το ποσό πληρωμής πρέπει να είναι μεγαλύτερο από 0')
       }
@@ -155,7 +203,7 @@ function PayEmployeeContent() {
       const { error: payrollError } = await supabase.rpc('payroll_payment_atomic', {
         p_store_id: storeId,
         p_employee_id: empId,
-        p_amount: netPayable,
+        p_amount: effectiveNetPayable,
         p_method: paymentMethod,
         p_category: 'Staff',
         p_date: date,
@@ -170,6 +218,7 @@ function PayEmployeeContent() {
       toast.success('Η πληρωμή καταχωρήθηκε και οι υπερωρίες εκκαθαρίστηκαν!');
       router.push(`/employees?store=${storeId}`);
     } catch (err: any) {
+      console.error('[pay-employee] payment save failed', err)
       toast.error(err?.message || 'Αποτυχία πληρωμής');
     } finally {
       setLoading(false);
@@ -202,11 +251,17 @@ function PayEmployeeContent() {
                   <>
                     <div style={inputGroup}>
                       <label style={smallLabel}>ΑΠΟΥΣΙΕΣ (ΗΜΕΡΕΣ)</label>
-                      <input type="number" value={absences} onChange={e => setAbsences(Number(e.target.value))} style={inputStyle} />
+                      <input
+                        type="number"
+                        value={hasRpcSummary ? rpcExtraDaysOff : absences}
+                        onChange={e => setAbsences(Number(e.target.value))}
+                        style={inputStyle}
+                        readOnly={hasRpcSummary}
+                      />
                     </div>
                     <div style={inputGroup}>
                       <label style={smallLabel}>ΒΑΣΙΚΟΣ ΜΙΣΘΟΣ</label>
-                      <div style={staticValue}>{baseAmount}€</div>
+                      <div style={staticValue}>{(hasRpcSummary ? rpcMonthlySalary : baseAmount).toFixed(2)}€</div>
                     </div>
                   </>
                 ) : (
@@ -243,12 +298,30 @@ function PayEmployeeContent() {
 
               <div style={{...inputGroup, marginTop: '15px'}}>
                 <label style={smallLabel}>ΥΠΕΡΩΡΙΕΣ ΠΡΟΣ ΠΛΗΡΩΜΗ (€)</label>
-                <input type="number" value={extraOvertimeEuro} onChange={e => setExtraOvertimeEuro(e.target.value)} style={{...inputStyle, borderColor: colors.accentBlue}} placeholder="0.00" />
+                <input
+                  type="number"
+                  value={hasRpcSummary ? rpcPendingOvertimeAmount.toFixed(2) : extraOvertimeEuro}
+                  onChange={e => setExtraOvertimeEuro(e.target.value)}
+                  style={{...inputStyle, borderColor: colors.accentBlue}}
+                  placeholder="0.00"
+                  readOnly={hasRpcSummary}
+                />
                 <div style={overtimeHint}>
                   <Clock size={14} />
-                  <span>Εκκρεμούν: {pendingOvertimeHours.toFixed(2)} ώρες</span>
+                  <span>Εκκρεμούν: {(hasRpcSummary ? rpcPendingOvertimeHours : pendingOvertimeHours).toFixed(2)} ώρες</span>
                 </div>
               </div>
+
+              {hasRpcSummary && (
+                <div style={rpcSummaryBox}>
+                  <p style={rpcSummaryTitle}>ΣΥΝΟΨΗ ΑΠΟ RPC</p>
+                  <p style={rpcSummaryLine}>Ρεπό μήνα: {rpcActualDaysOff} / {rpcIncludedDaysOff}</p>
+                  <p style={rpcSummaryLine}>Extra ρεπό: {rpcExtraDaysOff}</p>
+                  <p style={rpcSummaryLine}>Αφαίρεση ρεπό: {rpcDaysOffDeduction.toFixed(2)}€</p>
+                  <p style={rpcSummaryLine}>Εκκρεμείς υπερωρίες: {rpcPendingOvertimeHours.toFixed(2)} ώρες</p>
+                  <p style={rpcSummaryLine}>Ωριαίο κόστος: {rpcHourlyCost.toFixed(2)}€</p>
+                </div>
+              )}
             </>
           )}
 
@@ -262,15 +335,15 @@ function PayEmployeeContent() {
               <div style={{display: 'flex', flexDirection: 'column', gap: '8px'}}>
                 <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
                   <span style={resultLabel}>ΥΠΟΛΟΓΙΣΜΕΝΟ ΠΟΣΟ</span>
-                  <span style={resultValue}>{grossPayable.toFixed(2)}€</span>
+                  <span style={resultValue}>{effectiveGrossPayable.toFixed(2)}€</span>
                 </div>
                 <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
                   <span style={resultLabel}>ΠΡΟΚΑΤΑΒΟΛΕΣ</span>
-                  <span style={resultValue}>{advanceTotal.toFixed(2)}€</span>
+                  <span style={resultValue}>{effectiveAdvanceTotal.toFixed(2)}€</span>
                 </div>
                 <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
                   <span style={resultLabel}>ΤΕΛΙΚΟ ΠΛΗΡΩΤΕΟ</span>
-                  <span style={resultValue}>{netPayable.toFixed(2)}€</span>
+                  <span style={resultValue}>{effectiveNetPayable.toFixed(2)}€</span>
                 </div>
               </div>
             )}
@@ -295,7 +368,7 @@ function PayEmployeeContent() {
 
           <button
             onClick={handleFinalPayment}
-            disabled={loading || (mode === 'advance' ? Number(advanceAmount) <= 0 : rawNetPayable < 0)}
+            disabled={loading || (mode === 'advance' ? Number(advanceAmount) <= 0 : effectiveRawNetPayable < 0)}
             style={payBtn}
           >
             {loading
@@ -330,6 +403,9 @@ const resultValue = { fontSize: '24px', fontWeight: '900' };
 
 const payBtn: any = { width: '100%', marginTop: '25px', padding: '18px', backgroundColor: colors.accentGreen, color: 'white', border: 'none', borderRadius: '16px', fontSize: '16px', fontWeight: '900', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px' };
 const overtimeHint: any = { marginTop: '8px', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: '700', color: colors.secondaryText };
+const rpcSummaryBox: any = { marginTop: '12px', padding: '12px', borderRadius: '12px', border: `1px solid ${colors.border}`, backgroundColor: colors.bgLight };
+const rpcSummaryTitle: any = { margin: '0 0 8px 0', fontSize: '11px', fontWeight: '900', color: colors.primaryDark };
+const rpcSummaryLine: any = { margin: '4px 0 0 0', fontSize: '11px', fontWeight: '700', color: colors.secondaryText };
 const methodToggleWrap: any = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', backgroundColor: colors.bgLight, border: `1px solid ${colors.border}`, borderRadius: '12px', padding: '4px' };
 const methodToggleBtn: any = { border: 'none', borderRadius: '8px', padding: '10px 12px', fontSize: '13px', fontWeight: '800', backgroundColor: 'transparent', color: colors.secondaryText, cursor: 'pointer' };
 const methodToggleBtnActive: any = { backgroundColor: colors.white, color: colors.primaryDark, boxShadow: '0 1px 2px rgba(0,0,0,0.08)' };
