@@ -62,9 +62,10 @@ begin
         coalesce(fa.work_days_per_month, fa.monthly_days, 0)::integer as monthly_days
       from public.fixed_assets fa
       where fa.sub_category = 'staff'
+        and fa.id = p_employee_id
         and (fa.store_id = p_store_id or fa.store_id is null)
         and coalesce(fa.pay_basis, 'monthly') = 'monthly'
-        and fa.id = p_employee_id
+      limit 1
     ),
     days_off_counts as (
       select
@@ -170,9 +171,10 @@ begin
         coalesce(fa.work_days_per_month, fa.monthly_days, 0)::integer as monthly_days
       from public.fixed_assets fa
       where fa.sub_category = 'staff'
+        and fa.id = p_employee_id
         and (fa.store_id = p_store_id or fa.store_id is null)
         and coalesce(fa.pay_basis, 'monthly') = 'monthly'
-        and fa.id = p_employee_id
+      limit 1
     ),
     days_off_counts as (
       select
