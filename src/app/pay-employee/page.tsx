@@ -40,6 +40,7 @@ function PayEmployeeContent() {
   const [extraOvertimeEuro, setExtraOvertimeEuro] = useState<string>('')
   const [pendingOvertimeHours, setPendingOvertimeHours] = useState<number>(0)
   const [advanceAmount, setAdvanceAmount] = useState<string>('')
+  const [bankAmount, setBankAmount] = useState<string>('')
   const [advanceTotal, setAdvanceTotal] = useState<number>(0)
   const [payrollSummaryRow, setPayrollSummaryRow] = useState<any | null>(null)
   const [paymentMethod, setPaymentMethod] = useState<'Μετρητά' | 'Τράπεζα'>('Μετρητά')
@@ -150,6 +151,8 @@ function PayEmployeeContent() {
   const effectiveAdvanceTotal = hasRpcSummary ? rpcTotalAdvances : advanceTotal
   const effectiveRawNetPayable = hasRpcSummary ? rpcRemainingPay : rawNetPayable
   const effectiveNetPayable = hasRpcSummary ? rpcRemainingPay : netPayable
+  const bankAmountNum = Number(bankAmount) || 0
+  const cashAmount = Math.max(0, effectiveNetPayable - bankAmountNum)
 
   async function handleFinalPayment() {
     if (!storeId) return toast.error('Σφάλμα καταστήματος');
@@ -197,9 +200,68 @@ function PayEmployeeContent() {
         return toast.error('Το ποσό πληρωμής πρέπει να είναι μεγαλύτερο από 0')
       }
 
+      if (bankAmountNum > effectiveNetPayable) {
+        setLoading(false)
+        return toast.error('Το ποσό τράπεζας δεν μπορεί να είναι μεγαλύτερο από το σύνολο')
+      }
+
       const agreementLabel = agreementType === 'monthly' ? 'Μισθός' : 'Ημερομίσθιο';
       const daysOrAbsencesLabel = agreementType === 'monthly' ? `Απουσίες: ${absences}` : `Ημέρες: ${workedDays}`;
       const notes = `Εκκαθάριση ${empName || ''} | ${agreementLabel} | Ημέρες/Απουσίες: ${daysOrAbsencesLabel}`;
+
+      if (bankAmountNum > 0) {
+        const inserts: Array<any> = [
+          {
+            amount: -Math.abs(bankAmountNum),
+            type: 'expense',
+            category: 'Staff',
+            method: 'Τράπεζα',
+            employee_id: empId,
+            fixed_asset_id: empId,
+            store_id: storeId,
+            date,
+            notes,
+          },
+        ]
+
+        if (cashAmount > 0) {
+          inserts.push({
+            amount: -Math.abs(cashAmount),
+            type: 'expense',
+            category: 'Staff',
+            method: 'Μετρητά',
+            employee_id: empId,
+            fixed_asset_id: empId,
+            store_id: storeId,
+            date,
+            notes,
+          })
+        }
+
+        const { error: splitInsertError } = await supabase.from('transactions').insert(inserts)
+        if (splitInsertError) throw splitInsertError
+
+        const { error: settleAdvancesError } = await supabase
+          .from('transactions')
+          .update({ is_settled: true })
+          .eq('store_id', storeId)
+          .eq('type', 'salary_advance')
+          .eq('is_settled', false)
+          .or(`employee_id.eq.${empId},fixed_asset_id.eq.${empId}`)
+        if (settleAdvancesError) throw settleAdvancesError
+
+        const { error: settleOvertimeError } = await supabase
+          .from('employee_overtimes')
+          .update({ is_paid: true })
+          .eq('store_id', storeId)
+          .eq('employee_id', empId)
+          .eq('is_paid', false)
+        if (settleOvertimeError) throw settleOvertimeError
+
+        toast.success('Η πληρωμή καταχωρήθηκε και οι υπερωρίες εκκαθαρίστηκαν!');
+        router.push(`/employees?store=${storeId}`);
+        return
+      }
 
       const { error: payrollError } = await supabase.rpc('payroll_payment_atomic', {
         p_store_id: storeId,
@@ -366,6 +428,28 @@ function PayEmployeeContent() {
               </button>
             </div>
           </div>
+
+          {mode !== 'advance' && (
+            <>
+              <div style={{ marginTop: '15px' }}>
+                <label style={smallLabel}>ΠΟΣΟ ΤΡΑΠΕΖΑΣ (€)</label>
+                <input
+                  type="number"
+                  value={bankAmount}
+                  onChange={e => setBankAmount(e.target.value)}
+                  style={inputStyle}
+                  placeholder="0.00"
+                />
+              </div>
+
+              <div style={{ marginTop: '10px' }}>
+                <label style={smallLabel}>ΜΕΤΡΗΤΑ (€)</label>
+                <div style={staticValue}>
+                  {cashAmount.toFixed(2)}€
+                </div>
+              </div>
+            </>
+          )}
 
           <button
             onClick={handleFinalPayment}
