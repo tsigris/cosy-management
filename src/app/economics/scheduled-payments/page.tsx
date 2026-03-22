@@ -5,7 +5,7 @@ import { useSearchParams } from 'next/navigation'
 import EconomicsHeaderNav from '@/components/economics/EconomicsHeaderNav'
 import EconomicsPeriodFilter from '@/components/economics/EconomicsPeriodFilter'
 import { getSupabase } from '@/lib/supabase'
-import { formatIsoDate, toBusinessDayDateNormalized } from '@/lib/businessDate'
+import { formatIsoDate, parseLocalDateOnly, toBusinessDayDateNormalized } from '@/lib/businessDate'
 import { getEmployees } from '@/lib/employees'
 import { formatDateEl } from '@/lib/formatters'
 
@@ -266,7 +266,7 @@ export default function EconomicsScheduledPaymentsPage() {
 					// limit to window: include overdue and up to +30 days
 					const filtered = results.filter((r) => {
 						if (!r.due_date) return false
-						const d = new Date(r.due_date)
+						const d = parseLocalDateOnly(r.due_date)
 						d.setHours(0, 0, 0, 0)
 						return d <= toDate
 					})
@@ -383,7 +383,7 @@ export default function EconomicsScheduledPaymentsPage() {
 		const s = new Set<number>()
 		for (const it of items) {
 			if (!it.due_date) continue
-			const d = new Date(it.due_date)
+			const d = parseLocalDateOnly(it.due_date)
 			if (!isNaN(d.getTime())) s.add(d.getFullYear())
 		}
 		if (!s.size) s.add(new Date().getFullYear())
