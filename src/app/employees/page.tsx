@@ -1494,11 +1494,10 @@ function EmployeesContent() {
                   </button>
                 </div>
 
-                <div style={{ display: 'flex', gap: '12px', marginTop: '16px' }}>
-                  {/* Salary/Daily + Monthly Days (if monthly) */}
-                  <div style={{ display: 'flex', gap: '12px', flex: 1 }}>
-                    <div style={{ flex: 1 }}>
-                      <label style={labelStyle}>{payBasis === 'monthly' ? 'Βασικός Μισθός' : 'Ημερομίσθιο (€) *'}</label>
+                <div style={employeeFormRowsWrap}>
+                  <div style={employeeFormTwoColGrid}>
+                    <div style={employeeFormCell}>
+                      <label style={employeeFormFieldLabel}>{payBasis === 'monthly' ? 'Βασικός Μισθός' : 'Ημερομίσθιο (€) *'}</label>
                       <div style={amountInputWrap}>
                         <input
                           type="number"
@@ -1516,16 +1515,16 @@ function EmployeesContent() {
                               [payBasis === 'monthly' ? 'monthly_salary' : 'daily_rate']: e.target.value,
                             })
                           }
-                          style={{ ...amountInputStyle, ...(isAmountFocused ? amountInputFocusedStyle : null) }}
+                          style={{ ...amountInputStyle, ...employeeFormInputBase, ...(isAmountFocused ? amountInputFocusedStyle : null) }}
                           placeholder="0"
                         />
                         <span style={euroAdornmentStyle}>€</span>
                       </div>
                     </div>
 
-                    {payBasis === 'monthly' && (
-                      <div style={{ flex: 1 }}>
-                        <label style={labelStyle}>Συμφωνημένο Extra</label>
+                    {payBasis === 'monthly' ? (
+                      <div style={employeeFormCell}>
+                        <label style={employeeFormFieldLabel}>Συμφωνημένο Extra</label>
                         <div style={amountInputWrap}>
                           <input
                             type="number"
@@ -1535,17 +1534,21 @@ function EmployeesContent() {
                               if (e.target.value === '0') setFormData({ ...formData, agreed_extra_salary: '' })
                             }}
                             onChange={(e) => setFormData({ ...formData, agreed_extra_salary: e.target.value })}
-                            style={amountInputStyle}
+                            style={{ ...amountInputStyle, ...employeeFormInputBase }}
                             placeholder="0"
                           />
                           <span style={euroAdornmentStyle}>€</span>
                         </div>
                       </div>
+                    ) : (
+                      <div style={employeeFormCell} />
                     )}
+                  </div>
 
-                    {payBasis === 'monthly' && (
-                      <div style={{ flex: 1 }}>
-                        <label style={labelStyle}>Μέρες Μήνα</label>
+                  <div style={employeeFormTwoColGrid}>
+                    {payBasis === 'monthly' ? (
+                      <div style={employeeFormCell}>
+                        <label style={employeeFormFieldLabel}>Μέρες Μήνα</label>
                         <div style={daysSelectorRow}>
                           {monthlyDayOptions.map((option) => (
                             <button
@@ -1559,17 +1562,19 @@ function EmployeesContent() {
                           ))}
                         </div>
                       </div>
+                    ) : (
+                      <div style={employeeFormCell} />
                     )}
-                  </div>
 
-                  <div style={{ flex: 1 }}>
-                    <label style={labelStyle}>Ημ. Πρόσληψης</label>
-                    <input
-                      type="date"
-                      value={formData.start_date}
-                      onChange={(e) => setFormData({ ...formData, start_date: e.target.value })}
-                      style={inputStyle}
-                    />
+                    <div style={employeeFormCell}>
+                      <label style={employeeFormFieldLabel}>Ημ. Πρόσληψης</label>
+                      <input
+                        type="date"
+                        value={formData.start_date}
+                        onChange={(e) => setFormData({ ...formData, start_date: e.target.value })}
+                        style={{ ...inputStyle, ...employeeFormInputBase }}
+                      />
+                    </div>
                   </div>
                 </div>
 
@@ -2198,6 +2203,45 @@ const daysSelectorRow: any = {
   display: 'flex',
   gap: '8px',
   flexWrap: 'wrap',
+}
+
+const employeeFormRowsWrap: any = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '12px',
+  marginTop: '16px',
+}
+
+const employeeFormTwoColGrid: any = {
+  display: 'grid',
+  gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+  gap: '12px',
+  alignItems: 'start',
+}
+
+const employeeFormCell: any = {
+  minWidth: 0,
+}
+
+const employeeFormFieldLabel: any = {
+  ...labelStyle,
+  fontSize: '11px',
+  lineHeight: 1.2,
+  maxHeight: '2.4em',
+  overflow: 'hidden',
+  display: '-webkit-box',
+  WebkitLineClamp: 2,
+  WebkitBoxOrient: 'vertical',
+}
+
+const employeeFormInputBase: any = {
+  width: '100%',
+  minWidth: 0,
+  padding: '14px',
+  fontSize: '16px',
+  boxSizing: 'border-box',
+  overflow: 'visible',
+  textOverflow: 'clip',
 }
 
 const dayToggleBase: any = {
