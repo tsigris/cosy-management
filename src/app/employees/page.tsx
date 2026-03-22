@@ -28,6 +28,19 @@ const colors = {
 
 type PayBasis = 'monthly' | 'daily'
 
+type EmployeeFormState = {
+  full_name: string
+  position: string
+  amka: string
+  iban: string
+  bank_name: string
+  monthly_salary: string
+  agreed_extra_salary: string
+  daily_rate: string
+  monthly_days: string
+  start_date: string
+}
+
 // ✅ safest date parser (handles ISO/date-only/timestamp)
 const parseTxDate = (t: any): Date | null => {
   if (!t) return null
@@ -53,6 +66,39 @@ const formatShortDayMonth = (dateInput: string) => {
   const day = String(d.getDate()).padStart(2, '0')
   const month = String(d.getMonth() + 1).padStart(2, '0')
   return `${day}/${month}`
+}
+
+function toEmployeeFormState(source?: any): EmployeeFormState {
+  const payBasis: PayBasis = ((source?.pay_basis as PayBasis) || 'monthly')
+  const baseSalaryValue =
+    source?.monthly_salary ??
+    source?.agreed_base_salary ??
+    source?.taxable_salary ??
+    source?.base_salary ??
+    source?.salary ??
+    null
+
+  const agreedExtraValue =
+    source?.agreed_extra_salary ??
+    source?.extra_salary ??
+    source?.agreed_extra ??
+    0
+
+  const dailyRateValue = source?.daily_rate ?? null
+  const monthlyDaysValue = source?.monthly_days ?? source?.work_days_per_month ?? 26
+
+  return {
+    full_name: String(source?.name ?? source?.full_name ?? ''),
+    position: String(source?.position ?? ''),
+    amka: String(source?.amka ?? ''),
+    iban: String(source?.iban ?? source?.employee_iban ?? ''),
+    bank_name: String(source?.bank_name ?? source?.employee_bank ?? 'Εθνική Τράπεζα'),
+    monthly_salary: payBasis === 'monthly' && baseSalaryValue != null ? String(baseSalaryValue) : '',
+    agreed_extra_salary: payBasis === 'monthly' && agreedExtraValue != null ? String(agreedExtraValue) : '0',
+    daily_rate: payBasis === 'daily' && dailyRateValue != null ? String(dailyRateValue) : '',
+    monthly_days: String(monthlyDaysValue),
+    start_date: String(source?.start_date ?? getTodayDateISO()),
+  }
 }
 
 function EmployeesContent() {
@@ -117,18 +163,7 @@ function EmployeesContent() {
   ]
 
   // ✅ Form Data (includes monthly_days)
-  const [formData, setFormData] = useState({
-    full_name: '',
-    position: '',
-    amka: '',
-    iban: '',
-    bank_name: 'Εθνική Τράπεζα',
-    monthly_salary: '',
-    agreed_extra_salary: '0',
-    daily_rate: '',
-    monthly_days: '26', // ✅ default
-    start_date: getTodayDateISO(),
-  })
+  const [formData, setFormData] = useState<EmployeeFormState>(() => toEmployeeFormState())
 
   const getDayOffDateValue = useCallback(
     (row: any) => String(row?.[employeeDayOffDateColumn] ?? row?.off_date ?? row?.date ?? ''),
@@ -979,6 +1014,8 @@ function EmployeesContent() {
     agreed_extra_salary: number
     daily_rate: number | null
     monthly_days: number
+    bank_name: string
+    iban: string
     is_active: boolean
   }
 
@@ -1017,6 +1054,8 @@ function EmployeesContent() {
       agreed_extra_salary: payBasis === 'monthly' && Number.isFinite(agreedExtraSalaryNum) ? agreedExtraSalaryNum : 0,
       daily_rate: payBasis === 'daily' && Number.isFinite(dailyRateNum) ? dailyRateNum : null,
       monthly_days: monthlyDaysNum,
+      bank_name: formData.bank_name || 'Εθνική Τράπεζα',
+      iban: formData.iban || '',
       is_active: true,
     }
 
@@ -1098,18 +1137,7 @@ function EmployeesContent() {
   }
 
   const resetForm = () => {
-    setFormData({
-      full_name: '',
-      position: '',
-      amka: '',
-      iban: '',
-      bank_name: 'Εθνική Τράπεζα',
-      monthly_salary: '',
-      agreed_extra_salary: '0',
-      daily_rate: '',
-      monthly_days: '26',
-      start_date: getTodayDateISO(),
-    })
+    setFormData(toEmployeeFormState())
     setPayBasis('monthly')
     setEditingId(null)
   }
@@ -1936,24 +1964,8 @@ function EmployeesContent() {
                             <button
                               onClick={() => {
                                 const nextPayBasis: PayBasis = (emp.pay_basis as PayBasis) || 'monthly'
-                                const monthlySalaryValue =
-                                  nextPayBasis === 'monthly' ? (emp.monthly_salary != null ? String(emp.monthly_salary) : '') : ''
-                                const dailyRateValue =
-                                  nextPayBasis === 'daily' ? (emp.daily_rate != null ? String(emp.daily_rate) : '') : ''
-
                                 setPayBasis(nextPayBasis)
-                                setFormData({
-                                  full_name: emp.name || '',
-                                  position: emp.position || '',
-                                  amka: emp.amka || '',
-                                  iban: emp.iban || '',
-                                  bank_name: emp.bank_name || 'Εθνική Τράπεζα',
-                                  monthly_salary: monthlySalaryValue,
-                                  agreed_extra_salary: String(emp.agreed_extra_salary ?? 0),
-                                  daily_rate: dailyRateValue,
-                                  monthly_days: emp.monthly_days != null ? String(emp.monthly_days) : '26',
-                                  start_date: emp.start_date || getTodayDateISO(),
-                                })
+                                setFormData(toEmployeeFormState({ ...emp, pay_basis: nextPayBasis }))
                                 setEditingId(emp.id)
                                 setIsAdding(true)
                                 setTimeout(() => formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50)
