@@ -1552,13 +1552,11 @@ function EmployeesContent() {
                 const isSelected = selectedEmpId === emp.id
                 const daysLeft = getDaysUntilPayment(emp.start_date)
                 const payrollSummary = payrollCardsByEmployeeId[emp.id]
-                const pendingOt = Number(payrollSummary?.pending_overtime_hours ?? 0)
                 const pendingOtItems = overtimes
                   .filter((ot) => ot.employee_id === emp.id)
                   .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
                 const isInactive = emp.is_active === false
                 const monthlyDays = Number(emp.work_days_per_month ?? emp.monthly_days ?? 0)
-                const includedDaysOff = Number(payrollSummary?.included_days_off ?? 0)
                 const monthlySalary = Number(emp.monthly_salary ?? 0)
                 const isMonthlyEmployee = (emp.pay_basis || 'monthly') === 'monthly'
                 const dayOffRowsThisMonth = (daysOffByEmployee[emp.id] || [])
@@ -1570,16 +1568,36 @@ function EmployeesContent() {
                     return businessDate.getFullYear() === selectedBusinessMonth.year && businessDate.getMonth() === selectedBusinessMonth.month
                   })
                   .sort((a, b) => new Date(getDayOffDateValue(a)).getTime() - new Date(getDayOffDateValue(b)).getTime())
-                const actualDaysOff = Number(payrollSummary?.actual_days_off_current_month ?? 0)
-                const extraDaysOff = Number(payrollSummary?.extra_days_off_current_month ?? 0)
-                const daysOffDeduction = Number(payrollSummary?.days_off_deduction ?? 0)
                 const daysOffLabel = dayOffRowsThisMonth.map((row) => formatShortDayMonth(getDayOffDateValue(row))).join(', ')
-                const dailyCost = Number(payrollSummary?.daily_cost ?? 0)
-                const hourlyRate = Number(payrollSummary?.hourly_cost ?? 0)
-                const totalAdvances = Number(payrollSummary?.total_advances ?? 0)
-                const pendingOtHours = Number(payrollSummary?.pending_overtime_hours ?? 0)
-                const pendingOtAmount = Number(payrollSummary?.pending_overtime_amount ?? 0)
-                const remainingPay = Number(payrollSummary?.remaining_pay ?? 0)
+                const hasPayrollSummary = Boolean(payrollSummary)
+
+                const includedDaysOffLocal = getIncludedDaysOff(monthlyDays)
+                const actualDaysOffLocal = dayOffRowsThisMonth.length
+                const extraDaysOffLocal = Math.max(actualDaysOffLocal - includedDaysOffLocal, 0)
+                const dailyCostLocal = isMonthlyEmployee && monthlyDays > 0 ? monthlySalary / monthlyDays : Number(emp.daily_rate ?? 0)
+                const hourlyRateLocal = isMonthlyEmployee ? dailyCostLocal / 8 : 0
+                const totalAdvancesLocal = transactions
+                  .filter((t) => {
+                    if (String(t.employee_id || '') !== emp.id && String(t.fixed_asset_id || '') !== emp.id) return false
+                    return String(t.type || '') === 'salary_advance'
+                  })
+                  .reduce((acc, t) => acc + Math.abs(Number(t.amount) || 0), 0)
+                const pendingOtHoursLocal = overtimes.filter((ot) => ot.employee_id === emp.id).reduce((acc, curr) => acc + Number(curr.hours), 0)
+                const pendingOtAmountLocal = isMonthlyEmployee ? pendingOtHoursLocal * hourlyRateLocal : 0
+                const daysOffDeductionLocal = isMonthlyEmployee ? extraDaysOffLocal * dailyCostLocal : 0
+                const remainingPayLocal = isMonthlyEmployee ? monthlySalary - totalAdvancesLocal + pendingOtAmountLocal - daysOffDeductionLocal : 0
+
+                const includedDaysOff = hasPayrollSummary ? Number(payrollSummary?.included_days_off ?? 0) : includedDaysOffLocal
+                const actualDaysOff = hasPayrollSummary ? Number(payrollSummary?.actual_days_off_current_month ?? 0) : actualDaysOffLocal
+                const extraDaysOff = hasPayrollSummary ? Number(payrollSummary?.extra_days_off_current_month ?? 0) : extraDaysOffLocal
+                const dailyCost = hasPayrollSummary ? Number(payrollSummary?.daily_cost ?? 0) : dailyCostLocal
+                const hourlyRate = hasPayrollSummary ? Number(payrollSummary?.hourly_cost ?? 0) : hourlyRateLocal
+                const totalAdvances = hasPayrollSummary ? Number(payrollSummary?.total_advances ?? 0) : totalAdvancesLocal
+                const pendingOtHours = hasPayrollSummary ? Number(payrollSummary?.pending_overtime_hours ?? 0) : pendingOtHoursLocal
+                const pendingOtAmount = hasPayrollSummary ? Number(payrollSummary?.pending_overtime_amount ?? 0) : pendingOtAmountLocal
+                const daysOffDeduction = hasPayrollSummary ? Number(payrollSummary?.days_off_deduction ?? 0) : daysOffDeductionLocal
+                const remainingPay = hasPayrollSummary ? Number(payrollSummary?.remaining_pay ?? 0) : remainingPayLocal
+                const pendingOt = pendingOtHours
                 const yearDaysOffCount = (daysOffByEmployee[emp.id] || []).filter((row) => {
                   const d = new Date(getDayOffDateValue(row))
                   if (isNaN(d.getTime())) return false
