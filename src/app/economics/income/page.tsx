@@ -6,6 +6,7 @@ import EconomicsHeaderNav from '@/components/economics/EconomicsHeaderNav'
 import EconomicsPeriodFilter from '@/components/economics/EconomicsPeriodFilter'
 import EconomicsContainer from '@/components/economics/EconomicsContainer'
 import { getSupabase } from '@/lib/supabase'
+import { getTodayDateISO } from '@/lib/businessDate'
 import { parseDateInputSafe } from '@/lib/businessDate'
 import { currencyFormatterEUR, formatTimeEl } from '@/lib/formatters'
 import { ChevronDown, ChevronUp } from 'lucide-react'
@@ -112,8 +113,8 @@ export default function EconomicsIncomePage() {
   // period & filter state
   const [period, setPeriod] = useState<'month' | 'year' | '30days' | 'all'>('month')
   const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear())
-  const [filterFrom, setFilterFrom] = useState(() => new Date().toISOString().slice(0, 10))
-  const [filterTo, setFilterTo] = useState(() => new Date().toISOString().slice(0, 10))
+  const [filterFrom, setFilterFrom] = useState(() => getTodayDateISO())
+  const [filterTo, setFilterTo] = useState(() => getTodayDateISO())
 
   const [searchQ, setSearchQ] = useState('')
 
@@ -141,7 +142,7 @@ export default function EconomicsIncomePage() {
       const d = new Date()
       d.setDate(d.getDate() - 30)
       setFilterFrom(d.toISOString().slice(0, 10))
-      setFilterTo(new Date().toISOString().slice(0, 10))
+      setFilterTo(getTodayDateISO())
     } else if (period === 'all') {
       setFilterFrom('1970-01-01')
       setFilterTo('9999-12-31')

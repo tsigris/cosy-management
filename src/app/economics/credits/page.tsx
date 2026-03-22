@@ -59,8 +59,8 @@ function isCreditLike(tx: any) {
   return getPaymentMethodFromTx(tx).toLowerCase() === 'πίστωση'
 }
 
-// ✅ BUSINESS DAY HELPERS (07:00 cutoff)
-const toBusinessDateNormalized = (d: Date) => toBusinessDayDate(d, { normalizeToNoon: true })
+// Date helpers (no automatic day shift)
+const toBusinessDateNormalized = (d: Date) => new Date(d)
 
 const getBusinessDayKey = (d: Date) => {
   const y = d.getFullYear()

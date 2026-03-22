@@ -4,7 +4,7 @@ export const dynamic = 'force-dynamic'
 import { useEffect, useState, Suspense, useCallback } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { getSupabase } from '@/lib/supabase'
-import { toBusinessDayDateNormalized } from '@/lib/businessDate'
+import { getTodayDateISO } from '@/lib/businessDate'
 import Link from 'next/link'
 import { toast, Toaster } from 'sonner'
 import { ChevronLeft, Calculator, Clock, Banknote } from 'lucide-react'
@@ -44,7 +44,7 @@ function PayEmployeeContent() {
   const [advanceTotal, setAdvanceTotal] = useState<number>(0)
   const [payrollSummaryRow, setPayrollSummaryRow] = useState<any | null>(null)
   const [paymentMethod, setPaymentMethod] = useState<'Μετρητά' | 'Τράπεζα'>('Μετρητά')
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0])
+  const [date, setDate] = useState(getTodayDateISO())
   const [loading, setLoading] = useState(true)
 
   const loadEmployeeData = useCallback(async () => {
@@ -64,7 +64,7 @@ function PayEmployeeContent() {
         setAgreementDays(emp.monthly_days || 26);
       }
 
-      const businessAsOfDate = toBusinessDayDateNormalized(new Date()).toISOString().slice(0, 10)
+      const businessAsOfDate = getTodayDateISO()
       const { data: rpcRowData, error: payrollRpcError } = await supabase.rpc('get_employee_payroll_card_for_employee', {
         p_store_id: storeId,
         p_employee_id: empId,

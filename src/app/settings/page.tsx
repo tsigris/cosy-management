@@ -35,6 +35,7 @@ import {
 } from 'lucide-react'
 
 import { getSupabase } from '@/lib/supabase'
+import { getTodayDateISO } from '@/lib/businessDate'
 import { getEmployees } from '@/lib/employees'
 import PermissionGuard from '@/components/PermissionGuard'
 import ReadOnlyBanner from '@/components/ReadOnlyBanner'
@@ -200,7 +201,7 @@ function SettingsContent() {
   const [startDate, setStartDate] = useState(
     new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0]
   )
-  const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0])
+  const [endDate, setEndDate] = useState(getTodayDateISO())
 
   const [zEnabled, setZEnabled] = useState<boolean>(true)
   const [zSaving, setZSaving] = useState(false)

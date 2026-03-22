@@ -4,6 +4,7 @@ export const dynamic = 'force-dynamic'
 import React, { useEffect, useState, Suspense, useCallback, useMemo, useRef, type CSSProperties } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { getSupabase } from '@/lib/supabase'
+import { getTodayDateISO } from '@/lib/businessDate'
 import { formatDateDMY } from '@/lib/formatters'
 import { syncStoreToStorage, getStoredActiveStoreId } from '@/lib/storeResolution'
 import Link from 'next/link'
@@ -236,7 +237,7 @@ function AddExpenseForm() {
   const supabase = getSupabase()
 
   const editId = searchParams.get('editId')
-  const selectedDate = searchParams.get('date') || new Date().toISOString().split('T')[0]
+  const selectedDate = searchParams.get('date') || getTodayDateISO()
   const urlStoreId = searchParams.get('store')
 
   const urlSupId = searchParams.get('supId')

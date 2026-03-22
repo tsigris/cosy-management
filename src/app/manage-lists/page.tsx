@@ -5,7 +5,6 @@ import { useEffect, useMemo, useState, useCallback, Suspense } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { getSupabase } from '@/lib/supabase'
-import { toBusinessDayDate } from '@/lib/businessDate'
 import { toast, Toaster } from 'sonner'
 import {
   Users,
@@ -46,7 +45,7 @@ const colors = {
   accentGreen: '#10b981',
 }
 
-const toBusinessDateNormalized = (d: Date) => toBusinessDayDate(d, { normalizeToNoon: true })
+const toBusinessDateNormalized = (d: Date) => new Date(d)
 
 const getBusinessDayKey = (d: Date) => {
   const y = d.getFullYear()

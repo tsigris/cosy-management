@@ -4,6 +4,7 @@ export const dynamic = 'force-dynamic'
 import { useEffect, useState, Suspense, useCallback, useMemo, useRef } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { getSupabase } from '@/lib/supabase'
+import { getTodayDateISO } from '@/lib/businessDate'
 import { formatDateDMY } from '@/lib/formatters'
 import { syncStoreToStorage, getStoredActiveStoreId } from '@/lib/storeResolution'
 import Link from 'next/link'
@@ -138,7 +139,7 @@ function AddIncomeForm() {
   const searchParams = useSearchParams()
 
   const editId = searchParams.get('editId')
-  const selectedDate = searchParams.get('date') || new Date().toISOString().split('T')[0]
+  const selectedDate = searchParams.get('date') || getTodayDateISO()
   const urlStoreId = searchParams.get('store')
   const urlSourceId = searchParams.get('sourceId')
   const mode = searchParams.get('mode')

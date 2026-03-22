@@ -43,8 +43,8 @@ const isValidUUID = (id: any) => {
 
 const normalize = (v: any) => String(v ?? '').trim().toLowerCase()
 
-// ✅ BUSINESS DAY HELPERS (07:00 cutoff)
-const toBusinessDateNormalized = (d: Date) => toBusinessDayDate(d, { normalizeToNoon: true })
+// Date helpers (no automatic day shift)
+const toBusinessDateNormalized = (d: Date) => new Date(d)
 
 const getBusinessDayKey = (d: Date) => {
   const y = d.getFullYear()
@@ -130,7 +130,7 @@ function BalancesContent() {
     })
   }
 
-  // ✅ Uses BUSINESS DAY (07:00 cutoff)
+  // Uses stored date as-is (no automatic day shift)
   const daysAgoLabel = (d: Date | null) => {
     if (!d) return ''
     const now = new Date()

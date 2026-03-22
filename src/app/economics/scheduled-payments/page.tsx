@@ -5,7 +5,7 @@ import { useSearchParams } from 'next/navigation'
 import EconomicsHeaderNav from '@/components/economics/EconomicsHeaderNav'
 import EconomicsPeriodFilter from '@/components/economics/EconomicsPeriodFilter'
 import { getSupabase } from '@/lib/supabase'
-import { formatIsoDate, parseLocalDateOnly, toBusinessDayDateNormalized } from '@/lib/businessDate'
+import { formatIsoDate, getTodayDateISO, parseLocalDateOnly } from '@/lib/businessDate'
 import { getEmployees } from '@/lib/employees'
 import { formatDateEl } from '@/lib/formatters'
 
@@ -66,7 +66,7 @@ export default function EconomicsScheduledPaymentsPage() {
 	}, [])
 
 	const today = useMemo(() => {
-		const d = toBusinessDayDateNormalized(new Date())
+		const d = parseLocalDateOnly(getTodayDateISO())
 		d.setHours(0, 0, 0, 0)
 		return d
 	}, [])

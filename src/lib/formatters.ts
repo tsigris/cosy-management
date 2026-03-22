@@ -1,4 +1,4 @@
-import { parseDateInputSafe, toBusinessDayDate } from '@/lib/businessDate'
+import { parseDateInputSafe } from '@/lib/businessDate'
 
 export type DateInput = string | Date | null | undefined
 
@@ -55,5 +55,5 @@ export function formatTimeEl(input: DateInput, fallback = '—'): string {
 export function formatBusinessDateEl(input: DateInput, fallback = '—'): string {
   const date = parseDateInput(input)
   if (!date) return fallback
-  return formatDateDMY(toBusinessDayDate(date, { normalizeToNoon: true }), fallback)
+  return formatDateDMY(date, fallback)
 }

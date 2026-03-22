@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic'
 
 import { useEffect, useState, Suspense, useCallback, useMemo, useRef } from 'react'
 import { getSupabase } from '@/lib/supabase'
-import { formatBusinessDayDate, parseDateInputSafe, toBusinessDayDateFromInput, toBusinessDayDateNormalized } from '@/lib/businessDate'
+import { formatBusinessDayDate, getTodayDateISO, parseDateInputSafe, toBusinessDayDateFromInput } from '@/lib/businessDate'
 import { getEmployees } from '@/lib/employees'
 import { formatDateEl } from '@/lib/formatters'
 import PermissionGuard from '@/components/PermissionGuard'
@@ -36,8 +36,8 @@ const parseTxDate = (t: any): Date | null => {
   return parseDateInputSafe(raw)
 }
 
-const getBusinessYear = (d: Date) => toBusinessDayDateNormalized(d).getFullYear()
-const getBusinessMonth = (d: Date) => toBusinessDayDateNormalized(d).getMonth()
+const getBusinessYear = (d: Date) => d.getFullYear()
+const getBusinessMonth = (d: Date) => d.getMonth()
 
 const getIncludedDaysOff = (workDaysPerMonth: number) => {
   if (workDaysPerMonth === 30) return 0
@@ -88,7 +88,7 @@ function EmployeesContent() {
 
   // States για days-off modal
   const [dayOffModal, setDayOffModal] = useState<{ empId: string; name: string } | null>(null)
-  const [dayOffDates, setDayOffDates] = useState<string[]>([new Date().toISOString().split('T')[0]])
+  const [dayOffDates, setDayOffDates] = useState<string[]>([getTodayDateISO()])
 
   // Quick Tips (create)
   const [tipModal, setTipModal] = useState<{ empId: string; name: string } | null>(null)
@@ -126,7 +126,7 @@ function EmployeesContent() {
     monthly_salary: '',
     daily_rate: '',
     monthly_days: '26', // ✅ default
-    start_date: new Date().toISOString().split('T')[0],
+    start_date: getTodayDateISO(),
   })
 
   const getDayOffDateValue = useCallback(
@@ -262,7 +262,7 @@ function EmployeesContent() {
       setEmployeeDayOffDateColumn(dayOffDateColumn)
       const dayOffSelect = dayOffDateColumn === 'off_date' ? 'id, employee_id, store_id, off_date' : 'id, employee_id, store_id, date'
 
-      const businessAsOfDate = toBusinessDayDateNormalized(new Date()).toISOString().slice(0, 10)
+      const businessAsOfDate = getTodayDateISO()
 
       const [empsRes, transRes, otRes, dayOffRes, allStoreTransRes, payrollSummaryRes, storeRes] = await Promise.all([
         getEmployees(storeId),
@@ -343,7 +343,7 @@ function EmployeesContent() {
   // ✅ HERO KPI: Σύνολο πληρωμών υπαλλήλων τρέχοντος ΜΗΝΑ (BUSINESS MONTH) (EXCLUDES tips)
   const currentMonthPayrollTotal = useMemo(() => {
     const now = new Date()
-    const todayBusinessDate = toBusinessDayDateNormalized(now)
+    const todayBusinessDate = now
     const y = todayBusinessDate.getFullYear()
     const m = todayBusinessDate.getMonth()
     const day = todayBusinessDate.getDate()
@@ -361,7 +361,7 @@ function EmployeesContent() {
         const d = parseTxDate(t)
         if (!d) return false
 
-        const businessDate = toBusinessDayDateNormalized(d)
+        const businessDate = d
         if (kpiPeriod === 'today') {
           if (businessDate.getFullYear() !== y || businessDate.getMonth() !== m || businessDate.getDate() !== day) return false
         } else {
@@ -380,7 +380,7 @@ function EmployeesContent() {
   }, [transactions, employees, kpiPeriod])
 
   const kpiDateContext = useMemo(() => {
-    const now = toBusinessDayDateNormalized(new Date())
+    const now = new Date()
     return {
       today: now,
       year: now.getFullYear(),
@@ -457,7 +457,7 @@ function EmployeesContent() {
         const d = parseTxDate(t)
         if (!d) return false
 
-        const businessDate = toBusinessDayDateNormalized(d)
+        const businessDate = d
         if (kpiPeriod === 'today') {
           const isToday =
             businessDate.getFullYear() === kpiDateContext.year &&
@@ -592,7 +592,7 @@ function EmployeesContent() {
         employee_id: otModal.empId,
         store_id: tenantStoreId,
         hours: hoursNum,
-        date: new Date().toISOString().split('T')[0],
+        date: getTodayDateISO(),
         is_paid: false,
       }
 
@@ -650,7 +650,7 @@ function EmployeesContent() {
     }
 
     try {
-      const today = new Date().toISOString().split('T')[0]
+      const today = getTodayDateISO()
       const { error: overtimePayErr } = await supabase.rpc('overtime_pay_now_atomic', {
         p_store_id: tenantStoreId,
         p_employee_id: otModal.empId,
@@ -757,7 +757,7 @@ function EmployeesContent() {
     const skippedCount = normalizedDates.length - datesToInsert.length
     toast.success(skippedCount > 0 ? `Καταχωρήθηκαν ${datesToInsert.length} ρεπό (${skippedCount} παραλείφθηκαν).` : `Καταχωρήθηκαν ${datesToInsert.length} ρεπό για ${dayOffModal.name}`)
     setDayOffModal(null)
-    setDayOffDates([new Date().toISOString().split('T')[0]])
+    setDayOffDates([getTodayDateISO()])
     fetchInitialData()
   }
 
@@ -801,7 +801,7 @@ function EmployeesContent() {
       return
     }
 
-    const today = new Date().toISOString().split('T')[0]
+    const today = getTodayDateISO()
 
     const { error } = await supabase.from('transactions').insert([
       {
@@ -935,7 +935,7 @@ function EmployeesContent() {
       }
 
       const d = parseTxDate(t)
-      const key = d ? getBusinessYear(d) + '-' + getBusinessMonth(d) + '-' + toBusinessDayDateNormalized(d).getDate() : String(t.date || '')
+      const key = d ? getBusinessYear(d) + '-' + getBusinessMonth(d) + '-' + d.getDate() : String(t.date || '')
       if (!processedDates.has(key)) {
         // skip extracting base/overtime/bonus for tips or advances
         if (!isTip && !isAdvance) {
@@ -1103,7 +1103,7 @@ function EmployeesContent() {
       monthly_salary: '',
       daily_rate: '',
       monthly_days: '26',
-      start_date: new Date().toISOString().split('T')[0],
+      start_date: getTodayDateISO(),
     })
     setPayBasis('monthly')
     setEditingId(null)
@@ -1111,12 +1111,12 @@ function EmployeesContent() {
 
   // ✅ current month label (BUSINESS MONTH)
   const currentMonthLabel = useMemo(() => {
-    const d = toBusinessDayDateNormalized(new Date())
+    const d = new Date()
     return d.toLocaleString('el-GR', { month: 'long', year: 'numeric' }).toUpperCase()
   }, [])
 
   const selectedBusinessMonth = useMemo(() => {
-    const d = toBusinessDayDateNormalized(new Date())
+    const d = new Date()
     return { year: d.getFullYear(), month: d.getMonth() }
   }, [])
 
@@ -1297,7 +1297,7 @@ function EmployeesContent() {
 
                   <button
                     type="button"
-                    onClick={() => setDayOffDates((prev) => [...prev, new Date().toISOString().split('T')[0]])}
+                    onClick={() => setDayOffDates((prev) => [...prev, getTodayDateISO()])}
                     style={{ ...cancelBtnSmall, width: '100%', marginTop: '10px' }}
                   >
                     + ΠΡΟΣΘΗΚΗ ΗΜΕΡΟΜΗΝΙΑΣ
@@ -1307,7 +1307,7 @@ function EmployeesContent() {
                     <button
                       onClick={() => {
                         setDayOffModal(null)
-                        setDayOffDates([new Date().toISOString().split('T')[0]])
+                        setDayOffDates([getTodayDateISO()])
                       }}
                       style={cancelBtnSmall}
                     >
@@ -1660,7 +1660,7 @@ function EmployeesContent() {
                             onClick={(e) => {
                               e.stopPropagation()
                               setDayOffModal({ empId: emp.id, name: emp.name })
-                              setDayOffDates([new Date().toISOString().split('T')[0]])
+                              setDayOffDates([getTodayDateISO()])
                             }}
                             style={{ ...quickDayOffBtn, flex: 1 }}
                           >
@@ -1924,7 +1924,7 @@ function EmployeesContent() {
                                   monthly_salary: monthlySalaryValue,
                                   daily_rate: dailyRateValue,
                                   monthly_days: emp.monthly_days != null ? String(emp.monthly_days) : '26',
-                                  start_date: emp.start_date || new Date().toISOString().split('T')[0],
+                                  start_date: emp.start_date || getTodayDateISO(),
                                 })
                                 setEditingId(emp.id)
                                 setIsAdding(true)

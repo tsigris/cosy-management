@@ -5,8 +5,8 @@ import { useState, useEffect, Suspense, useCallback } from 'react'
 import { getSupabase } from '@/lib/supabase'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
-import { format, subHours } from 'date-fns'
-import { parseLocalDateOnly } from '@/lib/businessDate'
+import { format } from 'date-fns'
+import { getTodayDateISO, parseLocalDateOnly } from '@/lib/businessDate'
 
 // ✅ ΟΡΙΣΤΙΚΕΣ ΣΤΑΘΕΡΕΣ ΓΙΑ ΑΠΟΛΥΤΗ ΤΑΥΤΙΣΗ ΜΕ ΤΗΝ ΑΝΑΛΥΣΗ
 const Z_METHODS = {
@@ -35,11 +35,7 @@ function DailyZContent() {
   const [posZ, setPosZ] = useState('')
   const [noTax, setNoTax] = useState('')
 
-  const [date, setDate] = useState(() => {
-    const now = new Date()
-    // Προσαρμογή ώρας για κλείσιμο μετά τα μεσάνυχτα
-    return format(subHours(now, 7), 'yyyy-MM-dd')
-  })
+  const [date, setDate] = useState(() => getTodayDateISO())
 
   const [loading, setLoading] = useState(false)
   const [isAlreadyClosed, setIsAlreadyClosed] = useState(false)

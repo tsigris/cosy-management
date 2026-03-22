@@ -162,7 +162,7 @@ type AmountFocus = 'total' | 'installment'
 
 
 
-// ✅ Business Date (όπως στο Dashboard): πριν τις 07:00 → χθεσινή ημερομηνία
+// Date handling uses user-visible calendar dates with no automatic day shift
 
 
 
