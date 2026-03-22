@@ -712,10 +712,38 @@ function EmployeesContent() {
       off_date: d,
     }))
 
-    const { error } = await supabase.from('employee_days_off').insert(dayOffPayloads)
+    console.log('[handleAddDayOff] payload to insert:', dayOffPayloads)
+
+    const { data: authData, error: authError } = await supabase.auth.getUser()
+    const authUserId = authData?.user?.id ?? null
+    console.log('[handleAddDayOff] auth user id:', authUserId)
+    if (authError) {
+      console.error('[handleAddDayOff] auth.getUser error:')
+      console.error(JSON.stringify(authError, null, 2))
+    }
+
+    console.log('[handleAddDayOff] store_id used:', tenantStoreId)
+
+    const { data: storeMemberRows, error: storeMemberError } = await supabase
+      .from('store_members')
+      .select('*')
+      .eq('user_id', authUserId)
+      .eq('store_id', tenantStoreId)
+
+    console.log('[handleAddDayOff] store_members check result:', storeMemberRows)
+    if (storeMemberError) {
+      console.error('[handleAddDayOff] store_members check error:')
+      console.error(JSON.stringify(storeMemberError, null, 2))
+    }
+
+    const { data: insertData, error } = await supabase.from('employee_days_off').insert(dayOffPayloads)
+
+    console.log('[handleAddDayOff] employee_days_off insert response data:', insertData)
+    console.log('[handleAddDayOff] employee_days_off insert response error:', error)
 
     if (error) {
       console.error(error)
+      console.error(JSON.stringify(error, null, 2))
       toast.error('Αποτυχία αποθήκευσης ρεπό.')
       return
     }
