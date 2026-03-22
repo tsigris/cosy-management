@@ -1539,10 +1539,21 @@ function EmployeesContent() {
                 const actualDaysOff = dayOffRowsThisMonth.length
                 const extraDaysOff = Math.max(actualDaysOff - includedDaysOff, 0)
                 const dailyRateForDeduction = isMonthlyEmployee && monthlyDays > 0 ? monthlySalary / monthlyDays : 0
-                const salaryDeduction = isMonthlyEmployee ? extraDaysOff * dailyRateForDeduction : 0
-                const finalSalary = isMonthlyEmployee ? Math.max(monthlySalary - salaryDeduction, 0) : 0
+                const daysOffDeduction = isMonthlyEmployee ? extraDaysOff * dailyRateForDeduction : 0
                 const daysOffLabel = dayOffRowsThisMonth.map((row) => formatShortDayMonth(getDayOffDateValue(row))).join(', ')
                 const dailyCost = isMonthlyEmployee && monthlyDays > 0 ? monthlySalary / monthlyDays : Number(emp.daily_rate ?? 0)
+                const hourlyRate = isMonthlyEmployee ? dailyCost / 8 : 0
+                const totalAdvances = transactions
+                  .filter((t) => {
+                    if (String(t.employee_id || '') !== emp.id && String(t.fixed_asset_id || '') !== emp.id) return false
+                    return String(t.type || '') === 'salary_advance'
+                  })
+                  .reduce((acc, t) => acc + Math.abs(Number(t.amount) || 0), 0)
+                const pendingOtHours = Number(pendingOt || 0)
+                const pendingOtAmount = isMonthlyEmployee ? pendingOtHours * hourlyRate : 0
+                const remainingPay = isMonthlyEmployee
+                  ? monthlySalary - totalAdvances + pendingOtAmount - daysOffDeduction
+                  : 0
                 const yearDaysOffCount = (daysOffByEmployee[emp.id] || []).filter((row) => {
                   const d = new Date(getDayOffDateValue(row))
                   if (isNaN(d.getTime())) return false
@@ -1641,7 +1652,7 @@ function EmployeesContent() {
 
                         {pendingOt > 0 && <span style={{ ...badgeStyle, backgroundColor: 'var(--surface)', color: 'var(--muted)' }}>⏱️ {pendingOt} ΩΡΕΣ</span>}
                         <span style={{ ...badgeStyle, backgroundColor: '#eef2ff', color: '#3730a3' }}>ΡΕΠΟ {actualDaysOff}/{includedDaysOff}</span>
-                        {isMonthlyEmployee && <span style={{ ...badgeStyle, backgroundColor: '#ecfdf5', color: '#047857' }}>ΤΕΛΙΚΟΣ {finalSalary.toFixed(2)}€</span>}
+                        {isMonthlyEmployee && <span style={{ ...badgeStyle, backgroundColor: '#ecfdf5', color: '#047857' }}>ΥΠΟΛΟΙΠΟ {remainingPay.toFixed(2)}€</span>}
                         {isInactive && <span style={{ ...badgeStyle, backgroundColor: 'var(--surface)', color: 'var(--muted)' }}>ΑΝΕΝΕΡΓΟΣ</span>}
                       </div>
                     </div>
@@ -1680,11 +1691,20 @@ function EmployeesContent() {
                             Extra ρεπό: {extraDaysOff}
                           </p>
                           <p style={{ margin: '5px 0 0 0', fontWeight: 800, color: 'var(--muted)', fontSize: '11px' }}>
-                            Αφαίρεση: {salaryDeduction.toFixed(2)}€
+                            Προκαταβολές: {totalAdvances.toFixed(2)}€
+                          </p>
+                          <p style={{ margin: '5px 0 0 0', fontWeight: 800, color: 'var(--muted)', fontSize: '11px' }}>
+                            Εκκρεμείς υπερωρίες: {pendingOtHours.toFixed(2)} ώρες / {pendingOtAmount.toFixed(2)}€
+                          </p>
+                          <p style={{ margin: '5px 0 0 0', fontWeight: 800, color: 'var(--muted)', fontSize: '11px' }}>
+                            Αφαίρεση extra ρεπό: {daysOffDeduction.toFixed(2)}€
+                          </p>
+                          <p style={{ margin: '5px 0 0 0', fontWeight: 800, color: 'var(--muted)', fontSize: '11px' }}>
+                            Ωριαίο κόστος: {hourlyRate.toFixed(2)}€
                           </p>
                           {isMonthlyEmployee && (
                             <p style={{ margin: '5px 0 0 0', fontWeight: 900, color: 'var(--text)', fontSize: '11px' }}>
-                              Τελικός μισθός: {finalSalary.toFixed(2)}€
+                              Υπόλοιπο πληρωμής: {remainingPay.toFixed(2)}€
                             </p>
                           )}
 
