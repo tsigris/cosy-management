@@ -42,6 +42,8 @@ function PayEmployeeContent() {
   const [advanceAmount, setAdvanceAmount] = useState<string>('')
   const [advanceTotal, setAdvanceTotal] = useState<number>(0)
   const [payrollSummaryRow, setPayrollSummaryRow] = useState<any | null>(null)
+  const [debugAuthUid, setDebugAuthUid] = useState<string | null>(null)
+  const [payrollRpcDebugError, setPayrollRpcDebugError] = useState<any | null>(null)
   const [paymentMethod, setPaymentMethod] = useState<'Μετρητά' | 'Τράπεζα'>('Μετρητά')
   const [date, setDate] = useState(new Date().toISOString().split('T')[0])
   const [loading, setLoading] = useState(true)
