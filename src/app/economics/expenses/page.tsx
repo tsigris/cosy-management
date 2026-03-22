@@ -6,7 +6,7 @@ import type { CSSProperties } from 'react'
 import { useEffect, useMemo, useState, useCallback } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { getSupabase } from '@/lib/supabase'
-import { toBusinessDayDate } from '@/lib/businessDate'
+import { parseDateInputSafe, toBusinessDayDateFromInput } from '@/lib/businessDate'
 import EconomicsHeaderNav from '@/components/economics/EconomicsHeaderNav'
 import { formatDateEl, formatMoney } from '@/lib/formatters'
 
@@ -47,7 +47,8 @@ const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/\p{Diacrit
 
 const toFinancialDate = (value?: string | null) => {
   if (!value) return null
-  const d = toBusinessDayDate(new Date(value), { normalizeToNoon: true })
+  const d = toBusinessDayDateFromInput(value, { normalizeToNoon: true })
+  if (!d) return null
   return isNaN(d.getTime()) ? null : d
 }
 
@@ -375,7 +376,7 @@ export default function EconomicsExpensesPage() {
       if (r.is_credit) entry.hasCredit = true
       const d = toFinancialDate(r.date)
       if (d) {
-        if (!entry.lastDate || new Date(entry.lastDate) < d) entry.lastDate = r.date
+        if (!entry.lastDate || (parseDateInputSafe(entry.lastDate)?.getTime() ?? 0) < d.getTime()) entry.lastDate = r.date
       }
     }
 
