@@ -63,6 +63,11 @@ function PayEmployeeContent() {
         setAgreementDays(emp.monthly_days || 26);
       }
 
+      const { data: authUserData, error: authUserError } = await supabase.auth.getUser()
+      console.log('[pay-employee] authUserError', authUserError)
+      console.log('[pay-employee] authUser', authUserData?.user || null)
+      console.log('[pay-employee] authUid', authUserData?.user?.id || null)
+
       const businessAsOfDate = toBusinessDayDateNormalized(new Date()).toISOString().slice(0, 10)
       const { data: rpcRowData, error: payrollRpcError } = await supabase.rpc('get_employee_payroll_card_for_employee', {
         p_store_id: storeId,
