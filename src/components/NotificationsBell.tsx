@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react'
 import { getSupabase } from '@/lib/supabase'
-import { getBusinessDate } from '@/lib/businessDate'
+import { formatIsoDate, getTodayDateISO } from '@/lib/businessDate'
 import { formatDateDMY } from '@/lib/formatters'
 import { toast } from 'sonner'
 import { Bell, X, AlertTriangle, AlertOctagon, Info, Banknote, Landmark, PlusCircle } from 'lucide-react'
@@ -138,7 +138,7 @@ function getNextMonthlyPayDate(startDateStr: string, todayStr: string) {
     candidate = new Date(ny, nm, clampDayNextMonth)
   }
 
-  return getBusinessDate(candidate)
+  return formatIsoDate(candidate)
 }
 
 export default function NotificationsBell({ storeId, onUpdate }: { storeId: string; onUpdate?: () => void }) {
@@ -168,9 +168,9 @@ export default function NotificationsBell({ storeId, onUpdate }: { storeId: stri
   const [savingCustom, setSavingCustom] = useState(false)
   const [customTitle, setCustomTitle] = useState('')
   const [customMessage, setCustomMessage] = useState('')
-  const [customDueDate, setCustomDueDate] = useState(getBusinessDate())
+  const [customDueDate, setCustomDueDate] = useState(getTodayDateISO())
 
-  const todayStr = useMemo(() => getBusinessDate(), [])
+  const todayStr = useMemo(() => getTodayDateISO(), [])
 
   const loadNotifications = useCallback(async () => {
     if (!storeId || !sessionUserId) return
@@ -181,8 +181,8 @@ export default function NotificationsBell({ storeId, onUpdate }: { storeId: stri
     setCustomRows([])
     setStaff([])
     try {
-      const min = getBusinessDate(new Date(Date.now() - 60 * 24 * 3600 * 1000))
-      const max = getBusinessDate(new Date(Date.now() + 14 * 24 * 3600 * 1000))
+      const min = formatIsoDate(new Date(Date.now() - 60 * 24 * 3600 * 1000))
+      const max = formatIsoDate(new Date(Date.now() + 14 * 24 * 3600 * 1000))
 
       // 1) installments
       const { data: inst, error: instErr } = await supabase
@@ -479,7 +479,7 @@ export default function NotificationsBell({ storeId, onUpdate }: { storeId: stri
       const amount = Math.abs(Number(selectedInst.amount || 0))
       if (!amount) throw new Error('Μη έγκυρο ποσό')
 
-      const today = getBusinessDate()
+      const today = getTodayDateISO()
       const notes = `Πληρωμή Δόσης #${selectedInst.installment_number}: ${selectedSet.name}${selectedSet.rf_code ? ` (RF: ${selectedSet.rf_code})` : ''}`
 
       const category = selectedSet.type === 'loan' ? 'Δάνεια' : 'Ρυθμίσεις'

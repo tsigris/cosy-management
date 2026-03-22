@@ -13,7 +13,7 @@ import Link from 'next/link'
 import { toast, Toaster } from 'sonner'
 
 import { getSupabase } from '@/lib/supabase'
-import { getBusinessDate } from '@/lib/businessDate'
+import { getTodayDateISO } from '@/lib/businessDate'
 import { formatDateDMY } from '@/lib/formatters'
 
 import {
@@ -455,7 +455,7 @@ const [installmentsCount, setInstallmentsCount] = useState('12')
 
 const [installmentAmount, setInstallmentAmount] = useState('')
 
-const [firstDueDate, setFirstDueDate] = useState(getBusinessDate())
+const [firstDueDate, setFirstDueDate] = useState(getTodayDateISO())
 
 
 
@@ -473,7 +473,7 @@ const [amountFocus, setAmountFocus] = useState<AmountFocus>('total')
 
 
 
-const todayStr = useMemo(() => getBusinessDate(), [])
+const todayStr = useMemo(() => getTodayDateISO(), [])
 
 
 
@@ -563,7 +563,7 @@ setInstallmentsCount('12')
 
 setInstallmentAmount('')
 
-setFirstDueDate(getBusinessDate())
+setFirstDueDate(getTodayDateISO())
 
 
 
@@ -921,7 +921,7 @@ setInstallmentsCount(s.installments_count != null ? String(s.installments_count)
 
 setInstallmentAmount(s.installment_amount != null ? formatMoneyInputEl(Number(s.installment_amount)) : '')
 
-setFirstDueDate(s.first_due_date ? String(s.first_due_date).slice(0, 10) : getBusinessDate())
+setFirstDueDate(s.first_due_date ? String(s.first_due_date).slice(0, 10) : getTodayDateISO())
 
 
 
@@ -1460,7 +1460,7 @@ data: { session },
 
 if (!session) throw new Error('Η συνεδρία έληξε. Συνδέσου ξανά.')
 
-const businessToday = getBusinessDate()
+const businessToday = getTodayDateISO()
 
 
 

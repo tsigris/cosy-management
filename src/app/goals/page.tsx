@@ -7,7 +7,7 @@ import Link from 'next/link'
 import { toast, Toaster } from 'sonner'
 import { getSupabase } from '@/lib/supabase'
 import { getGoalProgress, getGoalInsights, formatDateGR } from '@/lib/goalProgress'
-import { formatIsoDate, getBusinessDate, parseLocalDateOnly } from '@/lib/businessDate'
+import { formatIsoDate, getTodayDateISO, parseLocalDateOnly } from '@/lib/businessDate'
 import { formatAmount, formatMoneySpaced } from '@/lib/formatters'
 import {
   ChevronLeft,
@@ -161,7 +161,7 @@ function GoalsContent() {
   const [historyFrom, setHistoryFrom] = useState('')
   const [historyTo, setHistoryTo] = useState('')
 
-  const businessDate = useMemo(() => getBusinessDate(), [])
+  const businessDate = useMemo(() => getTodayDateISO(), [])
 
   const [isMobile, setIsMobile] = useState(false)
   useEffect(() => {
@@ -398,7 +398,7 @@ function GoalsContent() {
         p_action: action,
         p_amount: amount,
         p_method: txMethod,
-        p_date: getBusinessDate(),
+        p_date: getTodayDateISO(),
         p_notes: customNotes,
         p_category: 'Αποταμίευση',
       })

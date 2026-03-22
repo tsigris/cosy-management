@@ -7,7 +7,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import EconomicsHeaderNav from '@/components/economics/EconomicsHeaderNav'
 import EconomicsContainer from '@/components/economics/EconomicsContainer'
 import EconomicsPeriodFilter, { getStartOfMonth, getStartOfYear, getLast30Days } from '@/components/economics/EconomicsPeriodFilter'
-import { getBusinessDate } from '@/lib/businessDate'
+import { getTodayDateISO } from '@/lib/businessDate'
 import { formatDateDMY } from '@/lib/formatters'
 import { toast, Toaster } from 'sonner'
 import { Users, TrendingUp, Shield, CalendarDays } from 'lucide-react'
@@ -114,7 +114,7 @@ function PayrollPercentContent() {
   const [status, setStatus] = useState('')
   const [rows, setRows] = useState<EmployeePayrollRow[]>([])
 
-  const businessDate = useMemo(() => getBusinessDate(), [])
+  const businessDate = useMemo(() => getTodayDateISO(), [])
   const requestIdRef = useRef(0)
   const yearOptions = useMemo(() => {
     const current = new Date().getFullYear()

@@ -4,7 +4,7 @@ import React, { useEffect, useMemo, useState } from 'react'
 import EconomicsTabs from '@/components/EconomicsTabs'
 import { useSearchParams } from 'next/navigation'
 import { getSupabase } from '@/lib/supabase'
-import { getBusinessDate } from '@/lib/businessDate'
+import { getTodayDateISO } from '@/lib/businessDate'
 import { formatDateDMY } from '@/lib/formatters'
 
 type StoreHeaderRow = {
@@ -33,7 +33,7 @@ export default function EconomicsHeaderNav({ title, subtitle, rightControl, busi
   const [storeDisplayTitle, setStoreDisplayTitle] = useState('')
 
   // Compute or use provided business date
-  const bDate = useMemo(() => businessDate || getBusinessDate(), [businessDate])
+  const bDate = useMemo(() => businessDate || getTodayDateISO(), [businessDate])
 
   // Detect mobile view
   useEffect(() => {

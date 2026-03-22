@@ -43,20 +43,6 @@ export function parseDateInputSafe(input: string | Date | null | undefined): Dat
   return Number.isNaN(parsed.getTime()) ? null : parsed
 }
 
-export function toBusinessDayDate(input: Date, options?: { normalizeToNoon?: boolean }): Date {
-  const d = new Date(input)
-
-  if (options?.normalizeToNoon) {
-    d.setHours(12, 0, 0, 0)
-  }
-
-  return d
-}
-
-export function toBusinessDayDateNormalized(input: Date): Date {
-  return toBusinessDayDate(input, { normalizeToNoon: true })
-}
-
 export function toBusinessDayDateFromInput(
   input: string | Date | null | undefined,
   options?: { normalizeToNoon?: boolean }
@@ -71,11 +57,14 @@ export function toBusinessDayDateFromInput(
     return parsed
   }
 
-  return toBusinessDayDate(parsed, options)
+  if (options?.normalizeToNoon) {
+    parsed.setHours(12, 0, 0, 0)
+  }
+  return parsed
 }
 
 export function formatBusinessDayDate(input: Date): string {
-  const d = toBusinessDayDateNormalized(input)
+  const d = new Date(input)
   const day = String(d.getDate()).padStart(2, '0')
   const month = String(d.getMonth() + 1).padStart(2, '0')
   const year = d.getFullYear()

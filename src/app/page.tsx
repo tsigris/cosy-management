@@ -5,7 +5,7 @@ import { useEffect, useState, Suspense, useCallback, useMemo, useRef, type CSSPr
 import { useRouter, useSearchParams } from 'next/navigation'
 import { getSupabase } from '@/lib/supabase'
 import useStoreAccess from '@/hooks/useStoreAccess'
-import { getBusinessDate } from '@/lib/businessDate'
+import { getTodayDateISO } from '@/lib/businessDate'
 import { formatAmount } from '@/lib/formatters'
 import NotificationsBell from '@/components/NotificationsBell'
 import NextLink from 'next/link'
@@ -141,7 +141,7 @@ function DashboardContent() {
   const searchParams = useSearchParams()
   const storeIdFromUrl = searchParams.get('store')
 
-  const selectedDate = searchParams.get('date') || getBusinessDate()
+  const selectedDate = searchParams.get('date') || getTodayDateISO()
 
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [isStoreAdmin, setIsStoreAdmin] = useState(false)
@@ -174,8 +174,8 @@ function DashboardContent() {
     autoFetch: !!storeIdFromUrl,
   })
 
-  // ✅ YTD uses BUSINESS day — memoized so getBusinessDate() is not called on every render
-  const businessTodayStr = useMemo(() => getBusinessDate(), [])
+  // YTD uses today's date as-is (no automatic day shift)
+  const businessTodayStr = useMemo(() => getTodayDateISO(), [])
   const businessYear = useMemo(() => String(businessTodayStr).slice(0, 4), [businessTodayStr])
   const yearStartStr = useMemo(() => `${businessYear}-01-01`, [businessYear])
 
