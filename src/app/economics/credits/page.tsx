@@ -25,7 +25,7 @@ import {
 import EconomicsHeaderNav from '@/components/economics/EconomicsHeaderNav'
 import EconomicsPeriodFilter from '@/components/economics/EconomicsPeriodFilter'
 import EconomicsContainer from '@/components/economics/EconomicsContainer'
-import { toBusinessDayDate } from '@/lib/businessDate'
+import { toBusinessDayDateFromInput } from '@/lib/businessDate'
 
 const colors = {
   primaryDark: '#1e293b',
@@ -155,7 +155,8 @@ function CreditsContent() {
     if (!t) return null
     const raw = t?.date
     if (!raw) return null
-    const d = toBusinessDayDate(new Date(raw), { normalizeToNoon: true })
+    const d = toBusinessDayDateFromInput(raw, { normalizeToNoon: true })
+    if (!d) return null
     return !isNaN(d.getTime()) ? d : null
   }
 
