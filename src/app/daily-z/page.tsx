@@ -6,6 +6,7 @@ import { getSupabase } from '@/lib/supabase'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { format, subHours } from 'date-fns'
+import { parseLocalDateOnly } from '@/lib/businessDate'
 
 // ✅ ΟΡΙΣΤΙΚΕΣ ΣΤΑΘΕΡΕΣ ΓΙΑ ΑΠΟΛΥΤΗ ΤΑΥΤΙΣΗ ΜΕ ΤΗΝ ΑΝΑΛΥΣΗ
 const Z_METHODS = {
@@ -170,7 +171,7 @@ function DailyZContent() {
     const { error } = await supabase.from('transactions').insert(incomeTransactions)
 
     if (!error) {
-      alert(`Επιτυχές κλείσιμο βάρδιας: ${format(new Date(date), 'dd/MM')}`)
+      alert(`Επιτυχές κλείσιμο βάρδιας: ${format(parseLocalDateOnly(date), 'dd/MM')}`)
       router.push(`/?store=${storeId}`)
     } else {
       alert('Σφάλμα: ' + error.message)
