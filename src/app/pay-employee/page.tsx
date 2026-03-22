@@ -237,9 +237,6 @@ function PayEmployeeContent() {
             <div>
               <h1 style={titleStyle}>{mode === 'advance' ? 'Προκαταβολή' : 'Εκκαθάριση'}</h1>
               <p style={subTitleStyle}>{empName?.toUpperCase()}</p>
-              {mode !== 'advance' && (
-                <span style={hasRpcSummary ? rpcBadgeOk : rpcBadgeFallback}>{hasRpcSummary ? 'RPC OK' : 'RPC FALLBACK'}</span>
-              )}
             </div>
           </div>
           <Link href={`/employees?store=${storeId}`} style={backBtnStyle}><ChevronLeft size={20} /></Link>
@@ -392,9 +389,6 @@ const titleStyle = { fontWeight: '900', fontSize: '20px', margin: 0, color: colo
 const subTitleStyle = { margin: 0, fontSize: '12px', fontWeight: '800', color: colors.secondaryText };
 const logoBoxStyle: any = { width: '42px', height: '42px', backgroundColor: '#eef2ff', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' };
 const backBtnStyle: any = { textDecoration: 'none', color: colors.secondaryText, width: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: colors.white, borderRadius: '12px', border: `1px solid ${colors.border}` };
-const rpcBadgeBase: any = { display: 'inline-block', marginTop: '6px', padding: '2px 8px', borderRadius: '999px', fontSize: '10px', fontWeight: '900' };
-const rpcBadgeOk: any = { ...rpcBadgeBase, backgroundColor: '#dcfce7', color: '#166534', border: '1px solid #86efac' };
-const rpcBadgeFallback: any = { ...rpcBadgeBase, backgroundColor: '#fef3c7', color: '#92400e', border: '1px solid #fcd34d' };
 
 const cardStyle: any = { backgroundColor: colors.white, padding: '25px', borderRadius: '24px', border: `1px solid ${colors.border}`, boxShadow: '0 4px 15px rgba(0,0,0,0.02)' };
 const labelStyle: any = { fontSize: '12px', fontWeight: '900', color: colors.secondaryText, display: 'block', marginBottom: '15px' };
