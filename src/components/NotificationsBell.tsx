@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react'
 import { getSupabase } from '@/lib/supabase'
 import { getBusinessDate } from '@/lib/businessDate'
+import { formatDateDMY } from '@/lib/formatters'
 import { toast } from 'sonner'
 import { Bell, X, AlertTriangle, AlertOctagon, Info, Banknote, Landmark, PlusCircle } from 'lucide-react'
 
@@ -100,9 +101,7 @@ function daysDiff(fromDate: string, toDate: string) {
 }
 
 function formatDateGr(dateStr: string) {
-  const p = dateStr.split('-')
-  if (p.length !== 3) return dateStr
-  return `${p[2]}-${p[1]}-${p[0]}`
+  return formatDateDMY(dateStr, dateStr)
 }
 
 function money(n: any) {

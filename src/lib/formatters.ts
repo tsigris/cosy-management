@@ -29,19 +29,21 @@ export function formatMoneySpaced(value: number | null | undefined): string {
 }
 
 export function formatDateDdMmYyyy(input: DateInput, fallback = '—'): string {
+  return formatDateDMY(input, fallback)
+}
+
+export function formatDateDMY(input: DateInput, fallback = '—'): string {
   const date = parseDateInput(input)
   if (!date) return fallback
 
   const day = String(date.getDate()).padStart(2, '0')
   const month = String(date.getMonth() + 1).padStart(2, '0')
   const year = date.getFullYear()
-  return `${day}-${month}-${year}`
+  return `${day}/${month}/${year}`
 }
 
 export function formatDateEl(input: DateInput, fallback = '—'): string {
-  const date = parseDateInput(input)
-  if (!date) return fallback
-  return date.toLocaleDateString('el-GR')
+  return formatDateDMY(input, fallback)
 }
 
 export function formatTimeEl(input: DateInput, fallback = '—'): string {
@@ -53,5 +55,5 @@ export function formatTimeEl(input: DateInput, fallback = '—'): string {
 export function formatBusinessDateEl(input: DateInput, fallback = '—'): string {
   const date = parseDateInput(input)
   if (!date) return fallback
-  return toBusinessDayDate(date, { normalizeToNoon: true }).toLocaleDateString('el-GR')
+  return formatDateDMY(toBusinessDayDate(date, { normalizeToNoon: true }), fallback)
 }

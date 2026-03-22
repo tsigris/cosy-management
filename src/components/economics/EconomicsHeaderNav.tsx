@@ -4,7 +4,8 @@ import React, { useEffect, useMemo, useState } from 'react'
 import EconomicsTabs from '@/components/EconomicsTabs'
 import { useSearchParams } from 'next/navigation'
 import { getSupabase } from '@/lib/supabase'
-import { getBusinessDate, parseDateInputSafe } from '@/lib/businessDate'
+import { getBusinessDate } from '@/lib/businessDate'
+import { formatDateDMY } from '@/lib/formatters'
 
 type StoreHeaderRow = {
   name?: string | null
@@ -20,18 +21,8 @@ type Props = {
   showTabs?: boolean
 }
 
-// Helper: format date from YYYY-MM-DD to DD-MM-YYYY
 function formatDateGR(dateString: string) {
-  try {
-    const d = parseDateInputSafe(dateString)
-    if (!d) return dateString
-    const day = String(d.getDate()).padStart(2, '0')
-    const month = String(d.getMonth() + 1).padStart(2, '0')
-    const year = d.getFullYear()
-    return `${day}-${month}-${year}`
-  } catch {
-    return dateString
-  }
+  return formatDateDMY(dateString, dateString)
 }
 
 export default function EconomicsHeaderNav({ title, subtitle, rightControl, businessDate, showTabs }: Props) {

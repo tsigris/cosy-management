@@ -1,4 +1,4 @@
-import { formatDateDdMmYyyy } from '@/lib/formatters'
+import { formatDateDMY } from '@/lib/formatters'
 
 type GoalLite = {
   id?: string
@@ -102,7 +102,7 @@ export function getGoalProgress(g: GoalLite, businessDate?: string | Date) {
 export default getGoalProgress
 
 export function formatDateGR(date?: string | Date | null) {
-  return date ? formatDateDdMmYyyy(date, '') : ''
+  return date ? formatDateDMY(date, '') : ''
 }
 
 export function getGoalInsights(g: GoalLite, businessDate?: string | Date) {

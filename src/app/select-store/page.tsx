@@ -7,6 +7,7 @@ import { toast, Toaster } from 'sonner'
 
 import { getSupabase } from '@/lib/supabase'
 import { fetchStoresForUser, type StoreCard } from '@/lib/stores'
+import { formatDateDMY } from '@/lib/formatters'
 import TransferFundsModal from '@/components/TransferFundsModal'
 
 function SelectStorePage() {
@@ -49,14 +50,7 @@ function SelectStorePage() {
 
   const buildStripeLiveLabel = () => {
     const now = new Date()
-    const datePart = now
-      .toLocaleDateString('el-GR', {
-        weekday: 'short',
-        day: '2-digit',
-        month: 'short',
-        year: 'numeric',
-      })
-      .toUpperCase()
+    const datePart = formatDateDMY(now)
     const timePart = now.toLocaleTimeString('el-GR', { hour: '2-digit', minute: '2-digit' })
     return `${datePart} • ${timePart}`
   }

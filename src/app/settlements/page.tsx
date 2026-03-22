@@ -14,6 +14,7 @@ import { toast, Toaster } from 'sonner'
 
 import { getSupabase } from '@/lib/supabase'
 import { getBusinessDate } from '@/lib/businessDate'
+import { formatDateDMY } from '@/lib/formatters'
 
 import {
 
@@ -255,14 +256,8 @@ return `${Number(value || 0).toLocaleString('el-GR', { minimumFractionDigits: 2,
 
 
 function formatDateGr(dateStr: string | null | undefined) {
-
 if (!dateStr) return '—'
-
-const parts = dateStr.split('-')
-
-if (parts.length !== 3) return dateStr
-
-return `${parts[2]}-${parts[1]}-${parts[0]}`
+return formatDateDMY(dateStr, String(dateStr))
 
 }
 

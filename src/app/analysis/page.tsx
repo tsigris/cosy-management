@@ -14,6 +14,7 @@ import {
   subDays,
   addDays,
 } from 'date-fns'
+import { formatDateDMY } from '@/lib/formatters'
 import { toast, Toaster } from 'sonner'
 import {
   Coins,
@@ -99,12 +100,7 @@ function moneyGR(n: any) {
 }
 
 function formatDateGreek(date: string | Date) {
-  const d = new Date(date as any)
-  if (isNaN(d.getTime())) return ''
-  const day = String(d.getDate()).padStart(2, '0')
-  const month = String(d.getMonth() + 1).padStart(2, '0')
-  const year = d.getFullYear()
-  return `${day}-${month}-${year}`
+  return formatDateDMY(date, '')
 }
 function getPaymentMethod(tx: any): string {
   return String(tx?.payment_method ?? tx?.method ?? '').trim()

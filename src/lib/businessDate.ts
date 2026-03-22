@@ -69,7 +69,11 @@ export function toBusinessDayDateFromInput(
 }
 
 export function formatBusinessDayDate(input: Date): string {
-  return toBusinessDayDateNormalized(input).toLocaleDateString('el-GR')
+  const d = toBusinessDayDateNormalized(input)
+  const day = String(d.getDate()).padStart(2, '0')
+  const month = String(d.getMonth() + 1).padStart(2, '0')
+  const year = d.getFullYear()
+  return `${day}/${month}/${year}`
 }
 
 export function getBusinessDate(now: Date = new Date()): string {

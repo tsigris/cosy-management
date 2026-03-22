@@ -7,7 +7,8 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import EconomicsHeaderNav from '@/components/economics/EconomicsHeaderNav'
 import EconomicsContainer from '@/components/economics/EconomicsContainer'
 import EconomicsPeriodFilter, { getStartOfMonth, getStartOfYear, getLast30Days } from '@/components/economics/EconomicsPeriodFilter'
-import { getBusinessDate, parseDateInputSafe } from '@/lib/businessDate'
+import { getBusinessDate } from '@/lib/businessDate'
+import { formatDateDMY } from '@/lib/formatters'
 import { toast, Toaster } from 'sonner'
 import { Users, TrendingUp, Shield, CalendarDays } from 'lucide-react'
 
@@ -60,15 +61,7 @@ const pct = (n: number) => `${Number(n || 0).toFixed(2)}%`
 
 function formatDateGR(dateString: string) {
   if (!dateString) return dateString
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateString)
-  if (m) return `${m[3]}-${m[2]}-${m[1]}`
-  const d = parseDateInputSafe(dateString)
-  if (!d) return dateString
-  if (isNaN(d.getTime())) return dateString
-  const day = String(d.getDate()).padStart(2, '0')
-  const month = String(d.getMonth() + 1).padStart(2, '0')
-  const year = d.getFullYear()
-  return `${day}-${month}-${year}`
+  return formatDateDMY(dateString, dateString)
 }
 
 function isValidDateKey(value: string) {
