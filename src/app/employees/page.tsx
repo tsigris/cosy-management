@@ -429,6 +429,15 @@ function EmployeesContent() {
     const msPerDay = 1000 * 60 * 60 * 24
     const isTodayPeriod = kpiPeriod === 'today'
 
+    const toDateKey = (d: Date) => {
+      const y = d.getFullYear()
+      const m = String(d.getMonth() + 1).padStart(2, '0')
+      const day = String(d.getDate()).padStart(2, '0')
+      return `${y}-${m}-${day}`
+    }
+
+    const todayKey = toDateKey(kpiDateContext.today)
+
     return employees.reduce((acc: number, emp: any) => {
       const startRaw = emp?.start_date
       if (!startRaw) return acc
@@ -437,55 +446,89 @@ function EmployeesContent() {
       if (!startDate || isNaN(startDate.getTime())) return acc
       if (startDate > kpiDateContext.today) return acc
 
-      const periodStart = isTodayPeriod ? kpiDateContext.today : startDate < kpiDateContext.monthStart ? kpiDateContext.monthStart : startDate
+      const monthlyDays = Number(emp.work_days_per_month ?? emp.monthly_days ?? 0)
+      const isMonthlyEmployee = (emp.pay_basis || 'monthly') === 'monthly'
+      const monthlySalary = Number(emp.monthly_salary ?? 0)
+      const dailyRate = Number(emp.daily_rate ?? 0)
+
+      const perDayCost = isMonthlyEmployee
+        ? monthlyDays > 0 && Number.isFinite(monthlySalary) && monthlySalary > 0
+          ? monthlySalary / monthlyDays
+          : 0
+        : Number.isFinite(dailyRate) && dailyRate > 0
+          ? dailyRate
+          : 0
+
+      if (perDayCost <= 0) return acc
+
+      const dayOffDates = (daysOffByEmployee[emp.id] || [])
+        .map((row) => toBusinessDayDateFromInput(getDayOffDateValue(row), { normalizeToNoon: true }))
+        .filter((d): d is Date => d instanceof Date && !isNaN(d.getTime()))
+
+      if (isTodayPeriod) {
+        const hasDayOffToday = dayOffDates.some((d) => toDateKey(d) === todayKey)
+        return acc + (hasDayOffToday ? 0 : perDayCost)
+      }
+
+      const periodStart = startDate < kpiDateContext.monthStart ? kpiDateContext.monthStart : startDate
       if (periodStart > kpiDateContext.today) return acc
 
-      const elapsedDays = Math.floor((kpiDateContext.today.getTime() - periodStart.getTime()) / msPerDay) + 1
-      if (elapsedDays <= 0) return acc
+      const totalDays = Math.floor((kpiDateContext.today.getTime() - periodStart.getTime()) / msPerDay) + 1
+      if (totalDays <= 0) return acc
+
+      const dayOffsInPeriod = dayOffDates.filter((d) => d >= periodStart && d <= kpiDateContext.today).length
+      const workedDays = Math.max(totalDays - dayOffsInPeriod, 0)
+      return acc + workedDays * perDayCost
+    }, 0)
+  }, [employees, daysOffByEmployee, getDayOffDateValue, kpiDateContext, kpiPeriod])
+
+  const totalTodayStaffCost = useMemo(() => {
+    const toDateKey = (d: Date) => {
+      const y = d.getFullYear()
+      const m = String(d.getMonth() + 1).padStart(2, '0')
+      const day = String(d.getDate()).padStart(2, '0')
+      return `${y}-${m}-${day}`
+    }
+
+    const today = new Date()
+    const todayKey = toDateKey(today)
+
+    return employees.reduce((acc: number, emp: any) => {
+      const startRaw = emp?.start_date
+      if (!startRaw) return acc
+
+      const startDate = toBusinessDayDateFromInput(startRaw, { normalizeToNoon: true })
+      if (!startDate || isNaN(startDate.getTime()) || startDate > today) return acc
 
       const monthlyDays = Number(emp.work_days_per_month ?? emp.monthly_days ?? 0)
       const isMonthlyEmployee = (emp.pay_basis || 'monthly') === 'monthly'
-
-      if (!isMonthlyEmployee) {
-        const dailyRate = Number(emp.daily_rate ?? 0)
-        if (!Number.isFinite(dailyRate) || dailyRate <= 0) return acc
-        return acc + dailyRate * elapsedDays
-      }
-
       const monthlySalary = Number(emp.monthly_salary ?? 0)
-      if (!Number.isFinite(monthlySalary) || monthlySalary <= 0 || monthlyDays <= 0) return acc
+      const dailyRate = Number(emp.daily_rate ?? 0)
 
-      const dailyCost = monthlySalary / monthlyDays
-      const includedDaysOff = getIncludedDaysOff(monthlyDays)
-      const daysOffRowsUpToToday = (daysOffByEmployee[emp.id] || []).filter((row) => {
-        const rowDate = toBusinessDayDateFromInput(getDayOffDateValue(row), { normalizeToNoon: true })
-        if (!rowDate || isNaN(rowDate.getTime())) return false
-        if (rowDate.getFullYear() !== kpiDateContext.year || rowDate.getMonth() !== kpiDateContext.month) return false
-        return rowDate <= kpiDateContext.today
+      const dailyCost = isMonthlyEmployee
+        ? monthlyDays > 0 && Number.isFinite(monthlySalary) && monthlySalary > 0
+          ? monthlySalary / monthlyDays
+          : 0
+        : Number.isFinite(dailyRate) && dailyRate > 0
+          ? dailyRate
+          : 0
+
+      if (dailyCost <= 0) return acc
+
+      const hasDayOffToday = (daysOffByEmployee[emp.id] || []).some((row) => {
+        const dayOffDate = toBusinessDayDateFromInput(getDayOffDateValue(row), { normalizeToNoon: true })
+        if (!dayOffDate || isNaN(dayOffDate.getTime())) return false
+        return toDateKey(dayOffDate) === todayKey
       })
 
-      const actualDaysOff = daysOffRowsUpToToday.length
-
-      const extraDaysOff = Math.max(actualDaysOff - includedDaysOff, 0)
-      const baseAccrued = dailyCost * elapsedDays
-      const deduction = extraDaysOff * dailyCost
-
-      if (isTodayPeriod) {
-        const actualDaysOffBeforeToday = daysOffRowsUpToToday.filter((row) => {
-          const rowDate = toBusinessDayDateFromInput(getDayOffDateValue(row), { normalizeToNoon: true })
-          if (!rowDate) return false
-          return rowDate < kpiDateContext.today
-        }).length
-
-        const extraBeforeToday = Math.max(actualDaysOffBeforeToday - includedDaysOff, 0)
-        const todayExtraDaysOff = Math.max(extraDaysOff - extraBeforeToday, 0)
-        const todayAccrued = dailyCost - todayExtraDaysOff * dailyCost
-        return acc + Math.max(todayAccrued, 0)
-      }
-
-      return acc + Math.max(baseAccrued - deduction, 0)
+      return acc + (hasDayOffToday ? 0 : dailyCost)
     }, 0)
-  }, [employees, daysOffByEmployee, getDayOffDateValue, kpiDateContext, kpiPeriod])
+  }, [employees, daysOffByEmployee, getDayOffDateValue])
+
+  const requiredRevenue = useMemo(() => {
+    if (totalTodayStaffCost <= 0) return 0
+    return totalTodayStaffCost / 0.25
+  }, [totalTodayStaffCost])
 
   const revenueTotalForSelectedPeriod = useMemo(() => {
     return allStoreTransactions
@@ -1445,6 +1488,11 @@ function EmployeesContent() {
               <div style={kpiCard}>
                 <p style={kpiCardLabel}>ΣΥΝΟΛΟ ΠΡΟΣΩΠΙΚΟΥ</p>
                 <p style={kpiCardValue}>{employees.length}</p>
+              </div>
+
+              <div style={kpiCard}>
+                <p style={kpiCardLabel}>ΑΠΑΙΤΟΥΜΕΝΟΣ ΤΖΙΡΟΣ (25%)</p>
+                <p style={kpiCardValue}>{requiredRevenue.toFixed(2)}€</p>
               </div>
             </div>
 
