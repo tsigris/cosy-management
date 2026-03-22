@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic'
 
 import { useEffect, useState, Suspense, useCallback, useMemo, useRef } from 'react'
 import { getSupabase } from '@/lib/supabase'
-import { formatBusinessDayDate, toBusinessDayDateNormalized } from '@/lib/businessDate'
+import { formatBusinessDayDate, parseDateInputSafe, toBusinessDayDateFromInput, toBusinessDayDateNormalized } from '@/lib/businessDate'
 import { getEmployees } from '@/lib/employees'
 import { formatDateEl } from '@/lib/formatters'
 import PermissionGuard from '@/components/PermissionGuard'
@@ -33,8 +33,7 @@ const parseTxDate = (t: any): Date | null => {
   if (!t) return null
   const raw = t.date || t.created_at
   if (!raw) return null
-  const d = new Date(raw)
-  return isNaN(d.getTime()) ? null : d
+  return parseDateInputSafe(raw)
 }
 
 const getBusinessYear = (d: Date) => toBusinessDayDateNormalized(d).getFullYear()
@@ -48,7 +47,8 @@ const getIncludedDaysOff = (workDaysPerMonth: number) => {
 }
 
 const formatShortDayMonth = (dateInput: string) => {
-  const d = new Date(dateInput)
+  const d = parseDateInputSafe(dateInput)
+  if (!d) return '—'
   if (isNaN(d.getTime())) return '—'
   const day = String(d.getDate()).padStart(2, '0')
   const month = String(d.getMonth() + 1).padStart(2, '0')
@@ -397,8 +397,8 @@ function EmployeesContent() {
       const startRaw = emp?.start_date
       if (!startRaw) return acc
 
-      const startDate = toBusinessDayDateNormalized(new Date(startRaw))
-      if (isNaN(startDate.getTime())) return acc
+      const startDate = toBusinessDayDateFromInput(startRaw, { normalizeToNoon: true })
+      if (!startDate || isNaN(startDate.getTime())) return acc
       if (startDate > kpiDateContext.today) return acc
 
       const periodStart = isTodayPeriod ? kpiDateContext.today : startDate < kpiDateContext.monthStart ? kpiDateContext.monthStart : startDate
@@ -422,8 +422,8 @@ function EmployeesContent() {
       const dailyCost = monthlySalary / monthlyDays
       const includedDaysOff = getIncludedDaysOff(monthlyDays)
       const daysOffRowsUpToToday = (daysOffByEmployee[emp.id] || []).filter((row) => {
-        const rowDate = toBusinessDayDateNormalized(new Date(getDayOffDateValue(row)))
-        if (isNaN(rowDate.getTime())) return false
+        const rowDate = toBusinessDayDateFromInput(getDayOffDateValue(row), { normalizeToNoon: true })
+        if (!rowDate || isNaN(rowDate.getTime())) return false
         if (rowDate.getFullYear() !== kpiDateContext.year || rowDate.getMonth() !== kpiDateContext.month) return false
         return rowDate <= kpiDateContext.today
       })
@@ -436,7 +436,8 @@ function EmployeesContent() {
 
       if (isTodayPeriod) {
         const actualDaysOffBeforeToday = daysOffRowsUpToToday.filter((row) => {
-          const rowDate = toBusinessDayDateNormalized(new Date(getDayOffDateValue(row)))
+          const rowDate = toBusinessDayDateFromInput(getDayOffDateValue(row), { normalizeToNoon: true })
+          if (!rowDate) return false
           return rowDate < kpiDateContext.today
         }).length
 
@@ -899,7 +900,8 @@ function EmployeesContent() {
     if (!hireDateStr) return null
     const today = new Date()
     today.setHours(0, 0, 0, 0)
-    const hireDate = new Date(hireDateStr)
+    const hireDate = parseDateInputSafe(hireDateStr)
+    if (!hireDate) return null
     hireDate.setHours(0, 0, 0, 0)
     let nextPayDate = new Date(hireDate)
     nextPayDate.setMonth(nextPayDate.getMonth() + 1)
@@ -1352,7 +1354,7 @@ function EmployeesContent() {
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                     {tipsStats.lastTips.map((t) => {
-                      const d = new Date(t.date)
+                      const d = parseDateInputSafe(t.date)
                       return (
                         <div key={t.id} style={tipsListItem}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', alignItems: 'center' }}>
@@ -1360,7 +1362,7 @@ function EmployeesContent() {
                               <span style={{ fontWeight: 900, color: 'var(--text)', fontSize: '12px' }}>{t.name}</span>
                               <span style={{ fontSize: '10px', color: 'var(--muted)', fontWeight: 800 }}>
                                 {/* ✅ display with business-day */}
-                                {isNaN(d.getTime()) ? '—' : formatBusinessDayDate(d)}
+                                {!d || isNaN(d.getTime()) ? '—' : formatBusinessDayDate(d)}
                               </span>
                               <span style={{ fontSize: '10px', color: 'var(--muted)', fontWeight: 900 }}>Tips</span>
                             </div>
@@ -1554,7 +1556,7 @@ function EmployeesContent() {
                 const payrollSummary = payrollCardsByEmployeeId[emp.id]
                 const pendingOtItems = overtimes
                   .filter((ot) => ot.employee_id === emp.id)
-                  .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+                  .sort((a, b) => (parseDateInputSafe(b.date)?.getTime() ?? 0) - (parseDateInputSafe(a.date)?.getTime() ?? 0))
                 const isInactive = emp.is_active === false
                 const monthlyDays = Number(emp.work_days_per_month ?? emp.monthly_days ?? 0)
                 const monthlySalary = Number(emp.monthly_salary ?? 0)
@@ -1562,12 +1564,15 @@ function EmployeesContent() {
                 const dayOffRowsThisMonth = (daysOffByEmployee[emp.id] || [])
                   .filter((row) => {
                     const rowDate = getDayOffDateValue(row)
-                    const d = new Date(rowDate)
-                    if (isNaN(d.getTime())) return false
-                    const businessDate = toBusinessDayDateNormalized(d)
+                    const businessDate = toBusinessDayDateFromInput(rowDate, { normalizeToNoon: true })
+                    if (!businessDate || isNaN(businessDate.getTime())) return false
                     return businessDate.getFullYear() === selectedBusinessMonth.year && businessDate.getMonth() === selectedBusinessMonth.month
                   })
-                  .sort((a, b) => new Date(getDayOffDateValue(a)).getTime() - new Date(getDayOffDateValue(b)).getTime())
+                  .sort((a, b) => {
+                    const aTime = parseDateInputSafe(getDayOffDateValue(a))?.getTime() ?? 0
+                    const bTime = parseDateInputSafe(getDayOffDateValue(b))?.getTime() ?? 0
+                    return aTime - bTime
+                  })
                 const daysOffLabel = dayOffRowsThisMonth.map((row) => formatShortDayMonth(getDayOffDateValue(row))).join(', ')
                 const hasPayrollSummary = Boolean(payrollSummary)
 
@@ -1599,9 +1604,8 @@ function EmployeesContent() {
                 const remainingPay = hasPayrollSummary ? Number(payrollSummary?.remaining_pay ?? 0) : remainingPayLocal
                 const pendingOt = pendingOtHours
                 const yearDaysOffCount = (daysOffByEmployee[emp.id] || []).filter((row) => {
-                  const d = new Date(getDayOffDateValue(row))
-                  if (isNaN(d.getTime())) return false
-                  const businessDate = toBusinessDayDateNormalized(d)
+                  const businessDate = toBusinessDayDateFromInput(getDayOffDateValue(row), { normalizeToNoon: true })
+                  if (!businessDate || isNaN(businessDate.getTime())) return false
                   return businessDate.getFullYear() === selectedBusinessMonth.year
                 }).length
 

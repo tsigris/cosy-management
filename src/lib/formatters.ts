@@ -1,4 +1,4 @@
-import { toBusinessDayDate } from '@/lib/businessDate'
+import { parseDateInputSafe, toBusinessDayDate } from '@/lib/businessDate'
 
 export type DateInput = string | Date | null | undefined
 
@@ -13,24 +13,7 @@ export const currencyFormatterEUR = new Intl.NumberFormat('el-GR', {
 })
 
 function parseDateInput(input: DateInput): Date | null {
-  if (!input) return null
-
-  if (input instanceof Date) {
-    return Number.isNaN(input.getTime()) ? null : new Date(input)
-  }
-
-  const value = String(input).trim()
-  if (!value) return null
-
-  const yyyyMmDdMatch = value.match(/^(\d{4})-(\d{2})-(\d{2})$/)
-  if (yyyyMmDdMatch) {
-    const [, y, m, d] = yyyyMmDdMatch
-    const parsed = new Date(Number(y), Number(m) - 1, Number(d))
-    return Number.isNaN(parsed.getTime()) ? null : parsed
-  }
-
-  const parsed = new Date(value)
-  return Number.isNaN(parsed.getTime()) ? null : parsed
+  return parseDateInputSafe(input)
 }
 
 export function formatAmount(value: number | null | undefined): string {

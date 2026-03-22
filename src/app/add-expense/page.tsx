@@ -4,6 +4,7 @@ export const dynamic = 'force-dynamic'
 import React, { useEffect, useState, Suspense, useCallback, useMemo, useRef, type CSSProperties } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { getSupabase } from '@/lib/supabase'
+import { parseLocalDateOnly } from '@/lib/businessDate'
 import { syncStoreToStorage, getStoredActiveStoreId } from '@/lib/storeResolution'
 import Link from 'next/link'
 import { toast, Toaster } from 'sonner'
@@ -1173,7 +1174,7 @@ function AddExpenseForm() {
             <div>
               <h1 style={{ fontWeight: 900, fontSize: 18, margin: 0, color: 'white' }}>{editId ? 'Διόρθωση' : 'Έξοδο'}</h1>
               <p style={{ margin: 0, fontSize: 14, color: 'rgba(255,255,255,0.85)', fontWeight: 700 }}>
-                {new Date(selectedDate).toLocaleDateString('el-GR', { day: 'numeric', month: 'long' })}
+                {parseLocalDateOnly(selectedDate).toLocaleDateString('el-GR', { day: 'numeric', month: 'long' })}
               </p>
             </div>
           </div>

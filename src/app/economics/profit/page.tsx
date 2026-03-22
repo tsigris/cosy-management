@@ -8,7 +8,7 @@ import EconomicsHeaderNav from '@/components/economics/EconomicsHeaderNav'
 import EconomicsContainer from '@/components/economics/EconomicsContainer'
 import { toast, Toaster } from 'sonner'
 import EconomicsPeriodFilter from '@/components/economics/EconomicsPeriodFilter'
-import { toBusinessDayDate } from '@/lib/businessDate'
+import { toBusinessDayDateFromInput } from '@/lib/businessDate'
 
 const isValidUUID = (id: any) => {
 	const regex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -19,7 +19,8 @@ function getTxDate(t: any) {
 	if (!t) return null
 	const raw = t?.date
 	if (!raw) return null
-	const d = toBusinessDayDate(new Date(raw), { normalizeToNoon: true })
+	const d = toBusinessDayDateFromInput(raw, { normalizeToNoon: true })
+	if (!d) return null
 	return isNaN(d.getTime()) ? null : d
 }
 

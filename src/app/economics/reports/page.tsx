@@ -8,7 +8,7 @@ import EconomicsHeaderNav from "@/components/economics/EconomicsHeaderNav"
 import EconomicsPeriodFilter from "@/components/economics/EconomicsPeriodFilter"
 import EconomicsContainer from "@/components/economics/EconomicsContainer"
 import { toast, Toaster } from "sonner"
-import { toBusinessDayDate } from "@/lib/businessDate"
+import { toBusinessDayDateFromInput } from "@/lib/businessDate"
 
 const colors = {
   accentGreen: "#10b981",
@@ -38,7 +38,8 @@ const getTxDate = (t: any) => {
   if (!t) return null
   const raw = t?.date
   if (!raw) return null
-  const d = toBusinessDayDate(new Date(raw), { normalizeToNoon: true })
+  const d = toBusinessDayDateFromInput(raw, { normalizeToNoon: true })
+  if (!d) return null
   return isNaN(d.getTime()) ? null : d
 }
 

@@ -4,6 +4,7 @@ export const dynamic = 'force-dynamic'
 import { useEffect, useState, Suspense, useCallback, useMemo, useRef } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { getSupabase } from '@/lib/supabase'
+import { parseLocalDateOnly } from '@/lib/businessDate'
 import { syncStoreToStorage, getStoredActiveStoreId } from '@/lib/storeResolution'
 import Link from 'next/link'
 import { toast, Toaster } from 'sonner'
@@ -453,7 +454,7 @@ function AddIncomeForm() {
               </div>
 
               <p style={{ margin: 0, fontSize: 16, color: colors.secondaryText, fontWeight: 700 }}>
-                {new Date(selectedDate).toLocaleDateString('el-GR', { day: 'numeric', month: 'long' }).toUpperCase()}
+                {parseLocalDateOnly(selectedDate).toLocaleDateString('el-GR', { day: 'numeric', month: 'long' }).toUpperCase()}
               </p>
             </div>
           </div>
