@@ -6,7 +6,7 @@ import EconomicsHeaderNav from '@/components/economics/EconomicsHeaderNav'
 import EconomicsContainer from '@/components/economics/EconomicsContainer'
 import EconomicsPeriodFilter from '@/components/economics/EconomicsPeriodFilter'
 import { getSupabase } from '@/lib/supabase'
-import { toBusinessDayDate } from '@/lib/businessDate'
+import { parseLocalDateOnly, toBusinessDayDateFromInput } from '@/lib/businessDate'
 import KpiCard from '@/components/KpiCard'
 
 // If your project already uses xlsx (you used it in Settings), keep this import.
@@ -348,7 +348,7 @@ export default function EconomicsCashflowPage() {
     let endMonth: Date
     if (source.length) {
       const dates = source
-        .map((r) => (r.date ? toBusinessDayDate(new Date(r.date), { normalizeToNoon: true }) : null))
+        .map((r) => toBusinessDayDateFromInput(r.date, { normalizeToNoon: true }))
         .filter((d) => d && !isNaN(d.getTime())) as Date[]
       if (dates.length) {
         const minD = dates.reduce((a, b) => (a.getTime() < b.getTime() ? a : b), dates[0])
@@ -382,7 +382,7 @@ export default function EconomicsCashflowPage() {
 
     for (const r of source) {
       if (isTransfer(r)) continue // exclude internal transfers from chart
-      const parsed = r.date ? toBusinessDayDate(new Date(r.date), { normalizeToNoon: true }) : null
+      const parsed = toBusinessDayDateFromInput(r.date, { normalizeToNoon: true })
       if (!parsed || isNaN(parsed.getTime())) continue
       const key = ymKeyFromDate(parsed)
       if (!(key in incomeBy)) continue
@@ -475,7 +475,7 @@ export default function EconomicsCashflowPage() {
   const yearOptions = useMemo(() => {
     const s = new Set<number>()
     for (const r of financialRows) {
-      const d = r.date ? toBusinessDayDate(new Date(r.date), { normalizeToNoon: true }) : null
+      const d = toBusinessDayDateFromInput(r.date, { normalizeToNoon: true })
       if (d && !isNaN(d.getTime())) s.add(d.getFullYear())
     }
     if (!s.size) s.add(new Date().getFullYear())
@@ -1432,6 +1432,6 @@ function makeStyles(t: {
 
 function isValidFinancialDate(dateStr: string) {
   if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return false
-  const d = new Date(dateStr)
+  const d = parseLocalDateOnly(dateStr)
   return !isNaN(d.getTime())
 }

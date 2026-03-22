@@ -6,7 +6,7 @@ import { getSupabase } from '@/lib/supabase'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { toast, Toaster } from 'sonner'
-import { toBusinessDayDate } from '@/lib/businessDate'
+import { toBusinessDayDateFromInput } from '@/lib/businessDate'
 import {
   ChevronLeft,
   Receipt,
@@ -105,7 +105,7 @@ function BalancesContent() {
   const getTxDate = (t: any) => {
     if (!t) return null
     const raw = t?.date
-    const d = raw ? toBusinessDayDate(new Date(raw), { normalizeToNoon: true }) : null
+    const d = toBusinessDayDateFromInput(raw, { normalizeToNoon: true })
     return d && !isNaN(d.getTime()) ? d : null
   }
 
