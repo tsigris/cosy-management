@@ -7,7 +7,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import EconomicsHeaderNav from '@/components/economics/EconomicsHeaderNav'
 import EconomicsContainer from '@/components/economics/EconomicsContainer'
 import EconomicsPeriodFilter, { getStartOfMonth, getStartOfYear, getLast30Days } from '@/components/economics/EconomicsPeriodFilter'
-import { getBusinessDate } from '@/lib/businessDate'
+import { getBusinessDate, parseDateInputSafe } from '@/lib/businessDate'
 import { toast, Toaster } from 'sonner'
 import { Users, TrendingUp, Shield, CalendarDays } from 'lucide-react'
 
@@ -62,7 +62,8 @@ function formatDateGR(dateString: string) {
   if (!dateString) return dateString
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateString)
   if (m) return `${m[3]}-${m[2]}-${m[1]}`
-  const d = new Date(dateString)
+  const d = parseDateInputSafe(dateString)
+  if (!d) return dateString
   if (isNaN(d.getTime())) return dateString
   const day = String(d.getDate()).padStart(2, '0')
   const month = String(d.getMonth() + 1).padStart(2, '0')

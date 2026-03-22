@@ -6,6 +6,7 @@ import EconomicsHeaderNav from '@/components/economics/EconomicsHeaderNav'
 import EconomicsPeriodFilter from '@/components/economics/EconomicsPeriodFilter'
 import EconomicsContainer from '@/components/economics/EconomicsContainer'
 import { getSupabase } from '@/lib/supabase'
+import { parseDateInputSafe } from '@/lib/businessDate'
 import { currencyFormatterEUR, formatTimeEl } from '@/lib/formatters'
 import { ChevronDown, ChevronUp } from 'lucide-react'
 
@@ -49,8 +50,7 @@ const parseTxDate = (r: any) => {
   if (!r) return null
   const raw = r.date
   if (!raw) return null
-  const d = new Date(raw)
-  return isNaN(d.getTime()) ? null : d
+  return parseDateInputSafe(raw)
 }
 
 const parseCreatedAtTime = (r: any) => {
@@ -230,7 +230,8 @@ export default function EconomicsIncomePage() {
     const map = new Map<string, TxRow[]>()
     for (const r of filtered) {
       if (!r.date) continue
-      const d = new Date(r.date)
+      const d = parseDateInputSafe(r.date)
+      if (!d) continue
       if (isNaN(d.getTime())) continue
       const key = r.date
       if (!map.has(key)) map.set(key, [])
@@ -258,7 +259,8 @@ export default function EconomicsIncomePage() {
     const map = new Map<string, TxRow[]>()
     for (const r of zRows) {
       if (!r.date) continue
-      const d = new Date(r.date)
+      const d = parseDateInputSafe(r.date)
+      if (!d) continue
       if (isNaN(d.getTime())) continue
       const key = r.date
       if (!map.has(key)) map.set(key, [])

@@ -7,7 +7,7 @@ import Link from 'next/link'
 import { toast, Toaster } from 'sonner'
 import { getSupabase } from '@/lib/supabase'
 import { getGoalProgress, getGoalInsights, formatDateGR } from '@/lib/goalProgress'
-import { formatIsoDate, getBusinessDate } from '@/lib/businessDate'
+import { formatIsoDate, getBusinessDate, parseLocalDateOnly } from '@/lib/businessDate'
 import { formatAmount, formatMoneySpaced } from '@/lib/formatters'
 import {
   ChevronLeft,
@@ -298,7 +298,7 @@ function GoalsContent() {
 
     // validate target date (optional)
     if (targetDate) {
-      const d = new Date(targetDate)
+      const d = parseLocalDateOnly(targetDate)
       if (Number.isNaN(d.getTime())) return toast.error('Λάθος ημερομηνία στόχου')
     }
 

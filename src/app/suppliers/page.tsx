@@ -4,6 +4,7 @@ export const dynamic = 'force-dynamic'
 import { useEffect, useState, Suspense, useCallback, useMemo } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { getSupabase } from '@/lib/supabase'
+import { parseDateInputSafe } from '@/lib/businessDate'
 import Link from 'next/link'
 import {
   Plus,
@@ -95,8 +96,7 @@ function SuppliersContent() {
   const getTxDate = (t: any) => {
     const raw = t?.date
     if (!raw) return null
-    const d = new Date(raw)
-    return isNaN(d.getTime()) ? null : d
+    return parseDateInputSafe(raw)
   }
 
   const isTxInYear = (t: any, year: number) => {
