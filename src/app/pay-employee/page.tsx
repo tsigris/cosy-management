@@ -43,7 +43,7 @@ function PayEmployeeContent() {
   const [advanceAmount, setAdvanceAmount] = useState<string>('')
   const [bankAmount, setBankAmount] = useState<string>('')
   const [cashAmount, setCashAmount] = useState<string>('')
-  const [lastEdited, setLastEdited] = useState<'bank' | 'cash' | null>(null)
+  const [lastEditedField, setLastEditedField] = useState<'bank' | 'cash' | null>(null)
   const [advanceTotal, setAdvanceTotal] = useState<number>(0)
   const [payrollSummaryRow, setPayrollSummaryRow] = useState<any | null>(null)
   const [paymentMethod, setPaymentMethod] = useState<'Μετρητά' | 'Τράπεζα'>('Μετρητά')
@@ -199,33 +199,34 @@ function PayEmployeeContent() {
   console.log('[pay-employee-rpc] remaining_payroll_only', payrollSummaryRow?.remaining_payroll_only, 'agreed_extra_salary', payrollSummaryRow?.agreed_extra_salary, 'final_payable', payrollSummaryRow?.final_payable, 'bonus', Number(bonus || 0))
   const bankAmountNum = clampAmount(parseAmount(bankAmount), finalPayableSafe)
   const cashAmountNum = clampAmount(parseAmount(cashAmount), finalPayableSafe)
-  console.log('[pay-employee-split]', {
+  console.log('[pay-employee-split-init-fix]', {
     finalPayable,
     bankAmount,
     cashAmount,
-    lastEdited,
+    lastEditedField,
   })
 
   const handleBankAmountChange = (value: string) => {
     const normalizedBank = clampAmount(parseAmount(value), finalPayableSafe)
     const normalizedCash = Math.max(0, finalPayableSafe - normalizedBank)
-    setLastEdited('bank')
-    setBankAmount(value === '' ? '' : normalizedBank.toFixed(2))
+    setLastEditedField('bank')
+    setBankAmount(value === '' ? '' : String(normalizedBank))
     setCashAmount(normalizedCash.toFixed(2))
   }
 
   const handleCashAmountChange = (value: string) => {
     const normalizedCash = clampAmount(parseAmount(value), finalPayableSafe)
     const normalizedBank = Math.max(0, finalPayableSafe - normalizedCash)
-    setLastEdited('cash')
-    setCashAmount(value === '' ? '' : normalizedCash.toFixed(2))
+    setLastEditedField('cash')
+    setCashAmount(value === '' ? '' : String(normalizedCash))
     setBankAmount(normalizedBank.toFixed(2))
   }
 
   useEffect(() => {
     if (mode === 'advance') return
+    if (lastEditedField === null) return
 
-    if (lastEdited === 'cash') {
+    if (lastEditedField === 'cash') {
       const nextCash = clampAmount(parseAmount(cashAmount), finalPayableSafe)
       const nextBank = Math.max(0, finalPayableSafe - nextCash)
       const nextCashText = nextCash.toFixed(2)
@@ -241,7 +242,7 @@ function PayEmployeeContent() {
     const nextCashText = nextCash.toFixed(2)
     if (bankAmount !== nextBankText) setBankAmount(nextBankText)
     if (cashAmount !== nextCashText) setCashAmount(nextCashText)
-  }, [finalPayableSafe, mode, lastEdited])
+  }, [finalPayableSafe, mode, lastEditedField])
 
   async function handleFinalPayment() {
     if (!storeId) return toast.error('Σφάλμα καταστήματος');
@@ -293,13 +294,42 @@ function PayEmployeeContent() {
       const daysOrAbsencesLabel = agreementType === 'monthly' ? `Απουσίες: ${absences}` : `Ημέρες: ${workedDays}`;
       const notes = `Εκκαθάριση ${empName || ''} | ${agreementLabel} | Ημέρες/Απουσίες: ${daysOrAbsencesLabel}`;
 
-      let normalizedBank = clampAmount(bankAmountNum, finalPayableSafe)
-      let normalizedCash = clampAmount(cashAmountNum, finalPayableSafe)
+      const isBankEmpty = bankAmount.trim() === ''
+      const isCashEmpty = cashAmount.trim() === ''
+      const epsilon = 0.01
 
-      if (lastEdited === 'cash') {
+      let normalizedBank = 0
+      let normalizedCash = 0
+
+      // Fallback when both fields are empty: use selected payment method for full amount.
+      if (isBankEmpty && isCashEmpty) {
+        if (paymentMethod === 'Τράπεζα') {
+          normalizedBank = finalPayableSafe
+          normalizedCash = 0
+        } else {
+          normalizedBank = 0
+          normalizedCash = finalPayableSafe
+        }
+      } else if (!isBankEmpty && isCashEmpty) {
+        normalizedBank = clampAmount(bankAmountNum, finalPayableSafe)
+        normalizedCash = Math.max(0, finalPayableSafe - normalizedBank)
+      } else if (isBankEmpty && !isCashEmpty) {
+        normalizedCash = clampAmount(cashAmountNum, finalPayableSafe)
         normalizedBank = Math.max(0, finalPayableSafe - normalizedCash)
       } else {
-        normalizedCash = Math.max(0, finalPayableSafe - normalizedBank)
+        normalizedBank = clampAmount(bankAmountNum, finalPayableSafe)
+        normalizedCash = clampAmount(cashAmountNum, finalPayableSafe)
+
+        const total = normalizedBank + normalizedCash
+        const diff = finalPayableSafe - total
+
+        if (Math.abs(diff) <= epsilon) {
+          if (lastEditedField === 'cash') {
+            normalizedBank = Math.max(0, Math.min(finalPayableSafe, normalizedBank + diff))
+          } else {
+            normalizedCash = Math.max(0, Math.min(finalPayableSafe, normalizedCash + diff))
+          }
+        }
       }
 
       if (normalizedBank < 0 || normalizedCash < 0) {
@@ -310,6 +340,12 @@ function PayEmployeeContent() {
       if (normalizedBank > finalPayableSafe || normalizedCash > finalPayableSafe) {
         setLoading(false)
         return toast.error('Κάποιο ποσό είναι μεγαλύτερο από το τελικό πληρωτέο.')
+      }
+
+      const normalizedTotal = normalizedBank + normalizedCash
+      if (Math.abs(normalizedTotal - finalPayableSafe) > 0.01) {
+        setLoading(false)
+        return toast.error('Το split πληρωμής πρέπει να ισούται με το τελικό πληρωτέο.')
       }
 
       const inserts: Array<any> = []
