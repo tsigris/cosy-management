@@ -14,6 +14,108 @@ const ACCEPTED_MIME = new Set([
   'application/pdf',
 ])
 
+type PdfPreviewRow = Record<string, unknown> & {
+  parsed_name?: string
+  parsed_barcode?: string | null
+  parsed_price?: number | null
+  raw_line?: string
+}
+
+async function enrichPdfPreviewRowsWithMemory(
+  storeId: string,
+  supplierId: string,
+  rows: Array<Record<string, unknown>>,
+): Promise<Array<Record<string, unknown>>> {
+  if (rows.length === 0) return rows
+
+  const supabase = getSupabaseAdmin()
+  const parsedRows = rows as PdfPreviewRow[]
+
+  const rawTexts = Array.from(
+    new Set(
+      parsedRows
+        .map((row) => (typeof row.parsed_name === 'string' ? row.parsed_name.trim() : ''))
+        .filter((value) => value.length > 0),
+    ),
+  )
+
+  if (rawTexts.length === 0) {
+    return parsedRows.map((row) => ({
+      ...row,
+      memory_match_found: false,
+      memory_matched_product_id: null,
+      memory_matched_product_name: null,
+    }))
+  }
+
+  const { data: memoryRows, error: memoryError } = await supabase
+    .from('product_match_memory')
+    .select('raw_text, matched_product_id, usage_count, last_used_at')
+    .eq('store_id', storeId)
+    .eq('supplier_id', supplierId)
+    .in('raw_text', rawTexts)
+    .eq('is_confirmed', true)
+
+  if (memoryError) throw memoryError
+
+  const bestMemoryByRawText = new Map<string, { matched_product_id: string }>()
+  for (const row of memoryRows || []) {
+    const rawText = typeof row.raw_text === 'string' ? row.raw_text : ''
+    const matchedProductId = typeof row.matched_product_id === 'string' ? row.matched_product_id : ''
+    if (!rawText || !matchedProductId) continue
+
+    const existing = bestMemoryByRawText.get(rawText)
+    if (!existing) {
+      bestMemoryByRawText.set(rawText, { matched_product_id: matchedProductId })
+    }
+  }
+
+  const matchedProductIds = Array.from(new Set(Array.from(bestMemoryByRawText.values()).map((v) => v.matched_product_id)))
+  const productNamesById = new Map<string, string>()
+
+  if (matchedProductIds.length > 0) {
+    const { data: products, error: productsError } = await supabase
+      .from('products')
+      .select('id, name')
+      .eq('store_id', storeId)
+      .in('id', matchedProductIds)
+
+    if (productsError) throw productsError
+
+    for (const product of products || []) {
+      const id = typeof product.id === 'string' ? product.id : ''
+      const name = typeof product.name === 'string' ? product.name : '—'
+      if (id) productNamesById.set(id, name)
+    }
+  }
+
+  return parsedRows.map((row) => {
+    const raw_text = typeof row.parsed_name === 'string' ? row.parsed_name.trim() : ''
+    const parsed_barcode = typeof row.parsed_barcode === 'string' ? row.parsed_barcode : null
+    const memory = raw_text ? bestMemoryByRawText.get(raw_text) : undefined
+    const memory_match_found = Boolean(memory?.matched_product_id)
+    const memory_matched_product_id = memory?.matched_product_id || null
+    const memory_matched_product_name =
+      memory_matched_product_id && productNamesById.has(memory_matched_product_id)
+        ? productNamesById.get(memory_matched_product_id) || null
+        : null
+
+    console.log('[pdf-preview-memory]', {
+      raw_text,
+      parsed_barcode,
+      memory_match_found,
+      memory_matched_product_name,
+    })
+
+    return {
+      ...row,
+      memory_match_found,
+      memory_matched_product_id,
+      memory_matched_product_name,
+    }
+  })
+}
+
 async function createPdfBatchLogs(
   storeId: string,
   supplierId: string,
@@ -135,15 +237,25 @@ export async function POST(request: NextRequest) {
       const buffer = Buffer.from(await file.arrayBuffer())
       const parseResult = await parseImportFile(file.name, file.type, buffer)
 
+      let previewRows = parseResult.previewRows
+      if (parseResult.fileType === 'pdf' && parseResult.parseStatus === 'parsed' && parseResult.previewRows.length > 0) {
+        previewRows = await enrichPdfPreviewRowsWithMemory(store_id, supplier_id, parseResult.previewRows)
+      }
+
+      const responseParseResult: ImportParseResult = {
+        ...parseResult,
+        previewRows,
+      }
+
       let batchId: string | null = null
       if (parseResult.fileType === 'pdf') {
-        batchId = await createPdfBatchLogs(store_id, supplier_id, file.name, parseResult)
+        batchId = await createPdfBatchLogs(store_id, supplier_id, file.name, responseParseResult)
       }
 
       return NextResponse.json({
         ok: true,
         batchId,
-        ...parseResult,
+        ...responseParseResult,
       })
     }
 

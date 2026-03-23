@@ -16,6 +16,9 @@ type PdfParsedRow = {
   parsed_price?: number | null
   parsed_barcode?: string | null
   raw_line?: string
+  memory_match_found?: boolean
+  memory_matched_product_id?: string | null
+  memory_matched_product_name?: string | null
 }
 
 type ProductSearchItem = {
@@ -23,6 +26,11 @@ type ProductSearchItem = {
   name: string
   category: string | null
   brand: string | null
+}
+
+function isBarcodeLikeText(query: string) {
+  const compact = query.replace(/\s+/g, '')
+  return /^\d[\d\-]{3,}$/.test(compact)
 }
 
 type ParseStatus = 'parsed' | 'manual_review' | 'failed'
@@ -134,7 +142,7 @@ function ImportPricesContent() {
   }, [matchSearch])
 
   useEffect(() => {
-    if (matchModalRowIndex === null || !storeId) return
+    if (matchModalRowIndex === null || !storeId || !supplierId) return
 
     const queryText = debouncedMatchSearch.trim()
     if (!queryText) {
@@ -146,26 +154,116 @@ function ImportPricesContent() {
     const searchProducts = async () => {
       setMatchSearchLoading(true)
       try {
-        const { data, error } = await supabase
-          .from('products')
-          .select('id,name,category,brand')
-          .eq('store_id', storeId)
-          .eq('is_active', true)
-          .ilike('name', `%${queryText}%`)
-          .order('name', { ascending: true })
-          .limit(20)
+        const isBarcodeLike = isBarcodeLikeText(queryText)
+        const compactQuery = queryText.replace(/\s+/g, '')
+        const byId = new Map<string, ProductSearchItem>()
 
-        if (error) throw error
-
-        if (!cancelled) {
-          setMatchCandidates(
-            (data || []).map((p: Record<string, unknown>) => ({
-              id: String(p.id || ''),
+        const pushProducts = (products: Array<Record<string, unknown>>) => {
+          for (const p of products) {
+            const id = String(p.id || '')
+            if (!id || byId.has(id)) continue
+            byId.set(id, {
+              id,
               name: String(p.name || '—'),
               category: normalizeText(p.category),
               brand: normalizeText(p.brand),
-            })),
-          )
+            })
+            if (byId.size >= 20) break
+          }
+        }
+
+        const fetchProductsByIds = async (ids: string[]) => {
+          if (ids.length === 0 || byId.size >= 20) return
+          const { data, error } = await supabase
+            .from('products')
+            .select('id,name,category,brand')
+            .eq('store_id', storeId)
+            .in('id', ids)
+            .eq('is_active', true)
+            .order('name', { ascending: true })
+          if (error) throw error
+          pushProducts((data || []) as Array<Record<string, unknown>>)
+        }
+
+        const fetchSupplierProductMatches = async (mode: 'exact' | 'partial') => {
+          if (byId.size >= 20) return
+
+          const buildBaseQuery = () =>
+            supabase
+              .from('supplier_products')
+              .select('product_id')
+              .eq('store_id', storeId)
+              .eq('supplier_id', supplierId)
+              .eq('is_active', true)
+
+          const supplierKeyResult =
+            mode === 'exact'
+              ? await buildBaseQuery().eq('supplier_barcode_key', compactQuery)
+              : await buildBaseQuery().ilike('supplier_barcode_key', `%${compactQuery}%`)
+
+          if (supplierKeyResult.error) throw supplierKeyResult.error
+
+          const barcodeRawResult =
+            mode === 'exact'
+              ? await buildBaseQuery().eq('barcode_raw', compactQuery)
+              : await buildBaseQuery().ilike('barcode_raw', `%${compactQuery}%`)
+
+          if (barcodeRawResult.error) throw barcodeRawResult.error
+
+          const merged = [
+            ...((supplierKeyResult.data || []) as Array<Record<string, unknown>>),
+            ...((barcodeRawResult.data || []) as Array<Record<string, unknown>>),
+          ]
+
+          const productIds = Array.from(new Set(merged.map((row) => (typeof row.product_id === 'string' ? row.product_id : '')).filter((id) => id.length > 0)))
+          await fetchProductsByIds(productIds)
+        }
+
+        // 1) exact barcode first
+        if (compactQuery) {
+          const { data: exactBase, error: exactBaseError } = await supabase
+            .from('products')
+            .select('id,name,category,brand')
+            .eq('store_id', storeId)
+            .eq('is_active', true)
+            .eq('base_barcode', compactQuery)
+            .limit(20)
+          if (exactBaseError) throw exactBaseError
+          pushProducts((exactBase || []) as Array<Record<string, unknown>>)
+          await fetchSupplierProductMatches('exact')
+        }
+
+        // 2) partial barcode second
+        if (compactQuery && (isBarcodeLike || byId.size < 20)) {
+          const { data: partialBase, error: partialBaseError } = await supabase
+            .from('products')
+            .select('id,name,category,brand')
+            .eq('store_id', storeId)
+            .eq('is_active', true)
+            .ilike('base_barcode', `%${compactQuery}%`)
+            .limit(20)
+          if (partialBaseError) throw partialBaseError
+          pushProducts((partialBase || []) as Array<Record<string, unknown>>)
+          await fetchSupplierProductMatches('partial')
+        }
+
+        // 3) name ilike third
+        if (byId.size < 20) {
+          const { data: byName, error: byNameError } = await supabase
+            .from('products')
+            .select('id,name,category,brand')
+            .eq('store_id', storeId)
+            .eq('is_active', true)
+            .ilike('name', `%${queryText}%`)
+            .order('name', { ascending: true })
+            .limit(20)
+
+          if (byNameError) throw byNameError
+          pushProducts((byName || []) as Array<Record<string, unknown>>)
+        }
+
+        if (!cancelled) {
+          setMatchCandidates(Array.from(byId.values()).slice(0, 20))
         }
       } catch (error) {
         console.error('[import-prices] product search failed', error)
@@ -179,7 +277,7 @@ function ImportPricesContent() {
     return () => {
       cancelled = true
     }
-  }, [debouncedMatchSearch, matchModalRowIndex, storeId, supabase])
+  }, [debouncedMatchSearch, matchModalRowIndex, storeId, supplierId, supabase])
 
   if (!storeId) return null
 
@@ -433,6 +531,8 @@ function ImportPricesContent() {
                     const parsedName = normalizeText(pdfRow.parsed_name)
                     const parsedPrice = parseSafeNumber(pdfRow.parsed_price)
                     const parsedBarcode = normalizeText(pdfRow.parsed_barcode)
+                    const memoryMatchFound = Boolean(pdfRow.memory_match_found)
+                    const memoryMatchedProductName = normalizeText(pdfRow.memory_matched_product_name)
                     const selectedProduct = manualMatches[idx]
 
                     return (
@@ -445,8 +545,16 @@ function ImportPricesContent() {
                             Match προϊόν
                           </button>
                         </div>
+                        <div style={{ marginTop: 6 }}>
+                          <span style={memoryMatchFound ? memoryMatchBadge : unmatchedBadge}>
+                            {memoryMatchFound ? 'Memory Match' : 'Unmatched'}
+                          </span>
+                        </div>
                         <p style={miniText}>Τιμή: {parsedPrice !== null ? parsedPrice.toFixed(3) : '—'} €</p>
                         <p style={miniText}>Barcode: {parsedBarcode || '—'}</p>
+                        {memoryMatchFound && (
+                          <p style={miniText}>Memory product: {memoryMatchedProductName || '—'}</p>
+                        )}
                         <p style={rawLineText}>{normalizeText(pdfRow.raw_line) || '—'}</p>
                         {selectedProduct && (
                           <p style={manualMatchTag}>Manual match: {selectedProduct.name}</p>
@@ -590,6 +698,8 @@ const miniText = { margin: '6px 0 0 0', fontSize: 11, fontWeight: 800, color: co
 const rawLineText = { margin: '6px 0 0 0', fontSize: 11, fontWeight: 700, color: '#475569', backgroundColor: '#eef2ff', borderRadius: 8, padding: '6px 8px' }
 const manualMatchTag = { margin: '8px 0 0 0', fontSize: 11, fontWeight: 900, color: '#065f46', backgroundColor: '#d1fae5', borderRadius: 999, padding: '4px 8px', display: 'inline-block' }
 const matchBtn: any = { border: '1px solid #bfdbfe', borderRadius: 8, backgroundColor: '#eff6ff', color: '#1d4ed8', fontWeight: 900, fontSize: 11, padding: '6px 8px' }
+const memoryMatchBadge: any = { display: 'inline-block', padding: '4px 8px', borderRadius: 999, backgroundColor: '#dcfce7', color: '#065f46', fontSize: 11, fontWeight: 900 }
+const unmatchedBadge: any = { display: 'inline-block', padding: '4px 8px', borderRadius: 999, backgroundColor: '#fee2e2', color: '#991b1b', fontSize: 11, fontWeight: 900 }
 const increaseTag: any = { display: 'inline-block', padding: '4px 8px', borderRadius: 999, backgroundColor: '#fee2e2', color: '#991b1b', fontSize: 11, fontWeight: 900 }
 const decreaseTag: any = { display: 'inline-block', padding: '4px 8px', borderRadius: 999, backgroundColor: '#dcfce7', color: '#065f46', fontSize: 11, fontWeight: 900 }
 const neutralTag: any = { display: 'inline-block', padding: '4px 8px', borderRadius: 999, backgroundColor: '#e2e8f0', color: '#334155', fontSize: 11, fontWeight: 900 }
