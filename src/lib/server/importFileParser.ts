@@ -2,7 +2,7 @@ import * as XLSX from 'xlsx'
 import pdfParse from 'pdf-parse'
 import { normalizeText, parseSafeDate, parseSafeNumber, type SupplierPriceImportInputRow } from '@/lib/productsModule'
 
-export type SupportedImportFileType = 'csv' | 'xlsx' | 'pdf' | 'unknown'
+export type SupportedImportFileType = 'csv' | 'xlsx' | 'xls' | 'pdf' | 'unknown'
 
 export type ImportParseStatus = 'parsed' | 'manual_review' | 'failed'
 
@@ -19,6 +19,7 @@ function detectFileType(fileName: string, mimeType: string): SupportedImportFile
   const lower = fileName.toLowerCase()
   if (lower.endsWith('.csv') || mimeType.includes('csv')) return 'csv'
   if (lower.endsWith('.xlsx') || mimeType.includes('spreadsheetml')) return 'xlsx'
+  if (lower.endsWith('.xls') || mimeType.includes('ms-excel')) return 'xls'
   if (lower.endsWith('.pdf') || mimeType.includes('pdf')) return 'pdf'
   return 'unknown'
 }
@@ -41,10 +42,10 @@ export function parseCsvFile(buffer: Buffer): ImportParseResult {
   }
 }
 
-export function parseXlsxFile(buffer: Buffer): ImportParseResult {
+export function parseXlsxFile(buffer: Buffer, fileType: 'xlsx' | 'xls' = 'xlsx'): ImportParseResult {
   const rows = sheetRowsFromBuffer(buffer)
   return {
-    fileType: 'xlsx',
+    fileType,
     isScannedPdf: false,
     previewRows: rows,
     warnings: [],
@@ -174,14 +175,14 @@ export async function parseImportFile(fileName: string, mimeType: string, buffer
   const fileType = detectFileType(fileName, mimeType)
 
   if (fileType === 'csv') return parseCsvFile(buffer)
-  if (fileType === 'xlsx') return parseXlsxFile(buffer)
+  if (fileType === 'xlsx' || fileType === 'xls') return parseXlsxFile(buffer, fileType)
   if (fileType === 'pdf') return parsePdfTextFile(buffer)
 
   return {
     fileType: 'unknown',
     isScannedPdf: false,
     previewRows: [],
-    warnings: ['Μη υποστηριζόμενος τύπος αρχείου. Επιτρέπονται csv, xlsx, pdf.'],
+    warnings: ['Μη υποστηριζόμενος τύπος αρχείου. Επιτρέπονται csv, xlsx, xls, pdf.'],
     rawText: '',
     parseStatus: 'failed',
   }

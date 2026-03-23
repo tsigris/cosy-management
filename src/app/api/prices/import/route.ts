@@ -14,6 +14,11 @@ const ACCEPTED_MIME = new Set([
   'application/pdf',
 ])
 
+function isSupportedImportByExtension(fileName: string) {
+  const lowerName = fileName.toLowerCase()
+  return lowerName.endsWith('.csv') || lowerName.endsWith('.xlsx') || lowerName.endsWith('.xls') || lowerName.endsWith('.pdf')
+}
+
 type PdfPreviewRow = Record<string, unknown> & {
   parsed_name?: string
   parsed_barcode?: string | null
@@ -227,15 +232,20 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'Το αρχείο είναι πολύ μεγάλο (max 10MB).' }, { status: 400 })
       }
 
-      const lowerName = file.name.toLowerCase()
-      const isSupportedByExt = lowerName.endsWith('.csv') || lowerName.endsWith('.xlsx') || lowerName.endsWith('.pdf')
+      const isSupportedByExt = isSupportedImportByExtension(file.name)
       const isSupportedByMime = ACCEPTED_MIME.has(file.type)
       if (!isSupportedByExt && !isSupportedByMime) {
-        return NextResponse.json({ error: 'Μη υποστηριζόμενο format. Επιτρέπονται csv, xlsx, pdf.' }, { status: 400 })
+        return NextResponse.json({ error: 'Μη υποστηριζόμενο format. Επιτρέπονται csv, xlsx, xls, pdf.' }, { status: 400 })
       }
 
       const buffer = Buffer.from(await file.arrayBuffer())
       const parseResult = await parseImportFile(file.name, file.type, buffer)
+
+      console.log('[import-file]', {
+        fileName: file.name,
+        fileType: parseResult.fileType,
+        size: file.size,
+      })
 
       let previewRows = parseResult.previewRows
       if (parseResult.fileType === 'pdf' && parseResult.parseStatus === 'parsed' && parseResult.previewRows.length > 0) {

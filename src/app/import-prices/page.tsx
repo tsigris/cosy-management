@@ -51,7 +51,7 @@ function isBarcodeLikeText(query: string) {
 
 type ParseStatus = 'parsed' | 'manual_review' | 'failed'
 
-type FileType = 'csv' | 'xlsx' | 'pdf' | 'unknown'
+type FileType = 'csv' | 'xlsx' | 'xls' | 'pdf' | 'unknown'
 
 type Mapping = {
   supplier_product_name: string
@@ -396,9 +396,13 @@ function ImportPricesContent() {
   async function handleFile(file: File) {
     try {
       const lowerName = file.name.toLowerCase()
-      const allowedExt = lowerName.endsWith('.csv') || lowerName.endsWith('.xlsx') || lowerName.endsWith('.pdf')
+      const allowedExt =
+        lowerName.endsWith('.csv') ||
+        lowerName.endsWith('.xlsx') ||
+        lowerName.endsWith('.xls') ||
+        lowerName.endsWith('.pdf')
       if (!allowedExt) {
-        toast.error('Μη υποστηριζόμενο format. Επιτρέπονται csv, xlsx, pdf.')
+        toast.error('Μη υποστηριζόμενο format. Επιτρέπονται csv, xlsx, xls, pdf.')
         return
       }
       if (file.size > 10 * 1024 * 1024) {
@@ -421,6 +425,12 @@ function ImportPricesContent() {
 
       const data = await res.json()
       if (!res.ok) throw new Error(data?.error || 'Αποτυχία parsing αρχείου')
+
+      console.log('[import-file]', {
+        fileName: file.name,
+        fileType: String(data.fileType || 'unknown'),
+        size: file.size,
+      })
 
       setUploadedFileType((data.fileType || 'unknown') as FileType)
       setIsScannedPdf(Boolean(data.isScannedPdf))
@@ -640,7 +650,7 @@ function ImportPricesContent() {
           <label style={{ ...labelStyle, marginTop: 10 }}><Upload size={14} /> Αρχείο</label>
           <input
             type="file"
-            accept=".csv,.xlsx,.pdf"
+            accept=".csv,.xlsx,.xls,.pdf"
             style={inputStyle}
             onChange={(e) => {
               const file = e.target.files?.[0]

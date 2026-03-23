@@ -55,11 +55,25 @@ function ImportProductsContent() {
 
   async function handleFile(file: File) {
     try {
+      const lowerName = file.name.toLowerCase()
+      const allowedExt = lowerName.endsWith('.csv') || lowerName.endsWith('.xlsx') || lowerName.endsWith('.xls')
+      if (!allowedExt) {
+        toast.error('Μη υποστηριζόμενο format. Επιτρέπονται csv, xlsx, xls.')
+        return
+      }
+
       const buffer = await file.arrayBuffer()
       const workbook = XLSX.read(buffer, { type: 'array' })
       const firstSheetName = workbook.SheetNames[0]
       const sheet = workbook.Sheets[firstSheetName]
       const parsed = XLSX.utils.sheet_to_json<ParsedRow>(sheet, { defval: null })
+
+      console.log('[import-file]', {
+        fileName: file.name,
+        fileType: lowerName.endsWith('.xls') ? 'xls' : lowerName.endsWith('.xlsx') ? 'xlsx' : 'csv',
+        size: file.size,
+      })
+
       setRows(parsed)
       setFileName(file.name)
       console.log('[import-products] preview rows', parsed.slice(0, 3))
@@ -126,7 +140,7 @@ function ImportProductsContent() {
           <label style={labelStyle}><Upload size={14} /> Αρχείο</label>
           <input
             type="file"
-            accept=".csv,.xlsx"
+            accept=".csv,.xlsx,.xls"
             style={inputStyle}
             onChange={(e) => {
               const file = e.target.files?.[0]
