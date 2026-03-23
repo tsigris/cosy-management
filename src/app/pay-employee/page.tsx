@@ -54,16 +54,17 @@ function PayEmployeeContent() {
       setLoading(true)
       const { data: emp, error } = await supabase
         .from('fixed_assets')
-        .select('pay_basis, monthly_salary, daily_rate, monthly_days, agreed_extra_salary')
+        .select('pay_basis, monthly_salary, daily_rate, monthly_days, agreed_extra_salary, agreed_extra')
         .eq('id', empId)
         .eq('store_id', storeId)
         .single();
 
       if (emp) {
+        const agreedExtraSalary = Number(emp?.agreed_extra_salary ?? emp?.agreed_extra ?? 0)
         setAgreementType(emp.pay_basis || 'monthly');
         setBaseAmount(emp.pay_basis === 'monthly' ? (emp.monthly_salary || 0) : (emp.daily_rate || 0));
         setAgreementDays(emp.monthly_days || 26);
-        setAgreedExtraSalary(Number(emp.agreed_extra_salary || 0));
+        setAgreedExtraSalary(agreedExtraSalary);
       }
 
       const businessAsOfDate = getTodayDateISO()
@@ -89,7 +90,7 @@ function PayEmployeeContent() {
         setPendingOvertimeHours(Number(rpcRow.pending_overtime_hours || 0))
         setAbsences(Number(rpcRow.extra_days_off_current_month || 0))
         setExtraOvertimeEuro(Number(rpcRow.pending_overtime_amount || 0).toFixed(2))
-        setAgreedExtraSalary(Number(rpcRow.agreed_extra_salary || emp?.agreed_extra_salary || 0))
+        setAgreedExtraSalary(Number(rpcRow.agreed_extra_salary ?? emp?.agreed_extra_salary ?? emp?.agreed_extra ?? 0))
       }
 
       const { data: overtimeRows, error: overtimeError } = await supabase
@@ -133,7 +134,7 @@ function PayEmployeeContent() {
     return workedDays * baseAmount;
   };
 
-  const manualBonus = Number(bonus) || 0
+  const manualBonus = Number(bonus || 0)
   const manualOvertime = Number(extraOvertimeEuro) || 0
   const computedGrossPayable = calculateCurrentBase() + manualOvertime
   const computedRawRemainingPayroll = computedGrossPayable - (advanceTotal || 0)
@@ -150,17 +151,14 @@ function PayEmployeeContent() {
   const rpcExtraDaysOff = Number(payrollSummaryRow?.extra_days_off_current_month || 0)
   const rpcDaysOffDeduction = Number(payrollSummaryRow?.days_off_deduction || 0)
   const rpcRemainingPay = Number(payrollSummaryRow?.remaining_pay || 0)
-  const rpcComputedAmount = rpcMonthlySalary + rpcPendingOvertimeAmount - rpcDaysOffDeduction
 
-  const effectiveGrossPayable = hasRpcSummary ? rpcComputedAmount : computedGrossPayable
   const effectiveAgreedExtraSalary = hasRpcSummary ? rpcAgreedExtraSalary : agreedExtraSalary
-  const effectiveAdvanceTotal = hasRpcSummary ? rpcTotalAdvances : advanceTotal
-  const effectiveRawRemainingPayroll = hasRpcSummary ? rpcRemainingPay : computedRawRemainingPayroll
-  const effectiveRemainingPayroll = Math.max(0, effectiveRawRemainingPayroll)
-  const effectiveRawNetPayable = effectiveRawRemainingPayroll + effectiveAgreedExtraSalary + manualBonus
-  const effectiveNetPayable = Math.max(0, effectiveRawNetPayable)
+  const effectivePayrollRemaining = hasRpcSummary ? rpcRemainingPay : computedRawRemainingPayroll
+  const effectiveRemainingPayroll = Math.max(0, effectivePayrollRemaining)
+  const finalPayable = Math.max(0, effectivePayrollRemaining + effectiveAgreedExtraSalary + manualBonus)
+  console.log('[pay-employee] rpcRemainingPay', rpcRemainingPay, 'agreedExtraSalary', effectiveAgreedExtraSalary, 'bonus', Number(bonus || 0), 'finalPayable', finalPayable)
   const bankAmountNum = Number(bankAmount) || 0
-  const cashAmount = Math.max(0, effectiveNetPayable - bankAmountNum)
+  const cashAmount = Math.max(0, finalPayable - bankAmountNum)
 
   async function handleFinalPayment() {
     if (!storeId) return toast.error('Σφάλμα καταστήματος');
@@ -198,17 +196,17 @@ function PayEmployeeContent() {
       }
 
       // normal final payment (remaining payroll + agreed extra + manual bonus)
-      if (effectiveRawRemainingPayroll < 0) {
+      if (effectivePayrollRemaining < 0) {
         setLoading(false)
         return toast.error('Οι προκαταβολές είναι περισσότερες από το υπολογισμένο ποσό')
       }
 
-      if (effectiveNetPayable <= 0) {
+      if (finalPayable <= 0) {
         setLoading(false)
         return toast.error('Το ποσό πληρωμής πρέπει να είναι μεγαλύτερο από 0')
       }
 
-      if (bankAmountNum > effectiveNetPayable) {
+      if (bankAmountNum > finalPayable) {
         setLoading(false)
         return toast.error('Το ποσό τράπεζας δεν μπορεί να είναι μεγαλύτερο από το σύνολο')
       }
@@ -274,7 +272,7 @@ function PayEmployeeContent() {
       const { error: payrollError } = await supabase.rpc('payroll_payment_atomic', {
         p_store_id: storeId,
         p_employee_id: empId,
-        p_amount: effectiveNetPayable,
+        p_amount: finalPayable,
         p_method: paymentMethod,
         p_category: 'Staff',
         p_date: date,
@@ -410,14 +408,6 @@ function PayEmployeeContent() {
             ) : (
               <div style={{display: 'flex', flexDirection: 'column', gap: '8px'}}>
                 <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
-                  <span style={resultLabel}>ΥΠΟΛΟΓΙΣΜΕΝΟ ΠΟΣΟ</span>
-                  <span style={resultValue}>{effectiveGrossPayable.toFixed(2)}€</span>
-                </div>
-                <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
-                  <span style={resultLabel}>ΠΡΟΚΑΤΑΒΟΛΕΣ</span>
-                  <span style={resultValue}>{effectiveAdvanceTotal.toFixed(2)}€</span>
-                </div>
-                <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
                   <span style={resultLabel}>ΥΠΟΛΟΙΠΟ ΜΙΣΘΟΔΟΣΙΑΣ</span>
                   <span style={resultValue}>{effectiveRemainingPayroll.toFixed(2)}€</span>
                 </div>
@@ -431,7 +421,7 @@ function PayEmployeeContent() {
                 </div>
                 <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
                   <span style={resultLabel}>ΤΕΛΙΚΟ ΠΛΗΡΩΤΕΟ</span>
-                  <span style={resultValue}>{effectiveNetPayable.toFixed(2)}€</span>
+                  <span style={resultValue}>{finalPayable.toFixed(2)}€</span>
                 </div>
               </div>
             )}
@@ -478,7 +468,7 @@ function PayEmployeeContent() {
 
           <button
             onClick={handleFinalPayment}
-            disabled={loading || (mode === 'advance' ? Number(advanceAmount) <= 0 : effectiveRawRemainingPayroll < 0)}
+            disabled={loading || (mode === 'advance' ? Number(advanceAmount) <= 0 : effectivePayrollRemaining < 0)}
             style={payBtn}
           >
             {loading

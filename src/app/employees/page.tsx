@@ -1670,7 +1670,7 @@ function EmployeesContent() {
                 const isInactive = emp.is_active === false
                 const monthlyDays = Number(emp.work_days_per_month ?? emp.monthly_days ?? 0)
                 const monthlySalary = Number(emp.monthly_salary ?? 0)
-                const agreedExtraSalary = Number(emp.agreed_extra_salary ?? 0)
+                const agreedExtraSalary = Number(emp.agreed_extra_salary ?? emp.agreed_extra ?? 0)
                 const agreedMonthlyPay = monthlySalary + agreedExtraSalary
                 const isMonthlyEmployee = (emp.pay_basis || 'monthly') === 'monthly'
                 const dayOffRowsThisMonth = (daysOffByEmployee[emp.id] || [])
@@ -1714,6 +1714,8 @@ function EmployeesContent() {
                 const pendingOtAmount = hasPayrollSummary ? Number(payrollSummary?.pending_overtime_amount ?? 0) : pendingOtAmountLocal
                 const daysOffDeduction = hasPayrollSummary ? Number(payrollSummary?.days_off_deduction ?? 0) : daysOffDeductionLocal
                 const remainingPay = hasPayrollSummary ? Number(payrollSummary?.remaining_pay ?? 0) : remainingPayLocal
+                const displayRemainingPay = remainingPay + agreedExtraSalary
+                console.log('[employees-card] remaining_pay', remainingPay, 'agreed_extra_salary', agreedExtraSalary, 'display_remaining_pay', displayRemainingPay)
                 const pendingOt = pendingOtHours
                 const yearDaysOffCount = (daysOffByEmployee[emp.id] || []).filter((row) => {
                   const businessDate = toBusinessDayDateFromInput(getDayOffDateValue(row), { normalizeToNoon: true })
@@ -1813,7 +1815,7 @@ function EmployeesContent() {
 
                         {pendingOt > 0 && <span style={{ ...badgeStyle, backgroundColor: 'var(--surface)', color: 'var(--muted)' }}>⏱️ {pendingOt} ΩΡΕΣ</span>}
                         <span style={{ ...badgeStyle, backgroundColor: '#eef2ff', color: '#3730a3' }}>ΡΕΠΟ {actualDaysOff}/{includedDaysOff}</span>
-                        {isMonthlyEmployee && <span style={{ ...badgeStyle, backgroundColor: '#ecfdf5', color: '#047857' }}>ΥΠΟΛΟΙΠΟ {remainingPay.toFixed(2)}€</span>}
+                        {isMonthlyEmployee && <span style={{ ...badgeStyle, backgroundColor: '#ecfdf5', color: '#047857' }}>ΥΠΟΛΟΙΠΟ {displayRemainingPay.toFixed(2)}€</span>}
                         {isInactive && <span style={{ ...badgeStyle, backgroundColor: 'var(--surface)', color: 'var(--muted)' }}>ΑΝΕΝΕΡΓΟΣ</span>}
                       </div>
                     </div>
