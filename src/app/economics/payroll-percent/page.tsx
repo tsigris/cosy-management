@@ -184,31 +184,81 @@ function PayrollPercentContent() {
     try {
       setLoading(true)
 
-      const { data, error } = await supabase.rpc('get_staff_payroll_pressure_period_summary', {
-        p_store_id: storeId,
-        p_start_date: rpcStart,
-        p_end_date: rpcEnd,
-      })
+      const [{ data, error }, employeeMetaRes] = await Promise.all([
+        supabase.rpc('get_staff_payroll_pressure_period_summary', {
+          p_store_id: storeId,
+          p_start_date: rpcStart,
+          p_end_date: rpcEnd,
+        }),
+        supabase
+          .from('fixed_assets')
+          .select('id, start_date, pay_basis')
+          .or(`store_id.eq.${storeId},store_id.is.null`),
+      ])
 
       if (requestId !== requestIdRef.current) return
       if (error) throw error
+      if (employeeMetaRes.error) throw employeeMetaRes.error
 
       const rawPayload = Array.isArray(data) ? data[0] : data
       const payload = (rawPayload || {}) as RpcPayload
       const payloadRows = Array.isArray(payload.rows) ? payload.rows : []
+      const employeeMetaById = (employeeMetaRes.data || []).reduce((acc: Record<string, EmployeeMetaRow>, row: any) => {
+        const key = String(row?.id || '')
+        if (!key) return acc
+        acc[key] = row as EmployeeMetaRow
+        return acc
+      }, {})
 
-      const mappedRows: EmployeePayrollRow[] = payloadRows.map((r) => ({
-        id: String(r.employee_id || crypto.randomUUID()),
-        name: String(r.name || 'Άγνωστος'),
-        monthlySalary: Number(r.monthly_salary || 0),
-        agreedExtraSalary: Number(r.agreed_extra_salary || 0),
-        insurancePct: Number(r.insurance_pct || 0),
-        insuranceAmount: Number(r.insurance_amount || 0),
-        totalMonthlyCost: Number(r.total_monthly_cost || 0),
-        dailyCost: Number(r.daily_cost || 0),
-        periodCost: Number(r.period_cost || 0),
-        payrollPctOfTurnover: Number(r.payroll_pct_of_turnover || 0),
-      }))
+      const mappedRows: EmployeePayrollRow[] = payloadRows.map((r) => {
+        const employeeId = String(r.employee_id || '')
+        const employeeName = String(r.name || 'Άγνωστος')
+        const dailyCost = Number(r.daily_cost || 0)
+        const fallbackPeriodCost = Number(r.period_cost || 0)
+        const meta = employeeMetaById[employeeId]
+        const startDate = String(meta?.start_date || '')
+        const payBasis = String(meta?.pay_basis || 'monthly')
+
+        let periodCost = fallbackPeriodCost
+        let effectivePeriodStart: string | null = null
+        let daysInPeriod: number | null = null
+
+        if (payBasis === 'monthly' && isValidDateKey(startDate)) {
+          if (startDate > rpcEnd) {
+            effectivePeriodStart = startDate
+            daysInPeriod = 0
+            periodCost = 0
+          } else {
+            effectivePeriodStart = startDate > rpcStart ? startDate : rpcStart
+            daysInPeriod = getInclusiveDaysBetween(effectivePeriodStart, rpcEnd)
+            periodCost = dailyCost * daysInPeriod
+          }
+        }
+
+        console.log('[payroll-percent-period-cost-debug]', {
+          employee_name: employeeName,
+          start_date: startDate || null,
+          filter_from: rpcStart,
+          filter_to: rpcEnd,
+          effective_period_start: effectivePeriodStart,
+          days_in_period: daysInPeriod,
+          daily_cost: dailyCost,
+          period_cost: periodCost,
+        })
+
+        return {
+          id: String(r.employee_id || crypto.randomUUID()),
+          name: employeeName,
+          monthlySalary: Number(r.monthly_salary || 0),
+          agreedExtraSalary: Number(r.agreed_extra_salary || 0),
+          insurancePct: Number(r.insurance_pct || 0),
+          insuranceAmount: Number(r.insurance_amount || 0),
+          totalMonthlyCost: Number(r.total_monthly_cost || 0),
+          dailyCost,
+          periodCost,
+          payrollPctOfTurnover: Number(r.payroll_pct_of_turnover || 0),
+        }
+      })
 
       const nextStart = isValidDateKey(String(payload.start_date || '')) ? String(payload.start_date) : rpcStart
       const nextEnd = isValidDateKey(String(payload.end_date || '')) ? String(payload.end_date) : rpcEnd
