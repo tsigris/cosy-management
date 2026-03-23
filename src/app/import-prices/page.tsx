@@ -11,6 +11,19 @@ import { ChevronLeft, Upload } from 'lucide-react'
 
 type ParsedRow = Record<string, unknown>
 
+type PreviewRow = ParsedRow & {
+  parsed_name?: string
+  parsed_price?: number | null
+  parsed_barcode?: string | null
+  raw_line?: string
+  memory_match_found?: boolean
+  memory_matched_product_id?: string | null
+  memory_matched_product_name?: string | null
+  is_auto_matched?: boolean
+  selected_product_id?: string | null
+  selected_product_name?: string | null
+}
+
 type PdfParsedRow = {
   parsed_name?: string
   parsed_price?: number | null
@@ -19,6 +32,9 @@ type PdfParsedRow = {
   memory_match_found?: boolean
   memory_matched_product_id?: string | null
   memory_matched_product_name?: string | null
+  is_auto_matched?: boolean
+  selected_product_id?: string | null
+  selected_product_name?: string | null
 }
 
 type ProductSearchItem = {
@@ -63,7 +79,7 @@ function ImportPricesContent() {
   const [suppliers, setSuppliers] = useState<Array<{ id: string; name: string }>>([])
   const [supplierId, setSupplierId] = useState('')
   const [fileName, setFileName] = useState('')
-  const [rows, setRows] = useState<ParsedRow[]>([])
+  const [rows, setRows] = useState<PreviewRow[]>([])
   const [mapping, setMapping] = useState<Mapping>({
     supplier_product_name: 'supplier_product_name',
     barcode_raw: 'barcode_raw',
@@ -92,7 +108,6 @@ function ImportPricesContent() {
   const [matchCandidates, setMatchCandidates] = useState<ProductSearchItem[]>([])
   const [matchSearchLoading, setMatchSearchLoading] = useState(false)
   const [savingMatchProductId, setSavingMatchProductId] = useState<string | null>(null)
-  const [manualMatches, setManualMatches] = useState<Record<number, ProductSearchItem>>({})
 
   useEffect(() => {
     if (!storeId) {
@@ -128,11 +143,108 @@ function ImportPricesContent() {
     return first ? Object.keys(first) : []
   }, [rows])
 
+  const previewSummary = useMemo(() => {
+    const total = rows.length
+    const autoMatched = rows.filter((row) => Boolean(row.selected_product_id)).length
+    const unmatched = Math.max(0, total - autoMatched)
+    return { total, autoMatched, unmatched }
+  }, [rows])
+
   const activePdfRow = useMemo(() => {
     if (matchModalRowIndex === null) return null
     const row = rows[matchModalRowIndex] as PdfParsedRow | undefined
     return row || null
   }, [matchModalRowIndex, rows])
+
+  async function enrichCsvRowsWithMemory(inputRows: PreviewRow[]) {
+    if (!storeId || !supplierId || inputRows.length === 0) return inputRows
+
+    const sourceField = mapping.supplier_product_name
+    const rawTexts = Array.from(
+      new Set(
+        inputRows
+          .map((row) => normalizeText(row[sourceField]))
+          .filter((value): value is string => Boolean(value)),
+      ),
+    )
+
+    if (rawTexts.length === 0) {
+      return inputRows.map((row) => ({
+        ...row,
+        memory_match_found: false,
+        memory_matched_product_id: null,
+        memory_matched_product_name: null,
+        is_auto_matched: false,
+        selected_product_id: null,
+        selected_product_name: null,
+      }))
+    }
+
+    const { data: memoryRows, error: memoryError } = await supabase
+      .from('product_match_memory')
+      .select('raw_text, matched_product_id, usage_count')
+      .eq('store_id', storeId)
+      .eq('supplier_id', supplierId)
+      .in('raw_text', rawTexts)
+      .eq('is_confirmed', true)
+
+    if (memoryError) throw memoryError
+
+    const memoryByRawText = new Map<string, string>()
+    for (const memoryRow of memoryRows || []) {
+      const rawText = typeof memoryRow.raw_text === 'string' ? memoryRow.raw_text : ''
+      const matchedProductId = typeof memoryRow.matched_product_id === 'string' ? memoryRow.matched_product_id : ''
+      if (!rawText || !matchedProductId || memoryByRawText.has(rawText)) continue
+      memoryByRawText.set(rawText, matchedProductId)
+    }
+
+    const matchedProductIds = Array.from(new Set(Array.from(memoryByRawText.values())))
+    const namesById = new Map<string, string>()
+
+    if (matchedProductIds.length > 0) {
+      const { data: products, error: productsError } = await supabase
+        .from('products')
+        .select('id,name')
+        .eq('store_id', storeId)
+        .in('id', matchedProductIds)
+
+      if (productsError) throw productsError
+
+      for (const product of products || []) {
+        const id = typeof product.id === 'string' ? product.id : ''
+        const name = typeof product.name === 'string' ? product.name : '—'
+        if (id) namesById.set(id, name)
+      }
+    }
+
+    return inputRows.map((row) => {
+      const rawText = normalizeText(row[sourceField])
+      const matchedProductId = rawText ? memoryByRawText.get(rawText) || null : null
+      const matchedProductName = matchedProductId ? namesById.get(matchedProductId) || null : null
+      const memoryFound = Boolean(matchedProductId)
+      return {
+        ...row,
+        memory_match_found: memoryFound,
+        memory_matched_product_id: matchedProductId,
+        memory_matched_product_name: matchedProductName,
+        is_auto_matched: memoryFound,
+        selected_product_id: matchedProductId,
+        selected_product_name: matchedProductName,
+      }
+    })
+  }
+
+  function applyAutoMatchFromMemoryFields(inputRows: PreviewRow[]) {
+    return inputRows.map((row) => {
+      const memoryFound = Boolean(row.memory_match_found && row.memory_matched_product_id)
+      return {
+        ...row,
+        is_auto_matched: memoryFound,
+        selected_product_id: memoryFound ? row.memory_matched_product_id || null : null,
+        selected_product_name: memoryFound ? row.memory_matched_product_name || null : null,
+      }
+    })
+  }
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -315,9 +427,22 @@ function ImportPricesContent() {
       setWarnings(Array.isArray(data.warnings) ? data.warnings : [])
       setRawText(typeof data.rawText === 'string' ? data.rawText : '')
       setParseStatus((data.parseStatus || 'failed') as ParseStatus)
-      setRows(Array.isArray(data.previewRows) ? data.previewRows : [])
+      const nextRows = Array.isArray(data.previewRows) ? (data.previewRows as PreviewRow[]) : []
+
+      let enrichedRows: PreviewRow[] = nextRows
+      if (data.fileType === 'pdf') {
+        enrichedRows = applyAutoMatchFromMemoryFields(nextRows)
+      } else if (data.fileType === 'csv' || data.fileType === 'xlsx') {
+        enrichedRows = await enrichCsvRowsWithMemory(nextRows)
+      }
+
+      const total = enrichedRows.length
+      const autoMatched = enrichedRows.filter((row) => Boolean(row.selected_product_id)).length
+      const unmatched = Math.max(0, total - autoMatched)
+      console.log('[auto-match-summary]', { total, autoMatched, unmatched })
+
+      setRows(enrichedRows)
       setImportSummary(null)
-      setManualMatches({})
     } catch (error) {
       console.error('[import-prices] parse failed', error)
       toast.error(error instanceof Error ? error.message : 'Αδυναμία ανάγνωσης αρχείου')
@@ -325,10 +450,15 @@ function ImportPricesContent() {
   }
 
   function openMatchModal(rowIndex: number) {
-    const row = rows[rowIndex] as PdfParsedRow | undefined
+    const row = rows[rowIndex] as PreviewRow | undefined
     setMatchModalRowIndex(rowIndex)
     setMatchCandidates([])
-    setMatchSearch(normalizeText(row?.parsed_name) || '')
+    setMatchSearch(
+      normalizeText(row?.selected_product_name) ||
+      normalizeText(row?.parsed_name) ||
+      normalizeText(row?.[mapping.supplier_product_name]) ||
+      '',
+    )
   }
 
   function closeMatchModal() {
@@ -367,7 +497,20 @@ function ImportPricesContent() {
       const data = await res.json()
       if (!res.ok) throw new Error(data?.error || 'Αποτυχία αποθήκευσης match')
 
-      setManualMatches((prev) => ({ ...prev, [matchModalRowIndex]: product }))
+      setRows((prev) =>
+        prev.map((row, idx) => {
+          if (idx !== matchModalRowIndex) return row
+          return {
+            ...row,
+            selected_product_id: product.id,
+            selected_product_name: product.name,
+            is_auto_matched: false,
+            memory_match_found: true,
+            memory_matched_product_id: product.id,
+            memory_matched_product_name: product.name,
+          }
+        }),
+      )
       toast.success(`Αποθηκεύτηκε match memory (${data.action}) για ${product.name}`)
       closeMatchModal()
     } catch (error) {
@@ -408,6 +551,8 @@ function ImportPricesContent() {
               price: parseSafeNumber(parsedRow.parsed_price ?? parsedRow.price),
               quantity: parseSafeNumber(parsedRow.quantity),
               invoice_date: parseSafeDate(parsedRow.invoice_date),
+              selected_product_id: normalizeText(parsedRow.selected_product_id),
+              selected_product_name: normalizeText(parsedRow.selected_product_name),
               raw_data: row,
             }
           })
@@ -418,6 +563,8 @@ function ImportPricesContent() {
             price: parseSafeNumber(row[mapping.price]),
             quantity: parseSafeNumber(row[mapping.quantity]),
             invoice_date: parseSafeDate(row[mapping.invoice_date]),
+            selected_product_id: normalizeText(row.selected_product_id),
+            selected_product_name: normalizeText(row.selected_product_name),
             raw_data: row,
           }))
 
@@ -477,6 +624,12 @@ function ImportPricesContent() {
         </header>
 
         <div style={card}>
+          <p style={{ margin: '0 0 6px 0', fontSize: 13, fontWeight: 900, color: colors.primaryDark }}>
+            {previewSummary.total} προϊόντα
+          </p>
+          <p style={summaryOkText}>✅ {previewSummary.autoMatched} auto matched</p>
+          <p style={summaryWarnText}>⚠️ {previewSummary.unmatched} χρειάζονται επιλογή</p>
+
           <label style={labelStyle}>Προμηθευτής</label>
           <select value={supplierId} onChange={(e) => setSupplierId(e.target.value)} style={inputStyle}>
             {suppliers.map((s) => (
@@ -531,9 +684,8 @@ function ImportPricesContent() {
                     const parsedName = normalizeText(pdfRow.parsed_name)
                     const parsedPrice = parseSafeNumber(pdfRow.parsed_price)
                     const parsedBarcode = normalizeText(pdfRow.parsed_barcode)
-                    const memoryMatchFound = Boolean(pdfRow.memory_match_found)
-                    const memoryMatchedProductName = normalizeText(pdfRow.memory_matched_product_name)
-                    const selectedProduct = manualMatches[idx]
+                    const isAutoMatched = Boolean(pdfRow.is_auto_matched && pdfRow.selected_product_id)
+                    const selectedProductName = normalizeText(pdfRow.selected_product_name)
 
                     return (
                       <div key={idx} style={pdfRowCard}>
@@ -546,26 +698,44 @@ function ImportPricesContent() {
                           </button>
                         </div>
                         <div style={{ marginTop: 6 }}>
-                          <span style={memoryMatchFound ? memoryMatchBadge : unmatchedBadge}>
-                            {memoryMatchFound ? 'Memory Match' : 'Unmatched'}
+                          <span style={isAutoMatched ? autoMatchedBadge : needsMatchBadge}>
+                            {isAutoMatched ? 'Auto Matched' : 'Needs Match'}
                           </span>
                         </div>
+                        {selectedProductName && (
+                          <p style={miniText}>→ {selectedProductName}</p>
+                        )}
                         <p style={miniText}>Τιμή: {parsedPrice !== null ? parsedPrice.toFixed(3) : '—'} €</p>
                         <p style={miniText}>Barcode: {parsedBarcode || '—'}</p>
-                        {memoryMatchFound && (
-                          <p style={miniText}>Memory product: {memoryMatchedProductName || '—'}</p>
-                        )}
                         <p style={rawLineText}>{normalizeText(pdfRow.raw_line) || '—'}</p>
-                        {selectedProduct && (
-                          <p style={manualMatchTag}>Manual match: {selectedProduct.name}</p>
-                        )}
                       </div>
                     )
                   })
                 ) : (
-                  rows.slice(0, 20).map((row, idx) => (
-                    <div key={idx} style={previewRow}>{JSON.stringify(row)}</div>
-                  ))
+                  rows.slice(0, 20).map((row, idx) => {
+                    const selectedProductName = normalizeText(row.selected_product_name)
+                    const isAutoMatched = Boolean(row.is_auto_matched && row.selected_product_id)
+                    return (
+                      <div key={idx} style={previewRowCardCsv}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                          <p style={{ margin: 0, fontWeight: 900, fontSize: 12, color: colors.primaryDark }}>
+                            {normalizeText(row[mapping.supplier_product_name]) || '—'}
+                          </p>
+                          <button type="button" style={matchBtn} onClick={() => openMatchModal(idx)}>
+                            Match προϊόν
+                          </button>
+                        </div>
+                        <div style={{ marginTop: 6 }}>
+                          <span style={isAutoMatched ? autoMatchedBadge : needsMatchBadge}>
+                            {isAutoMatched ? 'Auto Matched' : 'Needs Match'}
+                          </span>
+                        </div>
+                        {selectedProductName && <p style={miniText}>→ {selectedProductName}</p>}
+                        <p style={miniText}>Τιμή: {normalizeText(row[mapping.price]) || '—'}</p>
+                        <p style={miniText}>Barcode: {normalizeText(row[mapping.barcode_raw]) || normalizeText(row[mapping.supplier_barcode_key]) || '—'}</p>
+                      </div>
+                    )
+                  })
                 )}
               </div>
             </div>
@@ -692,14 +862,15 @@ const inputStyle: any = { width: '100%', padding: 14, border: `1px solid ${color
 const hint = { margin: '8px 0 0 0', fontSize: 12, fontWeight: 700, color: colors.secondaryText }
 const pdfBadge: any = { marginTop: 8, display: 'inline-block', padding: '4px 8px', borderRadius: 999, backgroundColor: '#e0e7ff', color: '#3730a3', fontWeight: 900, fontSize: 11 }
 const warningText = { margin: 0, fontSize: 11, fontWeight: 800, color: '#92400e' }
-const previewRow: any = { border: `1px solid ${colors.border}`, borderRadius: 10, padding: 8, backgroundColor: '#f8fafc', fontSize: 11, fontWeight: 700, color: colors.secondaryText, overflowX: 'auto' }
+const summaryOkText = { margin: '0 0 4px 0', fontSize: 12, fontWeight: 900, color: '#065f46' }
+const summaryWarnText = { margin: '0 0 10px 0', fontSize: 12, fontWeight: 900, color: '#b45309' }
 const pdfRowCard: any = { border: `1px solid ${colors.border}`, borderRadius: 12, padding: 10, backgroundColor: '#f8fafc' }
+const previewRowCardCsv: any = { border: `1px solid ${colors.border}`, borderRadius: 12, padding: 10, backgroundColor: '#f8fafc' }
 const miniText = { margin: '6px 0 0 0', fontSize: 11, fontWeight: 800, color: colors.secondaryText }
 const rawLineText = { margin: '6px 0 0 0', fontSize: 11, fontWeight: 700, color: '#475569', backgroundColor: '#eef2ff', borderRadius: 8, padding: '6px 8px' }
-const manualMatchTag = { margin: '8px 0 0 0', fontSize: 11, fontWeight: 900, color: '#065f46', backgroundColor: '#d1fae5', borderRadius: 999, padding: '4px 8px', display: 'inline-block' }
 const matchBtn: any = { border: '1px solid #bfdbfe', borderRadius: 8, backgroundColor: '#eff6ff', color: '#1d4ed8', fontWeight: 900, fontSize: 11, padding: '6px 8px' }
-const memoryMatchBadge: any = { display: 'inline-block', padding: '4px 8px', borderRadius: 999, backgroundColor: '#dcfce7', color: '#065f46', fontSize: 11, fontWeight: 900 }
-const unmatchedBadge: any = { display: 'inline-block', padding: '4px 8px', borderRadius: 999, backgroundColor: '#fee2e2', color: '#991b1b', fontSize: 11, fontWeight: 900 }
+const autoMatchedBadge: any = { display: 'inline-block', padding: '4px 8px', borderRadius: 999, backgroundColor: '#dcfce7', color: '#065f46', fontSize: 11, fontWeight: 900 }
+const needsMatchBadge: any = { display: 'inline-block', padding: '4px 8px', borderRadius: 999, backgroundColor: '#fee2e2', color: '#991b1b', fontSize: 11, fontWeight: 900 }
 const increaseTag: any = { display: 'inline-block', padding: '4px 8px', borderRadius: 999, backgroundColor: '#fee2e2', color: '#991b1b', fontSize: 11, fontWeight: 900 }
 const decreaseTag: any = { display: 'inline-block', padding: '4px 8px', borderRadius: 999, backgroundColor: '#dcfce7', color: '#065f46', fontSize: 11, fontWeight: 900 }
 const neutralTag: any = { display: 'inline-block', padding: '4px 8px', borderRadius: 999, backgroundColor: '#e2e8f0', color: '#334155', fontSize: 11, fontWeight: 900 }
