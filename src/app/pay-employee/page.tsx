@@ -54,7 +54,7 @@ function PayEmployeeContent() {
       setLoading(true)
       const { data: empRows, error: empError } = await supabase
         .from('fixed_assets')
-        .select('id, pay_basis, monthly_salary, salary, daily_rate, monthly_days, work_days_per_month, agreed_extra_salary, agreed_extra, store_id')
+        .select('id, pay_basis, monthly_salary, daily_rate, monthly_days, agreed_extra_salary, store_id')
         .eq('id', empId)
         .or(`store_id.eq.${storeId},store_id.is.null`)
         .limit(1)
@@ -64,16 +64,19 @@ function PayEmployeeContent() {
       console.log('[pay-employee] empError', empError)
       console.log('[pay-employee] empRows', empRows)
       console.log('[pay-employee] emp', emp)
+      console.log('[pay-employee] emp monthly_salary', emp?.monthly_salary)
+      console.log('[pay-employee] emp monthly_days', emp?.monthly_days)
+      console.log('[pay-employee] emp agreed_extra_salary', emp?.agreed_extra_salary)
 
       if (emp) {
-        const agreedExtraSalary = Number(emp?.agreed_extra_salary ?? emp?.agreed_extra ?? 0)
+        const agreedExtraSalary = Number(emp?.agreed_extra_salary ?? 0)
         setAgreementType(emp.pay_basis || 'monthly')
         setBaseAmount(
           emp.pay_basis === 'monthly'
-            ? Number(emp.monthly_salary ?? emp.salary ?? 0)
+            ? Number(emp.monthly_salary ?? 0)
             : Number(emp.daily_rate ?? 0)
         )
-        setAgreementDays(Number(emp.monthly_days ?? emp.work_days_per_month ?? 26))
+        setAgreementDays(Number(emp.monthly_days ?? 26))
         setAgreedExtraSalary(agreedExtraSalary)
       }
 
@@ -89,6 +92,7 @@ function PayEmployeeContent() {
         console.error('[pay-employee] payroll RPC load failed', payrollRpcError)
       }
       console.log('[pay-employee] payrollSummaryRow', rpcRow)
+      console.log('[pay-employee] rpcRow', rpcRow)
 
       setPayrollSummaryRow(rpcRow || null)
 
@@ -101,7 +105,7 @@ function PayEmployeeContent() {
         setPendingOvertimeHours(Number(rpcRow.pending_overtime_hours || 0))
         setAbsences(Number(rpcRow.extra_days_off_current_month || 0))
         setExtraOvertimeEuro(Number(rpcRow.pending_overtime_amount || 0).toFixed(2))
-        setAgreedExtraSalary(Number(rpcRow.agreed_extra_salary ?? emp?.agreed_extra_salary ?? emp?.agreed_extra ?? 0))
+        setAgreedExtraSalary(Number(rpcRow.agreed_extra_salary ?? emp?.agreed_extra_salary ?? 0))
       }
 
       const { data: overtimeRows, error: overtimeError } = await supabase
