@@ -4,13 +4,16 @@ export const dynamic = 'force-dynamic'
 import { useEffect, useMemo, useState, Suspense } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
-import * as XLSX from 'xlsx'
 import { getSupabase } from '@/lib/supabase'
 import { getCurrentStoreId, normalizeText, parseSafeDate, parseSafeNumber } from '@/lib/productsModule'
 import { toast, Toaster } from 'sonner'
 import { ChevronLeft, Upload } from 'lucide-react'
 
 type ParsedRow = Record<string, unknown>
+
+type ParseStatus = 'parsed' | 'manual_review' | 'failed'
+
+type FileType = 'csv' | 'xlsx' | 'pdf' | 'unknown'
 
 type Mapping = {
   supplier_product_name: string
@@ -48,6 +51,12 @@ function ImportPricesContent() {
     invoice_date: 'invoice_date',
   })
   const [submitting, setSubmitting] = useState(false)
+  const [uploadedFileType, setUploadedFileType] = useState<FileType>('unknown')
+  const [isScannedPdf, setIsScannedPdf] = useState(false)
+  const [parseStatus, setParseStatus] = useState<ParseStatus>('failed')
+  const [warnings, setWarnings] = useState<string[]>([])
+  const [rawText, setRawText] = useState('')
+  const [activeFile, setActiveFile] = useState<File | null>(null)
 
   useEffect(() => {
     if (!storeId) {
@@ -84,16 +93,42 @@ function ImportPricesContent() {
 
   async function handleFile(file: File) {
     try {
-      const buffer = await file.arrayBuffer()
-      const workbook = XLSX.read(buffer, { type: 'array' })
-      const firstSheetName = workbook.SheetNames[0]
-      const sheet = workbook.Sheets[firstSheetName]
-      const parsed = XLSX.utils.sheet_to_json<ParsedRow>(sheet, { defval: null })
-      setRows(parsed)
+      const lowerName = file.name.toLowerCase()
+      const allowedExt = lowerName.endsWith('.csv') || lowerName.endsWith('.xlsx') || lowerName.endsWith('.pdf')
+      if (!allowedExt) {
+        toast.error('Μη υποστηριζόμενο format. Επιτρέπονται csv, xlsx, pdf.')
+        return
+      }
+      if (file.size > 10 * 1024 * 1024) {
+        toast.error('Το αρχείο είναι πολύ μεγάλο (max 10MB).')
+        return
+      }
+
+      setActiveFile(file)
       setFileName(file.name)
+
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('store_id', String(storeId ?? ''))
+      formData.append('supplier_id', String(supplierId ?? ''))
+
+      const res = await fetch('/api/prices/import', {
+        method: 'POST',
+        body: formData,
+      })
+
+      const data = await res.json()
+      if (!res.ok) throw new Error(data?.error || 'Αποτυχία parsing αρχείου')
+
+      setUploadedFileType((data.fileType || 'unknown') as FileType)
+      setIsScannedPdf(Boolean(data.isScannedPdf))
+      setWarnings(Array.isArray(data.warnings) ? data.warnings : [])
+      setRawText(typeof data.rawText === 'string' ? data.rawText : '')
+      setParseStatus((data.parseStatus || 'failed') as ParseStatus)
+      setRows(Array.isArray(data.previewRows) ? data.previewRows : [])
     } catch (error) {
       console.error('[import-prices] parse failed', error)
-      toast.error('Αδυναμία ανάγνωσης αρχείου')
+      toast.error(error instanceof Error ? error.message : 'Αδυναμία ανάγνωσης αρχείου')
     }
   }
 
@@ -102,22 +137,40 @@ function ImportPricesContent() {
       toast.error('Επιλέξτε προμηθευτή')
       return
     }
+    if (!activeFile) {
+      toast.error('Ανεβάστε αρχείο')
+      return
+    }
     if (rows.length === 0) {
-      toast.error('Δεν υπάρχουν γραμμές προς εισαγωγή')
+      if (uploadedFileType === 'pdf' && parseStatus === 'manual_review') {
+        toast.error('Το PDF είναι σε manual review. Το OCR θα προστεθεί στο επόμενο βήμα.')
+      } else {
+        toast.error('Δεν υπάρχουν γραμμές προς εισαγωγή')
+      }
       return
     }
 
     setSubmitting(true)
     try {
-      const normalizedRows = rows.map((row) => ({
-        supplier_product_name: normalizeText(row[mapping.supplier_product_name]),
-        barcode_raw: normalizeText(row[mapping.barcode_raw]),
-        supplier_barcode_key: normalizeText(row[mapping.supplier_barcode_key]),
-        price: parseSafeNumber(row[mapping.price]),
-        quantity: parseSafeNumber(row[mapping.quantity]),
-        invoice_date: parseSafeDate(row[mapping.invoice_date]),
-        raw_data: row,
-      }))
+      const normalizedRows = uploadedFileType === 'pdf'
+        ? rows.map((row) => ({
+            supplier_product_name: normalizeText((row as any).supplier_product_name),
+            barcode_raw: normalizeText((row as any).barcode_raw),
+            supplier_barcode_key: normalizeText((row as any).supplier_barcode_key),
+            price: parseSafeNumber((row as any).price),
+            quantity: parseSafeNumber((row as any).quantity),
+            invoice_date: parseSafeDate((row as any).invoice_date),
+            raw_data: row,
+          }))
+        : rows.map((row) => ({
+            supplier_product_name: normalizeText(row[mapping.supplier_product_name]),
+            barcode_raw: normalizeText(row[mapping.barcode_raw]),
+            supplier_barcode_key: normalizeText(row[mapping.supplier_barcode_key]),
+            price: parseSafeNumber(row[mapping.price]),
+            quantity: parseSafeNumber(row[mapping.quantity]),
+            invoice_date: parseSafeDate(row[mapping.invoice_date]),
+            raw_data: row,
+          }))
 
       const res = await fetch('/api/prices/import', {
         method: 'POST',
@@ -173,7 +226,7 @@ function ImportPricesContent() {
           <label style={{ ...labelStyle, marginTop: 10 }}><Upload size={14} /> Αρχείο</label>
           <input
             type="file"
-            accept=".csv,.xlsx"
+            accept=".csv,.xlsx,.pdf"
             style={inputStyle}
             onChange={(e) => {
               const file = e.target.files?.[0]
@@ -181,22 +234,35 @@ function ImportPricesContent() {
             }}
           />
           {fileName && <p style={hint}>Αρχείο: {fileName}</p>}
+          {fileName && <p style={hint}>Τύπος: {uploadedFileType.toUpperCase()}</p>}
+          {uploadedFileType === 'pdf' && <span style={pdfBadge}>PDF / Scan import</span>}
+          {warnings.length > 0 && (
+            <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {warnings.map((warning, idx) => (
+                <p key={idx} style={warningText}>{warning}</p>
+              ))}
+            </div>
+          )}
         </div>
 
         {rows.length > 0 && (
           <>
-            <div style={card}>
-              <p style={{ margin: '0 0 8px 0', fontWeight: 900, fontSize: 14 }}>Column Mapping</p>
-              <MappingSelect label="supplier_product_name" value={mapping.supplier_product_name} onChange={(v) => setMapping((m) => ({ ...m, supplier_product_name: v }))} options={headers} />
-              <MappingSelect label="barcode_raw" value={mapping.barcode_raw} onChange={(v) => setMapping((m) => ({ ...m, barcode_raw: v }))} options={headers} />
-              <MappingSelect label="supplier_barcode_key" value={mapping.supplier_barcode_key} onChange={(v) => setMapping((m) => ({ ...m, supplier_barcode_key: v }))} options={headers} />
-              <MappingSelect label="price" value={mapping.price} onChange={(v) => setMapping((m) => ({ ...m, price: v }))} options={headers} />
-              <MappingSelect label="quantity" value={mapping.quantity} onChange={(v) => setMapping((m) => ({ ...m, quantity: v }))} options={headers} />
-              <MappingSelect label="invoice_date" value={mapping.invoice_date} onChange={(v) => setMapping((m) => ({ ...m, invoice_date: v }))} options={headers} />
-            </div>
+            {(uploadedFileType === 'csv' || uploadedFileType === 'xlsx') && (
+              <div style={card}>
+                <p style={{ margin: '0 0 8px 0', fontWeight: 900, fontSize: 14 }}>Column Mapping</p>
+                <MappingSelect label="supplier_product_name" value={mapping.supplier_product_name} onChange={(v) => setMapping((m) => ({ ...m, supplier_product_name: v }))} options={headers} />
+                <MappingSelect label="barcode_raw" value={mapping.barcode_raw} onChange={(v) => setMapping((m) => ({ ...m, barcode_raw: v }))} options={headers} />
+                <MappingSelect label="supplier_barcode_key" value={mapping.supplier_barcode_key} onChange={(v) => setMapping((m) => ({ ...m, supplier_barcode_key: v }))} options={headers} />
+                <MappingSelect label="price" value={mapping.price} onChange={(v) => setMapping((m) => ({ ...m, price: v }))} options={headers} />
+                <MappingSelect label="quantity" value={mapping.quantity} onChange={(v) => setMapping((m) => ({ ...m, quantity: v }))} options={headers} />
+                <MappingSelect label="invoice_date" value={mapping.invoice_date} onChange={(v) => setMapping((m) => ({ ...m, invoice_date: v }))} options={headers} />
+              </div>
+            )}
 
             <div style={card}>
-              <p style={{ margin: '0 0 8px 0', fontWeight: 900, fontSize: 14 }}>Preview (20 rows)</p>
+              <p style={{ margin: '0 0 8px 0', fontWeight: 900, fontSize: 14 }}>
+                {uploadedFileType === 'pdf' ? 'Preview candidate rows από PDF' : 'Preview (20 rows)'}
+              </p>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {rows.slice(0, 20).map((row, idx) => (
                   <div key={idx} style={previewRow}>{JSON.stringify(row)}</div>
@@ -208,6 +274,26 @@ function ImportPricesContent() {
               {submitting ? 'Γίνεται εισαγωγή...' : 'Επιβεβαίωση Import'}
             </button>
           </>
+        )}
+
+        {uploadedFileType === 'pdf' && parseStatus === 'manual_review' && (
+          <div style={manualReviewCard}>
+            <p style={{ margin: 0, fontWeight: 900, fontSize: 14 }}>PDF / Scan import</p>
+            <p style={{ margin: '6px 0 0 0', fontSize: 12, fontWeight: 700, color: colors.secondaryText }}>File: {fileName || '—'}</p>
+            <p style={{ margin: '6px 0 0 0', fontSize: 12, fontWeight: 700, color: colors.secondaryText }}>
+              detected as scanned: {isScannedPdf ? 'yes' : 'no'}
+            </p>
+            <p style={{ margin: '6px 0 0 0', fontSize: 12, fontWeight: 800, color: '#92400e' }}>
+              Το PDF φαίνεται να είναι σκαναρισμένο και χρειάζεται OCR step στο επόμενο βήμα.
+            </p>
+          </div>
+        )}
+
+        {uploadedFileType === 'pdf' && parseStatus === 'parsed' && rawText && (
+          <details style={card}>
+            <summary style={{ fontWeight: 900, cursor: 'pointer' }}>Raw extracted text</summary>
+            <pre style={{ marginTop: 10, whiteSpace: 'pre-wrap', fontSize: 11, color: colors.secondaryText }}>{rawText.slice(0, 4000)}</pre>
+          </details>
         )}
       </div>
     </div>
@@ -254,5 +340,8 @@ const card: any = { backgroundColor: colors.white, border: `1px solid ${colors.b
 const labelStyle: any = { display: 'block', marginBottom: 6, fontSize: 11, fontWeight: 900, color: colors.secondaryText }
 const inputStyle: any = { width: '100%', padding: 14, border: `1px solid ${colors.border}`, borderRadius: 12, fontSize: 16, fontWeight: 700, backgroundColor: '#f8fafc' }
 const hint = { margin: '8px 0 0 0', fontSize: 12, fontWeight: 700, color: colors.secondaryText }
+const pdfBadge: any = { marginTop: 8, display: 'inline-block', padding: '4px 8px', borderRadius: 999, backgroundColor: '#e0e7ff', color: '#3730a3', fontWeight: 900, fontSize: 11 }
+const warningText = { margin: 0, fontSize: 11, fontWeight: 800, color: '#92400e' }
 const previewRow: any = { border: `1px solid ${colors.border}`, borderRadius: 10, padding: 8, backgroundColor: '#f8fafc', fontSize: 11, fontWeight: 700, color: colors.secondaryText, overflowX: 'auto' }
 const submitBtn: any = { width: '100%', border: 'none', borderRadius: 12, backgroundColor: colors.primaryDark, color: '#fff', padding: 14, fontSize: 15, fontWeight: 900 }
+const manualReviewCard: any = { backgroundColor: '#fffbeb', border: '1px solid #fde68a', borderRadius: 12, padding: 12, marginBottom: 10 }
