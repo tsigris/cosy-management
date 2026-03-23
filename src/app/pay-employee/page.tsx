@@ -150,17 +150,19 @@ function PayEmployeeContent() {
   const rpcActualDaysOff = Number(payrollSummaryRow?.actual_days_off_current_month || 0)
   const rpcExtraDaysOff = Number(payrollSummaryRow?.extra_days_off_current_month || 0)
   const rpcDaysOffDeduction = Number(payrollSummaryRow?.days_off_deduction || 0)
-  const rpcRemainingPayrollOnly = Number(payrollSummaryRow?.remaining_payroll_only ?? payrollSummaryRow?.remaining_pay ?? 0)
-  const rpcFinalPayable = Number(payrollSummaryRow?.final_payable ?? (rpcRemainingPayrollOnly + rpcAgreedExtraSalary))
+  const remainingPayrollOnly = Number(payrollSummaryRow?.remaining_payroll_only ?? 0)
+  const agreedExtraSalaryFromRpc = Number(payrollSummaryRow?.agreed_extra_salary ?? 0)
+  const rpcFinalPayable = Number(payrollSummaryRow?.final_payable ?? 0)
 
-  const effectiveAgreedExtraSalary = hasRpcSummary ? rpcAgreedExtraSalary : agreedExtraSalary
-  const effectivePayrollRemaining = hasRpcSummary ? rpcRemainingPayrollOnly : computedRawRemainingPayroll
+  const effectiveAgreedExtraSalary = hasRpcSummary ? agreedExtraSalaryFromRpc : agreedExtraSalary
+  const effectivePayrollRemaining = hasRpcSummary ? remainingPayrollOnly : computedRawRemainingPayroll
   const effectiveRemainingPayroll = Math.max(0, effectivePayrollRemaining)
   const effectiveFinalPayable = hasRpcSummary ? rpcFinalPayable : Math.max(0, effectivePayrollRemaining + effectiveAgreedExtraSalary)
-  const finalPayableWithBonus = Math.max(0, effectiveFinalPayable + manualBonus)
+  const finalPayable = hasRpcSummary ? rpcFinalPayable + manualBonus : Math.max(0, effectiveFinalPayable + manualBonus)
+  console.log('[pay-employee-rpc] payrollSummaryRow', payrollSummaryRow)
   console.log('[pay-employee-rpc] remaining_payroll_only', payrollSummaryRow?.remaining_payroll_only, 'agreed_extra_salary', payrollSummaryRow?.agreed_extra_salary, 'final_payable', payrollSummaryRow?.final_payable, 'bonus', Number(bonus || 0))
   const bankAmountNum = Number(bankAmount) || 0
-  const cashAmount = Math.max(0, finalPayableWithBonus - bankAmountNum)
+  const cashAmount = Math.max(0, finalPayable - bankAmountNum)
 
   async function handleFinalPayment() {
     if (!storeId) return toast.error('Σφάλμα καταστήματος');
@@ -203,12 +205,12 @@ function PayEmployeeContent() {
         return toast.error('Οι προκαταβολές είναι περισσότερες από το υπολογισμένο ποσό')
       }
 
-      if (finalPayableWithBonus <= 0) {
+      if (finalPayable <= 0) {
         setLoading(false)
         return toast.error('Το ποσό πληρωμής πρέπει να είναι μεγαλύτερο από 0')
       }
 
-      if (bankAmountNum > finalPayableWithBonus) {
+      if (bankAmountNum > finalPayable) {
         setLoading(false)
         return toast.error('Το ποσό τράπεζας δεν μπορεί να είναι μεγαλύτερο από το σύνολο')
       }
@@ -274,7 +276,7 @@ function PayEmployeeContent() {
       const { error: payrollError } = await supabase.rpc('payroll_payment_atomic', {
         p_store_id: storeId,
         p_employee_id: empId,
-        p_amount: finalPayableWithBonus,
+        p_amount: finalPayable,
         p_method: paymentMethod,
         p_category: 'Staff',
         p_date: date,
@@ -423,7 +425,7 @@ function PayEmployeeContent() {
                 </div>
                 <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
                   <span style={resultLabel}>ΤΕΛΙΚΟ ΠΛΗΡΩΤΕΟ</span>
-                  <span style={resultValue}>{finalPayableWithBonus.toFixed(2)}€</span>
+                  <span style={resultValue}>{finalPayable.toFixed(2)}€</span>
                 </div>
               </div>
             )}
