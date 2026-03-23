@@ -1667,10 +1667,13 @@ function EmployeesContent() {
                 const pendingOtItems = overtimes
                   .filter((ot) => ot.employee_id === emp.id)
                   .sort((a, b) => (parseDateInputSafe(b.date)?.getTime() ?? 0) - (parseDateInputSafe(a.date)?.getTime() ?? 0))
+                const hasPayrollSummary = Boolean(payrollSummary)
                 const isInactive = emp.is_active === false
                 const monthlyDays = Number(emp.work_days_per_month ?? emp.monthly_days ?? 0)
                 const monthlySalary = Number(emp.monthly_salary ?? 0)
-                const agreedExtraSalary = Number(emp.agreed_extra_salary ?? emp.agreed_extra ?? 0)
+                const agreedExtraSalary = hasPayrollSummary
+                  ? Number(payrollSummary?.agreed_extra_salary ?? emp.agreed_extra_salary ?? emp.agreed_extra ?? 0)
+                  : Number(emp.agreed_extra_salary ?? emp.agreed_extra ?? 0)
                 const agreedMonthlyPay = monthlySalary + agreedExtraSalary
                 const isMonthlyEmployee = (emp.pay_basis || 'monthly') === 'monthly'
                 const dayOffRowsThisMonth = (daysOffByEmployee[emp.id] || [])
@@ -1686,7 +1689,6 @@ function EmployeesContent() {
                     return aTime - bTime
                   })
                 const daysOffLabel = dayOffRowsThisMonth.map((row) => formatShortDayMonth(getDayOffDateValue(row))).join(', ')
-                const hasPayrollSummary = Boolean(payrollSummary)
 
                 const includedDaysOffLocal = getIncludedDaysOff(monthlyDays)
                 const actualDaysOffLocal = dayOffRowsThisMonth.length
@@ -1714,8 +1716,10 @@ function EmployeesContent() {
                 const pendingOtAmount = hasPayrollSummary ? Number(payrollSummary?.pending_overtime_amount ?? 0) : pendingOtAmountLocal
                 const daysOffDeduction = hasPayrollSummary ? Number(payrollSummary?.days_off_deduction ?? 0) : daysOffDeductionLocal
                 const remainingPay = hasPayrollSummary ? Number(payrollSummary?.remaining_pay ?? 0) : remainingPayLocal
-                const displayRemainingPay = remainingPay + agreedExtraSalary
-                console.log('[employees-card] remaining_pay', remainingPay, 'agreed_extra_salary', agreedExtraSalary, 'display_remaining_pay', displayRemainingPay)
+                const displayRemainingPay = hasPayrollSummary
+                  ? Number(payrollSummary?.final_payable ?? remainingPay + agreedExtraSalary)
+                  : remainingPay + agreedExtraSalary
+                console.log('[employees-card-rpc] remaining_payroll_only', payrollSummary?.remaining_payroll_only, 'agreed_extra_salary', payrollSummary?.agreed_extra_salary, 'final_payable', payrollSummary?.final_payable)
                 const pendingOt = pendingOtHours
                 const yearDaysOffCount = (daysOffByEmployee[emp.id] || []).filter((row) => {
                   const businessDate = toBusinessDayDateFromInput(getDayOffDateValue(row), { normalizeToNoon: true })
