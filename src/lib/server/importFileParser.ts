@@ -58,39 +58,52 @@ function extractCandidateRowsFromPdfText(rawText: string): SupplierPriceImportIn
   const lines = rawText
     .split(/\r?\n/)
     .map((line) => line.trim())
-    .filter((line) => line.length > 0)
+    .filter((line) => line.length >= 5)
 
-  const priceRegex = /(\d+[\.,]\d{2,4})/
+  // Supports 1.20, 12,30, 17.380
+  const numericLikeRegex = /\b\d{1,6}(?:[\.,]\d{1,4})?\b/g
   const dateRegex = /(\d{4}-\d{2}-\d{2}|\d{1,2}[\/\.-]\d{1,2}[\/\.-]\d{2,4})/
-  const barcodeRegex = /\b\d{8,14}\b/
+  const barcodeRegex = /\b\d{6,14}\b/
 
   for (let i = 0; i < lines.length; i += 1) {
+    if (rows.length >= 30) break
+
     const line = lines[i]
-    const priceMatch = line.match(priceRegex)
-    if (!priceMatch) continue
+    const numericTokens = line.match(numericLikeRegex) || []
+    if (numericTokens.length === 0) continue
+
+    const lastNumericToken = numericTokens[numericTokens.length - 1]
+    const parsedPrice = parseSafeNumber(lastNumericToken)
+    if (parsedPrice === null) continue
 
     const dateMatch = line.match(dateRegex)
     const barcodeMatch = line.match(barcodeRegex)
 
-    const price = parseSafeNumber(priceMatch[1])
     const invoiceDate = parseSafeDate(dateMatch ? dateMatch[1] : null)
-    const barcode = normalizeText(barcodeMatch ? barcodeMatch[0] : null)
+    const parsedBarcode = normalizeText(barcodeMatch ? barcodeMatch[0] : null)
 
-    const supplierProductName = normalizeText(
+    const parsedName = normalizeText(
       line
-        .replace(priceMatch[1], ' ')
+        .replace(lastNumericToken, ' ')
         .replace(dateMatch?.[1] || '', ' ')
-        .replace(barcodeMatch?.[0] || '', ' '),
+        .replace(barcodeMatch?.[0] || '', ' ')
+        .replace(/\s+/g, ' '),
     )
 
     rows.push({
-      supplier_product_name: supplierProductName,
-      barcode_raw: barcode,
-      supplier_barcode_key: barcode,
-      price,
+      supplier_product_name: parsedName,
+      barcode_raw: parsedBarcode,
+      supplier_barcode_key: parsedBarcode,
+      price: parsedPrice,
       quantity: null,
       invoice_date: invoiceDate,
-      raw_data: { line, line_index: i + 1 },
+      raw_data: {
+        raw_line: line,
+        line_index: i + 1,
+        parsed_name: parsedName,
+        parsed_price: parsedPrice,
+        parsed_barcode: parsedBarcode,
+      },
     })
   }
 
@@ -135,7 +148,12 @@ export async function parsePdfTextFile(buffer: Buffer): Promise<ImportParseResul
     return {
       fileType: 'pdf',
       isScannedPdf: false,
-      previewRows: candidates as unknown as Array<Record<string, unknown>>,
+      previewRows: candidates.map((c) => ({
+        parsed_name: c.supplier_product_name,
+        parsed_price: c.price,
+        parsed_barcode: c.barcode_raw,
+        raw_line: typeof c.raw_data?.raw_line === 'string' ? c.raw_data.raw_line : '',
+      })),
       warnings: [],
       rawText,
       parseStatus: 'parsed',

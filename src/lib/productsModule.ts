@@ -782,6 +782,8 @@ export async function importSupplierPricesBatch(
   let failed = 0
   let matched = 0
   let unmatched = 0
+  let increased = 0
+  let decreased = 0
 
   const rowLogs: Array<Record<string, unknown>> = []
 
@@ -896,6 +898,16 @@ export async function importSupplierPricesBatch(
     }
 
     const priceDiff = previousPrice === null ? null : price - previousPrice
+    const trendLabel =
+      priceDiff === null || priceDiff === 0
+        ? null
+        : priceDiff > 0
+          ? 'PRICE INCREASE'
+          : 'PRICE DROP'
+
+    if (trendLabel === 'PRICE INCREASE') increased += 1
+    if (trendLabel === 'PRICE DROP') decreased += 1
+
     const { error: historyInsertError } = await supabase.from('product_price_history').insert([
       {
         store_id: storeId,
@@ -909,6 +921,7 @@ export async function importSupplierPricesBatch(
         quantity,
         source: 'import',
         source_file_name: fileName,
+        notes: trendLabel,
       },
     ])
 
@@ -937,7 +950,9 @@ export async function importSupplierPricesBatch(
       parsed_price: price,
       matched_product_id: candidate.product.id,
       action: 'matched',
-      message: `matched by ${candidate.strategy}`,
+      message: trendLabel
+        ? `matched by ${candidate.strategy} | ${trendLabel} (${priceDiff?.toFixed(3)})`
+        : `matched by ${candidate.strategy}`,
     })
   }
 
@@ -947,7 +962,7 @@ export async function importSupplierPricesBatch(
   }
 
   const finalStatus = failed > 0 ? 'completed_with_errors' : 'completed'
-  const notes = `matched=${matched} unmatched=${unmatched}`
+  const notes = `matched=${matched} unmatched=${unmatched} price_increase=${increased} price_drop=${decreased}`
 
   const { error: updateBatchError } = await supabase
     .from('import_batches')
@@ -962,5 +977,5 @@ export async function importSupplierPricesBatch(
 
   if (updateBatchError) throw updateBatchError
 
-  return { batchId, inserted, updated, failed, matched, unmatched }
+  return { batchId, inserted, updated, failed, matched, unmatched, increased, decreased }
 }

@@ -46,26 +46,39 @@ async function createPdfBatchLogs(
 
   if (batchError) throw batchError
 
-  const batchId = String((batchData as any).id)
+  const batchId = String((batchData as { id: string | number }).id)
   const logs: Array<Record<string, unknown>> = []
 
   if (parseResult.previewRows.length > 0) {
     for (const row of parseResult.previewRows) {
+      const parsedName =
+        typeof row.parsed_name === 'string'
+          ? row.parsed_name
+          : typeof row.supplier_product_name === 'string'
+            ? row.supplier_product_name
+            : null
+      const parsedBarcode =
+        typeof row.parsed_barcode === 'string'
+          ? row.parsed_barcode
+          : typeof row.supplier_barcode_key === 'string'
+            ? row.supplier_barcode_key
+            : typeof row.barcode_raw === 'string'
+              ? row.barcode_raw
+              : null
+      const parsedPrice =
+        typeof row.parsed_price === 'number' ? row.parsed_price : typeof row.price === 'number' ? row.price : null
+      const rawLine = typeof row.raw_line === 'string' ? row.raw_line.trim() : ''
+
       logs.push({
         batch_id: batchId,
         store_id: storeId,
         raw_data: row,
-        parsed_name: typeof row.supplier_product_name === 'string' ? row.supplier_product_name : null,
-        parsed_barcode:
-          typeof row.supplier_barcode_key === 'string'
-            ? row.supplier_barcode_key
-            : typeof row.barcode_raw === 'string'
-              ? row.barcode_raw
-              : null,
-        parsed_price: typeof row.price === 'number' ? row.price : null,
+        parsed_name: parsedName,
+        parsed_barcode: parsedBarcode,
+        parsed_price: parsedPrice,
         matched_product_id: null,
         action: 'parsed_candidate',
-        message: 'Candidate row parsed from PDF text',
+        message: rawLine ? `Candidate row parsed from PDF text | ${rawLine.slice(0, 220)}` : 'Candidate row parsed from PDF text',
       })
     }
   } else {

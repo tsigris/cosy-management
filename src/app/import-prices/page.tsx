@@ -11,6 +11,20 @@ import { ChevronLeft, Upload } from 'lucide-react'
 
 type ParsedRow = Record<string, unknown>
 
+type PdfParsedRow = {
+  parsed_name?: string
+  parsed_price?: number | null
+  parsed_barcode?: string | null
+  raw_line?: string
+}
+
+type ProductSearchItem = {
+  id: string
+  name: string
+  category: string | null
+  brand: string | null
+}
+
 type ParseStatus = 'parsed' | 'manual_review' | 'failed'
 
 type FileType = 'csv' | 'xlsx' | 'pdf' | 'unknown'
@@ -57,6 +71,20 @@ function ImportPricesContent() {
   const [warnings, setWarnings] = useState<string[]>([])
   const [rawText, setRawText] = useState('')
   const [activeFile, setActiveFile] = useState<File | null>(null)
+  const [importSummary, setImportSummary] = useState<{
+    matched: number
+    unmatched: number
+    failed: number
+    increased: number
+    decreased: number
+  } | null>(null)
+  const [matchModalRowIndex, setMatchModalRowIndex] = useState<number | null>(null)
+  const [matchSearch, setMatchSearch] = useState('')
+  const [debouncedMatchSearch, setDebouncedMatchSearch] = useState('')
+  const [matchCandidates, setMatchCandidates] = useState<ProductSearchItem[]>([])
+  const [matchSearchLoading, setMatchSearchLoading] = useState(false)
+  const [savingMatchProductId, setSavingMatchProductId] = useState<string | null>(null)
+  const [manualMatches, setManualMatches] = useState<Record<number, ProductSearchItem>>({})
 
   useEffect(() => {
     if (!storeId) {
@@ -73,7 +101,10 @@ function ImportPricesContent() {
           .eq('is_active', true)
           .order('name', { ascending: true })
         if (error) throw error
-        const next = (data || []).map((s: any) => ({ id: String(s.id || ''), name: String(s.name || '—') }))
+        const next = (data || []).map((s: Record<string, unknown>) => ({
+          id: String(s.id || ''),
+          name: String(s.name || '—'),
+        }))
         setSuppliers(next)
         if (next.length > 0) setSupplierId(next[0].id)
       } catch (error) {
@@ -88,6 +119,67 @@ function ImportPricesContent() {
     const first = rows[0]
     return first ? Object.keys(first) : []
   }, [rows])
+
+  const activePdfRow = useMemo(() => {
+    if (matchModalRowIndex === null) return null
+    const row = rows[matchModalRowIndex] as PdfParsedRow | undefined
+    return row || null
+  }, [matchModalRowIndex, rows])
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setDebouncedMatchSearch(matchSearch.trim())
+    }, 300)
+    return () => window.clearTimeout(timer)
+  }, [matchSearch])
+
+  useEffect(() => {
+    if (matchModalRowIndex === null || !storeId) return
+
+    const queryText = debouncedMatchSearch.trim()
+    if (!queryText) {
+      setMatchCandidates([])
+      return
+    }
+
+    let cancelled = false
+    const searchProducts = async () => {
+      setMatchSearchLoading(true)
+      try {
+        const { data, error } = await supabase
+          .from('products')
+          .select('id,name,category,brand')
+          .eq('store_id', storeId)
+          .eq('is_active', true)
+          .ilike('name', `%${queryText}%`)
+          .order('name', { ascending: true })
+          .limit(20)
+
+        if (error) throw error
+
+        if (!cancelled) {
+          setMatchCandidates(
+            (data || []).map((p: Record<string, unknown>) => ({
+              id: String(p.id || ''),
+              name: String(p.name || '—'),
+              category: normalizeText(p.category),
+              brand: normalizeText(p.brand),
+            })),
+          )
+        }
+      } catch (error) {
+        console.error('[import-prices] product search failed', error)
+        if (!cancelled) setMatchCandidates([])
+      } finally {
+        if (!cancelled) setMatchSearchLoading(false)
+      }
+    }
+
+    void searchProducts()
+    return () => {
+      cancelled = true
+    }
+  }, [debouncedMatchSearch, matchModalRowIndex, storeId, supabase])
 
   if (!storeId) return null
 
@@ -126,9 +218,65 @@ function ImportPricesContent() {
       setRawText(typeof data.rawText === 'string' ? data.rawText : '')
       setParseStatus((data.parseStatus || 'failed') as ParseStatus)
       setRows(Array.isArray(data.previewRows) ? data.previewRows : [])
+      setImportSummary(null)
+      setManualMatches({})
     } catch (error) {
       console.error('[import-prices] parse failed', error)
       toast.error(error instanceof Error ? error.message : 'Αδυναμία ανάγνωσης αρχείου')
+    }
+  }
+
+  function openMatchModal(rowIndex: number) {
+    const row = rows[rowIndex] as PdfParsedRow | undefined
+    setMatchModalRowIndex(rowIndex)
+    setMatchCandidates([])
+    setMatchSearch(normalizeText(row?.parsed_name) || '')
+  }
+
+  function closeMatchModal() {
+    setMatchModalRowIndex(null)
+    setMatchSearch('')
+    setDebouncedMatchSearch('')
+    setMatchCandidates([])
+    setSavingMatchProductId(null)
+  }
+
+  async function saveMatchMemory(product: ProductSearchItem) {
+    if (matchModalRowIndex === null || !storeId || !supplierId) return
+
+    const row = rows[matchModalRowIndex] as PdfParsedRow | undefined
+    const rawText = normalizeText(row?.parsed_name)
+    const rawBarcode = normalizeText(row?.parsed_barcode)
+    if (!rawText) {
+      toast.error('Λείπει parsed_name για αποθήκευση match memory')
+      return
+    }
+
+    setSavingMatchProductId(product.id)
+    try {
+      const res = await fetch('/api/products/match-memory', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          store_id: storeId,
+          supplier_id: supplierId,
+          raw_text: rawText,
+          raw_barcode: rawBarcode,
+          matched_product_id: product.id,
+        }),
+      })
+
+      const data = await res.json()
+      if (!res.ok) throw new Error(data?.error || 'Αποτυχία αποθήκευσης match')
+
+      setManualMatches((prev) => ({ ...prev, [matchModalRowIndex]: product }))
+      toast.success(`Αποθηκεύτηκε match memory (${data.action}) για ${product.name}`)
+      closeMatchModal()
+    } catch (error) {
+      console.error('[import-prices] save match memory failed', error)
+      toast.error(error instanceof Error ? error.message : 'Αποτυχία αποθήκευσης match')
+    } finally {
+      setSavingMatchProductId(null)
     }
   }
 
@@ -153,15 +301,18 @@ function ImportPricesContent() {
     setSubmitting(true)
     try {
       const normalizedRows = uploadedFileType === 'pdf'
-        ? rows.map((row) => ({
-            supplier_product_name: normalizeText((row as any).supplier_product_name),
-            barcode_raw: normalizeText((row as any).barcode_raw),
-            supplier_barcode_key: normalizeText((row as any).supplier_barcode_key),
-            price: parseSafeNumber((row as any).price),
-            quantity: parseSafeNumber((row as any).quantity),
-            invoice_date: parseSafeDate((row as any).invoice_date),
-            raw_data: row,
-          }))
+        ? rows.map((row) => {
+            const parsedRow = row as PdfParsedRow & ParsedRow
+            return {
+              supplier_product_name: normalizeText(parsedRow.parsed_name ?? parsedRow.supplier_product_name),
+              barcode_raw: normalizeText(parsedRow.parsed_barcode ?? parsedRow.barcode_raw),
+              supplier_barcode_key: normalizeText(parsedRow.parsed_barcode ?? parsedRow.supplier_barcode_key),
+              price: parseSafeNumber(parsedRow.parsed_price ?? parsedRow.price),
+              quantity: parseSafeNumber(parsedRow.quantity),
+              invoice_date: parseSafeDate(parsedRow.invoice_date),
+              raw_data: row,
+            }
+          })
         : rows.map((row) => ({
             supplier_product_name: normalizeText(row[mapping.supplier_product_name]),
             barcode_raw: normalizeText(row[mapping.barcode_raw]),
@@ -190,9 +341,21 @@ function ImportPricesContent() {
         matched: data.matched,
         unmatched: data.unmatched,
         failed: data.failed,
+        increased: data.increased,
+        decreased: data.decreased,
       })
 
-      toast.success(`matched=${data.matched} unmatched=${data.unmatched} failed=${data.failed}`)
+      setImportSummary({
+        matched: Number(data.matched || 0),
+        unmatched: Number(data.unmatched || 0),
+        failed: Number(data.failed || 0),
+        increased: Number(data.increased || 0),
+        decreased: Number(data.decreased || 0),
+      })
+
+      toast.success(
+        `matched=${data.matched} unmatched=${data.unmatched} failed=${data.failed} ↑${data.increased || 0} ↓${data.decreased || 0}`,
+      )
     } catch (error) {
       console.error('[import-prices] submit failed', error)
       toast.error(error instanceof Error ? error.message : 'Αποτυχία import')
@@ -264,11 +427,51 @@ function ImportPricesContent() {
                 {uploadedFileType === 'pdf' ? 'Preview candidate rows από PDF' : 'Preview (20 rows)'}
               </p>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {rows.slice(0, 20).map((row, idx) => (
-                  <div key={idx} style={previewRow}>{JSON.stringify(row)}</div>
-                ))}
+                {uploadedFileType === 'pdf' ? (
+                  rows.slice(0, 20).map((row, idx) => {
+                    const pdfRow = row as PdfParsedRow
+                    const parsedName = normalizeText(pdfRow.parsed_name)
+                    const parsedPrice = parseSafeNumber(pdfRow.parsed_price)
+                    const parsedBarcode = normalizeText(pdfRow.parsed_barcode)
+                    const selectedProduct = manualMatches[idx]
+
+                    return (
+                      <div key={idx} style={pdfRowCard}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                          <p style={{ margin: 0, fontWeight: 900, fontSize: 13, color: colors.primaryDark }}>
+                            {parsedName || '—'}
+                          </p>
+                          <button type="button" style={matchBtn} onClick={() => openMatchModal(idx)}>
+                            Match προϊόν
+                          </button>
+                        </div>
+                        <p style={miniText}>Τιμή: {parsedPrice !== null ? parsedPrice.toFixed(3) : '—'} €</p>
+                        <p style={miniText}>Barcode: {parsedBarcode || '—'}</p>
+                        <p style={rawLineText}>{normalizeText(pdfRow.raw_line) || '—'}</p>
+                        {selectedProduct && (
+                          <p style={manualMatchTag}>Manual match: {selectedProduct.name}</p>
+                        )}
+                      </div>
+                    )
+                  })
+                ) : (
+                  rows.slice(0, 20).map((row, idx) => (
+                    <div key={idx} style={previewRow}>{JSON.stringify(row)}</div>
+                  ))
+                )}
               </div>
             </div>
+
+            {importSummary && (
+              <div style={card}>
+                <p style={{ margin: 0, fontWeight: 900, fontSize: 14 }}>Import Summary</p>
+                <p style={miniText}>matched={importSummary.matched} unmatched={importSummary.unmatched} failed={importSummary.failed}</p>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
+                  <span style={importSummary.increased > 0 ? increaseTag : neutralTag}>PRICE INCREASE: {importSummary.increased}</span>
+                  <span style={importSummary.decreased > 0 ? decreaseTag : neutralTag}>PRICE DROP: {importSummary.decreased}</span>
+                </div>
+              </div>
+            )}
 
             <button type="button" onClick={() => void submitImport()} disabled={submitting} style={submitBtn}>
               {submitting ? 'Γίνεται εισαγωγή...' : 'Επιβεβαίωση Import'}
@@ -294,6 +497,45 @@ function ImportPricesContent() {
             <summary style={{ fontWeight: 900, cursor: 'pointer' }}>Raw extracted text</summary>
             <pre style={{ marginTop: 10, whiteSpace: 'pre-wrap', fontSize: 11, color: colors.secondaryText }}>{rawText.slice(0, 4000)}</pre>
           </details>
+        )}
+
+        {matchModalRowIndex !== null && activePdfRow && (
+          <div style={modalOverlay}>
+            <div style={modalCard}>
+              <p style={{ margin: 0, fontSize: 14, fontWeight: 900, color: colors.primaryDark }}>Manual Match Προϊόντος</p>
+              <p style={{ margin: '4px 0 0 0', fontSize: 12, fontWeight: 700, color: colors.secondaryText }}>
+                Parsed: {normalizeText(activePdfRow.parsed_name) || '—'}
+              </p>
+              <input
+                value={matchSearch}
+                onChange={(e) => setMatchSearch(e.target.value)}
+                placeholder="Αναζήτηση προϊόντος"
+                style={{ ...inputStyle, marginTop: 10 }}
+              />
+              <div style={{ marginTop: 10, maxHeight: 280, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {matchSearchLoading && <p style={miniText}>Αναζήτηση...</p>}
+                {!matchSearchLoading && matchCandidates.length === 0 && <p style={miniText}>Δεν βρέθηκαν αποτελέσματα</p>}
+                {matchCandidates.map((candidate) => (
+                  <button
+                    type="button"
+                    key={candidate.id}
+                    onClick={() => void saveMatchMemory(candidate)}
+                    disabled={savingMatchProductId === candidate.id}
+                    style={matchCandidateBtn}
+                  >
+                    <span style={{ fontWeight: 900, fontSize: 13, color: colors.primaryDark }}>{candidate.name}</span>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: colors.secondaryText }}>
+                      {[candidate.category, candidate.brand].filter(Boolean).join(' • ') || '—'}
+                    </span>
+                    {savingMatchProductId === candidate.id && <span style={{ fontSize: 11, fontWeight: 900, color: '#1d4ed8' }}>Αποθήκευση...</span>}
+                  </button>
+                ))}
+              </div>
+              <button type="button" onClick={closeMatchModal} style={{ ...submitBtn, marginTop: 10, backgroundColor: '#475569' }}>
+                Κλείσιμο
+              </button>
+            </div>
+          </div>
         )}
       </div>
     </div>
@@ -343,5 +585,16 @@ const hint = { margin: '8px 0 0 0', fontSize: 12, fontWeight: 700, color: colors
 const pdfBadge: any = { marginTop: 8, display: 'inline-block', padding: '4px 8px', borderRadius: 999, backgroundColor: '#e0e7ff', color: '#3730a3', fontWeight: 900, fontSize: 11 }
 const warningText = { margin: 0, fontSize: 11, fontWeight: 800, color: '#92400e' }
 const previewRow: any = { border: `1px solid ${colors.border}`, borderRadius: 10, padding: 8, backgroundColor: '#f8fafc', fontSize: 11, fontWeight: 700, color: colors.secondaryText, overflowX: 'auto' }
+const pdfRowCard: any = { border: `1px solid ${colors.border}`, borderRadius: 12, padding: 10, backgroundColor: '#f8fafc' }
+const miniText = { margin: '6px 0 0 0', fontSize: 11, fontWeight: 800, color: colors.secondaryText }
+const rawLineText = { margin: '6px 0 0 0', fontSize: 11, fontWeight: 700, color: '#475569', backgroundColor: '#eef2ff', borderRadius: 8, padding: '6px 8px' }
+const manualMatchTag = { margin: '8px 0 0 0', fontSize: 11, fontWeight: 900, color: '#065f46', backgroundColor: '#d1fae5', borderRadius: 999, padding: '4px 8px', display: 'inline-block' }
+const matchBtn: any = { border: '1px solid #bfdbfe', borderRadius: 8, backgroundColor: '#eff6ff', color: '#1d4ed8', fontWeight: 900, fontSize: 11, padding: '6px 8px' }
+const increaseTag: any = { display: 'inline-block', padding: '4px 8px', borderRadius: 999, backgroundColor: '#fee2e2', color: '#991b1b', fontSize: 11, fontWeight: 900 }
+const decreaseTag: any = { display: 'inline-block', padding: '4px 8px', borderRadius: 999, backgroundColor: '#dcfce7', color: '#065f46', fontSize: 11, fontWeight: 900 }
+const neutralTag: any = { display: 'inline-block', padding: '4px 8px', borderRadius: 999, backgroundColor: '#e2e8f0', color: '#334155', fontSize: 11, fontWeight: 900 }
+const modalOverlay: any = { position: 'fixed', inset: 0, backgroundColor: 'rgba(15,23,42,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, zIndex: 50 }
+const modalCard: any = { width: '100%', maxWidth: 520, maxHeight: '88dvh', overflowY: 'auto', backgroundColor: colors.white, borderRadius: 16, border: `1px solid ${colors.border}`, padding: 14 }
+const matchCandidateBtn: any = { width: '100%', textAlign: 'left', border: `1px solid ${colors.border}`, borderRadius: 10, backgroundColor: '#f8fafc', padding: 10, display: 'flex', flexDirection: 'column', gap: 4 }
 const submitBtn: any = { width: '100%', border: 'none', borderRadius: 12, backgroundColor: colors.primaryDark, color: '#fff', padding: 14, fontSize: 15, fontWeight: 900 }
 const manualReviewCard: any = { backgroundColor: '#fffbeb', border: '1px solid #fde68a', borderRadius: 12, padding: 12, marginBottom: 10 }
