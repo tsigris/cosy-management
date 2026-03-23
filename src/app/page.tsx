@@ -134,7 +134,6 @@ type KpiTxRow = {
   method?: string | null
   payment_method?: string | null
   notes?: string | null
-  description?: string | null
   is_credit?: boolean | null
 }
 
@@ -146,19 +145,21 @@ function normalizeKpiText(value: string | null | undefined): string {
   return String(value || '').trim().toLowerCase()
 }
 
+function getKpiPaymentMethod(tx: KpiTxRow): string {
+  return String(tx?.payment_method ?? tx?.method ?? '').trim()
+}
+
 function isCreditLikeMovement(tx: KpiTxRow): boolean {
   const type = normalizeKpiText(tx.type)
   const category = normalizeKpiText(tx.category)
-  const method = normalizeKpiText(tx.method)
-  const paymentMethod = normalizeKpiText(tx.payment_method)
-  const detailsText = normalizeKpiText(tx.description || tx.notes)
+  const method = normalizeKpiText(tx.payment_method ?? tx.method)
+  const notes = normalizeKpiText(tx.notes)
 
   if (tx.is_credit === true) return true
   if (type.includes('credit')) return true
   if (category.includes('credit') || category.includes('πίστωση') || category.includes('πιστωση')) return true
   if (method.includes('credit') || method.includes('πίστωση') || method.includes('πιστωση')) return true
-  if (paymentMethod.includes('credit') || paymentMethod.includes('πίστωση') || paymentMethod.includes('πιστωση')) return true
-  if (detailsText.includes('credit') || detailsText.includes('πίστωση') || detailsText.includes('πιστωση')) return true
+  if (notes.includes('credit') || notes.includes('πίστωση') || notes.includes('πιστωση')) return true
 
   return false
 }
@@ -493,20 +494,6 @@ function DashboardContent() {
     if (!storeIdFromUrl) return
 
     try {
-      const { data, error } = await supabase.rpc('get_daily_totals', {
-        p_store_id: storeIdFromUrl,
-        p_date: selectedDate,
-      })
-
-      if (error) throw error
-
-      const raw = Array.isArray(data) ? data[0] : data
-      const payload = raw?.get_daily_totals ?? raw ?? {}
-
-      const income = Number(payload.income || 0)
-      const expense = Number(payload.expense || 0)
-      let creditTotal = Number(payload.credits || 0)
-
       const { data: txRows, error: txRowsError } = await supabase
         .from('transactions')
         .select('amount,type,category,method,payment_method,notes,is_credit')
@@ -515,50 +502,70 @@ function DashboardContent() {
 
       if (txRowsError) throw txRowsError
 
+      let incomeTotal = 0
+      let expenseTotal = 0
+      let creditTotal = 0
       let cashTotal = 0
       let bankTotal = 0
-      let computedCreditTotal = 0
 
       for (const row of (txRows || []) as KpiTxRow[]) {
-        const amount = Number(row.amount || 0)
-        const signedAmount = isIncomeTypeForKpi(row.type) ? amount : -amount
-        const method = String(row.payment_method || row.method || '')
+        const amount = Math.abs(Number(row.amount || 0))
+        const method = getKpiPaymentMethod(row)
         const creditLike = isCreditLikeMovement(row)
+        const isIncome = isIncomeTypeForKpi(row.type)
+
+        console.log('[dashboard-kpi-row]', {
+          amount,
+          type: row.type,
+          category: row.category,
+          method: row.method,
+          payment_method: row.payment_method,
+          notes: row.notes,
+          is_credit: row.is_credit,
+          resolved_method: method,
+          creditLike,
+        })
 
         if (creditLike) {
-          computedCreditTotal += Math.abs(amount)
+          creditTotal += amount
           continue
         }
 
+        if (isIncome) {
+          incomeTotal += amount
+        } else {
+          expenseTotal += amount
+        }
+
         if (isCashMethod(method)) {
-          cashTotal += signedAmount
+          cashTotal += isIncome ? amount : -amount
           continue
         }
 
         if (isBankMethod(method)) {
-          bankTotal += signedAmount
+          bankTotal += isIncome ? amount : -amount
         }
-      }
-
-      if (computedCreditTotal > 0) {
-        creditTotal = computedCreditTotal
       }
 
       const availableBalance = cashTotal + bankTotal
 
-      console.log('[dashboard-kpi] cashTotal', cashTotal)
-      console.log('[dashboard-kpi] bankTotal', bankTotal)
-      console.log('[dashboard-kpi] creditTotal', creditTotal)
-      console.log('[dashboard-kpi] availableBalance', availableBalance)
+      console.log('[dashboard-kpi-final]', {
+        incomeTotal,
+        expenseTotal,
+        creditTotal,
+        cashTotal,
+        bankTotal,
+        availableBalance,
+      })
 
       setTotals({
-        income,
-        expense,
+        income: incomeTotal,
+        expense: expenseTotal,
         credits: creditTotal,
         balance: availableBalance,
       })
     } catch (err) {
-      console.error('Daily totals RPC error:', err)
+      console.error('Daily totals error:', err)
     }
   }, [storeIdFromUrl, selectedDate, supabase])
 
