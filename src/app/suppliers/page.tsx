@@ -56,10 +56,14 @@ function SuppliersContent() {
   const [afm, setAfm] = useState('')
   const [iban, setIban] = useState('')
   const [bank, setBank] = useState('')
+  const [supplierCode, setSupplierCode] = useState('')
+  const [barcodePrefix, setBarcodePrefix] = useState('')
+  const [isActive, setIsActive] = useState(true)
   const [category, setCategory] = useState('Εμπορεύματα')
   const [editingId, setEditingId] = useState<string | null>(null)
   const [isFormOpen, setIsFormOpen] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
+  const [supplierProductsCountBySupplier, setSupplierProductsCountBySupplier] = useState<Record<string, number>>({})
 
   const fetchSuppliersData = useCallback(async () => {
     if (!storeIdFromUrl) return
@@ -69,7 +73,7 @@ function SuppliersContent() {
       const { data: storeInfo } = await supabase.from('stores').select('name').eq('id', storeIdFromUrl).single()
       if (storeInfo) setCurrentStoreName(storeInfo.name)
 
-      const [sRes, tRes] = await Promise.all([
+      const [sRes, tRes, spRes] = await Promise.all([
         supabase.from('suppliers').select('*').eq('store_id', storeIdFromUrl),
 
         // ✅ bring date (for year filter) + type (for turnover rule)
@@ -77,10 +81,18 @@ function SuppliersContent() {
           .from('transactions')
           .select('amount, supplier_id, type, date, created_at')
           .eq('store_id', storeIdFromUrl),
+        supabase.from('supplier_products').select('supplier_id').eq('store_id', storeIdFromUrl),
       ])
 
       setSuppliers(sRes.data || [])
       setTransactions(tRes.data || [])
+      const counts: Record<string, number> = {}
+      for (const row of spRes.data || []) {
+        const supplierId = String((row as any)?.supplier_id || '')
+        if (!supplierId) continue
+        counts[supplierId] = (counts[supplierId] || 0) + 1
+      }
+      setSupplierProductsCountBySupplier(counts)
     } catch (err) {
       toast.error('Σφάλμα συγχρονισμού')
     } finally {
@@ -153,6 +165,9 @@ function SuppliersContent() {
     setAfm('')
     setIban('')
     setBank('')
+    setSupplierCode('')
+    setBarcodePrefix('')
+    setIsActive(true)
     setCategory('Εμπορεύματα')
     setEditingId(null)
     setIsFormOpen(false)
@@ -170,6 +185,9 @@ function SuppliersContent() {
         vat_number: afm.trim(),
         iban: iban.trim().toUpperCase(),
         bank: bank,
+        supplier_code: supplierCode.trim() || null,
+        barcode_prefix: barcodePrefix.trim() || null,
+        is_active: isActive,
         category: category,
         store_id: storeIdFromUrl,
       }
@@ -179,7 +197,7 @@ function SuppliersContent() {
         const { error: err } = await supabase.from('suppliers').update(supplierData).eq('id', editingId).eq('store_id', storeIdFromUrl)
         error = err
       } else {
-        const { error: err } = await supabase.from('suppliers').insert([{ ...supplierData, is_active: true }])
+        const { error: err } = await supabase.from('suppliers').insert([supplierData])
         error = err
       }
 
@@ -312,6 +330,25 @@ function SuppliersContent() {
               <input value={iban} onChange={(e) => setIban(e.target.value)} style={inputStyle} placeholder="GR..." />
             </div>
 
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+              <div style={inputGroup}>
+                <label style={labelStyle}>SUPPLIER CODE</label>
+                <input value={supplierCode} onChange={(e) => setSupplierCode(e.target.value)} style={inputStyle} placeholder="π.χ. SUP-001" />
+              </div>
+              <div style={inputGroup}>
+                <label style={labelStyle}>BARCODE PREFIX</label>
+                <input value={barcodePrefix} onChange={(e) => setBarcodePrefix(e.target.value)} style={inputStyle} placeholder="π.χ. 520" />
+              </div>
+            </div>
+
+            <div style={inputGroup}>
+              <label style={labelStyle}>ΚΑΤΑΣΤΑΣΗ</label>
+              <select value={isActive ? 'active' : 'inactive'} onChange={(e) => setIsActive(e.target.value === 'active')} style={inputStyle}>
+                <option value="active">Ενεργός</option>
+                <option value="inactive">Ανενεργός</option>
+              </select>
+            </div>
+
             <div style={inputGroup}>
               <label style={labelStyle}>ΚΑΤΗΓΟΡΙΑ</label>
               <select value={category} onChange={(e) => setCategory(e.target.value)} style={inputStyle}>
@@ -347,9 +384,13 @@ function SuppliersContent() {
                     <p style={categoryBadge}>
                       {s.category} {s.bank ? `| ${s.bank}` : ''}
                     </p>
+                    <p style={categoryBadge}>
+                      Κωδικός: {s.supplier_code || '-'} | Prefix: {s.barcode_prefix || '-'} | Mappings: {supplierProductsCountBySupplier[s.id] || 0}
+                    </p>
                   </div>
                   <div style={{ textAlign: 'right' }}>
                     <p style={turnoverText}>{getSupplierTurnover(s.id).toFixed(2)}€</p>
+                    <p style={{ ...categoryBadge, color: s.is_active ? '#166534' : '#b91c1c' }}>{s.is_active ? 'ΕΝΕΡΓΟΣ' : 'ΑΝΕΝΕΡΓΟΣ'}</p>
                   </div>
                 </div>
 
@@ -378,6 +419,9 @@ function SuppliersContent() {
                           setAfm(s.vat_number || '')
                           setIban(s.iban || '')
                           setBank(s.bank || '')
+                          setSupplierCode(s.supplier_code || '')
+                          setBarcodePrefix(s.barcode_prefix || '')
+                          setIsActive(Boolean(s.is_active))
                           setCategory(s.category)
                           setEditingId(s.id)
                           setIsFormOpen(true)
