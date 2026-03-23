@@ -127,8 +127,47 @@ type ProfileRowLite = {
   username?: string | null
 }
 
+type KpiTxRow = {
+  amount?: number | string | null
+  type?: string | null
+  category?: string | null
+  method?: string | null
+  is_credit?: boolean | null
+}
+
 function getPaymentMethod(tx: DashboardTransaction): string {
   return String(tx?.payment_method ?? tx?.method ?? '').trim()
+}
+
+function normalizeKpiText(value: string | null | undefined): string {
+  return String(value || '').trim().toLowerCase()
+}
+
+function isCreditLikeMovement(tx: KpiTxRow): boolean {
+  const type = normalizeKpiText(tx.type)
+  const category = normalizeKpiText(tx.category)
+  const method = normalizeKpiText(tx.method)
+
+  if (tx.is_credit === true) return true
+  if (type.includes('credit')) return true
+  if (category.includes('credit') || category.includes('πίστωση') || category.includes('πιστωση')) return true
+  if (method.includes('credit') || method.includes('πίστωση') || method.includes('πιστωση')) return true
+
+  return false
+}
+
+function isCashMethod(method: string): boolean {
+  const normalized = normalizeKpiText(method)
+  return normalized.includes('cash') || normalized.includes('μετρη') || normalized === 'μετρητά' || normalized === 'μετρητα'
+}
+
+function isBankMethod(method: string): boolean {
+  const normalized = normalizeKpiText(method)
+  return normalized.includes('bank') || normalized.includes('τραπεζ') || normalized.includes('iban')
+}
+
+function isIncomeTypeForKpi(type: string | null | undefined): boolean {
+  return DISPLAY_INCOME_TYPES.includes(String(type || '') as (typeof DISPLAY_INCOME_TYPES)[number])
 }
 
 function getUserLabelFromTx(tx: DashboardTransaction): string {
@@ -459,15 +498,57 @@ function DashboardContent() {
 
       const income = Number(payload.income || 0)
       const expense = Number(payload.expense || 0)
-      const credits = Number(payload.credits || 0)
-      const deposits = Number(payload.savings_deposits || 0)
-      const withdrawals = Number(payload.savings_withdrawals || 0)
+      let creditTotal = Number(payload.credits || 0)
+
+      const { data: txRows, error: txRowsError } = await supabase
+        .from('transactions')
+        .select('amount,type,category,method,is_credit')
+        .eq('store_id', storeIdFromUrl)
+        .eq('date', selectedDate)
+
+      if (txRowsError) throw txRowsError
+
+      let cashTotal = 0
+      let bankTotal = 0
+      let computedCreditTotal = 0
+
+      for (const row of (txRows || []) as KpiTxRow[]) {
+        const amount = Number(row.amount || 0)
+        const signedAmount = isIncomeTypeForKpi(row.type) ? amount : -amount
+        const method = String(row.method || '')
+        const creditLike = isCreditLikeMovement(row)
+
+        if (creditLike) {
+          computedCreditTotal += Math.abs(amount)
+          continue
+        }
+
+        if (isCashMethod(method)) {
+          cashTotal += signedAmount
+          continue
+        }
+
+        if (isBankMethod(method)) {
+          bankTotal += signedAmount
+        }
+      }
+
+      if (computedCreditTotal > 0) {
+        creditTotal = computedCreditTotal
+      }
+
+      const availableBalance = cashTotal + bankTotal
+
+      console.log('[dashboard-kpi] cashTotal', cashTotal)
+      console.log('[dashboard-kpi] bankTotal', bankTotal)
+      console.log('[dashboard-kpi] creditTotal', creditTotal)
+      console.log('[dashboard-kpi] availableBalance', availableBalance)
 
       setTotals({
         income,
         expense,
-        credits,
-        balance: income - expense - deposits + withdrawals,
+        credits: creditTotal,
+        balance: availableBalance,
       })
     } catch (err) {
       console.error('Daily totals RPC error:', err)
