@@ -172,6 +172,7 @@ function PayEmployeeContent() {
   const remainingPayrollOnly = Number(payrollSummaryRow?.remaining_payroll_only ?? 0)
   const agreedExtraSalaryFromRpc = Number(payrollSummaryRow?.agreed_extra_salary ?? 0)
   const rpcFinalPayable = Number(payrollSummaryRow?.final_payable ?? 0)
+  const totalPayrollCost = Number(payrollSummaryRow?.final_payable || 0) + Number(payrollSummaryRow?.total_advances || 0)
 
   const effectiveAgreedExtraSalary = hasRpcSummary ? agreedExtraSalaryFromRpc : agreedExtraSalary
   const effectivePayrollRemaining = hasRpcSummary ? remainingPayrollOnly : computedRawRemainingPayroll
@@ -197,6 +198,11 @@ function PayEmployeeContent() {
 
   console.log('[pay-employee-rpc] payrollSummaryRow', payrollSummaryRow)
   console.log('[pay-employee-rpc] remaining_payroll_only', payrollSummaryRow?.remaining_payroll_only, 'agreed_extra_salary', payrollSummaryRow?.agreed_extra_salary, 'final_payable', payrollSummaryRow?.final_payable, 'bonus', Number(bonus || 0))
+  console.log('[pay-employee-total-cost]', {
+    final_payable: payrollSummaryRow?.final_payable,
+    total_advances: payrollSummaryRow?.total_advances,
+    totalPayrollCost,
+  })
   const bankAmountNum = clampAmount(parseAmount(bankAmount), finalPayableSafe)
   const cashAmountNum = clampAmount(parseAmount(cashAmount), finalPayableSafe)
   console.log('[pay-employee-split-init-fix]', {
@@ -535,12 +541,20 @@ function PayEmployeeContent() {
                   <span style={resultValue}>{effectiveAgreedExtraSalary.toFixed(2)}€</span>
                 </div>
                 <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
+                  <span style={resultLabel}>ΠΡΟΚΑΤΑΒΟΛΕΣ</span>
+                  <span style={resultValue}>{rpcTotalAdvances.toFixed(2)}€</span>
+                </div>
+                <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
                   <span style={resultLabel}>Bonus</span>
                   <span style={resultValue}>{manualBonus.toFixed(2)}€</span>
                 </div>
                 <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
                   <span style={resultLabel}>ΤΕΛΙΚΟ ΠΛΗΡΩΤΕΟ</span>
                   <span style={resultValue}>{finalPayable.toFixed(2)}€</span>
+                </div>
+                <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
+                  <span style={resultLabel}>ΣΥΝΟΛΙΚΟ ΚΟΣΤΟΣ</span>
+                  <span style={resultValue}>{totalPayrollCost.toFixed(2)}€</span>
                 </div>
               </div>
             )}
