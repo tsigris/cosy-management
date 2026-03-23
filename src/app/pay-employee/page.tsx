@@ -52,19 +52,29 @@ function PayEmployeeContent() {
     if (!empId || !storeId) return;
     try {
       setLoading(true)
-      const { data: emp, error } = await supabase
+      const { data: empRows, error: empError } = await supabase
         .from('fixed_assets')
-        .select('pay_basis, monthly_salary, daily_rate, monthly_days, agreed_extra_salary, agreed_extra')
+        .select('id, pay_basis, monthly_salary, salary, daily_rate, monthly_days, work_days_per_month, agreed_extra_salary, agreed_extra, store_id')
         .eq('id', empId)
-        .eq('store_id', storeId)
-        .single();
+        .or(`store_id.eq.${storeId},store_id.is.null`)
+        .limit(1)
+
+      const emp = empRows?.[0] ?? null
+
+      console.log('[pay-employee] empError', empError)
+      console.log('[pay-employee] empRows', empRows)
+      console.log('[pay-employee] emp', emp)
 
       if (emp) {
         const agreedExtraSalary = Number(emp?.agreed_extra_salary ?? emp?.agreed_extra ?? 0)
-        setAgreementType(emp.pay_basis || 'monthly');
-        setBaseAmount(emp.pay_basis === 'monthly' ? (emp.monthly_salary || 0) : (emp.daily_rate || 0));
-        setAgreementDays(emp.monthly_days || 26);
-        setAgreedExtraSalary(agreedExtraSalary);
+        setAgreementType(emp.pay_basis || 'monthly')
+        setBaseAmount(
+          emp.pay_basis === 'monthly'
+            ? Number(emp.monthly_salary ?? emp.salary ?? 0)
+            : Number(emp.daily_rate ?? 0)
+        )
+        setAgreementDays(Number(emp.monthly_days ?? emp.work_days_per_month ?? 26))
+        setAgreedExtraSalary(agreedExtraSalary)
       }
 
       const businessAsOfDate = getTodayDateISO()
@@ -78,6 +88,7 @@ function PayEmployeeContent() {
       if (payrollRpcError) {
         console.error('[pay-employee] payroll RPC load failed', payrollRpcError)
       }
+      console.log('[pay-employee] payrollSummaryRow', rpcRow)
 
       setPayrollSummaryRow(rpcRow || null)
 
@@ -118,9 +129,11 @@ function PayEmployeeContent() {
         const totalAdvance = (advanceRows || []).reduce((sum, r) => sum + Math.abs(Number(r.amount) || 0), 0);
         setAdvanceTotal(totalAdvance);
       }
-    } catch (_err) {
-      // keep fallback behavior without failing the page
-    } finally { setLoading(false) }
+    } catch (err) {
+      console.error('[pay-employee] loadEmployeeData failed', err)
+    } finally {
+      setLoading(false)
+    }
   }, [empId, storeId])
 
   useEffect(() => { loadEmployeeData() }, [loadEmployeeData])
