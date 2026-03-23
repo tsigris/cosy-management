@@ -49,6 +49,12 @@ type EmployeePayrollRow = {
   payrollPctOfTurnover: number
 }
 
+type EmployeeMetaRow = {
+  id?: string | null
+  start_date?: string | null
+  pay_basis?: string | null
+}
+
 type Period = 'month' | 'year' | '30days' | 'all'
 
 const isValidUUID = (id: any) => {
@@ -88,6 +94,20 @@ function getSevenDaysAgoKey() {
   const d = new Date()
   d.setDate(d.getDate() - 7)
   return toDateKey(d)
+}
+
+function parseDateKey(value: string) {
+  if (!isValidDateKey(value)) return null
+  const [y, m, d] = value.split('-').map(Number)
+  return new Date(y, m - 1, d)
+}
+
+function getInclusiveDaysBetween(startKey: string, endKey: string) {
+  const start = parseDateKey(startKey)
+  const end = parseDateKey(endKey)
+  if (!start || !end || start > end) return 0
+  const msPerDay = 1000 * 60 * 60 * 24
+  return Math.floor((end.getTime() - start.getTime()) / msPerDay) + 1
 }
 
 const statusLabelMap: Record<string, string> = {
