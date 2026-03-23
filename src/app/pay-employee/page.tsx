@@ -42,6 +42,8 @@ function PayEmployeeContent() {
   const [pendingOvertimeHours, setPendingOvertimeHours] = useState<number>(0)
   const [advanceAmount, setAdvanceAmount] = useState<string>('')
   const [bankAmount, setBankAmount] = useState<string>('')
+  const [cashAmount, setCashAmount] = useState<string>('')
+  const [lastEdited, setLastEdited] = useState<'bank' | 'cash' | null>(null)
   const [advanceTotal, setAdvanceTotal] = useState<number>(0)
   const [payrollSummaryRow, setPayrollSummaryRow] = useState<any | null>(null)
   const [paymentMethod, setPaymentMethod] = useState<'Μετρητά' | 'Τράπεζα'>('Μετρητά')
@@ -176,10 +178,70 @@ function PayEmployeeContent() {
   const effectiveRemainingPayroll = Math.max(0, effectivePayrollRemaining)
   const effectiveFinalPayable = hasRpcSummary ? rpcFinalPayable : Math.max(0, effectivePayrollRemaining + effectiveAgreedExtraSalary)
   const finalPayable = hasRpcSummary ? rpcFinalPayable + manualBonus : Math.max(0, effectiveFinalPayable + manualBonus)
+  const finalPayableSafe = Math.max(0, finalPayable)
+  const parseAmount = (value: string) => {
+    const parsed = Number(value)
+    return Number.isFinite(parsed) ? parsed : 0
+  }
+  const clampAmount = (value: number, maxValue: number) => Math.min(Math.max(value, 0), maxValue)
+
+  const rpcDisplaySalaryBasis = rpcMonthlySalary + rpcAgreedExtraSalary
+  console.log('[payroll-rpc-display-cost]', {
+    monthly_salary: rpcMonthlySalary,
+    agreed_extra_salary: rpcAgreedExtraSalary,
+    display_salary_basis: rpcDisplaySalaryBasis,
+    monthly_days: Number(payrollSummaryRow?.monthly_days || 0),
+    daily_cost: Number(payrollSummaryRow?.daily_cost || 0),
+    hourly_cost: Number(payrollSummaryRow?.hourly_cost || 0),
+  })
+
   console.log('[pay-employee-rpc] payrollSummaryRow', payrollSummaryRow)
   console.log('[pay-employee-rpc] remaining_payroll_only', payrollSummaryRow?.remaining_payroll_only, 'agreed_extra_salary', payrollSummaryRow?.agreed_extra_salary, 'final_payable', payrollSummaryRow?.final_payable, 'bonus', Number(bonus || 0))
-  const bankAmountNum = Number(bankAmount) || 0
-  const cashAmount = Math.max(0, finalPayable - bankAmountNum)
+  const bankAmountNum = clampAmount(parseAmount(bankAmount), finalPayableSafe)
+  const cashAmountNum = clampAmount(parseAmount(cashAmount), finalPayableSafe)
+  console.log('[pay-employee-split]', {
+    finalPayable,
+    bankAmount,
+    cashAmount,
+    lastEdited,
+  })
+
+  const handleBankAmountChange = (value: string) => {
+    const normalizedBank = clampAmount(parseAmount(value), finalPayableSafe)
+    const normalizedCash = Math.max(0, finalPayableSafe - normalizedBank)
+    setLastEdited('bank')
+    setBankAmount(value === '' ? '' : normalizedBank.toFixed(2))
+    setCashAmount(normalizedCash.toFixed(2))
+  }
+
+  const handleCashAmountChange = (value: string) => {
+    const normalizedCash = clampAmount(parseAmount(value), finalPayableSafe)
+    const normalizedBank = Math.max(0, finalPayableSafe - normalizedCash)
+    setLastEdited('cash')
+    setCashAmount(value === '' ? '' : normalizedCash.toFixed(2))
+    setBankAmount(normalizedBank.toFixed(2))
+  }
+
+  useEffect(() => {
+    if (mode === 'advance') return
+
+    if (lastEdited === 'cash') {
+      const nextCash = clampAmount(parseAmount(cashAmount), finalPayableSafe)
+      const nextBank = Math.max(0, finalPayableSafe - nextCash)
+      const nextCashText = nextCash.toFixed(2)
+      const nextBankText = nextBank.toFixed(2)
+      if (cashAmount !== '' && cashAmount !== nextCashText) setCashAmount(nextCashText)
+      if (bankAmount !== nextBankText) setBankAmount(nextBankText)
+      return
+    }
+
+    const nextBank = clampAmount(parseAmount(bankAmount), finalPayableSafe)
+    const nextCash = Math.max(0, finalPayableSafe - nextBank)
+    const nextBankText = bankAmount === '' ? '' : nextBank.toFixed(2)
+    const nextCashText = nextCash.toFixed(2)
+    if (bankAmount !== nextBankText) setBankAmount(nextBankText)
+    if (cashAmount !== nextCashText) setCashAmount(nextCashText)
+  }, [finalPayableSafe, mode, lastEdited])
 
   async function handleFinalPayment() {
     if (!storeId) return toast.error('Σφάλμα καταστήματος');
@@ -227,83 +289,83 @@ function PayEmployeeContent() {
         return toast.error('Το ποσό πληρωμής πρέπει να είναι μεγαλύτερο από 0')
       }
 
-      if (bankAmountNum > finalPayable) {
-        setLoading(false)
-        return toast.error('Το ποσό τράπεζας δεν μπορεί να είναι μεγαλύτερο από το σύνολο')
-      }
-
       const agreementLabel = agreementType === 'monthly' ? 'Βασικός Μισθός' : 'Ημερομίσθιο';
       const daysOrAbsencesLabel = agreementType === 'monthly' ? `Απουσίες: ${absences}` : `Ημέρες: ${workedDays}`;
       const notes = `Εκκαθάριση ${empName || ''} | ${agreementLabel} | Ημέρες/Απουσίες: ${daysOrAbsencesLabel}`;
 
-      if (bankAmountNum > 0) {
-        const inserts: Array<any> = [
-          {
-            amount: -Math.abs(bankAmountNum),
-            type: 'expense',
-            category: 'Staff',
-            method: 'Τράπεζα',
-            employee_id: empId,
-            fixed_asset_id: empId,
-            store_id: storeId,
-            date,
-            notes,
-          },
-        ]
+      let normalizedBank = clampAmount(bankAmountNum, finalPayableSafe)
+      let normalizedCash = clampAmount(cashAmountNum, finalPayableSafe)
 
-        if (cashAmount > 0) {
-          inserts.push({
-            amount: -Math.abs(cashAmount),
-            type: 'expense',
-            category: 'Staff',
-            method: 'Μετρητά',
-            employee_id: empId,
-            fixed_asset_id: empId,
-            store_id: storeId,
-            date,
-            notes,
-          })
-        }
-
-        const { error: splitInsertError } = await supabase.from('transactions').insert(inserts)
-        if (splitInsertError) throw splitInsertError
-
-        const { error: settleAdvancesError } = await supabase
-          .from('transactions')
-          .update({ is_settled: true })
-          .eq('store_id', storeId)
-          .eq('type', 'salary_advance')
-          .eq('is_settled', false)
-          .or(`employee_id.eq.${empId},fixed_asset_id.eq.${empId}`)
-        if (settleAdvancesError) throw settleAdvancesError
-
-        const { error: settleOvertimeError } = await supabase
-          .from('employee_overtimes')
-          .update({ is_paid: true })
-          .eq('store_id', storeId)
-          .eq('employee_id', empId)
-          .eq('is_paid', false)
-        if (settleOvertimeError) throw settleOvertimeError
-
-        toast.success('Η πληρωμή καταχωρήθηκε και οι υπερωρίες εκκαθαρίστηκαν!');
-        router.push(`/employees?store=${storeId}`);
-        return
+      if (lastEdited === 'cash') {
+        normalizedBank = Math.max(0, finalPayableSafe - normalizedCash)
+      } else {
+        normalizedCash = Math.max(0, finalPayableSafe - normalizedBank)
       }
 
-      const { error: payrollError } = await supabase.rpc('payroll_payment_atomic', {
-        p_store_id: storeId,
-        p_employee_id: empId,
-        p_amount: finalPayable,
-        p_method: paymentMethod,
-        p_category: 'Staff',
-        p_date: date,
-        p_notes: notes,
-        p_settle_advances: true,
-        p_settle_overtimes: true,
-        p_settle_tips: false,
-      })
+      if (normalizedBank < 0 || normalizedCash < 0) {
+        setLoading(false)
+        return toast.error('Τα ποσά πληρωμής δεν μπορεί να είναι αρνητικά.')
+      }
 
-      if (payrollError) throw payrollError
+      if (normalizedBank > finalPayableSafe || normalizedCash > finalPayableSafe) {
+        setLoading(false)
+        return toast.error('Κάποιο ποσό είναι μεγαλύτερο από το τελικό πληρωτέο.')
+      }
+
+      const inserts: Array<any> = []
+
+      if (normalizedBank > 0) {
+        inserts.push({
+          amount: -Math.abs(normalizedBank),
+          type: 'expense',
+          category: 'Staff',
+          method: 'Τράπεζα',
+          employee_id: empId,
+          fixed_asset_id: empId,
+          store_id: storeId,
+          date,
+          notes,
+        })
+      }
+
+      if (normalizedCash > 0) {
+        inserts.push({
+          amount: -Math.abs(normalizedCash),
+          type: 'expense',
+          category: 'Staff',
+          method: 'Μετρητά',
+          employee_id: empId,
+          fixed_asset_id: empId,
+          store_id: storeId,
+          date,
+          notes,
+        })
+      }
+
+      if (inserts.length === 0) {
+        setLoading(false)
+        return toast.error('Βάλε ποσό πληρωμής σε Τράπεζα ή Μετρητά.')
+      }
+
+      const { error: splitInsertError } = await supabase.from('transactions').insert(inserts)
+      if (splitInsertError) throw splitInsertError
+
+      const { error: settleAdvancesError } = await supabase
+        .from('transactions')
+        .update({ is_settled: true })
+        .eq('store_id', storeId)
+        .eq('type', 'salary_advance')
+        .eq('is_settled', false)
+        .or(`employee_id.eq.${empId},fixed_asset_id.eq.${empId}`)
+      if (settleAdvancesError) throw settleAdvancesError
+
+      const { error: settleOvertimeError } = await supabase
+        .from('employee_overtimes')
+        .update({ is_paid: true })
+        .eq('store_id', storeId)
+        .eq('employee_id', empId)
+        .eq('is_paid', false)
+      if (settleOvertimeError) throw settleOvertimeError
 
       toast.success('Η πληρωμή καταχωρήθηκε και οι υπερωρίες εκκαθαρίστηκαν!');
       router.push(`/employees?store=${storeId}`);
@@ -472,17 +534,21 @@ function PayEmployeeContent() {
                 <input
                   type="number"
                   value={bankAmount}
-                  onChange={e => setBankAmount(e.target.value)}
+                  onChange={e => handleBankAmountChange(e.target.value)}
                   style={inputStyle}
                   placeholder="0.00"
                 />
               </div>
 
               <div style={{ marginTop: '10px' }}>
-                <label style={smallLabel}>ΜΕΤΡΗΤΑ (€)</label>
-                <div style={staticValue}>
-                  {cashAmount.toFixed(2)}€
-                </div>
+                <label style={smallLabel}>ΠΟΣΟ ΜΕΤΡΗΤΩΝ (€)</label>
+                <input
+                  type="number"
+                  value={cashAmount}
+                  onChange={e => handleCashAmountChange(e.target.value)}
+                  style={inputStyle}
+                  placeholder="0.00"
+                />
               </div>
             </>
           )}
