@@ -132,7 +132,6 @@ type KpiTxRow = {
   type?: string | null
   category?: string | null
   method?: string | null
-  payment_method?: string | null
   notes?: string | null
   is_credit?: boolean | null
 }
@@ -145,14 +144,10 @@ function normalizeKpiText(value: string | null | undefined): string {
   return String(value || '').trim().toLowerCase()
 }
 
-function getKpiPaymentMethod(tx: KpiTxRow): string {
-  return String(tx?.payment_method ?? tx?.method ?? '').trim()
-}
-
 function isCreditLikeMovement(tx: KpiTxRow): boolean {
   const type = normalizeKpiText(tx.type)
   const category = normalizeKpiText(tx.category)
-  const method = normalizeKpiText(tx.payment_method ?? tx.method)
+  const method = normalizeKpiText(tx.method)
   const notes = normalizeKpiText(tx.notes)
 
   if (tx.is_credit === true) return true
@@ -496,7 +491,7 @@ function DashboardContent() {
     try {
       const { data: txRows, error: txRowsError } = await supabase
         .from('transactions')
-        .select('amount,type,category,method,payment_method,notes,is_credit')
+        .select('amount,type,category,method,notes,is_credit')
         .eq('store_id', storeIdFromUrl)
         .eq('date', selectedDate)
 
@@ -510,7 +505,7 @@ function DashboardContent() {
 
       for (const row of (txRows || []) as KpiTxRow[]) {
         const amount = Math.abs(Number(row.amount || 0))
-        const method = getKpiPaymentMethod(row)
+        const method = String(row.method || '').trim()
         const creditLike = isCreditLikeMovement(row)
         const isIncome = isIncomeTypeForKpi(row.type)
 
@@ -519,7 +514,6 @@ function DashboardContent() {
           type: row.type,
           category: row.category,
           method: row.method,
-          payment_method: row.payment_method,
           notes: row.notes,
           is_credit: row.is_credit,
           resolved_method: method,
@@ -565,6 +559,7 @@ function DashboardContent() {
         balance: availableBalance,
       })
     } catch (err) {
+      console.error('[dashboard-kpi-error]', err)
       console.error('Daily totals error:', err)
     }
   }, [storeIdFromUrl, selectedDate, supabase])
