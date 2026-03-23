@@ -132,6 +132,9 @@ type KpiTxRow = {
   type?: string | null
   category?: string | null
   method?: string | null
+  payment_method?: string | null
+  notes?: string | null
+  description?: string | null
   is_credit?: boolean | null
 }
 
@@ -147,11 +150,15 @@ function isCreditLikeMovement(tx: KpiTxRow): boolean {
   const type = normalizeKpiText(tx.type)
   const category = normalizeKpiText(tx.category)
   const method = normalizeKpiText(tx.method)
+  const paymentMethod = normalizeKpiText(tx.payment_method)
+  const detailsText = normalizeKpiText(tx.description || tx.notes)
 
   if (tx.is_credit === true) return true
   if (type.includes('credit')) return true
   if (category.includes('credit') || category.includes('πίστωση') || category.includes('πιστωση')) return true
   if (method.includes('credit') || method.includes('πίστωση') || method.includes('πιστωση')) return true
+  if (paymentMethod.includes('credit') || paymentMethod.includes('πίστωση') || paymentMethod.includes('πιστωση')) return true
+  if (detailsText.includes('credit') || detailsText.includes('πίστωση') || detailsText.includes('πιστωση')) return true
 
   return false
 }
@@ -502,7 +509,7 @@ function DashboardContent() {
 
       const { data: txRows, error: txRowsError } = await supabase
         .from('transactions')
-        .select('amount,type,category,method,is_credit')
+        .select('amount,type,category,method,payment_method,notes,is_credit')
         .eq('store_id', storeIdFromUrl)
         .eq('date', selectedDate)
 
@@ -515,7 +522,7 @@ function DashboardContent() {
       for (const row of (txRows || []) as KpiTxRow[]) {
         const amount = Number(row.amount || 0)
         const signedAmount = isIncomeTypeForKpi(row.type) ? amount : -amount
-        const method = String(row.method || '')
+        const method = String(row.payment_method || row.method || '')
         const creditLike = isCreditLikeMovement(row)
 
         if (creditLike) {
