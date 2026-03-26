@@ -132,6 +132,7 @@ type KpiTxRow = {
   type?: string | null
   category?: string | null
   method?: string | null
+  payment_method?: string | null
   notes?: string | null
   is_credit?: boolean | null
 }
@@ -148,10 +149,14 @@ function normalizeKpiText(value: string | null | undefined): string {
     .replace(/[\u0300-\u036f]/g, '')
 }
 
+function getKpiPaymentMethod(tx: KpiTxRow): string {
+  return String(tx?.payment_method ?? tx?.method ?? '').trim()
+}
+
 function isCreditLikeMovement(tx: KpiTxRow): boolean {
   const type = normalizeKpiText(tx.type)
   const category = normalizeKpiText(tx.category)
-  const method = normalizeKpiText(tx.method)
+  const method = normalizeKpiText(tx.payment_method ?? tx.method)
   const notes = normalizeKpiText(tx.notes)
 
   if (tx.is_credit === true) return true
@@ -495,7 +500,7 @@ function DashboardContent() {
     try {
       const { data: txRows, error: txRowsError } = await supabase
         .from('transactions')
-        .select('amount,type,category,method,notes,is_credit')
+        .select('amount,type,category,method,payment_method,notes,is_credit')
         .eq('store_id', storeIdFromUrl)
         .eq('date', selectedDate)
 
@@ -509,17 +514,22 @@ function DashboardContent() {
 
       for (const row of (txRows || []) as KpiTxRow[]) {
         const amount = Math.abs(Number(row.amount || 0))
-        const method = String(row.method || '').trim()
+        const method = getKpiPaymentMethod(row)
         const creditLike = isCreditLikeMovement(row)
         const isIncome = isIncomeTypeForKpi(row.type)
+        const normalizedType = normalizeKpiText(row.type)
         const normalizedCategory = normalizeKpiText(row.category)
         const normalizedNotes = normalizeKpiText(row.notes)
         const isLoanLikeRow =
-          normalizeKpiText(row.type) === 'debt_payment' ||
+          normalizedType === 'debt_payment' ||
           normalizedCategory.includes('ρυθμιση') ||
           normalizedCategory.includes('δοση') ||
+          normalizedCategory.includes('loan') ||
+          normalizedCategory.includes('settlement') ||
           normalizedNotes.includes('ρυθμιση') ||
-          normalizedNotes.includes('δοση')
+          normalizedNotes.includes('δοση') ||
+          normalizedNotes.includes('loan') ||
+          normalizedNotes.includes('settlement')
 
         if (isLoanLikeRow) {
           console.log('[dashboard-loan-kpi-row]', {
@@ -527,10 +537,11 @@ function DashboardContent() {
             type: row.type,
             category: row.category,
             method: row.method,
+            payment_method: row.payment_method,
             notes: row.notes,
-            normalizedMethod: normalizeKpiText(row.method),
-            isBank: isBankMethod(String(row.method || '')),
-            isCash: isCashMethod(String(row.method || '')),
+            resolvedMethod: method,
+            isBank: isBankMethod(method),
+            isCash: isCashMethod(method),
             creditLike,
             isIncome,
           })
