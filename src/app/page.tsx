@@ -127,16 +127,6 @@ type ProfileRowLite = {
   username?: string | null
 }
 
-type KpiTxRow = {
-  amount?: number | string | null
-  type?: string | null
-  category?: string | null
-  method?: string | null
-  payment_method?: string | null
-  notes?: string | null
-  is_credit?: boolean | null
-}
-
 function getPaymentMethod(tx: DashboardTransaction): string {
   return String(tx?.payment_method ?? tx?.method ?? '').trim()
 }
@@ -149,11 +139,13 @@ function normalizeKpiText(value: string | null | undefined): string {
     .replace(/[\u0300-\u036f]/g, '')
 }
 
-function getKpiPaymentMethod(tx: KpiTxRow): string {
+function getKpiPaymentMethod(tx: Pick<DashboardTransaction, 'method' | 'payment_method'>): string {
   return String(tx?.payment_method ?? tx?.method ?? '').trim()
 }
 
-function isCreditLikeMovement(tx: KpiTxRow): boolean {
+function isCreditLikeMovement(
+  tx: Pick<DashboardTransaction, 'type' | 'category' | 'method' | 'payment_method' | 'notes' | 'is_credit'>,
+): boolean {
   const type = normalizeKpiText(tx.type)
   const category = normalizeKpiText(tx.category)
   const method = normalizeKpiText(tx.payment_method ?? tx.method)
@@ -495,16 +487,14 @@ function DashboardContent() {
   }, [selectedDate, router, storeIdFromUrl, supabase])
 
   const loadTotals = useCallback(async () => {
-    if (!storeIdFromUrl) return
-
     try {
-      const { data: txRows, error: txRowsError } = await supabase
-        .from('transactions')
-        .select('amount,type,category,method,payment_method,notes,is_credit')
-        .eq('store_id', storeIdFromUrl)
-        .eq('date', selectedDate)
+      const txRows = Array.isArray(transactions) ? transactions : []
 
-      if (txRowsError) throw txRowsError
+      console.log('[dashboard-kpi-source]', {
+        selectedDate,
+        transactionCount: txRows.length,
+        ids: txRows.map((r) => r.id),
+      })
 
       let incomeTotal = 0
       let expenseTotal = 0
@@ -512,7 +502,7 @@ function DashboardContent() {
       let cashTotal = 0
       let bankTotal = 0
 
-      for (const row of (txRows || []) as KpiTxRow[]) {
+      for (const row of txRows) {
         const amount = Math.abs(Number(row.amount || 0))
         const method = getKpiPaymentMethod(row)
         const creditLike = isCreditLikeMovement(row)
@@ -589,7 +579,7 @@ function DashboardContent() {
       console.error('[dashboard-kpi-error]', err)
       console.error('Daily totals error:', err)
     }
-  }, [storeIdFromUrl, selectedDate, supabase])
+  }, [transactions, selectedDate])
 
   // storeIdFromUrl is already a dep of loadDashboard itself; no need to repeat it here
   useEffect(() => {
