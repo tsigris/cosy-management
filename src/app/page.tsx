@@ -141,7 +141,11 @@ function getPaymentMethod(tx: DashboardTransaction): string {
 }
 
 function normalizeKpiText(value: string | null | undefined): string {
-  return String(value || '').trim().toLowerCase()
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
 }
 
 function isCreditLikeMovement(tx: KpiTxRow): boolean {
@@ -508,17 +512,29 @@ function DashboardContent() {
         const method = String(row.method || '').trim()
         const creditLike = isCreditLikeMovement(row)
         const isIncome = isIncomeTypeForKpi(row.type)
+        const normalizedCategory = normalizeKpiText(row.category)
+        const normalizedNotes = normalizeKpiText(row.notes)
+        const isLoanLikeRow =
+          normalizeKpiText(row.type) === 'debt_payment' ||
+          normalizedCategory.includes('ρυθμιση') ||
+          normalizedCategory.includes('δοση') ||
+          normalizedNotes.includes('ρυθμιση') ||
+          normalizedNotes.includes('δοση')
 
-        console.log('[dashboard-kpi-row]', {
-          amount,
-          type: row.type,
-          category: row.category,
-          method: row.method,
-          notes: row.notes,
-          is_credit: row.is_credit,
-          resolved_method: method,
-          creditLike,
-        })
+        if (isLoanLikeRow) {
+          console.log('[dashboard-loan-kpi-row]', {
+            amount,
+            type: row.type,
+            category: row.category,
+            method: row.method,
+            notes: row.notes,
+            normalizedMethod: normalizeKpiText(row.method),
+            isBank: isBankMethod(String(row.method || '')),
+            isCash: isCashMethod(String(row.method || '')),
+            creditLike,
+            isIncome,
+          })
+        }
 
         if (creditLike) {
           creditTotal += amount
