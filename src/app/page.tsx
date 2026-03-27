@@ -836,7 +836,7 @@ function DashboardContent() {
       border: '#fecdd3',
       badgeBg: '#fff1f2',
       badgeColor: '#be123c',
-      tint: 'linear-gradient(180deg, rgba(244, 63, 94, 0.08) 0%, rgba(244, 63, 94, 0.02) 58%, rgba(255,255,255,0) 100%)',
+      tint: 'linear-gradient(180deg, rgba(244, 63, 94, 0.035) 0%, rgba(244, 63, 94, 0.008) 58%, rgba(255,255,255,0) 100%)',
     }
   }, [trackerDiffPct, trackerIsNeutral, trackerIsPositive])
 
@@ -1040,7 +1040,19 @@ function DashboardContent() {
           background: `${trackerTone.tint}, var(--surface)`,
         }}
       >
-        <p style={dailyTrackerTitle}>ΣΗΜΕΡΙΝΗ ΑΠΟΔΟΣΗ</p>
+        <div style={dailyTrackerHeaderRow}>
+          <p style={dailyTrackerTitle}>ΣΗΜΕΡΙΝΗ ΑΠΟΔΟΣΗ</p>
+          <span
+            style={{
+              ...dailyTrackerStatusChip,
+              background: trackerTone.badgeBg,
+              color: trackerTone.badgeColor,
+              borderColor: trackerTone.border,
+            }}
+          >
+            {trackerDiffPct === null ? 'ΣΤΑΘΕΡΑ' : trackerIsNeutral ? 'ΣΤΑΘΕΡΑ' : trackerIsPositive ? 'ΔΥΝΑΤΑ' : 'ΧΑΜΗΛΑ'}
+          </span>
+        </div>
 
         {dailyTrackerLoading ? (
           <p style={dailyTrackerTextNeutral}>Υπολογισμός σε εξέλιξη...</p>
@@ -1053,16 +1065,13 @@ function DashboardContent() {
                 {trackerIsNeutral ? <Activity size={14} /> : trackerIsPositive ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
               </div>
 
-              <div style={dailyTrackerMainTextWrap}>
-                <p style={dailyTrackerMainLine}>
-                  <span style={{ ...dailyTrackerPercent, color: trackerTone.accent }}>
-                    {trackerDiffPct >= 0 ? '+' : ''}
-                    {trackerDiffPct.toFixed(0)}%
-                  </span>
-                  <span style={dailyTrackerMainLineLabel}>από τον μέσο όρο {trackerDayLabelGenitive}</span>
-                </p>
-              </div>
+              <p style={{ ...dailyTrackerPercent, color: trackerTone.accent }}>
+                {trackerDiffPct >= 0 ? '+' : ''}
+                {trackerDiffPct.toFixed(0)}%
+              </p>
             </div>
+
+            <p style={dailyTrackerMainLineLabel}>από τον μέσο όρο {trackerDayLabelGenitive}</p>
           </>
         )}
 
@@ -1072,10 +1081,10 @@ function DashboardContent() {
           {trackerDiffPct === null
             ? 'Δεν υπάρχει διαθέσιμος ιστορικός μέσος όρος.'
             : trackerIsNeutral
-              ? `Κοντά στον μέσο όρο ${trackerDayLabelGenitive}`
+              ? `Κοντά στη μέση επίδοση ${trackerDayLabelGenitive}`
               : trackerIsPositive
-                ? `Καλύτερα από τη συνηθισμένη ${trackerDayLabelGenitive}`
-                : `Χαμηλότερα από τη συνηθισμένη ${trackerDayLabelGenitive}`}
+                ? `Πάνω από τη μέση επίδοση ${trackerDayLabelGenitive}`
+                : `Κάτω από τη μέση επίδοση ${trackerDayLabelGenitive}`}
         </p>
 
         <div style={dailyTrackerProgressWrap}>
@@ -1488,10 +1497,16 @@ const dailyTrackerCard: CSSProperties = {
   background: 'var(--surface)',
   border: `1px solid ${colors.border}`,
   borderRadius: '24px',
-  padding: '18px 18px 16px',
-  marginTop: '-10px',
+  padding: '14px 16px 13px',
+  marginTop: '-14px',
   marginBottom: '24px',
   boxShadow: 'var(--shadow)',
+}
+const dailyTrackerHeaderRow: CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: '8px',
 }
 const dailyTrackerTitle: CSSProperties = {
   margin: 0,
@@ -1500,68 +1515,70 @@ const dailyTrackerTitle: CSSProperties = {
   color: colors.secondaryText,
   letterSpacing: '0.8px',
 }
+const dailyTrackerStatusChip: CSSProperties = {
+  fontSize: '9px',
+  fontWeight: '900',
+  letterSpacing: '0.5px',
+  lineHeight: 1,
+  borderRadius: '999px',
+  border: '1px solid transparent',
+  padding: '5px 8px 4px',
+  whiteSpace: 'nowrap',
+}
 const dailyTrackerTextNeutral: CSSProperties = {
-  margin: '10px 0 0 0',
+  margin: '8px 0 0 0',
   fontSize: '12px',
   fontWeight: '800',
   color: colors.secondaryText,
 }
 const dailyTrackerMainLineWrap: CSSProperties = {
-  marginTop: '10px',
+  marginTop: '8px',
   display: 'flex',
   alignItems: 'center',
-  gap: '10px',
+  gap: '8px',
 }
 const dailyTrackerIconBadge: CSSProperties = {
-  width: '26px',
-  height: '26px',
+  width: '24px',
+  height: '24px',
   borderRadius: '9px',
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
   flexShrink: 0,
 }
-const dailyTrackerMainTextWrap: CSSProperties = {
-  minWidth: 0,
-}
-const dailyTrackerMainLine: CSSProperties = {
-  margin: 0,
-  display: 'flex',
-  alignItems: 'baseline',
-  gap: '8px',
-  flexWrap: 'wrap',
-  lineHeight: 1.05,
-}
 const dailyTrackerPercent: CSSProperties = {
+  margin: 0,
   fontSize: '30px',
   fontWeight: '900',
   letterSpacing: '-0.5px',
+  lineHeight: 1,
 }
 const dailyTrackerMainLineLabel: CSSProperties = {
+  margin: '2px 0 0 0',
   fontSize: '15px',
   fontWeight: '700',
   color: colors.primaryDark,
-  opacity: 0.9,
+  opacity: 0.82,
 }
 const dailyTrackerMeta: CSSProperties = {
-  margin: '8px 0 0 0',
+  margin: '6px 0 0 0',
   fontSize: '11px',
   fontWeight: '800',
   color: colors.primaryDark,
-  opacity: 0.72,
+  opacity: 0.68,
 }
 const dailyTrackerInsight: CSSProperties = {
-  margin: '5px 0 0 0',
+  margin: '4px 0 0 0',
   fontSize: '11px',
-  fontWeight: '700',
+  fontWeight: '800',
   color: colors.secondaryText,
 }
 const dailyTrackerProgressWrap: CSSProperties = {
-  marginTop: '12px',
+  marginTop: '9px',
   width: '100%',
-  height: '8px',
+  height: '6px',
   borderRadius: '999px',
-  background: 'linear-gradient(180deg, #e9edf5 0%, #dbe4f0 100%)',
+  background: 'linear-gradient(180deg, #eef2f8 0%, #e3eaf5 100%)',
   boxShadow: 'inset 0 1px 2px rgba(15, 23, 42, 0.08)',
   overflow: 'hidden',
 }
