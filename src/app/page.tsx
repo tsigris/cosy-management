@@ -12,7 +12,7 @@ import NextLink from 'next/link'
 import { format, addDays, subDays, parseISO } from 'date-fns'
 import { el } from 'date-fns/locale'
 import { Toaster, toast } from 'sonner'
-import { TrendingUp, TrendingDown, Menu, X, ChevronLeft, ChevronRight, CreditCard } from 'lucide-react'
+import { TrendingUp, TrendingDown, Activity, Menu, X, ChevronLeft, ChevronRight, CreditCard } from 'lucide-react'
 import ErrorBoundary from '@/components/ErrorBoundary'
 
 // --- MODERN PREMIUM PALETTE ---
@@ -41,6 +41,16 @@ const WEEKDAY_LABELS_PLURAL = [
   'Πέμπτες',
   'Παρασκευές',
   'Σάββατα',
+] as const
+
+const WEEKDAY_LABELS_GENITIVE = [
+  'Κυριακής',
+  'Δευτέρας',
+  'Τρίτης',
+  'Τετάρτης',
+  'Πέμπτης',
+  'Παρασκευής',
+  'Σαββάτου',
 ] as const
 
 type YtdInfo = {
@@ -787,6 +797,48 @@ function DashboardContent() {
 
   const trackerIsPositive = (trackerDiffPct || 0) >= 0
   const trackerDayLabel = WEEKDAY_LABELS_PLURAL[selectedDayOfWeek] || 'ημέρες'
+  const trackerDayLabelGenitive = WEEKDAY_LABELS_GENITIVE[selectedDayOfWeek] || 'ημέρας'
+  const trackerIsNeutral = trackerDiffPct !== null && Math.abs(trackerDiffPct) < 3
+
+  const trackerTone = useMemo(() => {
+    if (trackerDiffPct === null) {
+      return {
+        accent: '#6366f1',
+        border: '#c7d2fe',
+        badgeBg: '#eef2ff',
+        badgeColor: '#4338ca',
+        tint: 'linear-gradient(180deg, rgba(99, 102, 241, 0.07) 0%, rgba(99, 102, 241, 0.01) 55%, rgba(255,255,255,0) 100%)',
+      }
+    }
+
+    if (trackerIsNeutral) {
+      return {
+        accent: '#4f46e5',
+        border: '#c7d2fe',
+        badgeBg: '#eef2ff',
+        badgeColor: '#4338ca',
+        tint: 'linear-gradient(180deg, rgba(99, 102, 241, 0.08) 0%, rgba(99, 102, 241, 0.02) 58%, rgba(255,255,255,0) 100%)',
+      }
+    }
+
+    if (trackerIsPositive) {
+      return {
+        accent: '#047857',
+        border: '#a7f3d0',
+        badgeBg: '#ecfdf5',
+        badgeColor: '#047857',
+        tint: 'linear-gradient(180deg, rgba(16, 185, 129, 0.08) 0%, rgba(16, 185, 129, 0.02) 58%, rgba(255,255,255,0) 100%)',
+      }
+    }
+
+    return {
+      accent: '#be123c',
+      border: '#fecdd3',
+      badgeBg: '#fff1f2',
+      badgeColor: '#be123c',
+      tint: 'linear-gradient(180deg, rgba(244, 63, 94, 0.08) 0%, rgba(244, 63, 94, 0.02) 58%, rgba(255,255,255,0) 100%)',
+    }
+  }, [trackerDiffPct, trackerIsNeutral, trackerIsPositive])
 
   useEffect(() => {
     const loadHistoricalWeekdayAverage = async () => {
@@ -984,38 +1036,60 @@ function DashboardContent() {
       <div
         style={{
           ...dailyTrackerCard,
-          borderColor: trackerDiffPct === null ? colors.border : trackerIsPositive ? '#10b981' : '#f43f5e',
-          background: trackerDiffPct === null
-            ? 'var(--surface)'
-            : trackerIsPositive
-              ? 'linear-gradient(135deg, #ecfdf5 0%, #f0fdf4 100%)'
-              : 'linear-gradient(135deg, #fff1f2 0%, #fff5f5 100%)',
+          borderColor: trackerTone.border,
+          background: `${trackerTone.tint}, var(--surface)`,
         }}
       >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
-          <div>
-            <p style={dailyTrackerTitle}>Daily Performance Tracker</p>
-            {dailyTrackerLoading ? (
-              <p style={dailyTrackerTextNeutral}>Υπολογισμός σε εξέλιξη...</p>
-            ) : historicalWeekdaySamples === 0 || trackerDiffPct === null ? (
-              <p style={dailyTrackerTextNeutral}>Δεν υπάρχουν αρκετά ιστορικά δεδομένα για σύγκριση.</p>
-            ) : (
-              <p style={{ ...dailyTrackerText, color: trackerIsPositive ? '#047857' : '#b91c1c' }}>
-                {trackerIsPositive ? '🔥' : '📉'} {trackerDiffPct >= 0 ? '+' : ''}{trackerDiffPct.toFixed(0)}% από τις προηγούμενες {trackerDayLabel}
-              </p>
-            )}
-            <p style={dailyTrackerMeta}>
-              Σήμερα: {money(todayTrackerIncome)}€ • Μ.Ο.: {money(historicalWeekdayAverage)}€
-            </p>
-          </div>
-        </div>
+        <p style={dailyTrackerTitle}>ΣΗΜΕΡΙΝΗ ΑΠΟΔΟΣΗ</p>
+
+        {dailyTrackerLoading ? (
+          <p style={dailyTrackerTextNeutral}>Υπολογισμός σε εξέλιξη...</p>
+        ) : historicalWeekdaySamples === 0 || trackerDiffPct === null ? (
+          <p style={dailyTrackerTextNeutral}>Δεν υπάρχουν αρκετά ιστορικά δεδομένα για σύγκριση.</p>
+        ) : (
+          <>
+            <div style={dailyTrackerMainLineWrap}>
+              <div style={{ ...dailyTrackerIconBadge, background: trackerTone.badgeBg, color: trackerTone.badgeColor }}>
+                {trackerIsNeutral ? <Activity size={14} /> : trackerIsPositive ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
+              </div>
+
+              <div style={dailyTrackerMainTextWrap}>
+                <p style={dailyTrackerMainLine}>
+                  <span style={{ ...dailyTrackerPercent, color: trackerTone.accent }}>
+                    {trackerDiffPct >= 0 ? '+' : ''}
+                    {trackerDiffPct.toFixed(0)}%
+                  </span>
+                  <span style={dailyTrackerMainLineLabel}>από τον μέσο όρο {trackerDayLabelGenitive}</span>
+                </p>
+              </div>
+            </div>
+          </>
+        )}
+
+        <p style={dailyTrackerMeta}>Σήμερα {money(todayTrackerIncome)}€ • Μ.Ο. {money(historicalWeekdayAverage)}€</p>
+
+        <p style={dailyTrackerInsight}>
+          {trackerDiffPct === null
+            ? 'Δεν υπάρχει διαθέσιμος ιστορικός μέσος όρος.'
+            : trackerIsNeutral
+              ? `Κοντά στον μέσο όρο ${trackerDayLabelGenitive}`
+              : trackerIsPositive
+                ? `Καλύτερα από τη συνηθισμένη ${trackerDayLabelGenitive}`
+                : `Χαμηλότερα από τη συνηθισμένη ${trackerDayLabelGenitive}`}
+        </p>
 
         <div style={dailyTrackerProgressWrap}>
           <div
             style={{
               ...dailyTrackerProgressFill,
               width: `${trackerProgressPct}%`,
-              backgroundColor: trackerDiffPct === null ? '#94a3b8' : trackerIsPositive ? '#10b981' : '#f43f5e',
+              background: trackerDiffPct === null
+                ? 'linear-gradient(90deg, #818cf8 0%, #6366f1 100%)'
+                : trackerIsNeutral
+                  ? 'linear-gradient(90deg, #818cf8 0%, #6366f1 100%)'
+                  : trackerIsPositive
+                    ? 'linear-gradient(90deg, #34d399 0%, #059669 100%)'
+                    : 'linear-gradient(90deg, #fb7185 0%, #e11d48 100%)',
             }}
           />
         </div>
@@ -1411,10 +1485,12 @@ const heroCreditLabel: CSSProperties = { fontSize: '10px', fontWeight: '900', op
 const heroCreditValue: CSSProperties = { fontSize: '14px', fontWeight: '900' }
 
 const dailyTrackerCard: CSSProperties = {
+  background: 'var(--surface)',
   border: `1px solid ${colors.border}`,
-  borderRadius: '18px',
-  padding: '14px',
-  marginBottom: '18px',
+  borderRadius: '24px',
+  padding: '18px 18px 16px',
+  marginTop: '-10px',
+  marginBottom: '24px',
   boxShadow: 'var(--shadow)',
 }
 const dailyTrackerTitle: CSSProperties = {
@@ -1422,37 +1498,78 @@ const dailyTrackerTitle: CSSProperties = {
   fontSize: '11px',
   fontWeight: '900',
   color: colors.secondaryText,
-  letterSpacing: '0.5px',
-}
-const dailyTrackerText: CSSProperties = {
-  margin: '6px 0 0 0',
-  fontSize: '14px',
-  fontWeight: '900',
+  letterSpacing: '0.8px',
 }
 const dailyTrackerTextNeutral: CSSProperties = {
-  margin: '6px 0 0 0',
+  margin: '10px 0 0 0',
   fontSize: '12px',
   fontWeight: '800',
   color: colors.secondaryText,
 }
+const dailyTrackerMainLineWrap: CSSProperties = {
+  marginTop: '10px',
+  display: 'flex',
+  alignItems: 'center',
+  gap: '10px',
+}
+const dailyTrackerIconBadge: CSSProperties = {
+  width: '26px',
+  height: '26px',
+  borderRadius: '9px',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  flexShrink: 0,
+}
+const dailyTrackerMainTextWrap: CSSProperties = {
+  minWidth: 0,
+}
+const dailyTrackerMainLine: CSSProperties = {
+  margin: 0,
+  display: 'flex',
+  alignItems: 'baseline',
+  gap: '8px',
+  flexWrap: 'wrap',
+  lineHeight: 1.05,
+}
+const dailyTrackerPercent: CSSProperties = {
+  fontSize: '30px',
+  fontWeight: '900',
+  letterSpacing: '-0.5px',
+}
+const dailyTrackerMainLineLabel: CSSProperties = {
+  fontSize: '15px',
+  fontWeight: '700',
+  color: colors.primaryDark,
+  opacity: 0.9,
+}
 const dailyTrackerMeta: CSSProperties = {
-  margin: '6px 0 0 0',
+  margin: '8px 0 0 0',
+  fontSize: '11px',
+  fontWeight: '800',
+  color: colors.primaryDark,
+  opacity: 0.72,
+}
+const dailyTrackerInsight: CSSProperties = {
+  margin: '5px 0 0 0',
   fontSize: '11px',
   fontWeight: '700',
   color: colors.secondaryText,
 }
 const dailyTrackerProgressWrap: CSSProperties = {
-  marginTop: '10px',
+  marginTop: '12px',
   width: '100%',
   height: '8px',
   borderRadius: '999px',
-  backgroundColor: '#e2e8f0',
+  background: 'linear-gradient(180deg, #e9edf5 0%, #dbe4f0 100%)',
+  boxShadow: 'inset 0 1px 2px rgba(15, 23, 42, 0.08)',
   overflow: 'hidden',
 }
 const dailyTrackerProgressFill: CSSProperties = {
   height: '100%',
   borderRadius: '999px',
-  transition: 'width 220ms ease',
+  transition: 'width 400ms ease',
+  boxShadow: '0 1px 2px rgba(15, 23, 42, 0.16)',
 }
 
 const actionGrid: CSSProperties = { display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '30px' }
