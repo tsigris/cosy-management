@@ -1751,8 +1751,8 @@ function EmployeesContent() {
                 const displayedActualDaysOff = visibleDaysOffCount
                 const displayedExtraDaysOff = Math.max(displayedActualDaysOff - displayedIncludedDaysOff, 0)
                 const displayedDaysOffDeduction = isMonthlyEmployee ? displayedExtraDaysOff * dailyCostLocal : 0
-                const displayedRemainingPay = isMonthlyEmployee ? monthlySalary - totalAdvances + pendingOtAmount - displayedDaysOffDeduction : 0
-                const displayedFinalPayable = displayedRemainingPay + agreedExtraSalary
+                const displayedPayrollOnly = isMonthlyEmployee ? monthlySalary - totalAdvances + pendingOtAmount - displayedDaysOffDeduction : 0
+                const displayedFinalPayable = displayedPayrollOnly + agreedExtraSalary
                 console.log('[employees-card-rpc] remaining_payroll_only', payrollSummary?.remaining_payroll_only, 'agreed_extra_salary', payrollSummary?.agreed_extra_salary, 'final_payable', payrollSummary?.final_payable)
                 const pendingOt = pendingOtHours
                 const yearDaysOffCount = (daysOffByEmployee[emp.id] || []).filter((row) => {
@@ -1907,7 +1907,7 @@ function EmployeesContent() {
                           </p>
                           {isMonthlyEmployee && (
                             <p style={{ margin: '5px 0 0 0', fontWeight: 900, color: 'var(--text)', fontSize: '11px' }}>
-                              Υπόλοιπο πληρωμής: {displayedRemainingPay.toFixed(2)}€
+                              Υπόλοιπο πληρωμής: {displayedFinalPayable.toFixed(2)}€
                             </p>
                           )}
 
