@@ -56,6 +56,37 @@ function sameOrLegacyEmployeeLink(tx: any, employeeId: string) {
 	return String(tx?.employee_id || '') === employeeId || String(tx?.fixed_asset_id || '') === employeeId
 }
 
+function normalizeText(value: any) {
+	return String(value || '')
+		.normalize('NFD')
+		.replace(/[\u0300-\u036f]/g, '')
+		.toLowerCase()
+		.trim()
+}
+
+function hasAdvanceMarker(tx: any) {
+	const notes = normalizeText(tx?.notes)
+	return notes.includes('προκαταβολ') || notes.includes('advance')
+}
+
+function isAdvanceTx(tx: any) {
+	const type = String(tx?.type || '').trim().toLowerCase()
+	if (type === 'salary_advance') return true
+	if (type !== 'expense') return false
+	const category = String(tx?.category || '').trim().toLowerCase()
+	if (category !== 'staff') return false
+	// legacy fallback: old rows that were saved as expense/staff but note says advance
+	return hasAdvanceMarker(tx)
+}
+
+function isSalaryPaymentTx(tx: any) {
+	const type = String(tx?.type || '').trim().toLowerCase()
+	if (type !== 'expense') return false
+	const category = String(tx?.category || '').trim().toLowerCase()
+	if (category !== 'staff') return false
+	return !hasAdvanceMarker(tx)
+}
+
 export default function EconomicsScheduledPaymentsPage() {
 	const searchParams = useSearchParams()
 	const storeId = searchParams.get('store')?.trim() || ''
@@ -117,6 +148,7 @@ export default function EconomicsScheduledPaymentsPage() {
 				const employees = await getEmployees(storeId)
 
 				if (Array.isArray(employees)) {
+					let debugLogged = false
 					const salaryDrafts: Array<{
 						employeeId: string
 						periodStart: string
@@ -174,14 +206,16 @@ export default function EconomicsScheduledPaymentsPage() {
 					if (salaryDrafts.length) {
 						const minStart = salaryDrafts.reduce((min, s) => (s.periodStart < min ? s.periodStart : min), salaryDrafts[0].periodStart)
 						const maxEnd = salaryDrafts.reduce((max, s) => (s.periodEnd > max ? s.periodEnd : max), salaryDrafts[0].periodEnd)
+						const minStartDate = parseLocalDateOnly(minStart)
+						const minStartLookback = toISODate(addDays(minStartDate, -45))
 
 						let payrollTxs: any[] = []
 						try {
 							const { data: txRows, error: txErr } = await supabase
 								.from('transactions')
-								.select('id, date, amount, type, category, notes, employee_id, fixed_asset_id')
+								.select('id, date, created_at, amount, type, category, notes, method, is_credit, is_settled, employee_id, fixed_asset_id')
 								.eq('store_id', storeId)
-								.gte('date', minStart)
+								.gte('date', minStartLookback)
 								.lte('date', maxEnd)
 								.in('type', ['salary_advance', 'expense'])
 
@@ -191,22 +225,38 @@ export default function EconomicsScheduledPaymentsPage() {
 						}
 
 						for (const draft of salaryDrafts) {
-							const scopedTx = payrollTxs.filter((tx) => {
+							const linkedTx = payrollTxs.filter((tx) => {
+								return sameOrLegacyEmployeeLink(tx, draft.employeeId)
+							})
+
+							const scopedTx = linkedTx.filter((tx) => {
 								if (!sameOrLegacyEmployeeLink(tx, draft.employeeId)) return false
 								const txDate = String(tx?.date || '').slice(0, 10)
 								if (!txDate) return false
 								return txDate >= draft.periodStart && txDate <= draft.periodEnd
 							})
 
-							const advances = scopedTx
-								.filter((tx) => String(tx?.type || '') === 'salary_advance')
+							const advancesInPeriodRows = scopedTx.filter((tx) => isAdvanceTx(tx))
+							const salaryPaymentsRows = scopedTx.filter((tx) => isSalaryPaymentTx(tx))
+
+							let advances = advancesInPeriodRows
 								.reduce((acc, tx) => acc + Math.abs(Number(tx?.amount) || 0), 0)
 
-							const salaryPayments = scopedTx
-								.filter((tx) => {
-									if (String(tx?.type || '') !== 'expense') return false
-									return String(tx?.category || '').trim().toLowerCase() === 'staff'
+							// payroll flow keeps advances open with is_settled=false until final payment.
+							// If period-only matching finds none, fallback to unsettled advances up to due date.
+							let fallbackAdvanceRows: any[] = []
+							if (advances <= 0) {
+								fallbackAdvanceRows = linkedTx.filter((tx) => {
+									if (!isAdvanceTx(tx)) return false
+									if (tx?.is_settled !== false) return false
+									const txDate = String(tx?.date || '').slice(0, 10)
+									if (!txDate) return false
+									return txDate <= draft.periodEnd
 								})
+								advances = fallbackAdvanceRows.reduce((acc, tx) => acc + Math.abs(Number(tx?.amount) || 0), 0)
+							}
+
+							const salaryPayments = salaryPaymentsRows
 								.reduce((acc, tx) => acc + Math.abs(Number(tx?.amount) || 0), 0)
 
 							const gross = Number(draft.item.gross_amount || draft.item.amount || 0)
@@ -220,6 +270,43 @@ export default function EconomicsScheduledPaymentsPage() {
 								salary_payments_amount: salaryPayments,
 								is_overpaid: remainingRaw < 0,
 							})
+
+							if (process.env.NODE_ENV !== 'production' && !debugLogged) {
+								const normalizedTitle = normalizeText(draft.item.title)
+								const debugTarget = normalizedTitle.includes('mike') || normalizedTitle.includes('αλεξια') || normalizedTitle.includes('μαιρη')
+								if (debugTarget) {
+									const toDebugRow = (tx: any) => ({
+										id: tx?.id ?? null,
+										date: tx?.date ?? null,
+										created_at: tx?.created_at ?? null,
+										type: tx?.type ?? null,
+										category: tx?.category ?? null,
+										amount: tx?.amount ?? null,
+										employee_id: tx?.employee_id ?? null,
+										fixed_asset_id: tx?.fixed_asset_id ?? null,
+										notes: tx?.notes ?? null,
+										method: tx?.method ?? null,
+										is_credit: tx?.is_credit ?? null,
+										is_settled: tx?.is_settled ?? null,
+									})
+
+									console.log('[scheduled-payments][salary-debug]', {
+										employee_id: draft.employeeId,
+										title: draft.item.title,
+										due_date: draft.item.due_date,
+										payroll_period_from: draft.periodStart,
+										payroll_period_to: draft.periodEnd,
+										matched_advance_rows: advancesInPeriodRows.map(toDebugRow),
+										fallback_unsettled_advance_rows: fallbackAdvanceRows.map(toDebugRow),
+										matched_salary_payment_rows: salaryPaymentsRows.map(toDebugRow),
+										computed_gross: gross,
+										computed_advances_total: advances,
+										computed_salary_payments_total: salaryPayments,
+										computed_remaining_total: remaining,
+									})
+									debugLogged = true
+								}
+							}
 						}
 					}
 				}
