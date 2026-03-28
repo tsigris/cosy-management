@@ -127,6 +127,7 @@ function ManageListsContent() {
   const [selectedYear, setSelectedYear] = useState<number>(currentYear)
   const RECEIVED_TYPES = useMemo(() => ['debt_payment', 'debt_received', 'income_collection'], [])
   const EXPENSE_TURNOVER_TYPES = useMemo(() => new Set(['expense', 'debt_payment']), [])
+  const STAFF_REGISTER_TYPES = useMemo(() => new Set(['expense', 'salary_advance', 'debt_payment']), [])
 
   const copyToClipboard = async (text: string) => {
     const value = String(text || '').trim()
@@ -235,6 +236,21 @@ function ManageListsContent() {
     return 'Πληρωμή Ρύθμισης'
   }, [])
 
+  const getStaffHistoryLabel = useCallback((tx: any) => {
+    const txType = String(tx?.type || '').toLowerCase()
+    const category = String(tx?.category || '').toLowerCase()
+    const note = String(tx?.notes || '').toLowerCase()
+
+    if (txType === 'salary_advance') return 'Προκαταβολή'
+    if (txType === 'expense') {
+      if (note.includes('εκκαθάριση') || note.includes('μισθ')) return 'Πληρωμή Μισθού'
+      if (category.includes('staff') || category.includes('προσωπ')) return 'Πληρωμή Προσωπικού'
+      return 'Πληρωμή Προσωπικού'
+    }
+    if (txType === 'debt_payment') return 'Πληρωμή Οφειλής Προσωπικού'
+    return null
+  }, [])
+
   // ✅ Map fixed_asset_id -> sub_category (για να μη "λερώνει" τα totals άλλων tabs)
   const fixedAssetSubMap = useMemo(() => {
     const m = new Map<string, string>()
@@ -269,21 +285,21 @@ function ManageListsContent() {
         return !!t?.revenue_source_id && type === 'income'
       }
 
+      if (activeTab === 'staff') {
+        if (!STAFF_REGISTER_TYPES.has(type)) return false
+        const linkedEmployeeId = t?.employee_id ? String(t.employee_id) : null
+        const linkedAssetId = t?.fixed_asset_id ? String(t.fixed_asset_id) : null
+        return (!!linkedEmployeeId && tabFixedAssetIds.has(linkedEmployeeId)) || (!!linkedAssetId && tabFixedAssetIds.has(linkedAssetId))
+      }
+
       if (!EXPENSE_TURNOVER_TYPES.has(type)) return false
 
       // fixed assets tabs (utility/maintenance/other)
-      if (activeTab !== 'staff') {
-        if (!t?.fixed_asset_id) return false
-        const sub = fixedAssetSubMap.get(String(t.fixed_asset_id)) || ''
-        return sub === tabSub
-      }
-
-      // staff: accept both employee_id and fixed_asset_id links (legacy + new flow)
-      const linkedEmployeeId = t?.employee_id ? String(t.employee_id) : null
-      const linkedAssetId = t?.fixed_asset_id ? String(t.fixed_asset_id) : null
-      return (!!linkedEmployeeId && tabFixedAssetIds.has(linkedEmployeeId)) || (!!linkedAssetId && tabFixedAssetIds.has(linkedAssetId))
+      if (!t?.fixed_asset_id) return false
+      const sub = fixedAssetSubMap.get(String(t.fixed_asset_id)) || ''
+      return sub === tabSub
     })
-  }, [transactions, activeTab, currentTab.subCategory, fixedAssetSubMap, fixedAssets, EXPENSE_TURNOVER_TYPES])
+  }, [transactions, activeTab, currentTab.subCategory, fixedAssetSubMap, fixedAssets, EXPENSE_TURNOVER_TYPES, STAFF_REGISTER_TYPES])
 
   // ✅ Year dropdown: μόνο έτη που υπάρχουν κινήσεις ΓΙΑ ΤΟ ΕΝΕΡΓΟ TAB
   const yearOptions = useMemo(() => {
@@ -878,6 +894,7 @@ function ManageListsContent() {
         : entityTrans
             .filter((t: any) => {
               const type = String(t.type || '')
+              if (activeTab === 'staff') return STAFF_REGISTER_TYPES.has(type)
               return type === 'expense' || type === 'debt_payment'
             })
             .sort((a: any, b: any) => (getTxDate(b)?.getTime() || 0) - (getTxDate(a)?.getTime() || 0))
@@ -917,7 +934,7 @@ function ManageListsContent() {
         balance: totalDebtBaseAmount - totalSettlementAmount,
       }
     },
-    [activeTab, RECEIVED_TYPES],
+    [activeTab, RECEIVED_TYPES, STAFF_REGISTER_TYPES],
   )
 
   // ---------------------- UI FORMS ----------------------
@@ -1502,7 +1519,8 @@ function ManageListsContent() {
                           {history.creditTxs.slice(0, 12).map((tx: any) => {
                             const d = getTxDate(tx)
                             const paymentLabel = isIncome ? null : getExpensePaymentLabel(tx)
-                            const note = String(tx.notes || tx.type || '').trim() || paymentLabel || 'Κίνηση'
+                            const staffLabel = activeTab === 'staff' ? getStaffHistoryLabel(tx) : null
+                            const note = String(tx.notes || tx.type || '').trim() || staffLabel || paymentLabel || 'Κίνηση'
 
                             return (
                               <div key={tx.id} style={txRow}>
@@ -1510,6 +1528,7 @@ function ManageListsContent() {
                                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                                     <div style={txDate}>{formatTxDate(d)}</div>
                                     <span style={tinyChip}>{daysAgoLabel(d)}</span>
+                                    {staffLabel ? <span style={tinyChip}>{staffLabel}</span> : null}
                                     {paymentLabel ? <span style={tinyChip}>{paymentLabel}</span> : null}
                                   </div>
                                   <div style={txNote} title={note}>
