@@ -201,13 +201,13 @@ begin
         end,
         0
       )::integer as extra_days_off_current_month,
-      case when cw.monthly_days > 0 then (cw.monthly_salary / cw.monthly_days) else 0 end::numeric as daily_cost,
-      case when cw.monthly_days > 0 then (cw.monthly_salary / cw.monthly_days) / 8 else 0 end::numeric as hourly_cost,
+      case when cw.monthly_days > 0 then ((cw.monthly_salary + cw.agreed_extra_salary) / cw.monthly_days) else 0 end::numeric as daily_cost,
+      case when cw.monthly_days > 0 then ((cw.monthly_salary + cw.agreed_extra_salary) / cw.monthly_days) / 8 else 0 end::numeric as hourly_cost,
       coalesce(a.total_advances, 0)::numeric as total_advances,
       coalesce(o.pending_overtime_hours, 0)::numeric as pending_overtime_hours,
       (
         coalesce(o.pending_overtime_hours, 0)
-        * (case when cw.monthly_days > 0 then (cw.monthly_salary / cw.monthly_days) / 8 else 0 end)
+        * (case when cw.monthly_days > 0 then ((cw.monthly_salary + cw.agreed_extra_salary) / cw.monthly_days) / 8 else 0 end)
       )::numeric as pending_overtime_amount,
       (
         greatest(
@@ -220,7 +220,7 @@ begin
           end,
           0
         )
-        * (case when cw.monthly_days > 0 then (cw.monthly_salary / cw.monthly_days) else 0 end)
+        * (case when cw.monthly_days > 0 then ((cw.monthly_salary + cw.agreed_extra_salary) / cw.monthly_days) else 0 end)
       )::numeric as days_off_deduction,
       cw.agreed_extra_salary,
       (
@@ -228,7 +228,7 @@ begin
         - coalesce(a.total_advances, 0)
         + (
             coalesce(o.pending_overtime_hours, 0)
-            * (case when cw.monthly_days > 0 then (cw.monthly_salary / cw.monthly_days) / 8 else 0 end)
+            * (case when cw.monthly_days > 0 then ((cw.monthly_salary + cw.agreed_extra_salary) / cw.monthly_days) / 8 else 0 end)
           )
         - (
             greatest(
@@ -241,7 +241,7 @@ begin
               end,
               0
             )
-            * (case when cw.monthly_days > 0 then (cw.monthly_salary / cw.monthly_days) else 0 end)
+            * (case when cw.monthly_days > 0 then ((cw.monthly_salary + cw.agreed_extra_salary) / cw.monthly_days) else 0 end)
           )
       )::numeric as remaining_payroll_only,
       (
@@ -250,7 +250,7 @@ begin
           - coalesce(a.total_advances, 0)
           + (
               coalesce(o.pending_overtime_hours, 0)
-              * (case when cw.monthly_days > 0 then (cw.monthly_salary / cw.monthly_days) / 8 else 0 end)
+              * (case when cw.monthly_days > 0 then ((cw.monthly_salary + cw.agreed_extra_salary) / cw.monthly_days) / 8 else 0 end)
             )
           - (
               greatest(
@@ -263,7 +263,7 @@ begin
                 end,
                 0
               )
-              * (case when cw.monthly_days > 0 then (cw.monthly_salary / cw.monthly_days) else 0 end)
+              * (case when cw.monthly_days > 0 then ((cw.monthly_salary + cw.agreed_extra_salary) / cw.monthly_days) else 0 end)
             )
         )
         + cw.agreed_extra_salary
@@ -273,7 +273,7 @@ begin
         - coalesce(a.total_advances, 0)
         + (
             coalesce(o.pending_overtime_hours, 0)
-            * (case when cw.monthly_days > 0 then (cw.monthly_salary / cw.monthly_days) / 8 else 0 end)
+            * (case when cw.monthly_days > 0 then ((cw.monthly_salary + cw.agreed_extra_salary) / cw.monthly_days) / 8 else 0 end)
           )
         - (
             greatest(
@@ -286,7 +286,7 @@ begin
               end,
               0
             )
-            * (case when cw.monthly_days > 0 then (cw.monthly_salary / cw.monthly_days) else 0 end)
+            * (case when cw.monthly_days > 0 then ((cw.monthly_salary + cw.agreed_extra_salary) / cw.monthly_days) else 0 end)
           )
       )::numeric as remaining_pay
     from cycle_windows cw
@@ -438,13 +438,13 @@ begin
         end,
         0
       )::integer as extra_days_off_current_month,
-      case when cw.monthly_days > 0 then (cw.monthly_salary / cw.monthly_days) else 0 end::numeric as daily_cost,
-      case when cw.monthly_days > 0 then (cw.monthly_salary / cw.monthly_days) / 8 else 0 end::numeric as hourly_cost,
+      case when cw.monthly_days > 0 then ((cw.monthly_salary + cw.agreed_extra_salary) / cw.monthly_days) else 0 end::numeric as daily_cost,
+      case when cw.monthly_days > 0 then ((cw.monthly_salary + cw.agreed_extra_salary) / cw.monthly_days) / 8 else 0 end::numeric as hourly_cost,
       coalesce(a.total_advances, 0)::numeric as total_advances,
       coalesce(o.pending_overtime_hours, 0)::numeric as pending_overtime_hours,
       (
         coalesce(o.pending_overtime_hours, 0)
-        * (case when cw.monthly_days > 0 then (cw.monthly_salary / cw.monthly_days) / 8 else 0 end)
+        * (case when cw.monthly_days > 0 then ((cw.monthly_salary + cw.agreed_extra_salary) / cw.monthly_days) / 8 else 0 end)
       )::numeric as pending_overtime_amount,
       (
         greatest(
@@ -457,7 +457,7 @@ begin
           end,
           0
         )
-        * (case when cw.monthly_days > 0 then (cw.monthly_salary / cw.monthly_days) else 0 end)
+        * (case when cw.monthly_days > 0 then ((cw.monthly_salary + cw.agreed_extra_salary) / cw.monthly_days) else 0 end)
       )::numeric as days_off_deduction,
       cw.agreed_extra_salary,
       (
@@ -465,7 +465,7 @@ begin
         - coalesce(a.total_advances, 0)
         + (
             coalesce(o.pending_overtime_hours, 0)
-            * (case when cw.monthly_days > 0 then (cw.monthly_salary / cw.monthly_days) / 8 else 0 end)
+            * (case when cw.monthly_days > 0 then ((cw.monthly_salary + cw.agreed_extra_salary) / cw.monthly_days) / 8 else 0 end)
           )
         - (
             greatest(
@@ -478,7 +478,7 @@ begin
               end,
               0
             )
-            * (case when cw.monthly_days > 0 then (cw.monthly_salary / cw.monthly_days) else 0 end)
+            * (case when cw.monthly_days > 0 then ((cw.monthly_salary + cw.agreed_extra_salary) / cw.monthly_days) else 0 end)
           )
       )::numeric as remaining_payroll_only,
       (
@@ -487,7 +487,7 @@ begin
           - coalesce(a.total_advances, 0)
           + (
               coalesce(o.pending_overtime_hours, 0)
-              * (case when cw.monthly_days > 0 then (cw.monthly_salary / cw.monthly_days) / 8 else 0 end)
+              * (case when cw.monthly_days > 0 then ((cw.monthly_salary + cw.agreed_extra_salary) / cw.monthly_days) / 8 else 0 end)
             )
           - (
               greatest(
@@ -500,7 +500,7 @@ begin
                 end,
                 0
               )
-              * (case when cw.monthly_days > 0 then (cw.monthly_salary / cw.monthly_days) else 0 end)
+              * (case when cw.monthly_days > 0 then ((cw.monthly_salary + cw.agreed_extra_salary) / cw.monthly_days) else 0 end)
             )
         )
         + cw.agreed_extra_salary
@@ -510,7 +510,7 @@ begin
         - coalesce(a.total_advances, 0)
         + (
             coalesce(o.pending_overtime_hours, 0)
-            * (case when cw.monthly_days > 0 then (cw.monthly_salary / cw.monthly_days) / 8 else 0 end)
+            * (case when cw.monthly_days > 0 then ((cw.monthly_salary + cw.agreed_extra_salary) / cw.monthly_days) / 8 else 0 end)
           )
         - (
             greatest(
@@ -523,7 +523,7 @@ begin
               end,
               0
             )
-            * (case when cw.monthly_days > 0 then (cw.monthly_salary / cw.monthly_days) else 0 end)
+            * (case when cw.monthly_days > 0 then ((cw.monthly_salary + cw.agreed_extra_salary) / cw.monthly_days) else 0 end)
           )
       )::numeric as remaining_pay
     from cycle_windows cw

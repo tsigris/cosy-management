@@ -673,8 +673,10 @@ function EmployeesContent() {
     if (Number.isFinite(dailyRate) && dailyRate > 0) return dailyRate / 8
 
     const monthlySalary = Number(employee.monthly_salary)
+    const agreedExtraSalary = Number(employee.agreed_extra_salary ?? employee.agreed_extra ?? 0)
+    const agreedMonthlyPay = monthlySalary + agreedExtraSalary
     const monthlyDays = Number(employee.monthly_days) || 25
-    if (Number.isFinite(monthlySalary) && monthlySalary > 0 && monthlyDays > 0) return monthlySalary / (monthlyDays * 8)
+    if (Number.isFinite(agreedMonthlyPay) && agreedMonthlyPay > 0 && monthlyDays > 0) return agreedMonthlyPay / (monthlyDays * 8)
 
     return 0
   }
