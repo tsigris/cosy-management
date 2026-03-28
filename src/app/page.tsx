@@ -8,7 +8,6 @@ import useStoreAccess from '@/hooks/useStoreAccess'
 import { getTodayDateISO } from '@/lib/businessDate'
 import { formatAmount, formatDateDMY } from '@/lib/formatters'
 import NotificationsBell from '@/components/NotificationsBell'
-import DailyPerformanceCard from '@/components/DailyPerformanceCard'
 import NextLink from 'next/link'
 import { format, addDays, subDays, parseISO } from 'date-fns'
 import { el } from 'date-fns/locale'
@@ -32,6 +31,7 @@ const colors = {
 }
 
 const DISPLAY_INCOME_TYPES = ['income', 'income_collection', 'debt_received', 'savings_withdrawal'] as const
+
 type YtdInfo = {
   loading: boolean
   turnoverIncome?: number
@@ -61,6 +61,7 @@ type DashboardTransaction = {
   amount?: number | string | null
   type?: string | null
   category?: string | null
+  description?: string | null
   notes?: string | null
   method?: string | null
   payment_method?: string | null
@@ -126,44 +127,6 @@ type ProfileRowLite = {
   username?: string | null
 }
 
-type DailyTrackerData = {
-  income_today: number
-  income_avg: number
-  expense_today: number
-  expense_avg: number
-  weekday_label: string
-  income_diff_pct: number
-  expense_diff_pct: number
-}
-
-function normalizeDailyTrackerPayload(value: unknown): DailyTrackerData | null {
-  if (value === null || value === undefined) return null
-
-  const candidate = Array.isArray(value) ? value[0] : value
-  if (!candidate || typeof candidate !== 'object') return null
-
-  const payload = candidate as Record<string, unknown>
-  const toNumber = (input: unknown): number => {
-    const parsed = Number(input)
-    return Number.isFinite(parsed) ? parsed : 0
-  }
-
-  const weekdayLabelRaw = payload.weekday_label
-
-  return {
-    income_today: toNumber(payload.income_today),
-    income_avg: toNumber(payload.income_avg),
-    expense_today: toNumber(payload.expense_today),
-    expense_avg: toNumber(payload.expense_avg),
-    income_diff_pct: toNumber(payload.income_diff_pct),
-    expense_diff_pct: toNumber(payload.expense_diff_pct),
-    weekday_label:
-      typeof weekdayLabelRaw === 'string' && weekdayLabelRaw.trim().length > 0
-        ? weekdayLabelRaw
-        : 'Ημέρας',
-  }
-}
-
 function getPaymentMethod(tx: DashboardTransaction): string {
   return String(tx?.payment_method ?? tx?.method ?? '').trim()
 }
@@ -211,40 +174,6 @@ function isIncomeTypeForKpi(type: string | null | undefined): boolean {
   return DISPLAY_INCOME_TYPES.includes(String(type || '') as (typeof DISPLAY_INCOME_TYPES)[number])
 }
 
-function isZTransactionRow(row: Pick<DashboardTransaction, 'category' | 'method' | 'payment_method' | 'notes'>): boolean {
-  const normalizedMethod = normalizeKpiText(getKpiPaymentMethod(row))
-  const normalizedCategory = normalizeKpiText(row.category)
-  const normalizedDescription = normalizeKpiText(row.notes)
-
-  return (
-    normalizedCategory === 'ζ' ||
-    normalizedCategory === 'εσοδα ζ' ||
-    normalizedMethod.includes('(ζ)') ||
-    normalizedDescription.includes('ζ ταμειακης') ||
-    normalizedDescription.includes('χωρις σημανση')
-  )
-}
-
-function isZCashRow(row: Pick<DashboardTransaction, 'method' | 'payment_method'>): boolean {
-  const normalizedMethod = normalizeKpiText(getKpiPaymentMethod(row))
-  return (normalizedMethod.includes('μετρη') && normalizedMethod.includes('ζ')) || normalizedMethod.includes('cash') && normalizedMethod.includes('z')
-}
-
-function isZCardRow(row: Pick<DashboardTransaction, 'method' | 'payment_method'>): boolean {
-  const normalizedMethod = normalizeKpiText(getKpiPaymentMethod(row))
-  return normalizedMethod.includes('καρτα') || normalizedMethod.includes('pos')
-}
-
-function isZNoReceiptRow(row: Pick<DashboardTransaction, 'method' | 'payment_method' | 'notes'>): boolean {
-  const normalizedMethod = normalizeKpiText(getKpiPaymentMethod(row))
-  const normalizedDescription = normalizeKpiText(row.notes)
-
-  return (
-    (normalizedMethod.includes('χωρις') && normalizedMethod.includes('αποδειξη')) ||
-    normalizedDescription.includes('χωρις σημανση')
-  )
-}
-
 function getUserLabelFromTx(tx: DashboardTransaction): string {
   return tx?.created_by_name || tx?.profiles?.username || 'Χρήστης'
 }
@@ -264,7 +193,6 @@ function DashboardContent() {
   const [transactions, setTransactions] = useState<DashboardTransaction[]>([])
   const [loading, setLoading] = useState(true)
   const [expandedTx, setExpandedTx] = useState<string | null>(null)
-  const [dailyTrackerData, setDailyTrackerData] = useState<DailyTrackerData | null>(null)
   const [totals, setTotals] = useState({
     income: 0,
     expense: 0,
@@ -296,7 +224,7 @@ function DashboardContent() {
   const formattedToday = formatDateDMY(new Date())
 
   const getEntityKeyFromTx = (t: DashboardTransaction) => {
-    const description = String(t?.notes || '')
+    const description = String(t?.description || t?.notes || '')
     if (description.startsWith('Πληρωμή Δόσης')) return `loan:${t.id}`
     if (t?.revenue_source_id) return `rev:${t.revenue_source_id}`
     if (t?.supplier_id) return `sup:${t.supplier_id}`
@@ -314,7 +242,7 @@ function DashboardContent() {
     if (t?.revenue_sources?.name) return t.revenue_sources.name
     if (t?.suppliers?.name) return t.suppliers.name
     if (t?.fixed_assets?.name) return t.fixed_assets.name
-    const description = String(t?.notes || '')
+    const description = String(t?.description || t?.notes || '')
     if (description.startsWith('Πληρωμή Δόσης')) {
       const parts = description.split(':')
       if (parts.length > 1) return parts[1].split('(')[0].trim()
@@ -455,9 +383,8 @@ function DashboardContent() {
   amount,
   type,
   category,
-  notes,
+  description:notes,
   method,
-  payment_method,
   date,
   is_credit,
   supplier_id,
@@ -501,9 +428,8 @@ function DashboardContent() {
   amount,
   type,
   category,
-  notes,
+  description:notes,
   method,
-  payment_method,
   date,
   is_credit,
   supplier_id,
@@ -564,51 +490,84 @@ function DashboardContent() {
     try {
       const txRows = Array.isArray(transactions) ? transactions : []
 
+      console.log('[dashboard-kpi-source]', {
+        selectedDate,
+        transactionCount: txRows.length,
+        ids: txRows.map((r) => r.id),
+      })
+
       let incomeTotal = 0
       let expenseTotal = 0
       let creditTotal = 0
-      let availableBalance = 0
+      let cashTotal = 0
+      let bankTotal = 0
 
       for (const row of txRows) {
         const amount = Math.abs(Number(row.amount || 0))
+        const method = getKpiPaymentMethod(row)
         const creditLike = isCreditLikeMovement(row)
         const isIncome = isIncomeTypeForKpi(row.type)
-        const isZRow = isZTransactionRow(row)
-        const isZCash = isZRow && isZCashRow(row)
-        const isZCard = isZRow && isZCardRow(row)
-        const isZNoReceipt = isZRow && isZNoReceiptRow(row)
+        const normalizedType = normalizeKpiText(row.type)
+        const normalizedCategory = normalizeKpiText(row.category)
+        const normalizedNotes = normalizeKpiText(row.notes)
+        const isLoanLikeRow =
+          normalizedType === 'debt_payment' ||
+          normalizedCategory.includes('ρυθμιση') ||
+          normalizedCategory.includes('δοση') ||
+          normalizedCategory.includes('loan') ||
+          normalizedCategory.includes('settlement') ||
+          normalizedNotes.includes('ρυθμιση') ||
+          normalizedNotes.includes('δοση') ||
+          normalizedNotes.includes('loan') ||
+          normalizedNotes.includes('settlement')
+
+        if (isLoanLikeRow) {
+          console.log('[dashboard-loan-kpi-row]', {
+            amount,
+            type: row.type,
+            category: row.category,
+            method: row.method,
+            payment_method: row.payment_method,
+            notes: row.notes,
+            resolvedMethod: method,
+            isBank: isBankMethod(method),
+            isCash: isCashMethod(method),
+            creditLike,
+            isIncome,
+          })
+        }
 
         if (creditLike) {
           creditTotal += amount
           continue
         }
 
-        // ===== TOTALS =====
         if (isIncome) {
-          if (isZRow) {
-            if (isZCash || isZNoReceipt) {
-              incomeTotal += amount
-            }
-          } else {
-            incomeTotal += amount
-          }
+          incomeTotal += amount
         } else {
           expenseTotal += amount
         }
 
-        // ===== AVAILABLE BALANCE =====
-        if (isIncome) {
-          if (isZRow) {
-            if (isZCash || isZNoReceipt) {
-              availableBalance += amount
-            }
-          } else {
-            availableBalance += amount
-          }
-        } else {
-          availableBalance -= amount
+        if (isCashMethod(method)) {
+          cashTotal += isIncome ? amount : -amount
+          continue
+        }
+
+        if (isBankMethod(method)) {
+          bankTotal += isIncome ? amount : -amount
         }
       }
+
+      const availableBalance = cashTotal + bankTotal
+
+      console.log('[dashboard-kpi-final]', {
+        incomeTotal,
+        expenseTotal,
+        creditTotal,
+        cashTotal,
+        bankTotal,
+        availableBalance,
+      })
 
       setTotals({
         income: incomeTotal,
@@ -618,6 +577,7 @@ function DashboardContent() {
       })
     } catch (err) {
       console.error('[dashboard-kpi-error]', err)
+      console.error('Daily totals error:', err)
     }
   }, [transactions, selectedDate])
 
@@ -713,7 +673,8 @@ function DashboardContent() {
   const isZTransaction = useCallback((t: DashboardTransaction) => {
     const category = String(t?.category || '').trim().toLowerCase()
     const method = getPaymentMethod(t).toLowerCase()
-    const description = String(t?.notes || '').trim().toLowerCase()
+    // Query aliases `notes` as `description`, so read the aliased field here
+    const description = String(t?.description || '').trim().toLowerCase()
 
     const categoryLooksZ = category === 'ζ' || category === 'εσοδα ζ' || category.includes(' ζ') || category.endsWith('ζ')
     const looksLikeDayClose = method.includes('(ζ)') || description.includes('ζ ταμειακης') || description === 'χωρις σημανση'
@@ -779,42 +740,6 @@ function DashboardContent() {
   }, [selectedDate, router, storeIdFromUrl])
 
   const money = (n: number | string | null | undefined) => formatAmount(Number(n) || 0)
-
-  useEffect(() => {
-    const loadDailyTrackerFromRpc = async () => {
-      if (!storeIdFromUrl || !selectedDate) {
-        setDailyTrackerData(null)
-        return
-      }
-
-      try {
-        const { data, error } = await supabase.rpc('get_daily_performance_tracker', {
-          p_store_id: storeIdFromUrl,
-          p_date: selectedDate,
-        })
-
-        if (error) throw error
-
-        const normalized = normalizeDailyTrackerPayload(data)
-
-        if (process.env.NODE_ENV === 'development') {
-          console.log('[daily-performance-rpc]', {
-            storeIdFromUrl,
-            selectedDate,
-            raw: data,
-            normalized,
-          })
-        }
-
-        setDailyTrackerData(normalized)
-      } catch (error) {
-        console.error('[daily-performance-rpc-error]', error)
-        setDailyTrackerData(null)
-      }
-    }
-
-    void loadDailyTrackerFromRpc()
-  }, [storeIdFromUrl, selectedDate, supabase])
 
   return (
     <div style={iphoneWrapper}>
@@ -972,14 +897,6 @@ function DashboardContent() {
         )}
       </div>
 
-      <DailyPerformanceCard
-        incomeToday={dailyTrackerData?.income_today ?? 0}
-        incomeAvg={dailyTrackerData?.income_avg ?? 0}
-        expenseToday={dailyTrackerData?.expense_today ?? 0}
-        expenseAvg={dailyTrackerData?.expense_avg ?? 0}
-        weekdayLabel={dailyTrackerData?.weekday_label ?? 'Ημέρας'}
-      />
-
       <div style={listContainer}>
         <p style={listHeader}>ΚΙΝΗΣΕΙΣ ΗΜΕΡΑΣ ({transactions.length})</p>
 
@@ -1034,9 +951,9 @@ function DashboardContent() {
                       {isZMaster && <span style={creditBadgeStyle}>{row.itemsCount} ΚΙΝΗΣΕΙΣ</span>}
                     </p>
 
-                    {!isZMaster && tx?.notes && (
+                    {!isZMaster && tx?.description && (
                       <p style={{ fontSize: '11px', fontWeight: 800, color: 'var(--muted)', margin: '4px 0 2px 0' }}>
-                        {tx.notes}
+                        {tx.description}
                       </p>
                     )}
 
