@@ -8,11 +8,12 @@ import useStoreAccess from '@/hooks/useStoreAccess'
 import { getTodayDateISO } from '@/lib/businessDate'
 import { formatAmount, formatDateDMY } from '@/lib/formatters'
 import NotificationsBell from '@/components/NotificationsBell'
+import DailyPerformanceCard from '@/components/DailyPerformanceCard'
 import NextLink from 'next/link'
 import { format, addDays, subDays, parseISO } from 'date-fns'
 import { el } from 'date-fns/locale'
 import { Toaster, toast } from 'sonner'
-import { TrendingUp, TrendingDown, Activity, Menu, X, ChevronLeft, ChevronRight, CreditCard } from 'lucide-react'
+import { TrendingUp, TrendingDown, Menu, X, ChevronLeft, ChevronRight, CreditCard } from 'lucide-react'
 import ErrorBoundary from '@/components/ErrorBoundary'
 
 // --- MODERN PREMIUM PALETTE ---
@@ -32,16 +33,6 @@ const colors = {
 
 const DISPLAY_INCOME_TYPES = ['income', 'income_collection', 'debt_received', 'savings_withdrawal'] as const
 const DAILY_TRACKER_INCOME_TYPES = ['income', 'income_collection', 'debt_received'] as const
-
-const WEEKDAY_LABELS_PLURAL = [
-  'Κυριακές',
-  'Δευτέρες',
-  'Τρίτες',
-  'Τετάρτες',
-  'Πέμπτες',
-  'Παρασκευές',
-  'Σάββατα',
-] as const
 
 const WEEKDAY_LABELS_GENITIVE = [
   'Κυριακής',
@@ -148,7 +139,7 @@ type ProfileRowLite = {
   username?: string | null
 }
 
-type HistoricalIncomeRow = {
+type HistoricalMovementRow = {
   date?: string | null
   amount?: number | string | null
   type?: string | null
@@ -221,9 +212,8 @@ function DashboardContent() {
   const [transactions, setTransactions] = useState<DashboardTransaction[]>([])
   const [loading, setLoading] = useState(true)
   const [expandedTx, setExpandedTx] = useState<string | null>(null)
-  const [historicalWeekdayAverage, setHistoricalWeekdayAverage] = useState<number>(0)
-  const [historicalWeekdaySamples, setHistoricalWeekdaySamples] = useState<number>(0)
-  const [dailyTrackerLoading, setDailyTrackerLoading] = useState(false)
+  const [historicalIncomeAverage, setHistoricalIncomeAverage] = useState<number>(0)
+  const [historicalExpenseAverage, setHistoricalExpenseAverage] = useState<number>(0)
   const [totals, setTotals] = useState({
     income: 0,
     expense: 0,
@@ -784,75 +774,29 @@ function DashboardContent() {
     }, 0)
   }, [transactions])
 
-  const trackerDiffPct = useMemo(() => {
-    if (historicalWeekdayAverage <= 0) return null
-    return ((todayTrackerIncome - historicalWeekdayAverage) / historicalWeekdayAverage) * 100
-  }, [todayTrackerIncome, historicalWeekdayAverage])
+  const todayTrackerExpense = useMemo(() => {
+    const rows = Array.isArray(transactions) ? transactions : []
+    return rows.reduce((sum, row) => {
+      const type = String(row.type || '')
+      if ((DAILY_TRACKER_INCOME_TYPES as readonly string[]).includes(type)) return sum
+      if (row.is_credit === true) return sum
+      return sum + Math.abs(Number(row.amount || 0))
+    }, 0)
+  }, [transactions])
 
-  const trackerProgressPct = useMemo(() => {
-    if (historicalWeekdayAverage <= 0) return 0
-    const raw = (todayTrackerIncome / historicalWeekdayAverage) * 100
-    return Math.min(150, Math.max(0, raw))
-  }, [todayTrackerIncome, historicalWeekdayAverage])
-
-  const trackerIsPositive = (trackerDiffPct || 0) >= 0
-  const trackerDayLabel = WEEKDAY_LABELS_PLURAL[selectedDayOfWeek] || 'ημέρες'
   const trackerDayLabelGenitive = WEEKDAY_LABELS_GENITIVE[selectedDayOfWeek] || 'ημέρας'
-  const trackerIsNeutral = trackerDiffPct !== null && Math.abs(trackerDiffPct) < 3
-
-  const trackerTone = useMemo(() => {
-    if (trackerDiffPct === null) {
-      return {
-        accent: '#6366f1',
-        border: '#c7d2fe',
-        badgeBg: '#eef2ff',
-        badgeColor: '#4338ca',
-        tint: 'linear-gradient(180deg, rgba(99, 102, 241, 0.07) 0%, rgba(99, 102, 241, 0.01) 55%, rgba(255,255,255,0) 100%)',
-      }
-    }
-
-    if (trackerIsNeutral) {
-      return {
-        accent: '#4f46e5',
-        border: '#c7d2fe',
-        badgeBg: '#eef2ff',
-        badgeColor: '#4338ca',
-        tint: 'linear-gradient(180deg, rgba(99, 102, 241, 0.08) 0%, rgba(99, 102, 241, 0.02) 58%, rgba(255,255,255,0) 100%)',
-      }
-    }
-
-    if (trackerIsPositive) {
-      return {
-        accent: '#047857',
-        border: '#a7f3d0',
-        badgeBg: '#ecfdf5',
-        badgeColor: '#047857',
-        tint: 'linear-gradient(180deg, rgba(16, 185, 129, 0.08) 0%, rgba(16, 185, 129, 0.02) 58%, rgba(255,255,255,0) 100%)',
-      }
-    }
-
-    return {
-      accent: '#be123c',
-      border: '#fecdd3',
-      badgeBg: '#fff1f2',
-      badgeColor: '#be123c',
-      tint: 'linear-gradient(180deg, rgba(244, 63, 94, 0.035) 0%, rgba(244, 63, 94, 0.008) 58%, rgba(255,255,255,0) 100%)',
-    }
-  }, [trackerDiffPct, trackerIsNeutral, trackerIsPositive])
 
   useEffect(() => {
     const loadHistoricalWeekdayAverage = async () => {
       if (!storeIdFromUrl) {
-        setHistoricalWeekdayAverage(0)
-        setHistoricalWeekdaySamples(0)
+        setHistoricalIncomeAverage(0)
+        setHistoricalExpenseAverage(0)
         return
       }
 
       try {
-        setDailyTrackerLoading(true)
-
         const dateTo = subDays(parseISO(selectedDate), 1)
-        const dateFrom = subDays(parseISO(selectedDate), 30)
+        const dateFrom = subDays(parseISO(selectedDate), 56)
 
         const { data, error } = await supabase
           .from('transactions')
@@ -860,12 +804,12 @@ function DashboardContent() {
           .eq('store_id', storeIdFromUrl)
           .gte('date', format(dateFrom, 'yyyy-MM-dd'))
           .lte('date', format(dateTo, 'yyyy-MM-dd'))
-          .in('type', [...DAILY_TRACKER_INCOME_TYPES])
 
         if (error) throw error
 
-        const rows = (data || []) as HistoricalIncomeRow[]
+        const rows = (data || []) as HistoricalMovementRow[]
         const dailyIncomeByDate = new Map<string, number>()
+        const dailyExpenseByDate = new Map<string, number>()
 
         for (const row of rows) {
           if (row.is_credit === true) continue
@@ -876,21 +820,35 @@ function DashboardContent() {
           const rowDow = parseISO(rowDate).getDay()
           if (rowDow !== selectedDayOfWeek) continue
 
-          const current = dailyIncomeByDate.get(rowDate) || 0
-          dailyIncomeByDate.set(rowDate, current + Math.abs(Number(row.amount || 0)))
+          const amount = Math.abs(Number(row.amount || 0))
+          const type = String(row.type || '')
+
+          if ((DAILY_TRACKER_INCOME_TYPES as readonly string[]).includes(type)) {
+            const current = dailyIncomeByDate.get(rowDate) || 0
+            dailyIncomeByDate.set(rowDate, current + amount)
+          } else {
+            const current = dailyExpenseByDate.get(rowDate) || 0
+            dailyExpenseByDate.set(rowDate, current + amount)
+          }
         }
 
-        const samples = Array.from(dailyIncomeByDate.values())
-        const average = samples.length > 0 ? samples.reduce((a, b) => a + b, 0) / samples.length : 0
+        const calculateAverage = (dailyMap: Map<string, number>) => {
+          const values = Array.from(dailyMap.entries())
+            .sort(([a], [b]) => b.localeCompare(a))
+            .slice(0, 8)
+            .map(([, value]) => value)
 
-        setHistoricalWeekdayAverage(average)
-        setHistoricalWeekdaySamples(samples.length)
+          if (values.length < 4) return 0
+
+          return values.reduce((sum, value) => sum + value, 0) / values.length
+        }
+
+        setHistoricalIncomeAverage(calculateAverage(dailyIncomeByDate))
+        setHistoricalExpenseAverage(calculateAverage(dailyExpenseByDate))
       } catch (error) {
         console.error('[daily-performance-tracker] load failed', error)
-        setHistoricalWeekdayAverage(0)
-        setHistoricalWeekdaySamples(0)
-      } finally {
-        setDailyTrackerLoading(false)
+        setHistoricalIncomeAverage(0)
+        setHistoricalExpenseAverage(0)
       }
     }
 
@@ -1033,76 +991,13 @@ function DashboardContent() {
         </div>
       </div>
 
-      <div
-        style={{
-          ...dailyTrackerCard,
-          borderColor: trackerTone.border,
-          background: `${trackerTone.tint}, var(--surface)`,
-        }}
-      >
-        <div style={dailyTrackerHeaderRow}>
-          <p style={dailyTrackerTitle}>ΣΗΜΕΡΙΝΗ ΑΠΟΔΟΣΗ</p>
-          <span
-            style={{
-              ...dailyTrackerStatusChip,
-              background: trackerTone.badgeBg,
-              color: trackerTone.badgeColor,
-              borderColor: trackerTone.border,
-            }}
-          >
-            {trackerDiffPct === null ? 'ΣΤΑΘΕΡΑ' : trackerIsNeutral ? 'ΣΤΑΘΕΡΑ' : trackerIsPositive ? 'ΔΥΝΑΤΑ' : 'ΧΑΜΗΛΑ'}
-          </span>
-        </div>
-
-        {dailyTrackerLoading ? (
-          <p style={dailyTrackerTextNeutral}>Υπολογισμός σε εξέλιξη...</p>
-        ) : historicalWeekdaySamples === 0 || trackerDiffPct === null ? (
-          <p style={dailyTrackerTextNeutral}>Δεν υπάρχουν αρκετά ιστορικά δεδομένα για σύγκριση.</p>
-        ) : (
-          <>
-            <div style={dailyTrackerMainLineWrap}>
-              <div style={{ ...dailyTrackerIconBadge, background: trackerTone.badgeBg, color: trackerTone.badgeColor }}>
-                {trackerIsNeutral ? <Activity size={14} /> : trackerIsPositive ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
-              </div>
-
-              <p style={{ ...dailyTrackerPercent, color: trackerTone.accent }}>
-                {trackerDiffPct >= 0 ? '+' : ''}
-                {trackerDiffPct.toFixed(0)}%
-              </p>
-            </div>
-
-            <p style={dailyTrackerMainLineLabel}>από τον μέσο όρο {trackerDayLabelGenitive}</p>
-          </>
-        )}
-
-        <p style={dailyTrackerMeta}>Σήμερα {money(todayTrackerIncome)}€ • Μ.Ο. {money(historicalWeekdayAverage)}€</p>
-
-        <p style={dailyTrackerInsight}>
-          {trackerDiffPct === null
-            ? 'Δεν υπάρχει διαθέσιμος ιστορικός μέσος όρος.'
-            : trackerIsNeutral
-              ? `Κοντά στη μέση επίδοση ${trackerDayLabelGenitive}`
-              : trackerIsPositive
-                ? `Πάνω από τη μέση επίδοση ${trackerDayLabelGenitive}`
-                : `Κάτω από τη μέση επίδοση ${trackerDayLabelGenitive}`}
-        </p>
-
-        <div style={dailyTrackerProgressWrap}>
-          <div
-            style={{
-              ...dailyTrackerProgressFill,
-              width: `${trackerProgressPct}%`,
-              background: trackerDiffPct === null
-                ? 'linear-gradient(90deg, #818cf8 0%, #6366f1 100%)'
-                : trackerIsNeutral
-                  ? 'linear-gradient(90deg, #818cf8 0%, #6366f1 100%)'
-                  : trackerIsPositive
-                    ? 'linear-gradient(90deg, #34d399 0%, #059669 100%)'
-                    : 'linear-gradient(90deg, #fb7185 0%, #e11d48 100%)',
-            }}
-          />
-        </div>
-      </div>
+      <DailyPerformanceCard
+        incomeToday={todayTrackerIncome}
+        incomeAvg={historicalIncomeAverage}
+        expenseToday={todayTrackerExpense}
+        expenseAvg={historicalExpenseAverage}
+        weekdayLabel={trackerDayLabelGenitive}
+      />
 
       <div style={actionGrid}>
         <div style={actionRow}>
@@ -1492,102 +1387,6 @@ const creditIconCircle: CSSProperties = {
 }
 const heroCreditLabel: CSSProperties = { fontSize: '10px', fontWeight: '900', opacity: 0.9, letterSpacing: '0.6px' }
 const heroCreditValue: CSSProperties = { fontSize: '14px', fontWeight: '900' }
-
-const dailyTrackerCard: CSSProperties = {
-  background: 'var(--surface)',
-  border: `1px solid ${colors.border}`,
-  borderRadius: '24px',
-  padding: '14px 16px 13px',
-  marginTop: '-14px',
-  marginBottom: '24px',
-  boxShadow: 'var(--shadow)',
-}
-const dailyTrackerHeaderRow: CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'space-between',
-  gap: '8px',
-}
-const dailyTrackerTitle: CSSProperties = {
-  margin: 0,
-  fontSize: '11px',
-  fontWeight: '900',
-  color: colors.secondaryText,
-  letterSpacing: '0.8px',
-}
-const dailyTrackerStatusChip: CSSProperties = {
-  fontSize: '9px',
-  fontWeight: '900',
-  letterSpacing: '0.5px',
-  lineHeight: 1,
-  borderRadius: '999px',
-  border: '1px solid transparent',
-  padding: '5px 8px 4px',
-  whiteSpace: 'nowrap',
-}
-const dailyTrackerTextNeutral: CSSProperties = {
-  margin: '8px 0 0 0',
-  fontSize: '12px',
-  fontWeight: '800',
-  color: colors.secondaryText,
-}
-const dailyTrackerMainLineWrap: CSSProperties = {
-  marginTop: '8px',
-  display: 'flex',
-  alignItems: 'center',
-  gap: '8px',
-}
-const dailyTrackerIconBadge: CSSProperties = {
-  width: '24px',
-  height: '24px',
-  borderRadius: '9px',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  flexShrink: 0,
-}
-const dailyTrackerPercent: CSSProperties = {
-  margin: 0,
-  fontSize: '30px',
-  fontWeight: '900',
-  letterSpacing: '-0.5px',
-  lineHeight: 1,
-}
-const dailyTrackerMainLineLabel: CSSProperties = {
-  margin: '2px 0 0 0',
-  fontSize: '15px',
-  fontWeight: '700',
-  color: colors.primaryDark,
-  opacity: 0.82,
-}
-const dailyTrackerMeta: CSSProperties = {
-  margin: '6px 0 0 0',
-  fontSize: '11px',
-  fontWeight: '800',
-  color: colors.primaryDark,
-  opacity: 0.68,
-}
-const dailyTrackerInsight: CSSProperties = {
-  margin: '4px 0 0 0',
-  fontSize: '11px',
-  fontWeight: '800',
-  color: colors.secondaryText,
-}
-const dailyTrackerProgressWrap: CSSProperties = {
-  marginTop: '9px',
-  width: '100%',
-  height: '6px',
-  borderRadius: '999px',
-  background: 'linear-gradient(180deg, #eef2f8 0%, #e3eaf5 100%)',
-  boxShadow: 'inset 0 1px 2px rgba(15, 23, 42, 0.08)',
-  overflow: 'hidden',
-}
-const dailyTrackerProgressFill: CSSProperties = {
-  height: '100%',
-  borderRadius: '999px',
-  transition: 'width 400ms ease',
-  boxShadow: '0 1px 2px rgba(15, 23, 42, 0.16)',
-}
 
 const actionGrid: CSSProperties = { display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '30px' }
 const actionRow: CSSProperties = { display: 'flex', gap: '12px' }
