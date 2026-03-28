@@ -16,15 +16,26 @@ const colors = {
   accentRed: "#dc2626",
 }
 
-type ReportsView = "summary" | "category" | "method" | "timeline" | "movements"
+type ReportsView = "summary" | "category" | "method" | "document" | "timeline" | "movements"
+
+type DocumentBucket = "invoice" | "retail_receipt" | "no_document"
 
 const viewOptions: Array<{ value: ReportsView; label: string }> = [
   { value: "summary", label: "Σύνοψη" },
   { value: "category", label: "Κατηγορία" },
   { value: "method", label: "Μέθοδος" },
+  { value: "document", label: "Παραστατικό" },
   { value: "timeline", label: "Χρονική" },
   { value: "movements", label: "Κινήσεις" },
 ]
+
+const DOCUMENT_ROW_ORDER: DocumentBucket[] = ["invoice", "retail_receipt", "no_document"]
+
+const DOCUMENT_LABELS: Record<DocumentBucket, string> = {
+  invoice: "Τιμολόγιο",
+  retail_receipt: "Απόδειξη Λιανικής",
+  no_document: "Χωρίς Τιμολόγιο",
+}
 
 const isValidUUID = (id: any) => {
   const regex =
@@ -70,6 +81,50 @@ function monthKey(d: Date) {
   return `${y}-${m}`
 }
 
+function normalizeDocText(value: any) {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim()
+}
+
+function normalizeDocumentBucket(rawValue: any): DocumentBucket {
+  const v = normalizeDocText(rawValue)
+
+  if (!v) return "no_document"
+
+  if (
+    v.includes("χωρις τιμολογιο") ||
+    v.includes("χωρις παραστατικο") ||
+    v.includes("no invoice") ||
+    v.includes("no document")
+  ) {
+    return "no_document"
+  }
+
+  if (
+    v.includes("αποδειξη λιανικης") ||
+    v.includes("λιανικη") ||
+    v.includes("retail receipt")
+  ) {
+    return "retail_receipt"
+  }
+
+  if (v.includes("τιμολογιο") || v.includes("invoice")) {
+    return "invoice"
+  }
+
+  return "no_document"
+}
+
+function getDocumentBucketFromTx(tx: any): DocumentBucket {
+  // Expense form stores document type at the start of notes, keep fallback fields for compatibility.
+  return normalizeDocumentBucket(
+    tx?.notes ?? tx?.document_type ?? tx?.receipt_type ?? tx?.invoice_type ?? tx?.description
+  )
+}
+
 function ReportsContent() {
   const supabase = getSupabase()
   const router = useRouter()
@@ -97,7 +152,7 @@ function ReportsContent() {
   const load = useCallback(async () => {
     if (!storeIdFromUrl || !hasValidStore) return
 
-    const transactionSelect = "id, store_id, date, created_at, type, amount, category, method"
+    const transactionSelect = "id, store_id, date, created_at, type, amount, category, method, notes"
 
     try {
       setLoading(true)
@@ -226,12 +281,14 @@ function ReportsContent() {
     [filteredTx]
   )
 
-  const expenseTotal = useMemo(
-    () =>
-      filteredTx
-        .filter((t) => expenseTypes.includes(String(t?.type || "")))
-        .reduce((a, t) => a + Math.abs(Number(t?.amount ?? 0)), 0),
+  const expenseSideTx = useMemo(
+    () => filteredTx.filter((t) => expenseTypes.includes(String(t?.type || ""))),
     [filteredTx]
+  )
+
+  const expenseTotal = useMemo(
+    () => expenseSideTx.reduce((a, t) => a + Math.abs(Number(t?.amount ?? 0)), 0),
+    [expenseSideTx]
   )
 
   const netTotal = incomeTotal - expenseTotal
@@ -270,6 +327,23 @@ function ReportsContent() {
       String(b.key).localeCompare(String(a.key))
     )
   }, [filteredTx])
+
+  const byDocument = useMemo(() => {
+    const seed: Record<DocumentBucket, { key: DocumentBucket; total: number; count: number }> = {
+      invoice: { key: "invoice", total: 0, count: 0 },
+      retail_receipt: { key: "retail_receipt", total: 0, count: 0 },
+      no_document: { key: "no_document", total: 0, count: 0 },
+    }
+
+    for (const t of expenseSideTx) {
+      if (!t) continue
+      const bucket = getDocumentBucketFromTx(t)
+      seed[bucket].total += Math.abs(Number(t?.amount ?? 0))
+      seed[bucket].count += 1
+    }
+
+    return DOCUMENT_ROW_ORDER.map((k) => seed[k])
+  }, [expenseSideTx])
 
   const recent = useMemo(
     () =>
@@ -442,6 +516,41 @@ function ReportsContent() {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {view === "document" && (
+        <div>
+          {byDocument.map((row) => {
+            const pct = expenseTotal > 0 ? (row.total / expenseTotal) * 100 : 0
+
+            return (
+              <div key={row.key} style={card}>
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    gap: 12,
+                  }}
+                >
+                  <div>
+                    <div style={{ fontWeight: 800 }}>{DOCUMENT_LABELS[row.key]}</div>
+                    <div style={{ fontSize: 12, opacity: 0.8 }}>{row.count} κινήσεις</div>
+                  </div>
+                  <div style={{ textAlign: "right" }}>
+                    <div style={{ fontWeight: 900 }}>
+                      {row.total.toLocaleString("el-GR", {
+                        minimumFractionDigits: 2,
+                      })}
+                      €
+                    </div>
+                    <div style={{ fontSize: 12, opacity: 0.8 }}>{pct.toFixed(1)}%</div>
+                  </div>
+                </div>
+              </div>
+            )
+          })}
         </div>
       )}
 
