@@ -1,7 +1,7 @@
 'use client'
 export const dynamic = 'force-dynamic'
 
-import { useEffect, useState, Suspense, useCallback, useMemo } from 'react'
+import { useEffect, useState, Suspense, useCallback, useMemo, useRef } from 'react'
 import { getSupabase } from '@/lib/supabase'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
@@ -36,6 +36,17 @@ const colors = {
 
 type ViewMode = 'expenses' | 'income'
 
+type BalanceRow = {
+  id: string
+  store_id?: string
+  name: string
+  entityType: 'supplier' | 'asset' | 'revenue'
+  sub_category?: string | null
+  rf_code?: string | null
+  bank_name?: string | null
+  balance: number
+}
+
 const isValidUUID = (id: any) => {
   const regex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
   return typeof id === 'string' && regex.test(id)
@@ -60,12 +71,13 @@ function BalancesContent() {
   const storeIdFromUrl = searchParams.get('store')
 
   const [viewMode, setViewMode] = useState<ViewMode>('expenses')
-  const [data, setData] = useState<any[]>([])
+  const [data, setData] = useState<BalanceRow[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedEntityId, setSelectedEntityId] = useState<string>('all')
 
   const [allTransactions, setAllTransactions] = useState<any[]>([])
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  const fetchSeqRef = useRef(0)
 
   // ✅ YEAR SELECTOR (tab-aware)
   const currentYear = new Date().getFullYear()
@@ -258,6 +270,66 @@ function BalancesContent() {
     }
   }
 
+  const buildExpenseBalanceList = useCallback((transactions: any[], suppliers: any[], assets: any[], year: number): BalanceRow[] => {
+    const txYearFiltered = transactions.filter((t) => !!t && isTxInYear(t, year))
+
+    const allEntities: Array<{ id: string; store_id?: string; name: string; entityType: 'supplier' | 'asset'; sub_category?: string | null }> = [
+      ...suppliers,
+      ...assets,
+    ]
+
+    return allEntities
+      .map((entity) => {
+        const isSupplier = entity.entityType === 'supplier'
+
+        const entityTrans = txYearFiltered.filter((t) =>
+          isSupplier ? t?.supplier_id === entity.id : t?.fixed_asset_id === entity.id,
+        )
+
+        const totalCredit = entityTrans
+          .filter((t) => String(t?.type || '') === 'expense' && t?.is_credit === true)
+          .reduce((acc, t) => acc + Math.abs(Number(t?.amount) || 0), 0)
+
+        const totalPaid = entityTrans
+          .filter((t) => String(t?.type || '') === 'debt_payment')
+          .reduce((acc, t) => acc + Math.abs(Number(t?.amount) || 0), 0)
+
+        return {
+          ...entity,
+          balance: totalCredit - totalPaid,
+        }
+      })
+      .filter((e) => Math.abs(e.balance) > 0.1)
+      .sort((a, b) => b.balance - a.balance)
+  }, [])
+
+  const buildIncomeBalanceList = useCallback(
+    (transactions: any[], revenueSources: any[], year: number): BalanceRow[] => {
+      const txYearFiltered = transactions.filter((t) => !!t && isTxInYear(t, year))
+
+      return revenueSources
+        .map((src) => {
+          const srcTrans = txYearFiltered.filter((t) => t?.revenue_source_id === src.id)
+
+          const totalCredit = srcTrans
+            .filter((t) => t.is_credit === true)
+            .reduce((acc, t) => acc + Math.abs(Number(t?.amount) || 0), 0)
+
+          const totalReceived = srcTrans
+            .filter((t) => RECEIVED_TYPES.includes(String(t?.type || '')))
+            .reduce((acc, t) => acc + Math.abs(Number(t?.amount) || 0), 0)
+
+          return {
+            ...src,
+            balance: totalCredit - totalReceived,
+          }
+        })
+        .filter((e) => Math.abs(e.balance) > 0.1)
+        .sort((a, b) => b.balance - a.balance)
+    },
+    [RECEIVED_TYPES],
+  )
+
   // -----------------------------
   // FETCH + COMPUTE BALANCES (YEAR-AWARE)
   // -----------------------------
@@ -266,6 +338,8 @@ function BalancesContent() {
       setLoading(false)
       return
     }
+
+    const fetchId = ++fetchSeqRef.current
 
     try {
       setLoading(true)
@@ -298,16 +372,8 @@ function BalancesContent() {
         throw transRes.error
       }
       const transactions = transRes.data || []
+      if (fetchId !== fetchSeqRef.current) return
       setAllTransactions(transactions)
-
-      console.log('TRANSACTIONS SNAPSHOT', {
-        count: transactions.length,
-        sample: transactions.slice(0, 10),
-        byType: {
-          expense: transactions.filter((t) => String(t?.type || '') === 'expense').length,
-          debt_payment: transactions.filter((t) => String(t?.type || '') === 'debt_payment').length,
-        },
-      })
 
       // NOTE: data calculation will happen below using selectedYear, so we compute again in an effect.
       // We still load entities here for performance and stability.
@@ -363,41 +429,9 @@ function BalancesContent() {
           })
           .map((a) => ({ ...a, entityType: 'asset' }))
 
-        const allEntities = [...suppliers, ...assets]
+        const balanceList = buildExpenseBalanceList(transactions, suppliers, assets, selectedYear)
 
-        // compute balances with YEAR FILTER
-        const txYearFiltered = transactions.filter((t) => !!t && isTxInYear(t, selectedYear))
-
-        const balanceList = allEntities
-          .map((entity) => {
-            const isSup = entity.entityType === 'supplier'
-
-            const entityTrans = txYearFiltered.filter((t) =>
-              isSup ? t?.supplier_id === entity.id : t?.fixed_asset_id === entity.id,
-            )
-
-            const totalCredit = entityTrans
-              .filter((t) => t.is_credit === true)
-              .reduce((acc, t) => acc + Math.abs(Number(t?.amount) || 0), 0)
-
-            const totalPaid = entityTrans
-              .filter((t) => String(t?.type || '') === 'debt_payment')
-              .reduce((acc, t) => acc + Math.abs(Number(t?.amount) || 0), 0)
-
-            return { ...entity, balance: totalCredit - totalPaid }
-          })
-          .filter((e) => Math.abs(e.balance) > 0.1)
-          .sort((a, b) => b.balance - a.balance)
-
-        console.log('BALANCE LIST', {
-          totalRows: balanceList.length,
-          totalSum: balanceList.reduce((s, r) => s + Number(r.balance || 0), 0),
-          rows: balanceList.map((r) => ({
-            id: r.id,
-            name: r.name,
-            balance: r.balance,
-          })),
-        })
+        if (fetchId !== fetchSeqRef.current) return
 
         setData(balanceList)
         return
@@ -423,34 +457,9 @@ function BalancesContent() {
 
       const revenueSources = (revRes.data || []).map((r) => ({ ...r, entityType: 'revenue' }))
 
-      const txYearFiltered = transactions.filter((t) => !!t && isTxInYear(t, selectedYear))
+      const balanceList = buildIncomeBalanceList(transactions, revenueSources, selectedYear)
 
-      const balanceList = revenueSources
-        .map((src) => {
-          const srcTrans = txYearFiltered.filter((t) => t?.revenue_source_id === src.id)
-
-          const totalCredit = srcTrans
-            .filter((t) => t.is_credit === true)
-            .reduce((acc, t) => acc + Math.abs(Number(t?.amount) || 0), 0)
-
-          const totalReceived = srcTrans
-            .filter((t) => RECEIVED_TYPES.includes(String(t?.type || '')))
-            .reduce((acc, t) => acc + Math.abs(Number(t?.amount) || 0), 0)
-
-          return { ...src, balance: totalCredit - totalReceived }
-        })
-        .filter((e) => Math.abs(e.balance) > 0.1)
-        .sort((a, b) => b.balance - a.balance)
-
-      console.log('BALANCE LIST', {
-        totalRows: balanceList.length,
-        totalSum: balanceList.reduce((s, r) => s + Number(r.balance || 0), 0),
-        rows: balanceList.map((r) => ({
-          id: r.id,
-          name: r.name,
-          balance: r.balance,
-        })),
-      })
+      if (fetchId !== fetchSeqRef.current) return
 
       setData(balanceList)
     } catch (err: any) {
@@ -463,15 +472,33 @@ function BalancesContent() {
       })
       toast.error('Σφάλμα κατά τον υπολογισμό υπολοίπων')
     } finally {
-      setLoading(false)
+      if (fetchId === fetchSeqRef.current) {
+        setLoading(false)
+      }
     }
-  }, [storeIdFromUrl, viewMode, selectedYear, RECEIVED_TYPES])
+  }, [storeIdFromUrl, viewMode, selectedYear, buildExpenseBalanceList, buildIncomeBalanceList])
 
   useEffect(() => {
     if (!storeIdFromUrl || !isValidUUID(storeIdFromUrl)) {
       router.replace('/select-store')
     } else {
       fetchBalances()
+
+      const onFocus = () => {
+        fetchBalances()
+      }
+
+      const onVisibility = () => {
+        if (!document.hidden) fetchBalances()
+      }
+
+      window.addEventListener('focus', onFocus)
+      document.addEventListener('visibilitychange', onVisibility)
+
+      return () => {
+        window.removeEventListener('focus', onFocus)
+        document.removeEventListener('visibilitychange', onVisibility)
+      }
     }
   }, [fetchBalances, storeIdFromUrl, router])
 
@@ -486,28 +513,25 @@ function BalancesContent() {
     return data.filter((s) => s.id === selectedEntityId)
   }, [selectedEntityId, data])
 
-  const totalDisplay = filteredData.reduce((acc, s) => acc + (Number(s.balance) || 0), 0)
-
-  console.log('FILTERED DATA + TOTAL', {
-    filteredCount: filteredData.length,
-    totalDisplay,
-    recomputed: filteredData.reduce((s, r) => s + Number(r.balance || 0), 0),
-    rows: filteredData.map((r) => ({
-      id: r.id,
-      name: r.name,
-      balance: r.balance,
-    })),
-    diaponRows: filteredData.filter((r) => String(r?.name || '').toLowerCase().includes('διαπον')),
-  })
+  const totalDisplay = useMemo(() => filteredData.reduce((acc, s) => acc + (Number(s.balance) || 0), 0), [filteredData])
 
   const totalCardBg = viewMode === 'income' ? colors.accentGreen : colors.primaryDark
   const totalLabel = viewMode === 'income' ? 'ΣΥΝΟΛΙΚΟ ΑΝΟΙΧΤΟ ΥΠΟΛΟΙΠΟ ΕΣΟΔΩΝ' : 'ΣΥΝΟΛΙΚΟ ΑΝΟΙΧΤΟ ΥΠΟΛΟΙΠΟ ΕΞΟΔΩΝ'
   const selectTitle = viewMode === 'income' ? 'ΟΛΕΣ ΟΙ ΠΗΓΕΣ ΕΣΟΔΩΝ' : 'ΟΛΕΣ ΟΙ ΟΦΕΙΛΕΣ'
 
-  console.log('RENDER SNAPSHOT', {
-    totalDisplay,
-    filteredCount: filteredData.length,
-  })
+  useEffect(() => {
+    const rowsSum = filteredData.reduce((s, r) => s + (Number(r?.balance) || 0), 0)
+    const diff = Math.abs(rowsSum - totalDisplay)
+    console.assert(diff < 0.0001, '[cards-balance-consistency]', {
+      rowsSum,
+      totalDisplay,
+      diff,
+      filteredCount: filteredData.length,
+      selectedEntityId,
+      selectedYear,
+      viewMode,
+    })
+  }, [filteredData, totalDisplay, selectedEntityId, selectedYear, viewMode])
 
   return (
     <div style={iphoneWrapper}>
