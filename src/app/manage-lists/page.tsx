@@ -126,6 +126,7 @@ function ManageListsContent() {
   const currentYear = new Date().getFullYear()
   const [selectedYear, setSelectedYear] = useState<number>(currentYear)
   const RECEIVED_TYPES = useMemo(() => ['debt_payment', 'debt_received', 'income_collection'], [])
+  const EXPENSE_TURNOVER_TYPES = useMemo(() => new Set(['expense', 'debt_payment']), [])
 
   const copyToClipboard = async (text: string) => {
     const value = String(text || '').trim()
@@ -226,6 +227,14 @@ function ManageListsContent() {
     return `${diffDays} μέρες πριν`
   }
 
+  const getExpensePaymentLabel = useCallback((tx: any) => {
+    if (String(tx?.type || '') !== 'debt_payment') return null
+    const note = String(tx?.notes || '').toLowerCase()
+    const category = String(tx?.category || '').toLowerCase()
+    if (note.includes('δαν') || category.includes('δαν')) return 'Πληρωμή Δανείου'
+    return 'Πληρωμή Ρύθμισης'
+  }, [])
+
   // ✅ Map fixed_asset_id -> sub_category (για να μη "λερώνει" τα totals άλλων tabs)
   const fixedAssetSubMap = useMemo(() => {
     const m = new Map<string, string>()
@@ -237,19 +246,22 @@ function ManageListsContent() {
   }, [fixedAssets])
 
   // -------------------- ✅ TURNOVER TX (filtered by TAB) --------------------
-  // ΠΡΟΜΗΘΕΥΤΕΣ: μετράμε ΜΟΝΟ type='expense' (πιάνει και επί πιστώσει τιμολόγια)
-  //             ΔΕΝ μετράει debt_payment γιατί ΔΕΝ είναι 'expense'
-  // FIXED ASSETS: μετράμε expense ΜΟΝΟ για το sub_category του ενεργού tab
-  // REVENUE: μετράμε ΜΟΝΟ income
+  // Expense-side καρτέλες (suppliers/fixed-assets/staff): expense + debt_payment με relation-id matching.
+  // Revenue καρτέλες: κρατάμε μόνο income (τα debt_payment δεν αποτελούν έσοδο για revenue_source).
   const turnoverTx = useMemo(() => {
     const tabSub = String(currentTab.subCategory || '')
+    const tabFixedAssetIds = new Set(
+      fixedAssets
+        .filter((a: any) => String(a?.sub_category || '') === tabSub)
+        .map((a: any) => String(a.id)),
+    )
 
     return (transactions || []).filter((t: any) => {
       const type = String(t?.type || '')
 
       // suppliers
       if (activeTab === 'suppliers') {
-        return !!t?.supplier_id && type === 'expense'
+        return !!t?.supplier_id && EXPENSE_TURNOVER_TYPES.has(type)
       }
 
       // revenue sources
@@ -257,15 +269,21 @@ function ManageListsContent() {
         return !!t?.revenue_source_id && type === 'income'
       }
 
-      // fixed assets tabs
-      if (!t?.fixed_asset_id) return false
-      if (type !== 'expense') return false
+      if (!EXPENSE_TURNOVER_TYPES.has(type)) return false
 
-      const sub = fixedAssetSubMap.get(String(t.fixed_asset_id)) || ''
-      // ✅ ΕΔΩ Η ΔΙΟΡΘΩΣΗ: μόνο το subCategory του tab
-      return sub === tabSub
+      // fixed assets tabs (utility/maintenance/other)
+      if (activeTab !== 'staff') {
+        if (!t?.fixed_asset_id) return false
+        const sub = fixedAssetSubMap.get(String(t.fixed_asset_id)) || ''
+        return sub === tabSub
+      }
+
+      // staff: accept both employee_id and fixed_asset_id links (legacy + new flow)
+      const linkedEmployeeId = t?.employee_id ? String(t.employee_id) : null
+      const linkedAssetId = t?.fixed_asset_id ? String(t.fixed_asset_id) : null
+      return (!!linkedEmployeeId && tabFixedAssetIds.has(linkedEmployeeId)) || (!!linkedAssetId && tabFixedAssetIds.has(linkedAssetId))
     })
-  }, [transactions, activeTab, currentTab.subCategory, fixedAssetSubMap])
+  }, [transactions, activeTab, currentTab.subCategory, fixedAssetSubMap, fixedAssets, EXPENSE_TURNOVER_TYPES])
 
   // ✅ Year dropdown: μόνο έτη που υπάρχουν κινήσεις ΓΙΑ ΤΟ ΕΝΕΡΓΟ TAB
   const yearOptions = useMemo(() => {
@@ -307,8 +325,8 @@ function ManageListsContent() {
   const fixedAssetTotals = useMemo(() => {
     const totals: Record<string, number> = {}
     for (const t of turnoverTxYear) {
-      if (!t?.fixed_asset_id) continue
-      const id = String(t.fixed_asset_id)
+      const id = String(t?.employee_id || t?.fixed_asset_id || '')
+      if (!id) continue
       const amount = Math.abs(Number(t.amount)) || 0
       totals[id] = (totals[id] || 0) + amount
     }
@@ -358,7 +376,7 @@ function ManageListsContent() {
 
   const heroHint = useMemo(() => {
     if (activeTab === 'revenue') return 'Μετράει μόνο έσοδα (income).'
-    return 'Μετράει μόνο αγορές/έξοδα (expense). Δεν μετράει πληρωμές χρέους (debt_payment).'
+    return 'Περιλαμβάνει αγορές/έξοδα (expense) και πληρωμές ρυθμίσεων/δανείων (debt_payment) όταν είναι linked στην καρτέλα.'
   }, [activeTab])
 
   // -------------------- LIST --------------------
@@ -434,7 +452,7 @@ function ManageListsContent() {
         // ✅ IMPORTANT: include type + date/created_at for year filter + credit logic
         supabase
           .from('transactions')
-          .select('id, amount, supplier_id, fixed_asset_id, revenue_source_id, type, date, created_at, notes, is_credit')
+          .select('id, amount, supplier_id, fixed_asset_id, employee_id, revenue_source_id, type, category, date, created_at, notes, is_credit')
           .eq('store_id', activeStoreId),
       ])
 
@@ -848,6 +866,7 @@ function ManageListsContent() {
         .filter((t: any) => {
           if (activeTab === 'suppliers') return t.supplier_id === item.id
           if (activeTab === 'revenue') return t.revenue_source_id === item.id
+          if (activeTab === 'staff') return t.employee_id === item.id || t.fixed_asset_id === item.id
           return t.fixed_asset_id === item.id
         })
         .filter((t: any) => isTxInYear(t, year))
@@ -857,7 +876,10 @@ function ManageListsContent() {
             .filter((t: any) => t.is_credit === true)
             .sort((a: any, b: any) => (getTxDate(b)?.getTime() || 0) - (getTxDate(a)?.getTime() || 0))
         : entityTrans
-            .filter((t: any) => String(t.type || '') === 'expense')
+            .filter((t: any) => {
+              const type = String(t.type || '')
+              return type === 'expense' || type === 'debt_payment'
+            })
             .sort((a: any, b: any) => (getTxDate(b)?.getTime() || 0) - (getTxDate(a)?.getTime() || 0))
 
       const debtBaseCreditTxs = isIncome
@@ -1479,7 +1501,8 @@ function ManageListsContent() {
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                           {history.creditTxs.slice(0, 12).map((tx: any) => {
                             const d = getTxDate(tx)
-                            const note = String(tx.notes || tx.type || '').trim() || 'Κίνηση'
+                            const paymentLabel = isIncome ? null : getExpensePaymentLabel(tx)
+                            const note = String(tx.notes || tx.type || '').trim() || paymentLabel || 'Κίνηση'
 
                             return (
                               <div key={tx.id} style={txRow}>
@@ -1487,6 +1510,7 @@ function ManageListsContent() {
                                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                                     <div style={txDate}>{formatTxDate(d)}</div>
                                     <span style={tinyChip}>{daysAgoLabel(d)}</span>
+                                    {paymentLabel ? <span style={tinyChip}>{paymentLabel}</span> : null}
                                   </div>
                                   <div style={txNote} title={note}>
                                     {note}
@@ -1501,35 +1525,37 @@ function ManageListsContent() {
                         </div>
                       )}
 
-                      <div style={{ ...sectionTitle, marginTop: 14 }}>
-                        {isIncome ? `Εισπράξεις (${history.settlementTxs.length})` : `Εξοφλήσεις (${history.settlementTxs.length})`}
-                      </div>
-                      {history.settlementTxs.length === 0 ? (
-                        <div style={rowMuted}>Δεν βρέθηκαν κινήσεις εξόφλησης/είσπραξης.</div>
-                      ) : (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                          {history.settlementTxs.slice(0, 10).map((tx: any) => {
-                            const d = getTxDate(tx)
-                            const note = String(tx.notes || tx.type || '').trim() || 'Κίνηση'
+                      {isIncome && (
+                        <>
+                          <div style={{ ...sectionTitle, marginTop: 14 }}>Εισπράξεις ({history.settlementTxs.length})</div>
+                          {history.settlementTxs.length === 0 ? (
+                            <div style={rowMuted}>Δεν βρέθηκαν κινήσεις είσπραξης.</div>
+                          ) : (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                              {history.settlementTxs.slice(0, 10).map((tx: any) => {
+                                const d = getTxDate(tx)
+                                const note = String(tx.notes || tx.type || '').trim() || 'Κίνηση'
 
-                            return (
-                              <div key={tx.id} style={txRow}>
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                                    <div style={txDate}>{formatTxDate(d)}</div>
-                                    <span style={tinyChip}>{daysAgoLabel(d)}</span>
+                                return (
+                                  <div key={tx.id} style={txRow}>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                                        <div style={txDate}>{formatTxDate(d)}</div>
+                                        <span style={tinyChip}>{daysAgoLabel(d)}</span>
+                                      </div>
+                                      <div style={txNote} title={note}>
+                                        {note}
+                                      </div>
+                                    </div>
+                                    <div style={{ ...txAmount, color: 'var(--text)' }}>{Math.abs(Number(tx.amount) || 0).toFixed(2)}€</div>
                                   </div>
-                                  <div style={txNote} title={note}>
-                                    {note}
-                                  </div>
-                                </div>
-                                <div style={{ ...txAmount, color: 'var(--text)' }}>{Math.abs(Number(tx.amount) || 0).toFixed(2)}€</div>
-                              </div>
-                            )
-                          })}
+                                )
+                              })}
 
-                          {history.settlementTxs.length > 10 && <div style={rowMuted}>Δείχνω τις 10 πιο πρόσφατες κινήσεις.</div>}
-                        </div>
+                              {history.settlementTxs.length > 10 && <div style={rowMuted}>Δείχνω τις 10 πιο πρόσφατες κινήσεις.</div>}
+                            </div>
+                          )}
+                        </>
                       )}
 
                       <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
@@ -1561,7 +1587,7 @@ function ManageListsContent() {
         </div>
 
         <p style={{ marginTop: 14, fontSize: 12, fontWeight: 700, color: 'var(--muted)' }}>
-          * Ο τζίρος εμφανίζεται στο list, ενώ το expanded ιστορικό δείχνει χρεώσεις/εξοφλήσεις από τις κινήσεις πίστωσης.
+          * Ο τζίρος στο μητρώο υπολογίζεται αποκλειστικά από relation ids και περιλαμβάνει expense + debt_payment για linked expense καρτέλες.
         </p>
       </div>
     </div>
