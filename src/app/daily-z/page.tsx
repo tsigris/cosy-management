@@ -23,6 +23,20 @@ const Z_NOTES = {
 
 const Z_CATEGORY = 'Εσοδα Ζ' as const
 
+function parseMoneyInput(value: string | number | null | undefined): number {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : 0
+
+  const normalized = String(value ?? '')
+    .trim()
+    .replace(/\s+/g, '')
+    .replace(',', '.')
+
+  if (!normalized) return 0
+
+  const parsed = Number(normalized)
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
 function DailyZContent() {
   const supabase = getSupabase()
   const router = useRouter()
@@ -109,7 +123,7 @@ function DailyZContent() {
     setLoading(false)
   }
 
-  const totalSales = Number(cashZ) + Number(posZ) + Number(noTax)
+  const totalSales = parseMoneyInput(cashZ) + parseMoneyInput(posZ) + parseMoneyInput(noTax)
 
   async function handleSaveZ() {
     if (isAlreadyClosed || totalSales <= 0 || !storeId) return
@@ -128,9 +142,13 @@ function DailyZContent() {
     const { data: prof } = await supabase.from('profiles').select('username').eq('id', user.id).maybeSingle()
     const createdByName = (prof?.username || user.email?.split('@')[0] || 'Χρήστης').trim()
 
+    const cashAmount = parseMoneyInput(cashZ)
+    const posAmount = parseMoneyInput(posZ)
+    const noTaxAmount = parseMoneyInput(noTax)
+
     const incomeTransactions = [
       {
-        amount: Number(cashZ),
+        amount: cashAmount,
         method: Z_METHODS.CASH, // ✅ Μετρητά (Z)
         notes: Z_NOTES.OFFICIAL,
         type: 'income',
@@ -141,7 +159,7 @@ function DailyZContent() {
         store_id: storeId,
       },
       {
-        amount: Number(posZ),
+        amount: posAmount,
         method: Z_METHODS.CARD, // ✅ Κάρτα
         notes: Z_NOTES.OFFICIAL_POS,
         type: 'income',
@@ -152,7 +170,7 @@ function DailyZContent() {
         store_id: storeId,
       },
       {
-        amount: Number(noTax),
+        amount: noTaxAmount,
         method: Z_METHODS.NO_TAX, // ✅ Χωρίς Απόδειξη (clean label)
         notes: Z_NOTES.BLACK, // ✅ ΧΩΡΙΣ ΣΗΜΑΝΣΗ (κλειδί για Ανάλυση)
         type: 'income',
@@ -162,7 +180,7 @@ function DailyZContent() {
         user_id: user.id,
         store_id: storeId,
       },
-    ].filter((t) => (Number(t.amount) || 0) > 0)
+    ].filter((t) => parseMoneyInput(t.amount) > 0)
 
     const { error } = await supabase.from('transactions').insert(incomeTransactions)
 
