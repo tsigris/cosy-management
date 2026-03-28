@@ -174,6 +174,45 @@ function isIncomeTypeForKpi(type: string | null | undefined): boolean {
   return DISPLAY_INCOME_TYPES.includes(String(type || '') as (typeof DISPLAY_INCOME_TYPES)[number])
 }
 
+function isZTransactionRow(row: Pick<DashboardTransaction, 'category' | 'method' | 'payment_method' | 'description' | 'notes'>): boolean {
+  const category = normalizeKpiText(row.category)
+  const method = normalizeKpiText(getKpiPaymentMethod(row))
+  const text = normalizeKpiText(row.description ?? row.notes ?? '')
+
+  const categoryLooksZ = category === 'ζ' || category === 'εσοδα ζ' || category.includes('ζ')
+  const methodLooksZ = method.includes('(z)') || method.includes(' z') || method.includes('ζ')
+  const textLooksZ =
+    text.includes('ζ ταμειακης') ||
+    text.includes('z ταμειακης') ||
+    text.includes('κλεισιμο ζ') ||
+    text.includes('κλεισιμο z') ||
+    text.includes('χωρις σημανση')
+
+  return categoryLooksZ || methodLooksZ || textLooksZ
+}
+
+function isZCashRow(row: Pick<DashboardTransaction, 'category' | 'method' | 'payment_method' | 'description' | 'notes'>): boolean {
+  const method = normalizeKpiText(getKpiPaymentMethod(row))
+  const text = normalizeKpiText(row.description ?? row.notes ?? '')
+
+  const isCash = isCashMethod(method)
+  const looksCard = method.includes('pos') || method.includes('card') || method.includes('καρτ')
+  const looksNoReceipt = method.includes('χωρις αποδειξη') || text.includes('χωρις σημανση')
+
+  return isZTransactionRow(row) && isCash && !looksCard && !looksNoReceipt
+}
+
+function isZCardRow(row: Pick<DashboardTransaction, 'category' | 'method' | 'payment_method' | 'description' | 'notes'>): boolean {
+  const method = normalizeKpiText(getKpiPaymentMethod(row))
+  return isZTransactionRow(row) && (method.includes('pos') || method.includes('card') || method.includes('καρτ'))
+}
+
+function isZNoReceiptRow(row: Pick<DashboardTransaction, 'category' | 'method' | 'payment_method' | 'description' | 'notes'>): boolean {
+  const method = normalizeKpiText(getKpiPaymentMethod(row))
+  const text = normalizeKpiText(row.description ?? row.notes ?? '')
+  return isZTransactionRow(row) && (method.includes('χωρις αποδειξη') || text.includes('χωρις σημανση'))
+}
+
 function getUserLabelFromTx(tx: DashboardTransaction): string {
   return tx?.created_by_name || tx?.profiles?.username || 'Χρήστης'
 }
@@ -507,9 +546,13 @@ function DashboardContent() {
         const method = getKpiPaymentMethod(row)
         const creditLike = isCreditLikeMovement(row)
         const isIncome = isIncomeTypeForKpi(row.type)
+        const isZRow = isZTransactionRow(row)
+        const isZCash = isZCashRow(row)
+        const isZCard = isZCardRow(row)
+        const isZNoReceipt = isZNoReceiptRow(row)
         const normalizedType = normalizeKpiText(row.type)
         const normalizedCategory = normalizeKpiText(row.category)
-        const normalizedNotes = normalizeKpiText(row.notes)
+        const normalizedNotes = normalizeKpiText(row.description ?? row.notes)
         const isLoanLikeRow =
           normalizedType === 'debt_payment' ||
           normalizedCategory.includes('ρυθμιση') ||
@@ -537,24 +580,81 @@ function DashboardContent() {
           })
         }
 
+        let countedInIncome = false
+        let countedInBalance = false
+
         if (creditLike) {
           creditTotal += amount
+
+          if (isZRow) {
+            console.log('[dashboard-z-kpi-row]', {
+              id: row.id,
+              type: row.type,
+              category: row.category,
+              method: row.method,
+              payment_method: row.payment_method,
+              description: row.description,
+              notes: row.notes,
+              isZRow,
+              isZCash,
+              isZCard,
+              isZNoReceipt,
+              countedInIncome,
+              countedInBalance,
+            })
+          }
+
           continue
         }
 
         if (isIncome) {
-          incomeTotal += amount
+          if (!isZRow || isZCash) {
+            incomeTotal += amount
+            countedInIncome = true
+          }
         } else {
           expenseTotal += amount
         }
 
-        if (isCashMethod(method)) {
-          cashTotal += isIncome ? amount : -amount
-          continue
+        if (isIncome) {
+          if (!isZRow) {
+            if (isCashMethod(method)) {
+              cashTotal += amount
+              countedInBalance = true
+            } else if (isBankMethod(method)) {
+              bankTotal += amount
+              countedInBalance = true
+            }
+          } else if (isZCash) {
+            cashTotal += amount
+            countedInBalance = true
+          }
+        } else {
+          if (isCashMethod(method)) {
+            cashTotal -= amount
+            countedInBalance = true
+          } else if (isBankMethod(method)) {
+            bankTotal -= amount
+            countedInBalance = true
+          }
         }
 
-        if (isBankMethod(method)) {
-          bankTotal += isIncome ? amount : -amount
+        if (isZRow) {
+          console.log('[dashboard-z-kpi-row]', {
+            id: row.id,
+            type: row.type,
+            category: row.category,
+            method: row.method,
+            payment_method: row.payment_method,
+            description: row.description,
+            notes: row.notes,
+            isZRow,
+            isZCash,
+            isZCard,
+            isZNoReceipt,
+            countedInIncome,
+            countedInBalance,
+          })
         }
       }
 
