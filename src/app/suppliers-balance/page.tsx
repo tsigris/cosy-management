@@ -300,6 +300,15 @@ function BalancesContent() {
       const transactions = transRes.data || []
       setAllTransactions(transactions)
 
+      console.log('TRANSACTIONS SNAPSHOT', {
+        count: transactions.length,
+        sample: transactions.slice(0, 10),
+        byType: {
+          expense: transactions.filter((t) => String(t?.type || '') === 'expense').length,
+          debt_payment: transactions.filter((t) => String(t?.type || '') === 'debt_payment').length,
+        },
+      })
+
       // NOTE: data calculation will happen below using selectedYear, so we compute again in an effect.
       // We still load entities here for performance and stability.
       if (viewMode === 'expenses') {
@@ -380,6 +389,16 @@ function BalancesContent() {
           .filter((e) => Math.abs(e.balance) > 0.1)
           .sort((a, b) => b.balance - a.balance)
 
+        console.log('BALANCE LIST', {
+          totalRows: balanceList.length,
+          totalSum: balanceList.reduce((s, r) => s + Number(r.balance || 0), 0),
+          rows: balanceList.map((r) => ({
+            id: r.id,
+            name: r.name,
+            balance: r.balance,
+          })),
+        })
+
         setData(balanceList)
         return
       }
@@ -423,6 +442,16 @@ function BalancesContent() {
         .filter((e) => Math.abs(e.balance) > 0.1)
         .sort((a, b) => b.balance - a.balance)
 
+      console.log('BALANCE LIST', {
+        totalRows: balanceList.length,
+        totalSum: balanceList.reduce((s, r) => s + Number(r.balance || 0), 0),
+        rows: balanceList.map((r) => ({
+          id: r.id,
+          name: r.name,
+          balance: r.balance,
+        })),
+      })
+
       setData(balanceList)
     } catch (err: any) {
       console.error('Suppliers balance load failed', {
@@ -459,9 +488,26 @@ function BalancesContent() {
 
   const totalDisplay = filteredData.reduce((acc, s) => acc + (Number(s.balance) || 0), 0)
 
+  console.log('FILTERED DATA + TOTAL', {
+    filteredCount: filteredData.length,
+    totalDisplay,
+    recomputed: filteredData.reduce((s, r) => s + Number(r.balance || 0), 0),
+    rows: filteredData.map((r) => ({
+      id: r.id,
+      name: r.name,
+      balance: r.balance,
+    })),
+    diaponRows: filteredData.filter((r) => String(r?.name || '').toLowerCase().includes('διαπον')),
+  })
+
   const totalCardBg = viewMode === 'income' ? colors.accentGreen : colors.primaryDark
   const totalLabel = viewMode === 'income' ? 'ΣΥΝΟΛΙΚΟ ΑΝΟΙΧΤΟ ΥΠΟΛΟΙΠΟ ΕΣΟΔΩΝ' : 'ΣΥΝΟΛΙΚΟ ΑΝΟΙΧΤΟ ΥΠΟΛΟΙΠΟ ΕΞΟΔΩΝ'
   const selectTitle = viewMode === 'income' ? 'ΟΛΕΣ ΟΙ ΠΗΓΕΣ ΕΣΟΔΩΝ' : 'ΟΛΕΣ ΟΙ ΟΦΕΙΛΕΣ'
+
+  console.log('RENDER SNAPSHOT', {
+    totalDisplay,
+    filteredCount: filteredData.length,
+  })
 
   return (
     <div style={iphoneWrapper}>

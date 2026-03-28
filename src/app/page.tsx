@@ -620,7 +620,17 @@ function DashboardContent() {
     try {
       const { error } = await supabase.from('transactions').delete().eq('id', id).eq('store_id', storeIdFromUrl)
       if (error) throw error
-      setTransactions((prev) => prev.filter((t) => String(t.id) !== String(id)))
+      setTransactions((prev) => {
+        const deletedTx = prev.find((t) => String(t.id) === String(id))
+        console.log('DELETED TRANSACTION', {
+          id,
+          type: deletedTx?.type,
+          supplier_id: deletedTx?.supplier_id,
+          fixed_asset_id: deletedTx?.fixed_asset_id,
+          amount: deletedTx?.amount,
+        })
+        return prev.filter((t) => String(t.id) !== String(id))
+      })
       setExpandedTx(null)
       toast.success('Η κίνηση διαγράφηκε')
     } catch (err) {
