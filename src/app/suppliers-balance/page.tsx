@@ -523,6 +523,7 @@ function BalancesContent() {
   const computedBalanceList = useMemo(() => {
     if (viewMode === 'expenses') {
       return buildExpenseBalanceList(rawTransactions, rawSuppliers, rawAssets, selectedYear)
+        .filter((row) => row.entityType === 'supplier')
     }
 
     return buildIncomeBalanceList(rawTransactions, rawRevenueSources, selectedYear)
@@ -536,6 +537,11 @@ function BalancesContent() {
     buildExpenseBalanceList,
     buildIncomeBalanceList,
   ])
+
+  useEffect(() => {
+    if (viewMode !== 'expenses') return
+    console.log('[expenses-visible-rows]', computedBalanceList)
+  }, [viewMode, computedBalanceList])
 
   const filteredData = useMemo(() => {
     if (selectedEntityId === 'all') return computedBalanceList
