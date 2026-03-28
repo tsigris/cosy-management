@@ -61,7 +61,6 @@ type DashboardTransaction = {
   amount?: number | string | null
   type?: string | null
   category?: string | null
-  description?: string | null
   notes?: string | null
   method?: string | null
   payment_method?: string | null
@@ -212,10 +211,10 @@ function isIncomeTypeForKpi(type: string | null | undefined): boolean {
   return DISPLAY_INCOME_TYPES.includes(String(type || '') as (typeof DISPLAY_INCOME_TYPES)[number])
 }
 
-function isZTransactionRow(row: Pick<DashboardTransaction, 'category' | 'method' | 'payment_method' | 'description' | 'notes'>): boolean {
+function isZTransactionRow(row: Pick<DashboardTransaction, 'category' | 'method' | 'payment_method' | 'notes'>): boolean {
   const normalizedMethod = normalizeKpiText(getKpiPaymentMethod(row))
   const normalizedCategory = normalizeKpiText(row.category)
-  const normalizedDescription = normalizeKpiText(row.description ?? row.notes)
+  const normalizedDescription = normalizeKpiText(row.notes)
 
   return (
     normalizedCategory === 'ζ' ||
@@ -236,9 +235,9 @@ function isZCardRow(row: Pick<DashboardTransaction, 'method' | 'payment_method'>
   return normalizedMethod.includes('καρτα') || normalizedMethod.includes('pos')
 }
 
-function isZNoReceiptRow(row: Pick<DashboardTransaction, 'method' | 'payment_method' | 'description' | 'notes'>): boolean {
+function isZNoReceiptRow(row: Pick<DashboardTransaction, 'method' | 'payment_method' | 'notes'>): boolean {
   const normalizedMethod = normalizeKpiText(getKpiPaymentMethod(row))
-  const normalizedDescription = normalizeKpiText(row.description ?? row.notes)
+  const normalizedDescription = normalizeKpiText(row.notes)
 
   return (
     (normalizedMethod.includes('χωρις') && normalizedMethod.includes('αποδειξη')) ||
@@ -297,7 +296,7 @@ function DashboardContent() {
   const formattedToday = formatDateDMY(new Date())
 
   const getEntityKeyFromTx = (t: DashboardTransaction) => {
-    const description = String(t?.description || t?.notes || '')
+    const description = String(t?.notes || '')
     if (description.startsWith('Πληρωμή Δόσης')) return `loan:${t.id}`
     if (t?.revenue_source_id) return `rev:${t.revenue_source_id}`
     if (t?.supplier_id) return `sup:${t.supplier_id}`
@@ -315,7 +314,7 @@ function DashboardContent() {
     if (t?.revenue_sources?.name) return t.revenue_sources.name
     if (t?.suppliers?.name) return t.suppliers.name
     if (t?.fixed_assets?.name) return t.fixed_assets.name
-    const description = String(t?.description || t?.notes || '')
+    const description = String(t?.notes || '')
     if (description.startsWith('Πληρωμή Δόσης')) {
       const parts = description.split(':')
       if (parts.length > 1) return parts[1].split('(')[0].trim()
@@ -456,7 +455,7 @@ function DashboardContent() {
   amount,
   type,
   category,
-  description:notes,
+  notes,
   method,
   date,
   is_credit,
@@ -501,7 +500,7 @@ function DashboardContent() {
   amount,
   type,
   category,
-  description:notes,
+  notes,
   method,
   date,
   is_credit,
@@ -563,156 +562,51 @@ function DashboardContent() {
     try {
       const txRows = Array.isArray(transactions) ? transactions : []
 
-      console.log('[dashboard-kpi-source]', {
-        selectedDate,
-        transactionCount: txRows.length,
-        ids: txRows.map((r) => r.id),
-      })
-
       let incomeTotal = 0
       let expenseTotal = 0
       let creditTotal = 0
-      let cashTotal = 0
-      let bankTotal = 0
+      let availableBalance = 0
 
       for (const row of txRows) {
         const amount = Math.abs(Number(row.amount || 0))
-        const method = getKpiPaymentMethod(row)
         const creditLike = isCreditLikeMovement(row)
         const isIncome = isIncomeTypeForKpi(row.type)
         const isZRow = isZTransactionRow(row)
         const isZCash = isZRow && isZCashRow(row)
         const isZCard = isZRow && isZCardRow(row)
         const isZNoReceipt = isZRow && isZNoReceiptRow(row)
-        const normalizedType = normalizeKpiText(row.type)
-        const normalizedCategory = normalizeKpiText(row.category)
-        const normalizedNotes = normalizeKpiText(row.notes)
-        const normalizedDescription = normalizeKpiText(row.description)
-        const isLoanLikeRow =
-          normalizedType === 'debt_payment' ||
-          normalizedCategory.includes('ρυθμιση') ||
-          normalizedCategory.includes('δοση') ||
-          normalizedCategory.includes('loan') ||
-          normalizedCategory.includes('settlement') ||
-          normalizedNotes.includes('ρυθμιση') ||
-          normalizedDescription.includes('ρυθμιση') ||
-          normalizedNotes.includes('δοση') ||
-          normalizedDescription.includes('δοση') ||
-          normalizedNotes.includes('loan') ||
-          normalizedDescription.includes('loan') ||
-          normalizedNotes.includes('settlement')
-
-        let countedInIncomeTotal = false
-        let countedInAvailableBalance = false
-
-        if (isLoanLikeRow) {
-          console.log('[dashboard-loan-kpi-row]', {
-            amount,
-            type: row.type,
-            category: row.category,
-            method: row.method,
-            payment_method: row.payment_method,
-            notes: row.notes,
-            resolvedMethod: method,
-            isBank: isBankMethod(method),
-            isCash: isCashMethod(method),
-            creditLike,
-            isIncome,
-          })
-        }
 
         if (creditLike) {
           creditTotal += amount
-          if (process.env.NODE_ENV === 'development' && isZRow) {
-            console.log('[dashboard-z-kpi-row]', {
-              id: row.id,
-              method,
-              category: row.category,
-              description: row.description ?? row.notes ?? null,
-              amount,
-              isZCash,
-              isZCard,
-              isZNoReceipt,
-              countedInIncomeTotal,
-              countedInAvailableBalance,
-            })
-          }
           continue
         }
 
+        // ===== TOTALS =====
         if (isIncome) {
           if (isZRow) {
-            if (isZCash) {
+            if (isZCash || isZNoReceipt) {
               incomeTotal += amount
-              countedInIncomeTotal = true
             }
           } else {
             incomeTotal += amount
-            countedInIncomeTotal = true
           }
         } else {
           expenseTotal += amount
         }
 
-        if (isCashMethod(method)) {
-          if (!isIncome) {
-            cashTotal -= amount
-            countedInAvailableBalance = true
-          } else if (!isZRow || isZCash) {
-            cashTotal += amount
-            countedInAvailableBalance = true
+        // ===== AVAILABLE BALANCE =====
+        if (isIncome) {
+          if (isZRow) {
+            if (isZCash || isZNoReceipt) {
+              availableBalance += amount
+            }
+          } else {
+            availableBalance += amount
           }
-
-          if (process.env.NODE_ENV === 'development' && isZRow) {
-            console.log('[dashboard-z-kpi-row]', {
-              id: row.id,
-              method,
-              category: row.category,
-              description: row.description ?? row.notes ?? null,
-              amount,
-              isZCash,
-              isZCard,
-              isZNoReceipt,
-              countedInIncomeTotal,
-              countedInAvailableBalance,
-            })
-          }
-          continue
-        }
-
-        if (isBankMethod(method)) {
-          if (!isZRow) {
-            bankTotal += isIncome ? amount : -amount
-            countedInAvailableBalance = true
-          }
-        }
-
-        if (process.env.NODE_ENV === 'development' && isZRow) {
-          console.log('[dashboard-z-kpi-row]', {
-            id: row.id,
-            method,
-            category: row.category,
-            description: row.description ?? row.notes ?? null,
-            amount,
-            isZCash,
-            isZCard,
-            isZNoReceipt,
-            countedInIncomeTotal,
-            countedInAvailableBalance,
-          })
+        } else {
+          availableBalance -= amount
         }
       }
-
-      const availableBalance = cashTotal + bankTotal
-
-      console.log('[dashboard-kpi-final]', {
-        incomeTotal,
-        expenseTotal,
-        creditTotal,
-        cashTotal,
-        bankTotal,
-        availableBalance,
-      })
 
       setTotals({
         income: incomeTotal,
@@ -722,7 +616,6 @@ function DashboardContent() {
       })
     } catch (err) {
       console.error('[dashboard-kpi-error]', err)
-      console.error('Daily totals error:', err)
     }
   }, [transactions, selectedDate])
 
@@ -818,8 +711,7 @@ function DashboardContent() {
   const isZTransaction = useCallback((t: DashboardTransaction) => {
     const category = String(t?.category || '').trim().toLowerCase()
     const method = getPaymentMethod(t).toLowerCase()
-    // Query aliases `notes` as `description`, so read the aliased field here
-    const description = String(t?.description || '').trim().toLowerCase()
+    const description = String(t?.notes || '').trim().toLowerCase()
 
     const categoryLooksZ = category === 'ζ' || category === 'εσοδα ζ' || category.includes(' ζ') || category.endsWith('ζ')
     const looksLikeDayClose = method.includes('(ζ)') || description.includes('ζ ταμειακης') || description === 'χωρις σημανση'
@@ -1140,9 +1032,9 @@ function DashboardContent() {
                       {isZMaster && <span style={creditBadgeStyle}>{row.itemsCount} ΚΙΝΗΣΕΙΣ</span>}
                     </p>
 
-                    {!isZMaster && tx?.description && (
+                    {!isZMaster && tx?.notes && (
                       <p style={{ fontSize: '11px', fontWeight: 800, color: 'var(--muted)', margin: '4px 0 2px 0' }}>
-                        {tx.description}
+                        {tx.notes}
                       </p>
                     )}
 
