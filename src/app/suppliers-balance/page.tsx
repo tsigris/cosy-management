@@ -71,11 +71,13 @@ function BalancesContent() {
   const storeIdFromUrl = searchParams.get('store')
 
   const [viewMode, setViewMode] = useState<ViewMode>('expenses')
-  const [data, setData] = useState<BalanceRow[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedEntityId, setSelectedEntityId] = useState<string>('all')
 
-  const [allTransactions, setAllTransactions] = useState<any[]>([])
+  const [rawTransactions, setRawTransactions] = useState<any[]>([])
+  const [rawSuppliers, setRawSuppliers] = useState<any[]>([])
+  const [rawAssets, setRawAssets] = useState<any[]>([])
+  const [rawRevenueSources, setRawRevenueSources] = useState<any[]>([])
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const fetchSeqRef = useRef(0)
 
@@ -188,7 +190,7 @@ function BalancesContent() {
     // (αλλιώς θα βγει κενό dropdown)
     let foundAny = false
 
-    for (const t of allTransactions) {
+    for (const t of rawTransactions) {
       // Tab relevance:
       const isIncome = viewMode === 'income'
       const relevantForTab = isIncome ? !!t?.revenue_source_id : !!t?.supplier_id || !!t?.fixed_asset_id
@@ -212,7 +214,7 @@ function BalancesContent() {
     if (!foundAny) years.add(currentYear)
 
     return Array.from(years).sort((a, b) => b - a)
-  }, [allTransactions, viewMode, RECEIVED_TYPES, currentYear])
+  }, [rawTransactions, viewMode, RECEIVED_TYPES, currentYear])
 
   // ✅ Default selectedYear: currentYear if exists, else most recent
   useEffect(() => {
@@ -352,8 +354,6 @@ function BalancesContent() {
         .from('transactions')
         .select(transactionSelect)
         .eq('store_id', storeIdFromUrl)
-        .gte('date', `${selectedYear}-01-01`)
-        .lte('date', `${selectedYear}-12-31`)
       if (transRes.error) {
         console.error('RAW QUERY ERROR', transRes.error)
         console.error('Suppliers balance transactions query failed', {
@@ -365,7 +365,6 @@ function BalancesContent() {
             select: transactionSelect,
             filters: {
               store_id: storeIdFromUrl,
-              selectedYear,
             },
           },
         })
@@ -373,10 +372,8 @@ function BalancesContent() {
       }
       const transactions = transRes.data || []
       if (fetchId !== fetchSeqRef.current) return
-      setAllTransactions(transactions)
+      setRawTransactions(transactions)
 
-      // NOTE: data calculation will happen below using selectedYear, so we compute again in an effect.
-      // We still load entities here for performance and stability.
       if (viewMode === 'expenses') {
         const suppliersSelect = 'id, store_id, name'
         const fixedAssetsSelect = 'id, store_id, name, sub_category'
@@ -429,11 +426,11 @@ function BalancesContent() {
           })
           .map((a) => ({ ...a, entityType: 'asset' }))
 
-        const balanceList = buildExpenseBalanceList(transactions, suppliers, assets, selectedYear)
-
         if (fetchId !== fetchSeqRef.current) return
 
-        setData(balanceList)
+        setRawSuppliers(suppliers)
+        setRawAssets(assets)
+        setRawRevenueSources([])
         return
       }
 
@@ -457,11 +454,11 @@ function BalancesContent() {
 
       const revenueSources = (revRes.data || []).map((r) => ({ ...r, entityType: 'revenue' }))
 
-      const balanceList = buildIncomeBalanceList(transactions, revenueSources, selectedYear)
-
       if (fetchId !== fetchSeqRef.current) return
 
-      setData(balanceList)
+      setRawRevenueSources(revenueSources)
+      setRawSuppliers([])
+      setRawAssets([])
     } catch (err: any) {
       console.error('Suppliers balance load failed', {
         message: err?.message,
@@ -508,10 +505,27 @@ function BalancesContent() {
     setExpandedId(null)
   }, [selectedYear])
 
+  const computedBalanceList = useMemo(() => {
+    if (viewMode === 'expenses') {
+      return buildExpenseBalanceList(rawTransactions, rawSuppliers, rawAssets, selectedYear)
+    }
+
+    return buildIncomeBalanceList(rawTransactions, rawRevenueSources, selectedYear)
+  }, [
+    rawTransactions,
+    rawSuppliers,
+    rawAssets,
+    rawRevenueSources,
+    viewMode,
+    selectedYear,
+    buildExpenseBalanceList,
+    buildIncomeBalanceList,
+  ])
+
   const filteredData = useMemo(() => {
-    if (selectedEntityId === 'all') return data
-    return data.filter((s) => s.id === selectedEntityId)
-  }, [selectedEntityId, data])
+    if (selectedEntityId === 'all') return computedBalanceList
+    return computedBalanceList.filter((s) => s.id === selectedEntityId)
+  }, [selectedEntityId, computedBalanceList])
 
   const totalDisplay = useMemo(() => filteredData.reduce((acc, s) => acc + (Number(s.balance) || 0), 0), [filteredData])
 
@@ -532,6 +546,20 @@ function BalancesContent() {
       viewMode,
     })
   }, [filteredData, totalDisplay, selectedEntityId, selectedYear, viewMode])
+
+  useEffect(() => {
+    console.log('[balances-final-check]', {
+      viewMode,
+      selectedYear,
+      selectedEntityId,
+      rows: filteredData.map((r) => ({
+        id: r.id,
+        name: r.name,
+        balance: r.balance,
+      })),
+      totalDisplay,
+    })
+  }, [viewMode, selectedYear, selectedEntityId, filteredData, totalDisplay])
 
   return (
     <div style={iphoneWrapper}>
@@ -596,7 +624,7 @@ function BalancesContent() {
           <div style={{ position: 'relative' }}>
             <select value={selectedEntityId} onChange={(e) => setSelectedEntityId(e.target.value)} style={selectStyle}>
               <option value="all">{selectTitle}</option>
-              {data.map((s) => (
+              {computedBalanceList.map((s) => (
                 <option key={s.id} value={s.id}>
                   {String(s.name || '').toUpperCase()}
                 </option>
@@ -636,7 +664,7 @@ function BalancesContent() {
               const actionBorder = isIncome ? `1px solid #a7f3d0` : `1px solid #dbeafe`
               const actionColor = isIncome ? '#065f46' : colors.accentBlue
 
-              const history = getEntityTransactions(s, allTransactions, viewMode, selectedYear)
+              const history = getEntityTransactions(s, rawTransactions, viewMode, selectedYear)
 
               const summaryLine = history.latestCreditDate
                 ? `Τελευταία καταχώρηση: ${formatTxDate(history.latestCreditDate)} (${daysAgoLabel(history.latestCreditDate)})`
