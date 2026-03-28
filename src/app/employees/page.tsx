@@ -1676,7 +1676,7 @@ function EmployeesContent() {
                   : Number(emp.agreed_extra_salary ?? emp.agreed_extra ?? 0)
                 const agreedMonthlyPay = monthlySalary + agreedExtraSalary
                 const isMonthlyEmployee = (emp.pay_basis || 'monthly') === 'monthly'
-                const dayOffRowsThisMonth = (daysOffByEmployee[emp.id] || [])
+                const visibleDayOffRows = (daysOffByEmployee[emp.id] || [])
                   .filter((row) => {
                     const rowDate = getDayOffDateValue(row)
                     const businessDate = toBusinessDayDateFromInput(rowDate, { normalizeToNoon: true })
@@ -1688,10 +1688,12 @@ function EmployeesContent() {
                     const bTime = parseDateInputSafe(getDayOffDateValue(b))?.getTime() ?? 0
                     return aTime - bTime
                   })
-                const daysOffLabel = dayOffRowsThisMonth.map((row) => formatShortDayMonth(getDayOffDateValue(row))).join(', ')
+                const daysOffLabel = visibleDayOffRows.map((row) => formatShortDayMonth(getDayOffDateValue(row))).join(', ')
+
+                const visibleDaysOffCount = visibleDayOffRows.length
 
                 const includedDaysOffLocal = getIncludedDaysOff(monthlyDays)
-                const actualDaysOffLocal = dayOffRowsThisMonth.length
+                const actualDaysOffLocal = visibleDaysOffCount
                 const extraDaysOffLocal = Math.max(actualDaysOffLocal - includedDaysOffLocal, 0)
                 const dailyCostLocal = isMonthlyEmployee && monthlyDays > 0 ? agreedMonthlyPay / monthlyDays : Number(emp.daily_rate ?? 0)
                 const hourlyRateLocal = isMonthlyEmployee ? dailyCostLocal / 8 : 0
@@ -1719,6 +1721,9 @@ function EmployeesContent() {
                 const displayRemainingPay = hasPayrollSummary
                   ? Number(payrollSummary?.final_payable ?? remainingPay + agreedExtraSalary)
                   : remainingPay + agreedExtraSalary
+                const displayedIncludedDaysOff = includedDaysOffLocal
+                const displayedActualDaysOff = visibleDaysOffCount
+                const displayedExtraDaysOff = Math.max(displayedActualDaysOff - displayedIncludedDaysOff, 0)
                 console.log('[employees-card-rpc] remaining_payroll_only', payrollSummary?.remaining_payroll_only, 'agreed_extra_salary', payrollSummary?.agreed_extra_salary, 'final_payable', payrollSummary?.final_payable)
                 const pendingOt = pendingOtHours
                 const yearDaysOffCount = (daysOffByEmployee[emp.id] || []).filter((row) => {
@@ -1818,7 +1823,9 @@ function EmployeesContent() {
                         </span>
 
                         {pendingOt > 0 && <span style={{ ...badgeStyle, backgroundColor: 'var(--surface)', color: 'var(--muted)' }}>⏱️ {pendingOt} ΩΡΕΣ</span>}
-                        <span style={{ ...badgeStyle, backgroundColor: '#eef2ff', color: '#3730a3' }}>ΡΕΠΟ {actualDaysOff}/{includedDaysOff}</span>
+                        <span style={{ ...badgeStyle, backgroundColor: '#eef2ff', color: '#3730a3' }}>
+                          ΡΕΠΟ {displayedActualDaysOff}/{displayedIncludedDaysOff}
+                        </span>
                         {isMonthlyEmployee && <span style={{ ...badgeStyle, backgroundColor: '#ecfdf5', color: '#047857' }}>ΥΠΟΛΟΙΠΟ {displayRemainingPay.toFixed(2)}€</span>}
                         {isInactive && <span style={{ ...badgeStyle, backgroundColor: 'var(--surface)', color: 'var(--muted)' }}>ΑΝΕΝΕΡΓΟΣ</span>}
                       </div>
@@ -1852,10 +1859,10 @@ function EmployeesContent() {
                             Ρεπό μήνα: {daysOffLabel || '—'}
                           </p>
                           <p style={{ margin: '5px 0 0 0', fontWeight: 800, color: 'var(--muted)', fontSize: '11px' }}>
-                            Σύνολο ρεπό: {actualDaysOff} / {includedDaysOff}
+                            Σύνολο ρεπό: {displayedActualDaysOff} / {displayedIncludedDaysOff}
                           </p>
                           <p style={{ margin: '5px 0 0 0', fontWeight: 800, color: 'var(--muted)', fontSize: '11px' }}>
-                            Extra ρεπό: {extraDaysOff}
+                            Extra ρεπό: {displayedExtraDaysOff}
                           </p>
                           <p style={{ margin: '5px 0 0 0', fontWeight: 800, color: 'var(--muted)', fontSize: '11px' }}>
                             Προκαταβολές: {totalAdvances.toFixed(2)}€
@@ -1876,13 +1883,13 @@ function EmployeesContent() {
                           )}
 
                           <div style={daysOffTotalCard}>
-                            <p style={daysOffTotalCardLabel}>ΣΥΝΟΛΟ ΡΕΠΟ</p>
+                            <p style={daysOffTotalCardLabel}>ΣΥΝΟΛΟ ΡΕΠΟ ΕΤΟΥΣ</p>
                             <p style={daysOffTotalCardValue}>{yearDaysOffCount}</p>
                           </div>
 
-                          {dayOffRowsThisMonth.length > 0 && (
+                          {visibleDayOffRows.length > 0 && (
                             <div style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                              {dayOffRowsThisMonth.map((row) => (
+                              {visibleDayOffRows.map((row) => (
                                 <div
                                   key={row.id}
                                   style={{
