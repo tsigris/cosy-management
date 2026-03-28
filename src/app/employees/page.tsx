@@ -68,6 +68,39 @@ const formatShortDayMonth = (dateInput: string) => {
   return `${day}/${month}`
 }
 
+function getEmployeePayrollWindow(startDateInput: string | Date | null | undefined, asOfInput: string | Date): { periodStart: Date; periodEnd: Date } | null {
+  const startDate = toBusinessDayDateFromInput(startDateInput, { normalizeToNoon: true })
+  const asOfDate = toBusinessDayDateFromInput(asOfInput, { normalizeToNoon: true })
+
+  if (!startDate || isNaN(startDate.getTime())) return null
+  if (!asOfDate || isNaN(asOfDate.getTime())) return null
+  if (asOfDate < startDate) return null
+
+  const anchorDay = startDate.getDate()
+  const buildAnchor = (year: number, monthIndex: number) => {
+    const daysInMonth = new Date(year, monthIndex + 1, 0).getDate()
+    const day = Math.min(anchorDay, daysInMonth)
+    return new Date(year, monthIndex, day, 12, 0, 0, 0)
+  }
+
+  let periodStart = buildAnchor(asOfDate.getFullYear(), asOfDate.getMonth())
+  if (periodStart > asOfDate) {
+    periodStart = buildAnchor(asOfDate.getFullYear(), asOfDate.getMonth() - 1)
+  }
+
+  if (periodStart < startDate) {
+    periodStart = new Date(startDate)
+    periodStart.setHours(12, 0, 0, 0)
+  }
+
+  const nextPeriodStart = buildAnchor(periodStart.getFullYear(), periodStart.getMonth() + 1)
+  const periodEnd = new Date(nextPeriodStart)
+  periodEnd.setDate(periodEnd.getDate() - 1)
+  periodEnd.setHours(12, 0, 0, 0)
+
+  return { periodStart, periodEnd }
+}
+
 function toEmployeeFormState(source?: any): EmployeeFormState {
   const payBasis: PayBasis = ((source?.pay_basis as PayBasis) || 'monthly')
   const baseSalaryValue =
@@ -1676,12 +1709,14 @@ function EmployeesContent() {
                   : Number(emp.agreed_extra_salary ?? emp.agreed_extra ?? 0)
                 const agreedMonthlyPay = monthlySalary + agreedExtraSalary
                 const isMonthlyEmployee = (emp.pay_basis || 'monthly') === 'monthly'
+                const payrollWindow = getEmployeePayrollWindow(emp.start_date, new Date())
                 const visibleDayOffRows = (daysOffByEmployee[emp.id] || [])
                   .filter((row) => {
+                    if (!payrollWindow) return false
                     const rowDate = getDayOffDateValue(row)
                     const businessDate = toBusinessDayDateFromInput(rowDate, { normalizeToNoon: true })
                     if (!businessDate || isNaN(businessDate.getTime())) return false
-                    return businessDate.getFullYear() === selectedBusinessMonth.year && businessDate.getMonth() === selectedBusinessMonth.month
+                    return businessDate >= payrollWindow.periodStart && businessDate <= payrollWindow.periodEnd
                   })
                   .sort((a, b) => {
                     const aTime = parseDateInputSafe(getDayOffDateValue(a))?.getTime() ?? 0
@@ -1707,23 +1742,17 @@ function EmployeesContent() {
                 const pendingOtAmountLocal = isMonthlyEmployee ? pendingOtHoursLocal * hourlyRateLocal : 0
                 const daysOffDeductionLocal = isMonthlyEmployee ? extraDaysOffLocal * dailyCostLocal : 0
                 const remainingPayLocal = isMonthlyEmployee ? monthlySalary - totalAdvancesLocal + pendingOtAmountLocal - daysOffDeductionLocal : 0
-
-                const includedDaysOff = hasPayrollSummary ? Number(payrollSummary?.included_days_off ?? 0) : includedDaysOffLocal
-                const actualDaysOff = hasPayrollSummary ? Number(payrollSummary?.actual_days_off_current_month ?? 0) : actualDaysOffLocal
-                const extraDaysOff = hasPayrollSummary ? Number(payrollSummary?.extra_days_off_current_month ?? 0) : extraDaysOffLocal
                 const dailyCost = isMonthlyEmployee ? dailyCostLocal : hasPayrollSummary ? Number(payrollSummary?.daily_cost ?? 0) : dailyCostLocal
                 const hourlyRate = hasPayrollSummary ? Number(payrollSummary?.hourly_cost ?? 0) : hourlyRateLocal
                 const totalAdvances = hasPayrollSummary ? Number(payrollSummary?.total_advances ?? 0) : totalAdvancesLocal
                 const pendingOtHours = hasPayrollSummary ? Number(payrollSummary?.pending_overtime_hours ?? 0) : pendingOtHoursLocal
                 const pendingOtAmount = hasPayrollSummary ? Number(payrollSummary?.pending_overtime_amount ?? 0) : pendingOtAmountLocal
-                const daysOffDeduction = hasPayrollSummary ? Number(payrollSummary?.days_off_deduction ?? 0) : daysOffDeductionLocal
-                const remainingPay = hasPayrollSummary ? Number(payrollSummary?.remaining_pay ?? 0) : remainingPayLocal
-                const displayRemainingPay = hasPayrollSummary
-                  ? Number(payrollSummary?.final_payable ?? remainingPay + agreedExtraSalary)
-                  : remainingPay + agreedExtraSalary
                 const displayedIncludedDaysOff = includedDaysOffLocal
                 const displayedActualDaysOff = visibleDaysOffCount
                 const displayedExtraDaysOff = Math.max(displayedActualDaysOff - displayedIncludedDaysOff, 0)
+                const displayedDaysOffDeduction = isMonthlyEmployee ? displayedExtraDaysOff * dailyCostLocal : 0
+                const displayedRemainingPay = isMonthlyEmployee ? monthlySalary - totalAdvances + pendingOtAmount - displayedDaysOffDeduction : 0
+                const displayedFinalPayable = displayedRemainingPay + agreedExtraSalary
                 console.log('[employees-card-rpc] remaining_payroll_only', payrollSummary?.remaining_payroll_only, 'agreed_extra_salary', payrollSummary?.agreed_extra_salary, 'final_payable', payrollSummary?.final_payable)
                 const pendingOt = pendingOtHours
                 const yearDaysOffCount = (daysOffByEmployee[emp.id] || []).filter((row) => {
@@ -1826,7 +1855,7 @@ function EmployeesContent() {
                         <span style={{ ...badgeStyle, backgroundColor: '#eef2ff', color: '#3730a3' }}>
                           ΡΕΠΟ {displayedActualDaysOff}/{displayedIncludedDaysOff}
                         </span>
-                        {isMonthlyEmployee && <span style={{ ...badgeStyle, backgroundColor: '#ecfdf5', color: '#047857' }}>ΥΠΟΛΟΙΠΟ {displayRemainingPay.toFixed(2)}€</span>}
+                        {isMonthlyEmployee && <span style={{ ...badgeStyle, backgroundColor: '#ecfdf5', color: '#047857' }}>ΥΠΟΛΟΙΠΟ {displayedFinalPayable.toFixed(2)}€</span>}
                         {isInactive && <span style={{ ...badgeStyle, backgroundColor: 'var(--surface)', color: 'var(--muted)' }}>ΑΝΕΝΕΡΓΟΣ</span>}
                       </div>
                     </div>
@@ -1856,7 +1885,7 @@ function EmployeesContent() {
 
                         <div style={daysOffStatsWrap}>
                           <p style={{ margin: 0, fontWeight: '800', color: 'var(--muted)', fontSize: '11px' }}>
-                            Ρεπό μήνα: {daysOffLabel || '—'}
+                            Ρεπό κύκλου: {daysOffLabel || '—'}
                           </p>
                           <p style={{ margin: '5px 0 0 0', fontWeight: 800, color: 'var(--muted)', fontSize: '11px' }}>
                             Σύνολο ρεπό: {displayedActualDaysOff} / {displayedIncludedDaysOff}
@@ -1871,14 +1900,14 @@ function EmployeesContent() {
                             Εκκρεμείς υπερωρίες: {pendingOtHours.toFixed(2)} ώρες / {pendingOtAmount.toFixed(2)}€
                           </p>
                           <p style={{ margin: '5px 0 0 0', fontWeight: 800, color: 'var(--muted)', fontSize: '11px' }}>
-                            Αφαίρεση extra ρεπό: {daysOffDeduction.toFixed(2)}€
+                            Αφαίρεση extra ρεπό: {displayedDaysOffDeduction.toFixed(2)}€
                           </p>
                           <p style={{ margin: '5px 0 0 0', fontWeight: 800, color: 'var(--muted)', fontSize: '11px' }}>
                             Ωριαίο κόστος: {hourlyRate.toFixed(2)}€
                           </p>
                           {isMonthlyEmployee && (
                             <p style={{ margin: '5px 0 0 0', fontWeight: 900, color: 'var(--text)', fontSize: '11px' }}>
-                              Υπόλοιπο πληρωμής: {remainingPay.toFixed(2)}€
+                              Υπόλοιπο πληρωμής: {displayedRemainingPay.toFixed(2)}€
                             </p>
                           )}
 
