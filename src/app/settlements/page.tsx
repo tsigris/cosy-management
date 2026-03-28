@@ -101,9 +101,6 @@ dangerBorder: '#fecdd3',
 dangerText: '#be123c',
 
 }
-
-
-
 type Settlement = {
 
 id: string
@@ -125,6 +122,10 @@ first_due_date: string | null
 store_id?: string | null
 
 created_at?: string | null
+supplier_id?: string | null
+fixed_asset_id?: string | null
+revenue_source_id?: string | null
+employee_id?: string | null
 
 }
 
@@ -159,6 +160,16 @@ type PaymentMethod = 'Μετρητά' | 'Τράπεζα'
 type LoanPlan = 'fixed' | 'seasonal' | 'summer_only'
 
 type AmountFocus = 'total' | 'installment'
+
+type LinkedEntityKind = 'supplier' | 'fixed_asset' | 'revenue_source' | 'employee'
+
+type LinkedEntityOption = {
+id: string
+name: string
+kind: LinkedEntityKind
+kindLabel: string
+searchText: string
+}
 
 
 
@@ -470,6 +481,10 @@ const [winterAmount, setWinterAmount] = useState('')
 
 
 const [amountFocus, setAmountFocus] = useState<AmountFocus>('total')
+const [linkedEntities, setLinkedEntities] = useState<LinkedEntityOption[]>([])
+const [linkedEntitySearch, setLinkedEntitySearch] = useState('')
+const [linkedEntityId, setLinkedEntityId] = useState('')
+const [linkedEntityKind, setLinkedEntityKind] = useState<LinkedEntityKind | null>(null)
 
 
 
@@ -576,8 +591,22 @@ setWinterAmount('')
 
 
 setAmountFocus('total')
+setLinkedEntitySearch('')
+setLinkedEntityId('')
+setLinkedEntityKind(null)
 
 }, [])
+
+const selectedLinkedEntity = useMemo(() => {
+if (!linkedEntityId || !linkedEntityKind) return null
+return linkedEntities.find((entity) => entity.id === linkedEntityId && entity.kind === linkedEntityKind) || null
+}, [linkedEntities, linkedEntityId, linkedEntityKind])
+
+const filteredLinkedEntities = useMemo(() => {
+const q = linkedEntitySearch.trim().toLowerCase()
+if (!q) return linkedEntities.slice(0, 50)
+return linkedEntities.filter((entity) => entity.searchText.includes(q)).slice(0, 50)
+}, [linkedEntities, linkedEntitySearch])
 
 
 
@@ -708,6 +737,85 @@ if (!Number.isInteger(parsedCount) || parsedCount <= 6) return
 toast.warning('6 δόσεις αντιστοιχούν σε 1 πλήρη καλοκαιρινή σεζόν')
 
 }, [loanPlan, installmentsCount])
+
+const loadLinkedEntities = useCallback(async () => {
+if (!storeId) {
+setLinkedEntities([])
+return
+}
+
+try {
+const [suppliersRes, fixedAssetsRes, revenueSourcesRes] = await Promise.all([
+supabase.from('suppliers').select('id, name').eq('store_id', storeId),
+supabase.from('fixed_assets').select('id, name, sub_category').eq('store_id', storeId),
+supabase.from('revenue_sources').select('id, name').eq('store_id', storeId),
+])
+
+if (suppliersRes.error) throw suppliersRes.error
+if (fixedAssetsRes.error) throw fixedAssetsRes.error
+if (revenueSourcesRes.error) throw revenueSourcesRes.error
+
+const suppliers = (suppliersRes.data || []).map((row: any) => {
+const name = String(row?.name || '').trim() || 'Χωρίς όνομα'
+return {
+id: String(row.id),
+name,
+kind: 'supplier' as const,
+kindLabel: 'Προμηθευτής',
+searchText: `${name} προμηθευτης supplier`.toLowerCase(),
+}
+})
+
+const fixedAssets = ((fixedAssetsRes.data || []) as Array<{ id: string; name?: string | null; sub_category?: string | null }>)
+
+const accounts = fixedAssets
+.filter((row) => String(row?.sub_category || '').toLowerCase() !== 'staff')
+.map((row) => {
+const name = String(row?.name || '').trim() || 'Χωρίς όνομα'
+return {
+id: String(row.id),
+name,
+kind: 'fixed_asset' as const,
+kindLabel: 'Λογαριασμός',
+searchText: `${name} λογαριασμος παγιο fixed asset`.toLowerCase(),
+}
+})
+
+const employees = fixedAssets
+.filter((row) => String(row?.sub_category || '').toLowerCase() === 'staff')
+.map((row) => {
+const name = String(row?.name || '').trim() || 'Χωρίς όνομα'
+return {
+id: String(row.id),
+name,
+kind: 'employee' as const,
+kindLabel: 'Προσωπικό',
+searchText: `${name} προσωπικο staff employee`.toLowerCase(),
+}
+})
+
+const revenues = (revenueSourcesRes.data || []).map((row: any) => {
+const name = String(row?.name || '').trim() || 'Χωρίς όνομα'
+return {
+id: String(row.id),
+name,
+kind: 'revenue_source' as const,
+kindLabel: 'Πηγή Εσόδου',
+searchText: `${name} πηγη εσοδου revenue`.toLowerCase(),
+}
+})
+
+setLinkedEntities(
+[...suppliers, ...accounts, ...revenues, ...employees].sort((a, b) =>
+String(a.name).localeCompare(String(b.name), 'el', { sensitivity: 'base' }),
+),
+)
+} catch (error) {
+console.error('Failed loading linked entities for settlements', error)
+toast.error('Αποτυχία φόρτωσης καρτελών')
+setLinkedEntities([])
+}
+}, [storeId])
 
 
 
@@ -844,6 +952,7 @@ return
 
 
 await loadData()
+await loadLinkedEntities()
 
 }
 
@@ -851,7 +960,7 @@ await loadData()
 
 void bootstrap()
 
-}, [router, storeId, loadData])
+}, [router, storeId, loadData, loadLinkedEntities])
 
 
 
@@ -1170,7 +1279,7 @@ if (!cleanName) return toast.error('Συμπλήρωσε όνομα ρύθμισ
 if (!cleanRf) return toast.error('Συμπλήρωσε κωδικό RF / Ταυτότητα Οφειλής')
 
 if (!Number.isInteger(parsedCount) || parsedCount <= 0) return toast.error('Μη έγκυρος αριθμός δόσεων')
-
+ if (!linkedEntityId || !linkedEntityKind) return toast.error('Επίλεξε Συνδεδεμένη Καρτέλα')
 if (!firstDueDate) return toast.error('Συμπλήρωσε ημερομηνία 1ης δόσης')
 
 
@@ -1272,6 +1381,14 @@ installments_count: parsedCount,
 installment_amount: installmentNum,
 
 first_due_date: firstDueDate,
+
+supplier_id: linkedEntityKind === 'supplier' ? linkedEntityId : null,
+
+fixed_asset_id: linkedEntityKind === 'fixed_asset' ? linkedEntityId : null,
+
+revenue_source_id: linkedEntityKind === 'revenue_source' ? linkedEntityId : null,
+
+employee_id: linkedEntityKind === 'employee' ? linkedEntityId : null,
 
 }
 
@@ -2043,6 +2160,22 @@ style={copyBtnStyle}
 
 <div style={installmentsWrapStyle}>
 
+{!settlement.supplier_id && !settlement.fixed_asset_id && !settlement.revenue_source_id && !settlement.employee_id && (
+
+<div style={legacyLinkWarningStyle}>
+
+<span style={{ fontWeight: 900 }}>⚠ Χωρίς συνδεδεμένη καρτέλα</span>
+
+<button type="button" onClick={() => startEditSettlement(settlement)} style={legacyLinkActionBtnStyle}>
+
+Σύνδεση τώρα
+
+</button>
+
+</div>
+
+)}
+
 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
 
 <button
@@ -2448,6 +2581,90 @@ title="Πληρώνω μόνο Μάιο–Οκτώβριο, χειμώνα 0 (δ
 <label style={labelStyle}>Κωδικός RF / Ταυτότητα Οφειλής</label>
 
 <input style={inputStyle} value={rfCode} onChange={(e) => setRfCode(e.target.value)} />
+
+</div>
+
+
+
+<div style={inputGroupStyle}>
+
+<label style={labelStyle}>Συνδεδεμένη Καρτέλα *</label>
+
+<input
+
+style={inputStyle}
+
+value={linkedEntitySearch}
+
+onChange={(e) => {
+
+setLinkedEntitySearch(e.target.value)
+
+setLinkedEntityId('')
+
+setLinkedEntityKind(null)
+
+}}
+
+placeholder="Αναζήτηση καρτέλας..."
+
+/>
+
+
+
+<div style={linkedEntityResultsStyle}>
+
+{filteredLinkedEntities.length === 0 ? (
+
+<p style={linkedEntityHintStyle}>Δεν βρέθηκαν καρτέλες.</p>
+
+) : (
+
+filteredLinkedEntities.map((entity) => (
+
+<button
+
+key={`${entity.kind}:${entity.id}`}
+
+type="button"
+
+style={linkedEntityOptionBtnStyle}
+
+onClick={() => {
+
+setLinkedEntityId(entity.id)
+
+setLinkedEntityKind(entity.kind)
+
+setLinkedEntitySearch(`${entity.name} — ${entity.kindLabel}`)
+
+}}
+
+>
+
+<span style={linkedEntityNameStyle}>{entity.name}</span>
+
+<span style={linkedEntityTypeStyle}>— {entity.kindLabel}</span>
+
+</button>
+
+))
+
+)}
+
+</div>
+
+
+
+{selectedLinkedEntity ? (
+
+<div style={linkedEntitySelectedStyle}>Επιλεγμένο: {selectedLinkedEntity.name} — {selectedLinkedEntity.kindLabel}</div>
+
+) : (
+
+<div style={linkedEntityRequiredStyle}>Η σύνδεση καρτέλας είναι υποχρεωτική.</div>
+
+)}
 
 </div>
 
@@ -3823,6 +4040,92 @@ outline: 'none',
 
 background: colors.bgLight,
 
+}
+
+const linkedEntityResultsStyle: CSSProperties = {
+maxHeight: '160px',
+overflowY: 'auto',
+border: `1px solid ${colors.border}`,
+borderRadius: '12px',
+background: colors.white,
+padding: '6px',
+display: 'grid',
+gap: 4,
+}
+
+const linkedEntityOptionBtnStyle: CSSProperties = {
+width: '100%',
+border: `1px solid ${colors.border}`,
+borderRadius: '10px',
+padding: '8px 10px',
+background: colors.bgLight,
+cursor: 'pointer',
+textAlign: 'left',
+display: 'flex',
+alignItems: 'center',
+gap: 6,
+}
+
+const linkedEntityNameStyle: CSSProperties = {
+fontSize: 13,
+fontWeight: 900,
+color: colors.primaryDark,
+}
+
+const linkedEntityTypeStyle: CSSProperties = {
+fontSize: 12,
+fontWeight: 800,
+color: colors.secondaryText,
+}
+
+const linkedEntityHintStyle: CSSProperties = {
+margin: 0,
+fontSize: 12,
+fontWeight: 800,
+color: colors.secondaryText,
+padding: '8px',
+}
+
+const linkedEntitySelectedStyle: CSSProperties = {
+marginTop: 6,
+fontSize: 12,
+fontWeight: 900,
+color: '#065f46',
+background: '#ecfdf5',
+border: '1px solid #a7f3d0',
+borderRadius: 10,
+padding: '8px 10px',
+}
+
+const linkedEntityRequiredStyle: CSSProperties = {
+marginTop: 6,
+fontSize: 12,
+fontWeight: 800,
+color: colors.dangerText,
+}
+
+const legacyLinkWarningStyle: CSSProperties = {
+border: `1px solid ${colors.warningBorder}`,
+background: colors.warningBg,
+color: colors.warningText,
+borderRadius: 12,
+padding: '10px 12px',
+display: 'flex',
+alignItems: 'center',
+justifyContent: 'space-between',
+gap: 10,
+fontSize: 12,
+}
+
+const legacyLinkActionBtnStyle: CSSProperties = {
+border: `1px solid ${colors.warningBorder}`,
+background: colors.white,
+color: colors.warningText,
+borderRadius: 10,
+padding: '8px 10px',
+fontWeight: 900,
+fontSize: 12,
+cursor: 'pointer',
 }
 
 
