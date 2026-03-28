@@ -1631,7 +1631,7 @@ p_date: businessToday,
 
 p_notes: notes,
 
-p_type: 'expense',
+p_type: 'debt_payment',
 
 }
 
