@@ -82,33 +82,32 @@ begin
           b.start_date
         )::date as cycle_start,
         (
-          make_date(
-            extract(year from (greatest(
+          date_trunc(
+            'month',
+            greatest(
               case
                 when as_of_anchor <= p_as_of_date then as_of_anchor
                 else prev_anchor
               end,
               b.start_date
-            ) + interval '1 month'))::int,
-            extract(month from (greatest(
-              case
-                when as_of_anchor <= p_as_of_date then as_of_anchor
-                else prev_anchor
-              end,
-              b.start_date
-            ) + interval '1 month'))::int,
-            1
+            ) + interval '1 month'
           )
-          + (
+          +
+          (
             least(
               extract(day from b.start_date)::int,
-              extract(day from ((date_trunc('month', greatest(
-                case
-                  when as_of_anchor <= p_as_of_date then as_of_anchor
-                  else prev_anchor
-                end,
-                b.start_date
-              ) + interval '1 month') + interval '1 month - 1 day')::date)::int
+              extract(day from (
+                date_trunc(
+                  'month',
+                  greatest(
+                    case
+                      when as_of_anchor <= p_as_of_date then as_of_anchor
+                      else prev_anchor
+                    end,
+                    b.start_date
+                  ) + interval '2 month'
+                ) - interval '1 day'
+              ))::int
             ) - 1
           ) * interval '1 day'
         )::date as cycle_next_start
@@ -320,33 +319,32 @@ begin
           b.start_date
         )::date as cycle_start,
         (
-          make_date(
-            extract(year from (greatest(
+          date_trunc(
+            'month',
+            greatest(
               case
                 when as_of_anchor <= p_as_of_date then as_of_anchor
                 else prev_anchor
               end,
               b.start_date
-            ) + interval '1 month'))::int,
-            extract(month from (greatest(
-              case
-                when as_of_anchor <= p_as_of_date then as_of_anchor
-                else prev_anchor
-              end,
-              b.start_date
-            ) + interval '1 month'))::int,
-            1
+            ) + interval '1 month'
           )
-          + (
+          +
+          (
             least(
               extract(day from b.start_date)::int,
-              extract(day from ((date_trunc('month', greatest(
-                case
-                  when as_of_anchor <= p_as_of_date then as_of_anchor
-                  else prev_anchor
-                end,
-                b.start_date
-              ) + interval '1 month') + interval '1 month - 1 day')::date)::int
+              extract(day from (
+                date_trunc(
+                  'month',
+                  greatest(
+                    case
+                      when as_of_anchor <= p_as_of_date then as_of_anchor
+                      else prev_anchor
+                    end,
+                    b.start_date
+                  ) + interval '2 month'
+                ) - interval '1 day'
+              ))::int
             ) - 1
           ) * interval '1 day'
         )::date as cycle_next_start
