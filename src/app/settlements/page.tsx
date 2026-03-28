@@ -1094,6 +1094,28 @@ setWinterAmount('')
 
 setAmountFocus('total')
 
+const linkedSelection =
+s.supplier_id
+? { kind: 'supplier' as const, id: String(s.supplier_id) }
+: s.fixed_asset_id
+? { kind: 'fixed_asset' as const, id: String(s.fixed_asset_id) }
+: s.revenue_source_id
+? { kind: 'revenue_source' as const, id: String(s.revenue_source_id) }
+: s.employee_id
+? { kind: 'employee' as const, id: String(s.employee_id) }
+: null
+
+if (linkedSelection) {
+setLinkedEntityKind(linkedSelection.kind)
+setLinkedEntityId(linkedSelection.id)
+const option = linkedEntities.find((entity) => entity.kind === linkedSelection.kind && entity.id === linkedSelection.id)
+setLinkedEntitySearch(option ? `${option.name} — ${option.kindLabel}` : '')
+} else {
+setLinkedEntityKind(null)
+setLinkedEntityId('')
+setLinkedEntitySearch('')
+}
+
 setOpenCreateModal(true)
 
 }
