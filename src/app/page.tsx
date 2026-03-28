@@ -137,6 +137,34 @@ type DailyTrackerData = {
   expense_diff_pct: number
 }
 
+function normalizeDailyTrackerPayload(value: unknown): DailyTrackerData | null {
+  if (value === null || value === undefined) return null
+
+  const candidate = Array.isArray(value) ? value[0] : value
+  if (!candidate || typeof candidate !== 'object') return null
+
+  const payload = candidate as Record<string, unknown>
+  const toNumber = (input: unknown): number => {
+    const parsed = Number(input)
+    return Number.isFinite(parsed) ? parsed : 0
+  }
+
+  const weekdayLabelRaw = payload.weekday_label
+
+  return {
+    income_today: toNumber(payload.income_today),
+    income_avg: toNumber(payload.income_avg),
+    expense_today: toNumber(payload.expense_today),
+    expense_avg: toNumber(payload.expense_avg),
+    income_diff_pct: toNumber(payload.income_diff_pct),
+    expense_diff_pct: toNumber(payload.expense_diff_pct),
+    weekday_label:
+      typeof weekdayLabelRaw === 'string' && weekdayLabelRaw.trim().length > 0
+        ? weekdayLabelRaw
+        : 'Ημέρας',
+  }
+}
+
 function getPaymentMethod(tx: DashboardTransaction): string {
   return String(tx?.payment_method ?? tx?.method ?? '').trim()
 }
@@ -767,10 +795,20 @@ function DashboardContent() {
 
         if (error) throw error
 
-        const normalized = Array.isArray(data) ? data[0] : data
-        setDailyTrackerData((normalized as DailyTrackerData) || null)
-      } catch (err) {
-        console.error('[daily-performance-rpc-error]', err)
+        const normalized = normalizeDailyTrackerPayload(data)
+
+        if (process.env.NODE_ENV === 'development') {
+          console.log('[daily-performance-rpc]', {
+            storeIdFromUrl,
+            selectedDate,
+            raw: data,
+            normalized,
+          })
+        }
+
+        setDailyTrackerData(normalized)
+      } catch (error) {
+        console.error('[daily-performance-rpc-error]', error)
         setDailyTrackerData(null)
       }
     }
