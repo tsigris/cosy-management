@@ -952,14 +952,6 @@ function DashboardContent() {
         </div>
       </div>
 
-      <DailyPerformanceCard
-        incomeToday={dailyTrackerData?.income_today ?? 0}
-        incomeAvg={dailyTrackerData?.income_avg ?? 0}
-        expenseToday={dailyTrackerData?.expense_today ?? 0}
-        expenseAvg={dailyTrackerData?.expense_avg ?? 0}
-        weekdayLabel={dailyTrackerData?.weekday_label ?? 'Ημέρας'}
-      />
-
       <div style={actionGrid}>
         <div style={actionRow}>
           <NextLink href={`/add-income?date=${selectedDate}&store=${storeIdFromUrl}`} style={{ ...actionBtn, backgroundColor: colors.accentGreen }}>
@@ -979,6 +971,14 @@ function DashboardContent() {
           </div>
         )}
       </div>
+
+      <DailyPerformanceCard
+        incomeToday={dailyTrackerData?.income_today ?? 0}
+        incomeAvg={dailyTrackerData?.income_avg ?? 0}
+        expenseToday={dailyTrackerData?.expense_today ?? 0}
+        expenseAvg={dailyTrackerData?.expense_avg ?? 0}
+        weekdayLabel={dailyTrackerData?.weekday_label ?? 'Ημέρας'}
+      />
 
       <div style={listContainer}>
         <p style={listHeader}>ΚΙΝΗΣΕΙΣ ΗΜΕΡΑΣ ({transactions.length})</p>
