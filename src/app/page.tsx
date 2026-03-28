@@ -32,18 +32,6 @@ const colors = {
 }
 
 const DISPLAY_INCOME_TYPES = ['income', 'income_collection', 'debt_received', 'savings_withdrawal'] as const
-const DAILY_TRACKER_INCOME_TYPES = ['income', 'income_collection', 'debt_received'] as const
-
-const WEEKDAY_LABELS_GENITIVE = [
-  'Κυριακής',
-  'Δευτέρας',
-  'Τρίτης',
-  'Τετάρτης',
-  'Πέμπτης',
-  'Παρασκευής',
-  'Σαββάτου',
-] as const
-
 type YtdInfo = {
   loading: boolean
   turnoverIncome?: number
@@ -139,11 +127,14 @@ type ProfileRowLite = {
   username?: string | null
 }
 
-type HistoricalMovementRow = {
-  date?: string | null
-  amount?: number | string | null
-  type?: string | null
-  is_credit?: boolean | null
+type DailyTrackerData = {
+  income_today: number
+  income_avg: number
+  expense_today: number
+  expense_avg: number
+  weekday_label: string
+  income_diff_pct: number
+  expense_diff_pct: number
 }
 
 function getPaymentMethod(tx: DashboardTransaction): string {
@@ -212,8 +203,7 @@ function DashboardContent() {
   const [transactions, setTransactions] = useState<DashboardTransaction[]>([])
   const [loading, setLoading] = useState(true)
   const [expandedTx, setExpandedTx] = useState<string | null>(null)
-  const [historicalIncomeAverage, setHistoricalIncomeAverage] = useState<number>(0)
-  const [historicalExpenseAverage, setHistoricalExpenseAverage] = useState<number>(0)
+  const [dailyTrackerData, setDailyTrackerData] = useState<DailyTrackerData | null>(null)
   const [totals, setTotals] = useState({
     income: 0,
     expense: 0,
@@ -762,98 +752,31 @@ function DashboardContent() {
 
   const money = (n: number | string | null | undefined) => formatAmount(Number(n) || 0)
 
-  const selectedDayOfWeek = useMemo(() => parseISO(selectedDate).getDay(), [selectedDate])
-
-  const todayTrackerIncome = useMemo(() => {
-    const rows = Array.isArray(transactions) ? transactions : []
-    return rows.reduce((sum, row) => {
-      const type = String(row.type || '')
-      if (!(DAILY_TRACKER_INCOME_TYPES as readonly string[]).includes(type)) return sum
-      if (row.is_credit === true) return sum
-      return sum + Math.abs(Number(row.amount || 0))
-    }, 0)
-  }, [transactions])
-
-  const todayTrackerExpense = useMemo(() => {
-    const rows = Array.isArray(transactions) ? transactions : []
-    return rows.reduce((sum, row) => {
-      const type = String(row.type || '')
-      if ((DAILY_TRACKER_INCOME_TYPES as readonly string[]).includes(type)) return sum
-      if (row.is_credit === true) return sum
-      return sum + Math.abs(Number(row.amount || 0))
-    }, 0)
-  }, [transactions])
-
-  const trackerDayLabelGenitive = WEEKDAY_LABELS_GENITIVE[selectedDayOfWeek] || 'ημέρας'
-
   useEffect(() => {
-    const loadHistoricalWeekdayAverage = async () => {
-      if (!storeIdFromUrl) {
-        setHistoricalIncomeAverage(0)
-        setHistoricalExpenseAverage(0)
+    const loadDailyTrackerFromRpc = async () => {
+      if (!storeIdFromUrl || !selectedDate) {
+        setDailyTrackerData(null)
         return
       }
 
       try {
-        const dateTo = subDays(parseISO(selectedDate), 1)
-        const dateFrom = subDays(parseISO(selectedDate), 56)
-
-        const { data, error } = await supabase
-          .from('transactions')
-          .select('date,amount,type,is_credit')
-          .eq('store_id', storeIdFromUrl)
-          .gte('date', format(dateFrom, 'yyyy-MM-dd'))
-          .lte('date', format(dateTo, 'yyyy-MM-dd'))
+        const { data, error } = await supabase.rpc('get_daily_performance_tracker', {
+          p_store_id: storeIdFromUrl,
+          p_date: selectedDate,
+        })
 
         if (error) throw error
 
-        const rows = (data || []) as HistoricalMovementRow[]
-        const dailyIncomeByDate = new Map<string, number>()
-        const dailyExpenseByDate = new Map<string, number>()
-
-        for (const row of rows) {
-          if (row.is_credit === true) continue
-
-          const rowDate = String(row.date || '')
-          if (!rowDate) continue
-
-          const rowDow = parseISO(rowDate).getDay()
-          if (rowDow !== selectedDayOfWeek) continue
-
-          const amount = Math.abs(Number(row.amount || 0))
-          const type = String(row.type || '')
-
-          if ((DAILY_TRACKER_INCOME_TYPES as readonly string[]).includes(type)) {
-            const current = dailyIncomeByDate.get(rowDate) || 0
-            dailyIncomeByDate.set(rowDate, current + amount)
-          } else {
-            const current = dailyExpenseByDate.get(rowDate) || 0
-            dailyExpenseByDate.set(rowDate, current + amount)
-          }
-        }
-
-        const calculateAverage = (dailyMap: Map<string, number>) => {
-          const values = Array.from(dailyMap.entries())
-            .sort(([a], [b]) => b.localeCompare(a))
-            .slice(0, 8)
-            .map(([, value]) => value)
-
-          if (values.length < 4) return 0
-
-          return values.reduce((sum, value) => sum + value, 0) / values.length
-        }
-
-        setHistoricalIncomeAverage(calculateAverage(dailyIncomeByDate))
-        setHistoricalExpenseAverage(calculateAverage(dailyExpenseByDate))
-      } catch (error) {
-        console.error('[daily-performance-tracker] load failed', error)
-        setHistoricalIncomeAverage(0)
-        setHistoricalExpenseAverage(0)
+        const normalized = Array.isArray(data) ? data[0] : data
+        setDailyTrackerData((normalized as DailyTrackerData) || null)
+      } catch (err) {
+        console.error('[daily-performance-rpc-error]', err)
+        setDailyTrackerData(null)
       }
     }
 
-    void loadHistoricalWeekdayAverage()
-  }, [storeIdFromUrl, selectedDate, selectedDayOfWeek, supabase])
+    void loadDailyTrackerFromRpc()
+  }, [storeIdFromUrl, selectedDate, supabase])
 
   return (
     <div style={iphoneWrapper}>
@@ -992,11 +915,11 @@ function DashboardContent() {
       </div>
 
       <DailyPerformanceCard
-        incomeToday={todayTrackerIncome}
-        incomeAvg={historicalIncomeAverage}
-        expenseToday={todayTrackerExpense}
-        expenseAvg={historicalExpenseAverage}
-        weekdayLabel={trackerDayLabelGenitive}
+        incomeToday={dailyTrackerData?.income_today ?? 0}
+        incomeAvg={dailyTrackerData?.income_avg ?? 0}
+        expenseToday={dailyTrackerData?.expense_today ?? 0}
+        expenseAvg={dailyTrackerData?.expense_avg ?? 0}
+        weekdayLabel={dailyTrackerData?.weekday_label ?? 'Ημέρας'}
       />
 
       <div style={actionGrid}>
