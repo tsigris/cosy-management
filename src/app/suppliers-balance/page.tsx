@@ -542,27 +542,38 @@ function BalancesContent() {
     return computedBalanceList.filter((s) => s.id === selectedEntityId)
   }, [selectedEntityId, computedBalanceList])
 
-  const totalDisplay = useMemo(() => filteredData.reduce((acc, s) => acc + (Number(s.balance) || 0), 0), [filteredData])
+  const expenseTotalRows = useMemo(() => {
+    if (viewMode !== 'expenses') return filteredData
+    return filteredData.filter((row) => row.entityType === 'supplier')
+  }, [viewMode, filteredData])
+
+  const totalDisplay = useMemo(() => {
+    const source = viewMode === 'expenses' ? expenseTotalRows : filteredData
+    return source.reduce((acc, s) => acc + (Number(s.balance) || 0), 0)
+  }, [viewMode, expenseTotalRows, filteredData])
 
   const totalCardBg = viewMode === 'income' ? colors.accentGreen : colors.primaryDark
   const totalLabel = viewMode === 'income' ? 'ΣΥΝΟΛΙΚΟ ΑΝΟΙΧΤΟ ΥΠΟΛΟΙΠΟ ΕΣΟΔΩΝ' : 'ΣΥΝΟΛΙΚΟ ΑΝΟΙΧΤΟ ΥΠΟΛΟΙΠΟ ΕΞΟΔΩΝ'
   const selectTitle = viewMode === 'income' ? 'ΟΛΕΣ ΟΙ ΠΗΓΕΣ ΕΣΟΔΩΝ' : 'ΟΛΕΣ ΟΙ ΟΦΕΙΛΕΣ'
 
   useEffect(() => {
-    const rowsSum = filteredData.reduce((s, r) => s + (Number(r?.balance) || 0), 0)
+    const sourceRows = viewMode === 'expenses' ? expenseTotalRows : filteredData
+    const rowsSum = sourceRows.reduce((s, r) => s + (Number(r?.balance) || 0), 0)
     const diff = Math.abs(rowsSum - totalDisplay)
     console.assert(diff < 0.0001, '[cards-balance-consistency]', {
       rowsSum,
       totalDisplay,
       diff,
       filteredCount: filteredData.length,
+      totalSourceCount: sourceRows.length,
       selectedEntityId,
       selectedYear,
       viewMode,
     })
-  }, [filteredData, totalDisplay, selectedEntityId, selectedYear, viewMode])
+  }, [filteredData, expenseTotalRows, totalDisplay, selectedEntityId, selectedYear, viewMode])
 
   useEffect(() => {
+    const sourceRows = viewMode === 'expenses' ? expenseTotalRows : filteredData
     console.log('[balances-final-check]', {
       viewMode,
       selectedYear,
@@ -572,9 +583,15 @@ function BalancesContent() {
         name: r.name,
         balance: r.balance,
       })),
+      totalSourceRows: sourceRows.map((r) => ({
+        id: r.id,
+        name: r.name,
+        entityType: r.entityType,
+        balance: r.balance,
+      })),
       totalDisplay,
     })
-  }, [viewMode, selectedYear, selectedEntityId, filteredData, totalDisplay])
+  }, [viewMode, selectedYear, selectedEntityId, filteredData, expenseTotalRows, totalDisplay])
 
   useEffect(() => {
     if (viewMode !== 'expenses') return
