@@ -1,0 +1,542 @@
+begin;
+
+-- Align payroll-card summary day-off metrics to employee payroll cycle
+-- based on employee start_date anniversary window.
+-- Compatibility note: output column names keep "_current_month" suffix for API stability,
+-- but values now represent the active payroll cycle per employee.
+
+drop function if exists public.get_employee_payroll_cards_summary(uuid, date);
+
+create or replace function public.get_employee_payroll_cards_summary(
+  p_store_id uuid,
+  p_as_of_date date default current_date
+)
+returns table (
+  employee_id uuid,
+  monthly_salary numeric,
+  monthly_days integer,
+  included_days_off integer,
+  actual_days_off_current_month integer,
+  extra_days_off_current_month integer,
+  daily_cost numeric,
+  hourly_cost numeric,
+  total_advances numeric,
+  pending_overtime_hours numeric,
+  pending_overtime_amount numeric,
+  days_off_deduction numeric,
+  agreed_extra_salary numeric,
+  remaining_payroll_only numeric,
+  final_payable numeric,
+  remaining_pay numeric
+)
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_has_off_date boolean;
+begin
+  if auth.uid() is null then
+    raise exception 'Unauthorized: missing authenticated user';
+  end if;
+
+  if not exists (
+    select 1
+    from public.store_access sa
+    where sa.user_id = auth.uid()
+      and sa.store_id = p_store_id
+  ) then
+    raise exception 'Forbidden: store access required for store %', p_store_id;
+  end if;
+
+  select exists (
+    select 1
+    from information_schema.columns c
+    where c.table_schema = 'public'
+      and c.table_name = 'employee_days_off'
+      and c.column_name = 'off_date'
+  ) into v_has_off_date;
+
+  if v_has_off_date then
+    return query
+    with base_employees as (
+      select
+        fa.id as employee_id,
+        coalesce(fa.monthly_salary, 0)::numeric as monthly_salary,
+        coalesce(fa.monthly_days, 0)::integer as monthly_days,
+        coalesce(fa.agreed_extra_salary, 0)::numeric as agreed_extra_salary,
+        coalesce(fa.start_date, p_as_of_date)::date as start_date
+      from public.fixed_assets fa
+      where fa.sub_category = 'staff'
+        and (fa.store_id = p_store_id or fa.store_id is null)
+        and coalesce(fa.pay_basis, 'monthly') = 'monthly'
+    ),
+    employee_cycles as (
+      select
+        b.*,
+        greatest(
+          case
+            when as_of_anchor <= p_as_of_date then as_of_anchor
+            else prev_anchor
+          end,
+          b.start_date
+        )::date as cycle_start,
+        (
+          make_date(
+            extract(year from (greatest(
+              case
+                when as_of_anchor <= p_as_of_date then as_of_anchor
+                else prev_anchor
+              end,
+              b.start_date
+            ) + interval '1 month'))::int,
+            extract(month from (greatest(
+              case
+                when as_of_anchor <= p_as_of_date then as_of_anchor
+                else prev_anchor
+              end,
+              b.start_date
+            ) + interval '1 month'))::int,
+            1
+          )
+          + (
+            least(
+              extract(day from b.start_date)::int,
+              extract(day from ((date_trunc('month', greatest(
+                case
+                  when as_of_anchor <= p_as_of_date then as_of_anchor
+                  else prev_anchor
+                end,
+                b.start_date
+              ) + interval '1 month') + interval '1 month - 1 day')::date)::int
+            ) - 1
+          ) * interval '1 day'
+        )::date as cycle_next_start
+      from (
+        select
+          b.*,
+          (
+            make_date(extract(year from p_as_of_date)::int, extract(month from p_as_of_date)::int, 1)
+            + (
+              least(
+                extract(day from b.start_date)::int,
+                extract(day from ((date_trunc('month', p_as_of_date) + interval '1 month - 1 day')::date))::int
+              ) - 1
+            ) * interval '1 day'
+          )::date as as_of_anchor,
+          (
+            make_date(
+              extract(year from (p_as_of_date - interval '1 month'))::int,
+              extract(month from (p_as_of_date - interval '1 month'))::int,
+              1
+            )
+            + (
+              least(
+                extract(day from b.start_date)::int,
+                extract(day from ((date_trunc('month', p_as_of_date - interval '1 month') + interval '1 month - 1 day')::date))::int
+              ) - 1
+            ) * interval '1 day'
+          )::date as prev_anchor
+        from base_employees b
+      ) b
+    ),
+    cycle_windows as (
+      select
+        c.employee_id,
+        c.monthly_salary,
+        c.monthly_days,
+        c.agreed_extra_salary,
+        c.cycle_start,
+        (c.cycle_next_start - interval '1 day')::date as cycle_end
+      from employee_cycles c
+    ),
+    days_off_counts as (
+      select
+        edo.employee_id,
+        count(*)::integer as actual_days_off_in_cycle
+      from public.employee_days_off edo
+      join cycle_windows cw on cw.employee_id = edo.employee_id
+      where edo.store_id = p_store_id
+        and edo.off_date >= cw.cycle_start
+        and edo.off_date <= cw.cycle_end
+      group by edo.employee_id
+    ),
+    advances as (
+      select
+        coalesce(t.employee_id, t.fixed_asset_id) as employee_id,
+        coalesce(sum(abs(coalesce(t.amount, 0))), 0)::numeric as total_advances
+      from public.transactions t
+      where t.store_id = p_store_id
+        and t.type = 'salary_advance'
+        and coalesce(t.employee_id, t.fixed_asset_id) is not null
+      group by coalesce(t.employee_id, t.fixed_asset_id)
+    ),
+    overtime_pending as (
+      select
+        ot.employee_id,
+        coalesce(sum(coalesce(ot.hours, 0)), 0)::numeric as pending_overtime_hours
+      from public.employee_overtimes ot
+      where ot.store_id = p_store_id
+        and coalesce(ot.is_paid, false) = false
+      group by ot.employee_id
+    )
+    select
+      cw.employee_id,
+      cw.monthly_salary,
+      cw.monthly_days,
+      case
+        when cw.monthly_days = 30 then 0
+        when cw.monthly_days = 26 then 4
+        when cw.monthly_days = 22 then 8
+        else 0
+      end::integer as included_days_off,
+      -- Compatibility alias: now cycle-based, not calendar-month based.
+      coalesce(d.actual_days_off_in_cycle, 0)::integer as actual_days_off_current_month,
+      greatest(
+        coalesce(d.actual_days_off_in_cycle, 0) -
+        case
+          when cw.monthly_days = 30 then 0
+          when cw.monthly_days = 26 then 4
+          when cw.monthly_days = 22 then 8
+          else 0
+        end,
+        0
+      )::integer as extra_days_off_current_month,
+      case when cw.monthly_days > 0 then (cw.monthly_salary / cw.monthly_days) else 0 end::numeric as daily_cost,
+      case when cw.monthly_days > 0 then (cw.monthly_salary / cw.monthly_days) / 8 else 0 end::numeric as hourly_cost,
+      coalesce(a.total_advances, 0)::numeric as total_advances,
+      coalesce(o.pending_overtime_hours, 0)::numeric as pending_overtime_hours,
+      (
+        coalesce(o.pending_overtime_hours, 0)
+        * (case when cw.monthly_days > 0 then (cw.monthly_salary / cw.monthly_days) / 8 else 0 end)
+      )::numeric as pending_overtime_amount,
+      (
+        greatest(
+          coalesce(d.actual_days_off_in_cycle, 0) -
+          case
+            when cw.monthly_days = 30 then 0
+            when cw.monthly_days = 26 then 4
+            when cw.monthly_days = 22 then 8
+            else 0
+          end,
+          0
+        )
+        * (case when cw.monthly_days > 0 then (cw.monthly_salary / cw.monthly_days) else 0 end)
+      )::numeric as days_off_deduction,
+      cw.agreed_extra_salary,
+      (
+        cw.monthly_salary
+        - coalesce(a.total_advances, 0)
+        + (
+            coalesce(o.pending_overtime_hours, 0)
+            * (case when cw.monthly_days > 0 then (cw.monthly_salary / cw.monthly_days) / 8 else 0 end)
+          )
+        - (
+            greatest(
+              coalesce(d.actual_days_off_in_cycle, 0) -
+              case
+                when cw.monthly_days = 30 then 0
+                when cw.monthly_days = 26 then 4
+                when cw.monthly_days = 22 then 8
+                else 0
+              end,
+              0
+            )
+            * (case when cw.monthly_days > 0 then (cw.monthly_salary / cw.monthly_days) else 0 end)
+          )
+      )::numeric as remaining_payroll_only,
+      (
+        (
+          cw.monthly_salary
+          - coalesce(a.total_advances, 0)
+          + (
+              coalesce(o.pending_overtime_hours, 0)
+              * (case when cw.monthly_days > 0 then (cw.monthly_salary / cw.monthly_days) / 8 else 0 end)
+            )
+          - (
+              greatest(
+                coalesce(d.actual_days_off_in_cycle, 0) -
+                case
+                  when cw.monthly_days = 30 then 0
+                  when cw.monthly_days = 26 then 4
+                  when cw.monthly_days = 22 then 8
+                  else 0
+                end,
+                0
+              )
+              * (case when cw.monthly_days > 0 then (cw.monthly_salary / cw.monthly_days) else 0 end)
+            )
+        )
+        + cw.agreed_extra_salary
+      )::numeric as final_payable,
+      (
+        cw.monthly_salary
+        - coalesce(a.total_advances, 0)
+        + (
+            coalesce(o.pending_overtime_hours, 0)
+            * (case when cw.monthly_days > 0 then (cw.monthly_salary / cw.monthly_days) / 8 else 0 end)
+          )
+        - (
+            greatest(
+              coalesce(d.actual_days_off_in_cycle, 0) -
+              case
+                when cw.monthly_days = 30 then 0
+                when cw.monthly_days = 26 then 4
+                when cw.monthly_days = 22 then 8
+                else 0
+              end,
+              0
+            )
+            * (case when cw.monthly_days > 0 then (cw.monthly_salary / cw.monthly_days) else 0 end)
+          )
+      )::numeric as remaining_pay
+    from cycle_windows cw
+    left join days_off_counts d on d.employee_id = cw.employee_id
+    left join advances a on a.employee_id = cw.employee_id
+    left join overtime_pending o on o.employee_id = cw.employee_id
+    order by cw.employee_id;
+  else
+    return query
+    with base_employees as (
+      select
+        fa.id as employee_id,
+        coalesce(fa.monthly_salary, 0)::numeric as monthly_salary,
+        coalesce(fa.monthly_days, 0)::integer as monthly_days,
+        coalesce(fa.agreed_extra_salary, 0)::numeric as agreed_extra_salary,
+        coalesce(fa.start_date, p_as_of_date)::date as start_date
+      from public.fixed_assets fa
+      where fa.sub_category = 'staff'
+        and (fa.store_id = p_store_id or fa.store_id is null)
+        and coalesce(fa.pay_basis, 'monthly') = 'monthly'
+    ),
+    employee_cycles as (
+      select
+        b.*,
+        greatest(
+          case
+            when as_of_anchor <= p_as_of_date then as_of_anchor
+            else prev_anchor
+          end,
+          b.start_date
+        )::date as cycle_start,
+        (
+          make_date(
+            extract(year from (greatest(
+              case
+                when as_of_anchor <= p_as_of_date then as_of_anchor
+                else prev_anchor
+              end,
+              b.start_date
+            ) + interval '1 month'))::int,
+            extract(month from (greatest(
+              case
+                when as_of_anchor <= p_as_of_date then as_of_anchor
+                else prev_anchor
+              end,
+              b.start_date
+            ) + interval '1 month'))::int,
+            1
+          )
+          + (
+            least(
+              extract(day from b.start_date)::int,
+              extract(day from ((date_trunc('month', greatest(
+                case
+                  when as_of_anchor <= p_as_of_date then as_of_anchor
+                  else prev_anchor
+                end,
+                b.start_date
+              ) + interval '1 month') + interval '1 month - 1 day')::date)::int
+            ) - 1
+          ) * interval '1 day'
+        )::date as cycle_next_start
+      from (
+        select
+          b.*,
+          (
+            make_date(extract(year from p_as_of_date)::int, extract(month from p_as_of_date)::int, 1)
+            + (
+              least(
+                extract(day from b.start_date)::int,
+                extract(day from ((date_trunc('month', p_as_of_date) + interval '1 month - 1 day')::date))::int
+              ) - 1
+            ) * interval '1 day'
+          )::date as as_of_anchor,
+          (
+            make_date(
+              extract(year from (p_as_of_date - interval '1 month'))::int,
+              extract(month from (p_as_of_date - interval '1 month'))::int,
+              1
+            )
+            + (
+              least(
+                extract(day from b.start_date)::int,
+                extract(day from ((date_trunc('month', p_as_of_date - interval '1 month') + interval '1 month - 1 day')::date))::int
+              ) - 1
+            ) * interval '1 day'
+          )::date as prev_anchor
+        from base_employees b
+      ) b
+    ),
+    cycle_windows as (
+      select
+        c.employee_id,
+        c.monthly_salary,
+        c.monthly_days,
+        c.agreed_extra_salary,
+        c.cycle_start,
+        (c.cycle_next_start - interval '1 day')::date as cycle_end
+      from employee_cycles c
+    ),
+    days_off_counts as (
+      select
+        edo.employee_id,
+        count(*)::integer as actual_days_off_in_cycle
+      from public.employee_days_off edo
+      join cycle_windows cw on cw.employee_id = edo.employee_id
+      where edo.store_id = p_store_id
+        and edo.date >= cw.cycle_start
+        and edo.date <= cw.cycle_end
+      group by edo.employee_id
+    ),
+    advances as (
+      select
+        coalesce(t.employee_id, t.fixed_asset_id) as employee_id,
+        coalesce(sum(abs(coalesce(t.amount, 0))), 0)::numeric as total_advances
+      from public.transactions t
+      where t.store_id = p_store_id
+        and t.type = 'salary_advance'
+        and coalesce(t.employee_id, t.fixed_asset_id) is not null
+      group by coalesce(t.employee_id, t.fixed_asset_id)
+    ),
+    overtime_pending as (
+      select
+        ot.employee_id,
+        coalesce(sum(coalesce(ot.hours, 0)), 0)::numeric as pending_overtime_hours
+      from public.employee_overtimes ot
+      where ot.store_id = p_store_id
+        and coalesce(ot.is_paid, false) = false
+      group by ot.employee_id
+    )
+    select
+      cw.employee_id,
+      cw.monthly_salary,
+      cw.monthly_days,
+      case
+        when cw.monthly_days = 30 then 0
+        when cw.monthly_days = 26 then 4
+        when cw.monthly_days = 22 then 8
+        else 0
+      end::integer as included_days_off,
+      -- Compatibility alias: now cycle-based, not calendar-month based.
+      coalesce(d.actual_days_off_in_cycle, 0)::integer as actual_days_off_current_month,
+      greatest(
+        coalesce(d.actual_days_off_in_cycle, 0) -
+        case
+          when cw.monthly_days = 30 then 0
+          when cw.monthly_days = 26 then 4
+          when cw.monthly_days = 22 then 8
+          else 0
+        end,
+        0
+      )::integer as extra_days_off_current_month,
+      case when cw.monthly_days > 0 then (cw.monthly_salary / cw.monthly_days) else 0 end::numeric as daily_cost,
+      case when cw.monthly_days > 0 then (cw.monthly_salary / cw.monthly_days) / 8 else 0 end::numeric as hourly_cost,
+      coalesce(a.total_advances, 0)::numeric as total_advances,
+      coalesce(o.pending_overtime_hours, 0)::numeric as pending_overtime_hours,
+      (
+        coalesce(o.pending_overtime_hours, 0)
+        * (case when cw.monthly_days > 0 then (cw.monthly_salary / cw.monthly_days) / 8 else 0 end)
+      )::numeric as pending_overtime_amount,
+      (
+        greatest(
+          coalesce(d.actual_days_off_in_cycle, 0) -
+          case
+            when cw.monthly_days = 30 then 0
+            when cw.monthly_days = 26 then 4
+            when cw.monthly_days = 22 then 8
+            else 0
+          end,
+          0
+        )
+        * (case when cw.monthly_days > 0 then (cw.monthly_salary / cw.monthly_days) else 0 end)
+      )::numeric as days_off_deduction,
+      cw.agreed_extra_salary,
+      (
+        cw.monthly_salary
+        - coalesce(a.total_advances, 0)
+        + (
+            coalesce(o.pending_overtime_hours, 0)
+            * (case when cw.monthly_days > 0 then (cw.monthly_salary / cw.monthly_days) / 8 else 0 end)
+          )
+        - (
+            greatest(
+              coalesce(d.actual_days_off_in_cycle, 0) -
+              case
+                when cw.monthly_days = 30 then 0
+                when cw.monthly_days = 26 then 4
+                when cw.monthly_days = 22 then 8
+                else 0
+              end,
+              0
+            )
+            * (case when cw.monthly_days > 0 then (cw.monthly_salary / cw.monthly_days) else 0 end)
+          )
+      )::numeric as remaining_payroll_only,
+      (
+        (
+          cw.monthly_salary
+          - coalesce(a.total_advances, 0)
+          + (
+              coalesce(o.pending_overtime_hours, 0)
+              * (case when cw.monthly_days > 0 then (cw.monthly_salary / cw.monthly_days) / 8 else 0 end)
+            )
+          - (
+              greatest(
+                coalesce(d.actual_days_off_in_cycle, 0) -
+                case
+                  when cw.monthly_days = 30 then 0
+                  when cw.monthly_days = 26 then 4
+                  when cw.monthly_days = 22 then 8
+                  else 0
+                end,
+                0
+              )
+              * (case when cw.monthly_days > 0 then (cw.monthly_salary / cw.monthly_days) else 0 end)
+            )
+        )
+        + cw.agreed_extra_salary
+      )::numeric as final_payable,
+      (
+        cw.monthly_salary
+        - coalesce(a.total_advances, 0)
+        + (
+            coalesce(o.pending_overtime_hours, 0)
+            * (case when cw.monthly_days > 0 then (cw.monthly_salary / cw.monthly_days) / 8 else 0 end)
+          )
+        - (
+            greatest(
+              coalesce(d.actual_days_off_in_cycle, 0) -
+              case
+                when cw.monthly_days = 30 then 0
+                when cw.monthly_days = 26 then 4
+                when cw.monthly_days = 22 then 8
+                else 0
+              end,
+              0
+            )
+            * (case when cw.monthly_days > 0 then (cw.monthly_salary / cw.monthly_days) else 0 end)
+          )
+      )::numeric as remaining_pay
+    from cycle_windows cw
+    left join days_off_counts d on d.employee_id = cw.employee_id
+    left join advances a on a.employee_id = cw.employee_id
+    left join overtime_pending o on o.employee_id = cw.employee_id
+    order by cw.employee_id;
+  end if;
+end;
+$$;
+
+grant execute on function public.get_employee_payroll_cards_summary(uuid, date) to authenticated;
+
+commit;
