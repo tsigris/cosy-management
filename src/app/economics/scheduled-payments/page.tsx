@@ -13,9 +13,14 @@ type ScheduledPayment = {
 	id: string
 	title: string
 	amount: number
+	gross_amount?: number
+	advances_amount?: number
+	salary_payments_amount?: number
+	is_overpaid?: boolean
 	category: string
 	due_date: string // YYYY-MM-DD
 	source: string
+	employee_id?: string | null
 	notes?: string | null
 	status?: string | null
 	is_paid?: boolean | null
@@ -32,6 +37,23 @@ function addDays(d: Date, days: number) {
 
 function toISODate(d: Date) {
 	return formatIsoDate(d)
+}
+
+function getMonthBoundsFromIso(isoDate: string) {
+	const d = parseLocalDateOnly(isoDate)
+	if (isNaN(d.getTime())) {
+		return { start: '1970-01-01', end: '1970-01-31' }
+	}
+	const start = new Date(d.getFullYear(), d.getMonth(), 1)
+	const end = new Date(d.getFullYear(), d.getMonth() + 1, 0)
+	return {
+		start: toISODate(start),
+		end: toISODate(end),
+	}
+}
+
+function sameOrLegacyEmployeeLink(tx: any, employeeId: string) {
+	return String(tx?.employee_id || '') === employeeId || String(tx?.fixed_asset_id || '') === employeeId
 }
 
 export default function EconomicsScheduledPaymentsPage() {
@@ -91,11 +113,21 @@ export default function EconomicsScheduledPaymentsPage() {
 			const results: ScheduledPayment[] = []
 
 			try {
-				// 1) Employees (salaries) - compute next payment date from possible fields (safe fallbacks)
+				// 1) Employees (salaries) - compute next payment and subtract same-period advances/payroll payments
 				const employees = await getEmployees(storeId)
 
 				if (Array.isArray(employees)) {
+					const salaryDrafts: Array<{
+						employeeId: string
+						periodStart: string
+						periodEnd: string
+						item: ScheduledPayment
+					}> = []
+
 					for (const e of employees as any) {
+						const employeeId = String(e.id || '').trim()
+						if (!employeeId) continue
+
 						const isMonthlyEmployee = String(e.pay_basis || 'monthly') === 'monthly'
 						const baseSalary = Number(e.monthly_salary) || Number(e.salary) || 0
 						const agreedExtraSalary = Number(e.agreed_extra_salary) || 0
@@ -113,17 +145,82 @@ export default function EconomicsScheduledPaymentsPage() {
 
 						// only include if within +30 days window
 						if (new Date(toISODate(next)) > toDate) continue
+						const dueDate = toISODate(next)
+						const { start: periodStart, end: periodEnd } = getMonthBoundsFromIso(dueDate)
 
 						const sp: ScheduledPayment = {
-							id: `emp-${e.id}`,
+							id: `emp-${employeeId}`,
 							title: e.name ? `Μισθός: ${e.name}` : 'Μισθοί προσωπικού',
 							amount: salary,
+							gross_amount: salary,
+							advances_amount: 0,
+							salary_payments_amount: 0,
+							is_overpaid: false,
 							category: 'Μισθοί προσωπικού',
-							due_date: toISODate(next),
+							due_date: dueDate,
 							source: 'employees',
+							employee_id: employeeId,
 							notes: null,
 						}
-						results.push(sp)
+
+						salaryDrafts.push({
+							employeeId,
+							periodStart,
+							periodEnd,
+							item: sp,
+						})
+					}
+
+					if (salaryDrafts.length) {
+						const minStart = salaryDrafts.reduce((min, s) => (s.periodStart < min ? s.periodStart : min), salaryDrafts[0].periodStart)
+						const maxEnd = salaryDrafts.reduce((max, s) => (s.periodEnd > max ? s.periodEnd : max), salaryDrafts[0].periodEnd)
+
+						let payrollTxs: any[] = []
+						try {
+							const { data: txRows, error: txErr } = await supabase
+								.from('transactions')
+								.select('id, date, amount, type, category, notes, employee_id, fixed_asset_id')
+								.eq('store_id', storeId)
+								.gte('date', minStart)
+								.lte('date', maxEnd)
+								.in('type', ['salary_advance', 'expense'])
+
+							if (!txErr && Array.isArray(txRows)) payrollTxs = txRows
+						} catch {
+							payrollTxs = []
+						}
+
+						for (const draft of salaryDrafts) {
+							const scopedTx = payrollTxs.filter((tx) => {
+								if (!sameOrLegacyEmployeeLink(tx, draft.employeeId)) return false
+								const txDate = String(tx?.date || '').slice(0, 10)
+								if (!txDate) return false
+								return txDate >= draft.periodStart && txDate <= draft.periodEnd
+							})
+
+							const advances = scopedTx
+								.filter((tx) => String(tx?.type || '') === 'salary_advance')
+								.reduce((acc, tx) => acc + Math.abs(Number(tx?.amount) || 0), 0)
+
+							const salaryPayments = scopedTx
+								.filter((tx) => {
+									if (String(tx?.type || '') !== 'expense') return false
+									return String(tx?.category || '').trim().toLowerCase() === 'staff'
+								})
+								.reduce((acc, tx) => acc + Math.abs(Number(tx?.amount) || 0), 0)
+
+							const gross = Number(draft.item.gross_amount || draft.item.amount || 0)
+							const remainingRaw = gross - advances - salaryPayments
+							const remaining = Math.max(0, remainingRaw)
+
+							results.push({
+								...draft.item,
+								amount: remaining,
+								advances_amount: advances,
+								salary_payments_amount: salaryPayments,
+								is_overpaid: remainingRaw < 0,
+							})
+						}
 					}
 				}
 
@@ -465,12 +562,25 @@ export default function EconomicsScheduledPaymentsPage() {
 														<>
 															<div style={{ fontWeight: 800, lineHeight: 1.25, wordBreak: 'break-word' }}>{g.title}</div>
 															<div style={{ fontSize: 13, color: 'var(--muted)' }}>{g.category}</div>
+															{g.source === 'employees' && typeof g.gross_amount === 'number' ? (
+																<div style={{ fontSize: 12, color: 'var(--muted)', display: 'flex', flexDirection: 'column', gap: 2 }}>
+																	<span>Σύνολο μισθού: {amountFormatter.format(Number(g.gross_amount) || 0)}</span>
+																	<span>Προκαταβολές: {amountFormatter.format(Number(g.advances_amount) || 0)}</span>
+																	<span>Πληρωμές μισθού: {amountFormatter.format(Number(g.salary_payments_amount) || 0)}</span>
+																	<span style={{ fontWeight: 800, color: 'var(--text)' }}>Υπόλοιπο: {amountFormatter.format(Number(g.amount) || 0)}</span>
+																</div>
+															) : null}
 															<div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
 																<div style={{ fontWeight: 800 }}>{amountFormatter.format(g.amount)}</div>
 																<div style={{ fontSize: 12, color: 'var(--muted)' }}>{formatDateEl(g.due_date, '-')}</div>
 															</div>
 															<div>
-																<span style={{ display: 'inline-flex', alignItems: 'center', padding: '6px 10px', borderRadius: 999, border: '1px solid var(--border)', fontSize: 12, fontWeight: 700 }}>Εκκρεμεί</span>
+																<span style={{ display: 'inline-flex', alignItems: 'center', padding: '6px 10px', borderRadius: 999, border: '1px solid var(--border)', fontSize: 12, fontWeight: 700 }}>{g.source === 'employees' && Number(g.amount) <= 0 ? 'Καλυμμένο' : 'Εκκρεμεί'}</span>
+																{g.source === 'employees' && g.is_overpaid ? (
+																	<span style={{ marginLeft: 8, display: 'inline-flex', alignItems: 'center', padding: '6px 10px', borderRadius: 999, border: '1px solid var(--border)', fontSize: 12, fontWeight: 700, color: 'var(--accentOrange)' }}>
+																		Overpayment
+																	</span>
+																) : null}
 															</div>
 															<div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
 																<button style={{ padding: '6px 10px', borderRadius: 8 }}>✏ Επεξεργασία</button>
@@ -479,16 +589,31 @@ export default function EconomicsScheduledPaymentsPage() {
 														</>
 													) : (
 														<>
-															<div style={{ display: 'flex', gap: 12, alignItems: 'center', minWidth: 0 }}>
-																<div style={{ fontWeight: 800, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{g.title}</div>
-																<div style={{ fontSize: 13, color: 'var(--muted)' }}>{g.category}</div>
+															<div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
+																<div style={{ display: 'flex', gap: 12, alignItems: 'center', minWidth: 0 }}>
+																	<div style={{ fontWeight: 800, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{g.title}</div>
+																	<div style={{ fontSize: 13, color: 'var(--muted)' }}>{g.category}</div>
+																</div>
+																{g.source === 'employees' && typeof g.gross_amount === 'number' ? (
+																	<div style={{ fontSize: 12, color: 'var(--muted)', display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+																		<span>Σύνολο: {amountFormatter.format(Number(g.gross_amount) || 0)}</span>
+																		<span>Προκαταβολές: {amountFormatter.format(Number(g.advances_amount) || 0)}</span>
+																		<span>Πληρωμές: {amountFormatter.format(Number(g.salary_payments_amount) || 0)}</span>
+																		<span style={{ fontWeight: 800, color: 'var(--text)' }}>Υπόλοιπο: {amountFormatter.format(Number(g.amount) || 0)}</span>
+																	</div>
+																) : null}
 															</div>
 															<div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
 																<div style={{ textAlign: 'right' }}>
 																	<div style={{ fontWeight: 800 }}>{amountFormatter.format(g.amount)}</div>
 																	<div style={{ fontSize: 12, color: 'var(--muted)' }}>{formatDateEl(g.due_date, '-')}</div>
 																</div>
-																<span style={{ display: 'inline-flex', alignItems: 'center', padding: '6px 10px', borderRadius: 999, border: '1px solid var(--border)', fontSize: 12, fontWeight: 700 }}>Εκκρεμεί</span>
+																<span style={{ display: 'inline-flex', alignItems: 'center', padding: '6px 10px', borderRadius: 999, border: '1px solid var(--border)', fontSize: 12, fontWeight: 700 }}>{g.source === 'employees' && Number(g.amount) <= 0 ? 'Καλυμμένο' : 'Εκκρεμεί'}</span>
+																{g.source === 'employees' && g.is_overpaid ? (
+																	<span style={{ display: 'inline-flex', alignItems: 'center', padding: '6px 10px', borderRadius: 999, border: '1px solid var(--border)', fontSize: 12, fontWeight: 700, color: 'var(--accentOrange)' }}>
+																		Overpayment
+																	</span>
+																) : null}
 																<div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
 																	<button style={{ padding: '6px 10px', borderRadius: 8 }}>✏ Επεξεργασία</button>
 																	<button style={{ padding: '6px 10px', borderRadius: 8 }}>➡ Μεταφορά</button>
