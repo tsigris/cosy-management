@@ -505,6 +505,10 @@ function DashboardContent() {
       for (const row of txRows) {
         const amount = Math.abs(Number(row.amount || 0))
         const method = getKpiPaymentMethod(row)
+        const normalizedMethod = normalizeKpiText(method)
+        const treatAsCash = isCashMethod(method) || normalizedMethod.includes('χωρις αποδειξη')
+        const treatAsBank =
+          isBankMethod(method) || normalizedMethod.includes('καρτα') || normalizedMethod.includes('pos')
         const creditLike = isCreditLikeMovement(row)
         const isIncome = isIncomeTypeForKpi(row.type)
         const normalizedType = normalizeKpiText(row.type)
@@ -548,12 +552,12 @@ function DashboardContent() {
           expenseTotal += amount
         }
 
-        if (isCashMethod(method)) {
+        if (treatAsCash) {
           cashTotal += isIncome ? amount : -amount
           continue
         }
 
-        if (isBankMethod(method)) {
+        if (treatAsBank) {
           bankTotal += isIncome ? amount : -amount
         }
       }
