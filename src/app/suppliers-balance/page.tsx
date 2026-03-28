@@ -54,6 +54,21 @@ const isValidUUID = (id: any) => {
 
 const normalize = (v: any) => String(v ?? '').trim().toLowerCase()
 
+const isExpenseCardCharge = (t: any) => {
+  if (!t) return false
+
+  const type = String(t?.type || '').trim().toLowerCase()
+  const isCredit = t?.is_credit === true
+
+  // Canonical rule for expense-card charge rows.
+  return type === 'expense' && isCredit
+}
+
+const isExpenseCardPayment = (t: any) => {
+  if (!t) return false
+  return String(t?.type || '').trim().toLowerCase() === 'debt_payment'
+}
+
 // Date helpers (no automatic day shift)
 const toBusinessDateNormalized = (d: Date) => new Date(d)
 
@@ -197,10 +212,10 @@ function BalancesContent() {
       if (!relevantForTab) continue
 
       // Balances relevance (credit ή settlement):
-      const isCredit = t?.is_credit === true
+      const isCredit = isIncome ? t?.is_credit === true : isExpenseCardCharge(t)
       const isSettlement = isIncome
         ? RECEIVED_TYPES.includes(String(t?.type || ''))
-        : String(t?.type || '') === 'debt_payment'
+        : isExpenseCardPayment(t)
 
       if (!isCredit && !isSettlement) continue
 
@@ -238,7 +253,7 @@ function BalancesContent() {
       .filter((t) => isTxInYear(t, year)) // ✅ YEAR FILTER
 
     const creditTxs = entityTrans
-      .filter((t) => t.is_credit === true)
+      .filter((t) => (isIncome ? t?.is_credit === true : isExpenseCardCharge(t)))
       .sort((a, b) => (getTxDate(b)?.getTime() || 0) - (getTxDate(a)?.getTime() || 0))
 
     const settlementTxs = isIncome
@@ -246,7 +261,7 @@ function BalancesContent() {
           .filter((t) => RECEIVED_TYPES.includes(String(t?.type || '')))
           .sort((a, b) => (getTxDate(b)?.getTime() || 0) - (getTxDate(a)?.getTime() || 0))
         : entityTrans
-          .filter((t) => String(t?.type || '') === 'debt_payment')
+          .filter((t) => isExpenseCardPayment(t))
           .sort((a, b) => (getTxDate(b)?.getTime() || 0) - (getTxDate(a)?.getTime() || 0))
 
     const latestCreditDate = creditTxs.length ? getTxDate(creditTxs[0]) : null
@@ -289,11 +304,11 @@ function BalancesContent() {
         )
 
         const totalCredit = entityTrans
-          .filter((t) => String(t?.type || '') === 'expense' && t?.is_credit === true)
+          .filter((t) => isExpenseCardCharge(t))
           .reduce((acc, t) => acc + Math.abs(Number(t?.amount) || 0), 0)
 
         const totalPaid = entityTrans
-          .filter((t) => String(t?.type || '') === 'debt_payment')
+          .filter((t) => isExpenseCardPayment(t))
           .reduce((acc, t) => acc + Math.abs(Number(t?.amount) || 0), 0)
 
         return {
@@ -560,6 +575,31 @@ function BalancesContent() {
       totalDisplay,
     })
   }, [viewMode, selectedYear, selectedEntityId, filteredData, totalDisplay])
+
+  useEffect(() => {
+    if (viewMode !== 'expenses') return
+
+    const sample = computedBalanceList.slice(0, 10).map((row) => {
+      const entityTrans = rawTransactions.filter((t) =>
+        row.entityType === 'supplier'
+          ? t?.supplier_id === row.id
+          : t?.fixed_asset_id === row.id,
+      )
+
+      const charges = entityTrans.filter((t) => isExpenseCardCharge(t))
+      const payments = entityTrans.filter((t) => isExpenseCardPayment(t))
+
+      return {
+        id: row.id,
+        name: row.name,
+        charges: charges.reduce((s, t) => s + Math.abs(Number(t?.amount) || 0), 0),
+        payments: payments.reduce((s, t) => s + Math.abs(Number(t?.amount) || 0), 0),
+        balance: row.balance,
+      }
+    })
+
+    console.log('[expense-balance-proof]', sample)
+  }, [viewMode, computedBalanceList, rawTransactions])
 
   return (
     <div style={iphoneWrapper}>
