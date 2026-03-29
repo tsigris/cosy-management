@@ -3,7 +3,11 @@ export const dynamic = 'force-dynamic'
 
 import { useEffect, useState, Suspense, useCallback, useMemo, useRef } from 'react'
 import { getSupabase } from '@/lib/supabase'
+import { formatBusinessDayDate, getTodayDateISO, parseDateInputSafe, toBusinessDayDateFromInput } from '@/lib/businessDate'
+import { getEmployees } from '@/lib/employees'
+import { formatDateEl } from '@/lib/formatters'
 import PermissionGuard from '@/components/PermissionGuard'
+import ReadOnlyBanner from '@/components/ReadOnlyBanner'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { toast, Toaster } from 'sonner'
@@ -24,32 +28,170 @@ const colors = {
 
 type PayBasis = 'monthly' | 'daily'
 
-// ✅ BUSINESS DAY CUTOFF (07:00)
-const BUSINESS_CUTOFF_HOUR = 7
+type EmployeeFormState = {
+  full_name: string
+  position: string
+  amka: string
+  iban: string
+  bank_name: string
+  monthly_salary: string
+  agreed_extra_salary: string
+  daily_rate: string
+  monthly_days: string
+  start_date: string
+}
+
+type PayrollSettlementWindow = {
+  periodStart: Date
+  periodEnd: Date
+  payrollAnchorDay: number
+}
+
+type PayrollSettlementPreview = {
+  periodStartDate: Date
+  periodEndDate: Date
+  periodStartLabel: string
+  periodEndLabel: string
+  monthlySalary: number
+  agreedExtraSalary: number
+  dailyCost: number
+  hourlyCost: number
+  includedDaysOffForPeriod: number
+  actualDaysOff: number
+  extraDaysOff: number
+  daysOffDeduction: number
+  totalAdvances: number
+  pendingOvertimeHours: number
+  pendingOvertimeAmount: number
+  payrollOnlyPayable: number
+  finalPayable: number
+  notes: string
+}
 
 // ✅ safest date parser (handles ISO/date-only/timestamp)
 const parseTxDate = (t: any): Date | null => {
   if (!t) return null
-  const raw = t.created_at || t.date
+  const raw = t.date || t.created_at
   if (!raw) return null
-  const d = new Date(raw)
-  return isNaN(d.getTime()) ? null : d
+  return parseDateInputSafe(raw)
 }
 
-// ✅ converts a timestamp to "business day date" (07:00 -> previous date)
-const toBusinessDayDate = (d: Date) => {
-  const bd = new Date(d)
-  if (bd.getHours() < BUSINESS_CUTOFF_HOUR) bd.setDate(bd.getDate() - 1)
-  // normalize to avoid time artifacts
-  bd.setHours(12, 0, 0, 0)
-  return bd
+const getBusinessYear = (d: Date) => d.getFullYear()
+const getBusinessMonth = (d: Date) => d.getMonth()
+
+const getIncludedDaysOff = (workDaysPerMonth: number) => {
+  if (workDaysPerMonth === 30) return 0
+  if (workDaysPerMonth === 26) return 4
+  if (workDaysPerMonth === 22) return 8
+  return 0
 }
 
-const getBusinessYear = (d: Date) => toBusinessDayDate(d).getFullYear()
-const getBusinessMonth = (d: Date) => toBusinessDayDate(d).getMonth()
+const formatShortDayMonth = (dateInput: string) => {
+  const d = parseDateInputSafe(dateInput)
+  if (!d) return '—'
+  if (isNaN(d.getTime())) return '—'
+  const day = String(d.getDate()).padStart(2, '0')
+  const month = String(d.getMonth() + 1).padStart(2, '0')
+  return `${day}/${month}`
+}
 
-// ✅ for UI display of "date" (business-day)
-const formatBusinessDateShort = (d: Date) => toBusinessDayDate(d).toLocaleDateString('el-GR')
+function getEmployeePayrollWindow(startDateInput: string | Date | null | undefined, asOfInput: string | Date): { periodStart: Date; periodEnd: Date } | null {
+  const startDate = toBusinessDayDateFromInput(startDateInput, { normalizeToNoon: true })
+  const asOfDate = toBusinessDayDateFromInput(asOfInput, { normalizeToNoon: true })
+
+  if (!startDate || isNaN(startDate.getTime())) return null
+  if (!asOfDate || isNaN(asOfDate.getTime())) return null
+  if (asOfDate < startDate) return null
+
+  const anchorDay = startDate.getDate()
+  const buildAnchor = (year: number, monthIndex: number) => {
+    const daysInMonth = new Date(year, monthIndex + 1, 0).getDate()
+    const day = Math.min(anchorDay, daysInMonth)
+    return new Date(year, monthIndex, day, 12, 0, 0, 0)
+  }
+
+  let periodStart = buildAnchor(asOfDate.getFullYear(), asOfDate.getMonth())
+  if (periodStart > asOfDate) {
+    periodStart = buildAnchor(asOfDate.getFullYear(), asOfDate.getMonth() - 1)
+  }
+
+  if (periodStart < startDate) {
+    periodStart = new Date(startDate)
+    periodStart.setHours(12, 0, 0, 0)
+  }
+
+  const nextPeriodStart = buildAnchor(periodStart.getFullYear(), periodStart.getMonth() + 1)
+  const periodEnd = new Date(nextPeriodStart)
+  periodEnd.setDate(periodEnd.getDate() - 1)
+  periodEnd.setHours(12, 0, 0, 0)
+
+  return { periodStart, periodEnd }
+}
+
+function getPayrollCalculationStart(employee: any): Date | null {
+  const lastSettlement = toBusinessDayDateFromInput(employee?.last_payroll_settlement_date, { normalizeToNoon: true })
+  if (lastSettlement && !isNaN(lastSettlement.getTime())) {
+    const nextDay = new Date(lastSettlement)
+    nextDay.setDate(nextDay.getDate() + 1)
+    nextDay.setHours(12, 0, 0, 0)
+    return nextDay
+  }
+
+  const startDate = toBusinessDayDateFromInput(employee?.start_date, { normalizeToNoon: true })
+  if (!startDate || isNaN(startDate.getTime())) return null
+  return startDate
+}
+
+function getPayrollSettlementWindow(employee: any, settlementDateInput: string | Date): PayrollSettlementWindow | null {
+  const settlementDate = toBusinessDayDateFromInput(settlementDateInput, { normalizeToNoon: true })
+  const periodStart = getPayrollCalculationStart(employee)
+
+  if (!settlementDate || isNaN(settlementDate.getTime())) return null
+  if (!periodStart || isNaN(periodStart.getTime())) return null
+  if (settlementDate < periodStart) return null
+
+  const rawAnchor = Number(employee?.payroll_anchor_day ?? 1)
+  const payrollAnchorDay = Number.isFinite(rawAnchor) ? Math.min(Math.max(Math.trunc(rawAnchor), 1), 31) : 1
+
+  return {
+    periodStart,
+    periodEnd: settlementDate,
+    payrollAnchorDay,
+  }
+}
+
+function toEmployeeFormState(source?: any): EmployeeFormState {
+  const payBasis: PayBasis = ((source?.pay_basis as PayBasis) || 'monthly')
+  const baseSalaryValue =
+    source?.monthly_salary ??
+    source?.agreed_base_salary ??
+    source?.taxable_salary ??
+    source?.base_salary ??
+    source?.salary ??
+    null
+
+  const agreedExtraValue =
+    source?.agreed_extra_salary ??
+    source?.extra_salary ??
+    source?.agreed_extra ??
+    0
+
+  const dailyRateValue = source?.daily_rate ?? null
+  const monthlyDaysValue = source?.monthly_days ?? source?.work_days_per_month ?? 26
+
+  return {
+    full_name: String(source?.name ?? source?.full_name ?? ''),
+    position: String(source?.position ?? ''),
+    amka: String(source?.amka ?? ''),
+    iban: String(source?.iban ?? source?.employee_iban ?? ''),
+    bank_name: String(source?.bank_name ?? source?.employee_bank ?? 'Εθνική Τράπεζα'),
+    monthly_salary: payBasis === 'monthly' && baseSalaryValue != null ? String(baseSalaryValue) : '',
+    agreed_extra_salary: payBasis === 'monthly' && agreedExtraValue != null ? String(agreedExtraValue) : '0',
+    daily_rate: payBasis === 'daily' && dailyRateValue != null ? String(dailyRateValue) : '',
+    monthly_days: String(monthlyDaysValue),
+    start_date: String(source?.start_date ?? getTodayDateISO()),
+  }
+}
 
 function EmployeesContent() {
   const supabase = getSupabase()
@@ -59,7 +201,11 @@ function EmployeesContent() {
 
   const [employees, setEmployees] = useState<any[]>([])
   const [transactions, setTransactions] = useState<any[]>([])
+  const [allStoreTransactions, setAllStoreTransactions] = useState<any[]>([])
   const [overtimes, setOvertimes] = useState<any[]>([])
+  const [employeeDaysOff, setEmployeeDaysOff] = useState<any[]>([])
+  const [employeeDayOffDateColumn, setEmployeeDayOffDateColumn] = useState<'off_date' | 'date'>('date')
+  const [payrollCardsByEmployeeId, setPayrollCardsByEmployeeId] = useState<Record<string, any>>({})
   const [loading, setLoading] = useState(true)
 
   const [isAdding, setIsAdding] = useState(false)
@@ -68,6 +214,8 @@ function EmployeesContent() {
 
   const [payBasis, setPayBasis] = useState<PayBasis>('monthly')
   const [viewYear, setViewYear] = useState(new Date().getFullYear())
+  const [kpiPeriod, setKpiPeriod] = useState<'today' | 'month'>('month')
+  const [storeDisplayName, setStoreDisplayName] = useState('Κατάστημα')
 
   // Active / Inactive
   const [showInactive, setShowInactive] = useState(false)
@@ -75,6 +223,20 @@ function EmployeesContent() {
   // States για overtime modal
   const [otModal, setOtModal] = useState<{ empId: string; name: string } | null>(null)
   const [otHours, setOtHours] = useState('')
+
+  // Payroll settlement modal
+  const [settlementModal, setSettlementModal] = useState<{
+    empId: string
+    name: string
+    settlementDate: string
+    employee: any
+    preview: PayrollSettlementPreview | null
+  } | null>(null)
+  const [isSettlingPayroll, setIsSettlingPayroll] = useState(false)
+
+  // States για days-off modal
+  const [dayOffModal, setDayOffModal] = useState<{ empId: string; name: string } | null>(null)
+  const [dayOffDates, setDayOffDates] = useState<string[]>([getTodayDateISO()])
 
   // Quick Tips (create)
   const [tipModal, setTipModal] = useState<{ empId: string; name: string } | null>(null)
@@ -103,17 +265,22 @@ function EmployeesContent() {
   ]
 
   // ✅ Form Data (includes monthly_days)
-  const [formData, setFormData] = useState({
-    full_name: '',
-    position: '',
-    amka: '',
-    iban: '',
-    bank_name: 'Εθνική Τράπεζα',
-    monthly_salary: '',
-    daily_rate: '',
-    monthly_days: '25', // ✅ default
-    start_date: new Date().toISOString().split('T')[0],
-  })
+  const [formData, setFormData] = useState<EmployeeFormState>(() => toEmployeeFormState())
+
+  const getDayOffDateValue = useCallback(
+    (row: any) => String(row?.[employeeDayOffDateColumn] ?? row?.off_date ?? row?.date ?? ''),
+    [employeeDayOffDateColumn],
+  )
+
+  const detectDayOffDateColumn = useCallback(async (): Promise<'off_date' | 'date'> => {
+    const offDateProbe = await supabase.from('employee_days_off').select('off_date').limit(1)
+    if (!offDateProbe.error) return 'off_date'
+
+    const dateProbe = await supabase.from('employee_days_off').select('date').limit(1)
+    if (!dateProbe.error) return 'date'
+
+    return 'date'
+  }, [])
 
   // ✅ Redirect if storeId is missing/invalid
   useEffect(() => {
@@ -127,13 +294,21 @@ function EmployeesContent() {
     try {
       if (!storeId || storeId === 'null') return
 
+      const start = new Date()
+      start.setDate(1)
+      start.setHours(0, 0, 0, 0)
+
+      const end = new Date(start)
+      end.setMonth(end.getMonth() + 1)
+
       const { data, error } = await supabase
         .from('transactions')
-        .select('id,date,created_at,notes,employee_id,amount,fixed_assets(name),type')
+        .select('id,date,created_at,notes,employee_id,fixed_asset_id,amount,type')
         .eq('store_id', storeId)
-        .ilike('notes', '%tips%')
+        .eq('type', 'tip_entry')
+        .gte('date', start.toISOString().slice(0, 10))
+        .lt('date', end.toISOString().slice(0, 10))
         .order('date', { ascending: false })
-        .limit(800)
 
       if (error) {
         console.error(error)
@@ -143,6 +318,7 @@ function EmployeesContent() {
       const now = new Date()
       const currentBusinessYear = getBusinessYear(now)
       const currentBusinessMonth = getBusinessMonth(now)
+      const employeeNamesById = new Map(employees.map((e: any) => [String(e.id), String(e.name || '')]))
 
       let monthlyTips = 0
 
@@ -155,7 +331,7 @@ function EmployeesContent() {
           if (!d) {
             return {
               id: t.id,
-              name: t?.fixed_assets?.name || '—',
+              name: employeeNamesById.get(String(t.employee_id || '')) || employeeNamesById.get(String(t.fixed_asset_id || '')) || t?.fixed_assets?.name || '—',
               date: t.date,
               amount: 0,
               note,
@@ -173,7 +349,7 @@ function EmployeesContent() {
 
           return {
             id: t.id,
-            name: t?.fixed_assets?.name || '—',
+            name: employeeNamesById.get(String(t.employee_id || '')) || employeeNamesById.get(String(t.fixed_asset_id || '')) || t?.fixed_assets?.name || '—',
             date: t.date,
             amount,
             note,
@@ -205,7 +381,7 @@ function EmployeesContent() {
     } catch (e) {
       console.error(e)
     }
-  }, [storeId])
+  }, [storeId, employees])
 
   const fetchInitialData = useCallback(async () => {
     setLoading(true)
@@ -220,26 +396,54 @@ function EmployeesContent() {
       } = await supabase.auth.getSession()
       if (!session?.user) return
 
-      const [empsRes, transRes, otRes] = await Promise.all([
-        supabase.from('fixed_assets').select('*').eq('store_id', storeId).eq('sub_category', 'staff').order('name'),
+      const dayOffDateColumn = await detectDayOffDateColumn()
+      setEmployeeDayOffDateColumn(dayOffDateColumn)
+      const dayOffSelect = dayOffDateColumn === 'off_date' ? 'id, employee_id, store_id, off_date' : 'id, employee_id, store_id, date'
+
+      const businessAsOfDate = getTodayDateISO()
+
+      const [empsRes, transRes, otRes, dayOffRes, allStoreTransRes, payrollSummaryRes, storeRes] = await Promise.all([
+        getEmployees(storeId),
         supabase
           .from('transactions')
           .select('*')
           .eq('store_id', storeId)
-          .not('fixed_asset_id', 'is', null)
+          .or('fixed_asset_id.not.is.null,employee_id.not.is.null')
           .order('date', { ascending: false }),
         supabase.from('employee_overtimes').select('*').eq('store_id', storeId).eq('is_paid', false),
+        supabase.from('employee_days_off').select(dayOffSelect).eq('store_id', storeId).order(dayOffDateColumn, { ascending: true }),
+        supabase.from('transactions').select('id,amount,date,created_at,category,type,notes,employee_id,fixed_asset_id').eq('store_id', storeId),
+        supabase.rpc('get_employee_payroll_cards_summary', {
+          p_store_id: storeId,
+          p_as_of_date: businessAsOfDate,
+        }),
+        supabase.from('stores').select('name').eq('id', storeId).maybeSingle(),
       ])
 
-      if (empsRes.data) setEmployees(empsRes.data)
+      if (empsRes) setEmployees(empsRes)
       if (transRes.data) setTransactions(transRes.data)
+      if (allStoreTransRes.data) setAllStoreTransactions(allStoreTransRes.data)
       if (otRes.data) setOvertimes(otRes.data)
+      if (dayOffRes.data) setEmployeeDaysOff(dayOffRes.data)
+      if (payrollSummaryRes.error) {
+        console.error(payrollSummaryRes.error)
+      }
+      if (payrollSummaryRes.data) {
+        const nextMap = (payrollSummaryRes.data as any[]).reduce((acc: Record<string, any>, row: any) => {
+          const key = String(row?.employee_id || '')
+          if (!key) return acc
+          acc[key] = row
+          return acc
+        }, {})
+        setPayrollCardsByEmployeeId(nextMap)
+      }
+      setStoreDisplayName(String(storeRes.data?.name || '').trim() || 'Κατάστημα')
     } catch (err) {
       console.error(err)
     } finally {
       setLoading(false)
     }
-  }, [storeId])
+  }, [storeId, detectDayOffDateColumn])
 
   useEffect(() => {
     fetchInitialData()
@@ -258,42 +462,334 @@ function EmployeesContent() {
   }, [storeId, router])
 
   // Φιλτράρισμα λίστας βάσει showInactive
-  // Hide employees with null store_id if not main store
-  const mainStoreId = 'e50a8803-a262-4303-9e90-c116c965e683'
+  // Tenant scoping is handled by getEmployees() at the DB layer (.or store_id/null)
   const visibleEmployees = employees.filter((emp) => {
     if (!showInactive && emp.is_active === false) return false
-    if (storeId && storeId !== mainStoreId && emp.store_id == null) return false
     return true
   })
+
+  const daysOffByEmployee = useMemo(() => {
+    return employeeDaysOff.reduce((acc: Record<string, any[]>, row: any) => {
+      const employeeId = String(row.employee_id || '')
+      if (!employeeId) return acc
+      if (!acc[employeeId]) acc[employeeId] = []
+      acc[employeeId].push(row)
+      return acc
+    }, {})
+  }, [employeeDaysOff])
+
+  const buildPayrollSettlementPreview = useCallback(
+    (employee: any, settlementDateInput: string | Date): PayrollSettlementPreview | null => {
+      const window = getPayrollSettlementWindow(employee, settlementDateInput)
+      if (!window) return null
+
+      const { periodStart, periodEnd } = window
+      const startTime = periodStart.getTime()
+      const endTime = periodEnd.getTime()
+      const daysInPeriod = Math.max(Math.floor((endTime - startTime) / (1000 * 60 * 60 * 24)) + 1, 0)
+
+      const monthlySalary = Number(employee?.monthly_salary ?? 0)
+      const agreedExtraSalary = Number(employee?.agreed_extra_salary ?? employee?.agreed_extra ?? 0)
+      const monthlyDays = Number(employee?.work_days_per_month ?? employee?.monthly_days ?? 0)
+      const isMonthlyEmployee = (employee?.pay_basis || 'monthly') === 'monthly'
+      const agreedMonthlyPay = monthlySalary + agreedExtraSalary
+
+      const dailyCost = isMonthlyEmployee
+        ? monthlyDays > 0 && Number.isFinite(agreedMonthlyPay)
+          ? agreedMonthlyPay / monthlyDays
+          : 0
+        : Number(employee?.daily_rate ?? 0)
+      const hourlyCost = dailyCost > 0 ? dailyCost / 8 : 0
+
+      const dayOffRows = (daysOffByEmployee[employee.id] || []).filter((row) => {
+        const businessDate = toBusinessDayDateFromInput(getDayOffDateValue(row), { normalizeToNoon: true })
+        if (!businessDate || isNaN(businessDate.getTime())) return false
+        return businessDate >= periodStart && businessDate <= periodEnd
+      })
+
+      const actualDaysOff = dayOffRows.length
+      const includedDaysOff = isMonthlyEmployee ? getIncludedDaysOff(monthlyDays) : 0
+      const includedDaysOffForPeriod =
+        isMonthlyEmployee && monthlyDays > 0
+          ? Math.max(0, Math.floor((includedDaysOff * Math.min(daysInPeriod, monthlyDays)) / monthlyDays))
+          : 0
+      const extraDaysOff = Math.max(actualDaysOff - includedDaysOffForPeriod, 0)
+      const daysOffDeduction = extraDaysOff * Math.max(dailyCost, 0)
+
+      const totalAdvances = transactions
+        .filter((t) => {
+          if (String(t.employee_id || '') !== employee.id && String(t.fixed_asset_id || '') !== employee.id) return false
+          if (String(t.type || '') !== 'salary_advance') return false
+          if (t.is_settled === true) return false
+          const d = parseTxDate(t)
+          if (!d) return false
+          return d >= periodStart && d <= periodEnd
+        })
+        .reduce((acc, t) => acc + Math.abs(Number(t.amount) || 0), 0)
+
+      const pendingOvertimeHours = overtimes
+        .filter((ot) => {
+          if (String(ot.employee_id || '') !== employee.id) return false
+          if (ot.is_paid === true) return false
+          const d = toBusinessDayDateFromInput(ot.date, { normalizeToNoon: true })
+          if (!d || isNaN(d.getTime())) return false
+          return d >= periodStart && d <= periodEnd
+        })
+        .reduce((acc, curr) => acc + Number(curr.hours || 0), 0)
+
+      const pendingOvertimeAmount = pendingOvertimeHours * Math.max(hourlyCost, 0)
+
+      const payrollBase = isMonthlyEmployee
+        ? Math.max(dailyCost, 0) * daysInPeriod
+        : Math.max(dailyCost, 0) * Math.max(daysInPeriod - actualDaysOff, 0)
+
+      const payrollOnlyPayable = payrollBase - totalAdvances + pendingOvertimeAmount - daysOffDeduction
+      const finalPayable = Math.max(payrollOnlyPayable, 0)
+
+      const periodStartLabel = formatBusinessDayDate(periodStart)
+      const periodEndLabel = formatBusinessDayDate(periodEnd)
+
+      return {
+        periodStartDate: periodStart,
+        periodEndDate: periodEnd,
+        periodStartLabel,
+        periodEndLabel,
+        monthlySalary,
+        agreedExtraSalary,
+        dailyCost: Math.max(dailyCost, 0),
+        hourlyCost: Math.max(hourlyCost, 0),
+        includedDaysOffForPeriod,
+        actualDaysOff,
+        extraDaysOff,
+        daysOffDeduction,
+        totalAdvances,
+        pendingOvertimeHours,
+        pendingOvertimeAmount,
+        payrollOnlyPayable,
+        finalPayable,
+        notes: `ΕΞΟΦΛΗΣΗ ΜΙΣΘΟΔΟΣΙΑΣ [${periodStartLabel} - ${periodEndLabel}] | Βασικός: ${monthlySalary.toFixed(2)} | Extra: ${agreedExtraSalary.toFixed(2)} | Προκαταβολές: ${totalAdvances.toFixed(2)} | Υπερωρίες: ${pendingOvertimeAmount.toFixed(2)} | Ρεπό: -${daysOffDeduction.toFixed(2)}`,
+      }
+    },
+    [daysOffByEmployee, getDayOffDateValue, overtimes, transactions],
+  )
 
   // ✅ HERO KPI: Σύνολο πληρωμών υπαλλήλων τρέχοντος ΜΗΝΑ (BUSINESS MONTH) (EXCLUDES tips)
   const currentMonthPayrollTotal = useMemo(() => {
     const now = new Date()
-    const y = getBusinessYear(now)
-    const m = getBusinessMonth(now)
+    const todayBusinessDate = now
+    const y = todayBusinessDate.getFullYear()
+    const m = todayBusinessDate.getMonth()
+    const day = todayBusinessDate.getDate()
 
     // μόνο υπάλληλοι που υπάρχουν στον πίνακα fixed_assets staff (για ασφάλεια)
     const staffIds = new Set(employees.map((e: any) => String(e.id)))
 
     return transactions
       .filter((t: any) => {
-        if (!t?.fixed_asset_id) return false
-        if (!staffIds.has(String(t.fixed_asset_id))) return false
+        const txEmployeeId = String(t?.employee_id || '')
+        const txFixedAssetId = String(t?.fixed_asset_id || '')
+        if (!txEmployeeId && !txFixedAssetId) return false
+        if (!staffIds.has(txEmployeeId) && !staffIds.has(txFixedAssetId)) return false
 
         const d = parseTxDate(t)
         if (!d) return false
 
-        if (getBusinessYear(d) !== y || getBusinessMonth(d) !== m) return false
+        const businessDate = d
+        if (kpiPeriod === 'today') {
+          if (businessDate.getFullYear() !== y || businessDate.getMonth() !== m || businessDate.getDate() !== day) return false
+        } else {
+          if (businessDate.getFullYear() !== y || businessDate.getMonth() !== m) return false
+        }
 
         // exclude tips (και παλιές/νέες εγγραφές)
         const note = String(t.notes || '')
-        const isTip = /tips/i.test(note) || String(t.type || '') === 'tip_entry'
+        const txType = String(t.type || '')
+        const isTip = /tips/i.test(note) || txType === 'tip_entry'
         if (isTip) return false
 
         return true
       })
       .reduce((acc: number, t: any) => acc + (Math.abs(Number(t.amount)) || 0), 0)
-  }, [transactions, employees])
+  }, [transactions, employees, kpiPeriod])
+
+  const kpiDateContext = useMemo(() => {
+    const now = new Date()
+    return {
+      today: now,
+      year: now.getFullYear(),
+      month: now.getMonth(),
+      monthStart: new Date(now.getFullYear(), now.getMonth(), 1),
+    }
+  }, [])
+
+  const accruedPayrollMonthToDate = useMemo(() => {
+    const msPerDay = 1000 * 60 * 60 * 24
+    const isTodayPeriod = kpiPeriod === 'today'
+
+    const toDateKey = (d: Date) => {
+      const y = d.getFullYear()
+      const m = String(d.getMonth() + 1).padStart(2, '0')
+      const day = String(d.getDate()).padStart(2, '0')
+      return `${y}-${m}-${day}`
+    }
+
+    const todayKey = toDateKey(kpiDateContext.today)
+
+    return employees.reduce((acc: number, emp: any) => {
+      const startRaw = emp?.start_date
+      if (!startRaw) return acc
+
+      const startDate = toBusinessDayDateFromInput(startRaw, { normalizeToNoon: true })
+      if (!startDate || isNaN(startDate.getTime())) return acc
+      if (startDate > kpiDateContext.today) return acc
+
+      const monthlyDays = Number(emp.work_days_per_month ?? emp.monthly_days ?? 0)
+      const isMonthlyEmployee = (emp.pay_basis || 'monthly') === 'monthly'
+      const monthlySalary = Number(emp.monthly_salary ?? 0)
+      const agreedExtraSalary = Number(emp.agreed_extra_salary ?? 0)
+      const agreedMonthlyPay = monthlySalary + agreedExtraSalary
+      const dailyRate = Number(emp.daily_rate ?? 0)
+
+      const perDayCost = isMonthlyEmployee
+        ? monthlyDays > 0 && Number.isFinite(agreedMonthlyPay) && agreedMonthlyPay > 0
+          ? agreedMonthlyPay / monthlyDays
+          : 0
+        : Number.isFinite(dailyRate) && dailyRate > 0
+          ? dailyRate
+          : 0
+
+      if (perDayCost <= 0) return acc
+
+      const dayOffDates = (daysOffByEmployee[emp.id] || [])
+        .map((row) => toBusinessDayDateFromInput(getDayOffDateValue(row), { normalizeToNoon: true }))
+        .filter((d): d is Date => d instanceof Date && !isNaN(d.getTime()))
+
+      if (isTodayPeriod) {
+        const hasDayOffToday = dayOffDates.some((d) => toDateKey(d) === todayKey)
+        return acc + (hasDayOffToday ? 0 : perDayCost)
+      }
+
+      const periodStart = startDate < kpiDateContext.monthStart ? kpiDateContext.monthStart : startDate
+      if (periodStart > kpiDateContext.today) return acc
+
+      const totalDays = Math.floor((kpiDateContext.today.getTime() - periodStart.getTime()) / msPerDay) + 1
+      if (totalDays <= 0) return acc
+
+      const dayOffsInPeriod = dayOffDates.filter((d) => d >= periodStart && d <= kpiDateContext.today).length
+      const workedDays = Math.max(totalDays - dayOffsInPeriod, 0)
+      return acc + workedDays * perDayCost
+    }, 0)
+  }, [employees, daysOffByEmployee, getDayOffDateValue, kpiDateContext, kpiPeriod])
+
+  const totalTodayStaffCost = useMemo(() => {
+    const toDateKey = (d: Date) => {
+      const y = d.getFullYear()
+      const m = String(d.getMonth() + 1).padStart(2, '0')
+      const day = String(d.getDate()).padStart(2, '0')
+      return `${y}-${m}-${day}`
+    }
+
+    const today = new Date()
+    const todayKey = toDateKey(today)
+
+    return employees.reduce((acc: number, emp: any) => {
+      const startRaw = emp?.start_date
+      if (!startRaw) return acc
+
+      const startDate = toBusinessDayDateFromInput(startRaw, { normalizeToNoon: true })
+      if (!startDate || isNaN(startDate.getTime()) || startDate > today) return acc
+
+      const monthlyDays = Number(emp.work_days_per_month ?? emp.monthly_days ?? 0)
+      const isMonthlyEmployee = (emp.pay_basis || 'monthly') === 'monthly'
+      const monthlySalary = Number(emp.monthly_salary ?? 0)
+      const agreedExtraSalary = Number(emp.agreed_extra_salary ?? 0)
+      const agreedMonthlyPay = monthlySalary + agreedExtraSalary
+      const dailyRate = Number(emp.daily_rate ?? 0)
+
+      const dailyCost = isMonthlyEmployee
+        ? monthlyDays > 0 && Number.isFinite(agreedMonthlyPay) && agreedMonthlyPay > 0
+          ? agreedMonthlyPay / monthlyDays
+          : 0
+        : Number.isFinite(dailyRate) && dailyRate > 0
+          ? dailyRate
+          : 0
+
+      if (dailyCost <= 0) return acc
+
+      const hasDayOffToday = (daysOffByEmployee[emp.id] || []).some((row) => {
+        const dayOffDate = toBusinessDayDateFromInput(getDayOffDateValue(row), { normalizeToNoon: true })
+        if (!dayOffDate || isNaN(dayOffDate.getTime())) return false
+        return toDateKey(dayOffDate) === todayKey
+      })
+
+      return acc + (hasDayOffToday ? 0 : dailyCost)
+    }, 0)
+  }, [employees, daysOffByEmployee, getDayOffDateValue])
+
+  const requiredRevenue = useMemo(() => {
+    if (totalTodayStaffCost <= 0) return 0
+    return totalTodayStaffCost / 0.25
+  }, [totalTodayStaffCost])
+
+  const revenueTotalForSelectedPeriod = useMemo(() => {
+    return allStoreTransactions
+      .filter((t: any) => {
+        const d = parseTxDate(t)
+        if (!d) return false
+
+        const businessDate = d
+        if (kpiPeriod === 'today') {
+          const isToday =
+            businessDate.getFullYear() === kpiDateContext.year &&
+            businessDate.getMonth() === kpiDateContext.month &&
+            businessDate.getDate() === kpiDateContext.today.getDate()
+          if (!isToday) return false
+        } else {
+          const sameMonth = businessDate.getFullYear() === kpiDateContext.year && businessDate.getMonth() === kpiDateContext.month
+          if (!sameMonth) return false
+          if (businessDate > kpiDateContext.today) return false
+        }
+
+        const amount = Number(t.amount) || 0
+        if (amount <= 0) return false
+
+        const note = String(t.notes || '')
+        const txType = String(t.type || '')
+        const category = String(t.category || '').toLowerCase()
+        const isTip = /tips/i.test(note) || txType === 'tip_entry'
+        if (isTip) return false
+        if (category === 'staff') return false
+
+        return true
+      })
+      .reduce((acc: number, t: any) => acc + (Number(t.amount) || 0), 0)
+  }, [allStoreTransactions, kpiDateContext, kpiPeriod])
+
+  const payrollPercentOfRevenue = useMemo(() => {
+    if (revenueTotalForSelectedPeriod <= 0) return 0
+    return (accruedPayrollMonthToDate / revenueTotalForSelectedPeriod) * 100
+  }, [accruedPayrollMonthToDate, revenueTotalForSelectedPeriod])
+
+  const payrollPctVisual = useMemo(() => {
+    if (payrollPercentOfRevenue <= 30) {
+      return {
+        card: { border: '1px solid #86efac', backgroundColor: '#f0fdf4' },
+        valueColor: '#15803d',
+      }
+    }
+
+    if (payrollPercentOfRevenue <= 35) {
+      return {
+        card: { border: '1px solid #fecdd3', backgroundColor: '#fff1f2' },
+        valueColor: '#e11d48',
+      }
+    }
+
+    return {
+      card: { border: '1px solid #ef4444', backgroundColor: '#fee2e2' },
+      valueColor: '#b91c1c',
+    }
+  }, [payrollPercentOfRevenue])
 
   // ✅ Toggle Active/Inactive (Supabase)  (fixed_assets)
   async function toggleActive(empId: string, currentValue: boolean | null | undefined) {
@@ -328,11 +824,6 @@ function EmployeesContent() {
     fetchInitialData()
   }
 
-  // ✅ Υπολογισμός εκκρεμών ωρών (uses employee_id)
-  const getPendingOtHours = (empId: string) => {
-    return overtimes.filter((ot) => ot.employee_id === empId).reduce((acc, curr) => acc + Number(curr.hours), 0)
-  }
-
   const getDefaultOvertimeHourlyRate = (empId: string) => {
     const employee = employees.find((emp) => emp.id === empId)
     if (!employee) return 0
@@ -341,8 +832,10 @@ function EmployeesContent() {
     if (Number.isFinite(dailyRate) && dailyRate > 0) return dailyRate / 8
 
     const monthlySalary = Number(employee.monthly_salary)
+    const agreedExtraSalary = Number(employee.agreed_extra_salary ?? employee.agreed_extra ?? 0)
+    const agreedMonthlyPay = monthlySalary + agreedExtraSalary
     const monthlyDays = Number(employee.monthly_days) || 25
-    if (Number.isFinite(monthlySalary) && monthlySalary > 0 && monthlyDays > 0) return monthlySalary / (monthlyDays * 8)
+    if (Number.isFinite(agreedMonthlyPay) && agreedMonthlyPay > 0 && monthlyDays > 0) return agreedMonthlyPay / (monthlyDays * 8)
 
     return 0
   }
@@ -376,7 +869,7 @@ function EmployeesContent() {
         employee_id: otModal.empId,
         store_id: tenantStoreId,
         hours: hoursNum,
-        date: new Date().toISOString().split('T')[0],
+        date: getTodayDateISO(),
         is_paid: false,
       }
 
@@ -434,48 +927,19 @@ function EmployeesContent() {
     }
 
     try {
-      const today = new Date().toISOString().split('T')[0]
-      const { data: insertedOt, error: overtimeError } = await supabase
-        .from('employee_overtimes')
-        .insert([
-          {
-            employee_id: otModal.empId,
-            store_id: tenantStoreId,
-            hours: hoursNum,
-            date: today,
-            is_paid: true,
-          },
-        ])
-        .select('id')
-        .single()
+      const today = getTodayDateISO()
+      const { error: overtimePayErr } = await supabase.rpc('overtime_pay_now_atomic', {
+        p_store_id: tenantStoreId,
+        p_employee_id: otModal.empId,
+        p_hours: hoursNum,
+        p_payment_amount: amountNum,
+        p_method: 'Μετρητά',
+        p_date: today,
+        p_notes: `Άμεση πληρωμή υπερωρίας: ${hoursNum} ώρες`,
+        p_category: 'Staff',
+      })
 
-      if (overtimeError) {
-        console.error(overtimeError)
-        toast.error('Αποτυχία καταγραφής και άμεσης πληρωμής υπερωρίας.')
-        return
-      }
-
-      const { error: transactionError } = await supabase.from('transactions').insert([
-        {
-          store_id: tenantStoreId,
-          fixed_asset_id: otModal.empId,
-          amount: amountNum,
-          type: 'expense',
-          category: 'Staff',
-          method: 'Μετρητά',
-          date: today,
-          notes: `Άμεση πληρωμή υπερωρίας: ${hoursNum} ώρες`,
-        },
-      ])
-
-      if (transactionError) {
-        console.error(transactionError)
-        if (insertedOt?.id) {
-          await supabase.from('employee_overtimes').delete().eq('id', insertedOt.id).eq('store_id', tenantStoreId)
-        }
-        toast.error('Η υπερωρία καταγράφηκε, αλλά απέτυχε η συναλλαγή πληρωμής.')
-        return
-      }
+      if (overtimePayErr) throw overtimePayErr
 
       toast.success(`Καταχωρήθηκε και πληρώθηκε άμεσα υπερωρία ${hoursNum} ωρών.`)
       setOtModal(null)
@@ -509,6 +973,151 @@ function EmployeesContent() {
     fetchInitialData()
   }
 
+  const openPayrollSettlementModal = useCallback(
+    (employee: any) => {
+      const settlementDate = getTodayDateISO()
+      const preview = buildPayrollSettlementPreview(employee, settlementDate)
+      if (!preview) {
+        toast.error('Δεν βρέθηκε έγκυρη ανοιχτή περίοδος εξόφλησης.')
+        return
+      }
+
+      setSettlementModal({
+        empId: String(employee.id),
+        name: String(employee.name || ''),
+        settlementDate,
+        employee,
+        preview,
+      })
+    },
+    [buildPayrollSettlementPreview],
+  )
+
+  async function handleConfirmPayrollSettlement() {
+    if (!settlementModal) return
+
+    let tenantStoreId: string
+    try {
+      tenantStoreId = requireTenantStoreId()
+    } catch (error) {
+      console.error(error)
+      return
+    }
+
+    if (!settlementModal.preview) {
+      toast.error('Δεν υπάρχει έγκυρος υπολογισμός εξόφλησης.')
+      return
+    }
+
+    const openPeriodStart = getPayrollCalculationStart(settlementModal.employee)
+    const settlementDate = toBusinessDayDateFromInput(settlementModal.settlementDate, { normalizeToNoon: true })
+    if (!openPeriodStart || !settlementDate || isNaN(openPeriodStart.getTime()) || isNaN(settlementDate.getTime())) {
+      toast.error('Μη έγκυρη περίοδος εξόφλησης.')
+      return
+    }
+    if (settlementDate < openPeriodStart) {
+      toast.error(`Η ημερομηνία εξόφλησης πρέπει να είναι από ${formatBusinessDayDate(openPeriodStart)} και μετά.`)
+      return
+    }
+
+    const shouldProceed = confirm('Είσαι σίγουρος ότι θέλεις να κλείσεις αυτή την περίοδο;')
+    if (!shouldProceed) return
+
+    setIsSettlingPayroll(true)
+    try {
+      const { error } = await supabase.rpc('settle_employee_payroll_period_atomic', {
+        p_store_id: tenantStoreId,
+        p_employee_id: settlementModal.empId,
+        p_settlement_date: settlementModal.settlementDate,
+        p_method: 'Μετρητά',
+        p_notes: settlementModal.preview.notes,
+      })
+
+      if (error) throw error
+
+      toast.success(`Η μισθοδοσία του/της ${settlementModal.name} εξοφλήθηκε και έγινε ανανέωση.`)
+      setSettlementModal(null)
+      fetchInitialData()
+    } catch (error) {
+      console.error(error)
+      toast.error('Αποτυχία εξόφλησης μισθοδοσίας.')
+    } finally {
+      setIsSettlingPayroll(false)
+    }
+  }
+
+  async function handleAddDayOff() {
+    if (!dayOffModal) return
+
+    let tenantStoreId: string
+    try {
+      tenantStoreId = requireTenantStoreId()
+    } catch (error) {
+      console.error(error)
+      return
+    }
+
+    const normalizedDates = Array.from(new Set(dayOffDates.map((d) => String(d || '').slice(0, 10)).filter(Boolean)))
+    if (normalizedDates.length === 0) {
+      toast.error('Πρόσθεσε τουλάχιστον μία ημερομηνία.')
+      return
+    }
+
+    const existingDates = new Set(
+      employeeDaysOff
+        .filter((row) => row.employee_id === dayOffModal.empId)
+        .map((row) => getDayOffDateValue(row).slice(0, 10))
+        .filter(Boolean),
+    )
+
+    const datesToInsert = normalizedDates.filter((d) => !existingDates.has(d))
+    if (datesToInsert.length === 0) {
+      toast.error('Οι επιλεγμένες ημερομηνίες υπάρχουν ήδη.')
+      return
+    }
+
+    const dayOffPayloads = datesToInsert.map((d) => ({
+      employee_id: dayOffModal.empId,
+      store_id: tenantStoreId,
+      off_date: d,
+    }))
+
+    const { error } = await supabase.from('employee_days_off').insert(dayOffPayloads)
+
+    if (error) {
+      console.error(error)
+      toast.error('Αποτυχία αποθήκευσης ρεπό.')
+      return
+    }
+
+    const skippedCount = normalizedDates.length - datesToInsert.length
+    toast.success(skippedCount > 0 ? `Καταχωρήθηκαν ${datesToInsert.length} ρεπό (${skippedCount} παραλείφθηκαν).` : `Καταχωρήθηκαν ${datesToInsert.length} ρεπό για ${dayOffModal.name}`)
+    setDayOffModal(null)
+    setDayOffDates([getTodayDateISO()])
+    fetchInitialData()
+  }
+  async function handleDeleteDayOff(dayOffId: string) {
+    if (!confirm('Να διαγραφεί αυτό το ρεπό;')) return
+
+    let tenantStoreId: string
+    try {
+      tenantStoreId = requireTenantStoreId()
+    } catch (error) {
+      console.error(error)
+      return
+    }
+
+    const { error } = await supabase.from('employee_days_off').delete().eq('id', dayOffId).eq('store_id', tenantStoreId)
+    if (error) {
+      console.error(error)
+      toast.error('Αποτυχία διαγραφής ρεπό.')
+      return
+    }
+
+    toast.success('Το ρεπό διαγράφηκε ✅')
+    fetchInitialData()
+  }
+
   // ✅ Καταγραφή νέων Tips σαν transaction
   async function handleQuickTip() {
     if (!tipAmount || !tipModal) return
@@ -527,11 +1136,12 @@ function EmployeesContent() {
       return
     }
 
-    const today = new Date().toISOString().split('T')[0]
+    const today = getTodayDateISO()
 
     const { error } = await supabase.from('transactions').insert([
       {
         store_id: tenantStoreId,
+        employee_id: tipModal.empId,
         fixed_asset_id: tipModal.empId,
         amount: amountNum,
         type: 'tip_entry', // ✅ tips as dedicated type
@@ -625,7 +1235,8 @@ function EmployeesContent() {
     if (!hireDateStr) return null
     const today = new Date()
     today.setHours(0, 0, 0, 0)
-    const hireDate = new Date(hireDateStr)
+    const hireDate = parseDateInputSafe(hireDateStr)
+    if (!hireDate) return null
     hireDate.setHours(0, 0, 0, 0)
     let nextPayDate = new Date(hireDate)
     nextPayDate.setMonth(nextPayDate.getMonth() + 1)
@@ -639,7 +1250,7 @@ function EmployeesContent() {
   // - tips ΔΕΝ υπολογίζονται στο stats.total (ΣΥΝΟΛΟ ΕΤΟΥΣ)
   const getYearlyStats = (id: string) => {
     const yearTrans = transactions.filter((t) => {
-      if (t.fixed_asset_id !== id) return false
+      if (String(t.employee_id || '') !== id && String(t.fixed_asset_id || '') !== id) return false
       const d = parseTxDate(t)
       if (!d) return false
       return getBusinessYear(d) === viewYear
@@ -650,24 +1261,29 @@ function EmployeesContent() {
 
     yearTrans.forEach((t) => {
       const note = String(t.notes || '')
-      const isTip = /tips/i.test(note) || String(t.type || '') === 'tip_entry'
+      const txType = String(t.type || '')
+      const isTip = /tips/i.test(note) || txType === 'tip_entry'
+      const isAdvance = txType === 'salary_advance'
 
       if (!isTip) {
         stats.total += Number(t.amount) || 0
       }
 
       const d = parseTxDate(t)
-      const key = d ? getBusinessYear(d) + '-' + getBusinessMonth(d) + '-' + toBusinessDayDate(d).getDate() : String(t.date || '')
+      const key = d ? getBusinessYear(d) + '-' + getBusinessMonth(d) + '-' + d.getDate() : String(t.date || '')
       if (!processedDates.has(key)) {
-        const extract = (label: string) => {
-          const regex = new RegExp(`${label}:\\s*(\\d+(\\.\\d+)?)`, 'i')
-          const match = note.match(regex)
-          return match ? parseFloat(match[1]) : 0
-        }
+        // skip extracting base/overtime/bonus for tips or advances
+        if (!isTip && !isAdvance) {
+          const extract = (label: string) => {
+            const regex = new RegExp(`${label}:\\s*(\\d+(\\.\\d+)?)`, 'i')
+            const match = note.match(regex)
+            return match ? parseFloat(match[1]) : 0
+          }
 
-        stats.base += extract('Βασικός')
-        stats.overtime += extract('Υπερ.')
-        stats.bonus += extract('Bonus')
+          stats.base += extract('Βασικός')
+          stats.overtime += extract('Υπερ.')
+          stats.bonus += extract('Bonus')
+        }
 
         if (isTip) {
           const amt = Number(t.amount) || 0
@@ -694,8 +1310,11 @@ function EmployeesContent() {
     start_date: string | null
     pay_basis: PayBasis
     monthly_salary: number | null
+    agreed_extra_salary: number
     daily_rate: number | null
     monthly_days: number
+    bank_name: string
+    iban: string
     is_active: boolean
   }
 
@@ -721,6 +1340,7 @@ function EmployeesContent() {
     }
 
     const monthlySalaryNum = Number(formData.monthly_salary)
+    const agreedExtraSalaryNum = Number(formData.agreed_extra_salary)
     const dailyRateNum = Number(formData.daily_rate)
 
     const payload: FixedAssetStaffPayload = {
@@ -730,8 +1350,11 @@ function EmployeesContent() {
       start_date: formData.start_date || null,
       pay_basis: payBasis,
       monthly_salary: payBasis === 'monthly' && Number.isFinite(monthlySalaryNum) ? monthlySalaryNum : null,
+      agreed_extra_salary: payBasis === 'monthly' && Number.isFinite(agreedExtraSalaryNum) ? agreedExtraSalaryNum : 0,
       daily_rate: payBasis === 'daily' && Number.isFinite(dailyRateNum) ? dailyRateNum : null,
       monthly_days: monthlyDaysNum,
+      bank_name: formData.bank_name || 'Εθνική Τράπεζα',
+      iban: formData.iban || '',
       is_active: true,
     }
 
@@ -754,7 +1377,7 @@ function EmployeesContent() {
     setLoading(false)
   }
 
-  // ✅ Delete staff: delete transactions by fixed_asset_id, then delete fixed_assets
+  // ✅ Delete staff: transition cleanup by employee_id OR fixed_asset_id, then delete fixed_assets
   async function deleteEmployee(id: string, name: string) {
     if (!confirm(`Οριστική διαγραφή του/της ${name}; Θα σβηστεί και το ιστορικό.`)) return
 
@@ -768,7 +1391,11 @@ function EmployeesContent() {
 
     setLoading(true)
 
-    const { error: transErr } = await supabase.from('transactions').delete().eq('fixed_asset_id', id).eq('store_id', tenantStoreId)
+    const { error: transErr } = await supabase
+      .from('transactions')
+      .delete()
+      .eq('store_id', tenantStoreId)
+      .or(`employee_id.eq.${id},fixed_asset_id.eq.${id}`)
     if (transErr) {
       console.error(transErr)
       toast.error('Αποτυχία διαγραφής συναλλαγών.')
@@ -809,25 +1436,20 @@ function EmployeesContent() {
   }
 
   const resetForm = () => {
-    setFormData({
-      full_name: '',
-      position: '',
-      amka: '',
-      iban: '',
-      bank_name: 'Εθνική Τράπεζα',
-      monthly_salary: '',
-      daily_rate: '',
-      monthly_days: '25',
-      start_date: new Date().toISOString().split('T')[0],
-    })
+    setFormData(toEmployeeFormState())
     setPayBasis('monthly')
     setEditingId(null)
   }
 
   // ✅ current month label (BUSINESS MONTH)
   const currentMonthLabel = useMemo(() => {
-    const d = toBusinessDayDate(new Date())
+    const d = new Date()
     return d.toLocaleString('el-GR', { month: 'long', year: 'numeric' }).toUpperCase()
+  }, [])
+
+  const selectedBusinessMonth = useMemo(() => {
+    const d = new Date()
+    return { year: d.getFullYear(), month: d.getMonth() }
   }, [])
 
   const isEditMode = Boolean(editingId)
@@ -840,10 +1462,10 @@ function EmployeesContent() {
 
           <div style={{ maxWidth: '500px', margin: '0 auto', paddingBottom: '100px' }}>
             {/* HEADER */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
                 <div style={logoBoxStyle}>👥</div>
-                <h1 style={{ fontWeight: '800', fontSize: '22px', margin: 0, color: colors.primaryDark }}>Υπάλληλοι</h1>
+                <h1 style={{ fontWeight: '800', fontSize: '22px', margin: 0, color: 'var(--text)' }}>Προσωπικό</h1>
 
                 {/* ✅ Back link preserves SaaS context */}
                 <Link href={`/?store=${storeId}`} style={backBtnStyle}>
@@ -852,14 +1474,24 @@ function EmployeesContent() {
               </div>
             </div>
 
-            {!checkingPermission && !isAdmin && <div style={readOnlyBannerStyle}>Read-only access</div>}
+            <div style={headerFiltersRow}>
+              <button type="button" onClick={() => setKpiPeriod('today')} style={kpiPeriod === 'today' ? headerFilterChipActive : headerFilterChip}>
+                Today
+              </button>
+              <button type="button" onClick={() => setKpiPeriod('month')} style={kpiPeriod === 'month' ? headerFilterChipActive : headerFilterChip}>
+                Month
+              </button>
+              <span style={{ ...headerFilterChip, cursor: 'default' }}>Store: {storeDisplayName.toUpperCase()}</span>
+            </div>
+
+            <ReadOnlyBanner isAdmin={isAdmin} isLoading={checkingPermission} />
 
             {/* ✅ CREATE TIPS MODAL */}
             {tipModal && (
               <div style={modalOverlay}>
                 <div style={modalCard}>
                   <h3 style={{ margin: 0, fontSize: '16px' }}>Καταγραφή Tips</h3>
-                  <p style={{ fontSize: '12px', color: colors.secondaryText }}>{tipModal.name}</p>
+                  <p style={{ fontSize: '12px', color: 'var(--muted)' }}>{tipModal.name}</p>
                   <input
                     type="number"
                     placeholder="Ποσό tips (π.χ. 10)"
@@ -894,7 +1526,7 @@ function EmployeesContent() {
               <div style={modalOverlay}>
                 <div style={modalCard}>
                   <h3 style={{ margin: 0, fontSize: '16px' }}>Επεξεργασία Tips</h3>
-                  <p style={{ fontSize: '12px', color: colors.secondaryText }}>{tipEditModal.name}</p>
+                  <p style={{ fontSize: '12px', color: 'var(--muted)' }}>{tipEditModal.name}</p>
                   <input
                     type="number"
                     placeholder="Νέο ποσό tips"
@@ -926,7 +1558,7 @@ function EmployeesContent() {
               <div style={modalOverlay}>
                 <div style={modalCard}>
                   <h3 style={{ margin: 0, fontSize: '16px' }}>Καταγραφή Υπερωρίας</h3>
-                  <p style={{ fontSize: '12px', color: colors.secondaryText }}>{otModal.name}</p>
+                  <p style={{ fontSize: '12px', color: 'var(--muted)' }}>{otModal.name}</p>
                   <input
                     type="number"
                     placeholder="Ώρες (π.χ. 1.5)"
@@ -960,6 +1592,194 @@ function EmployeesContent() {
               </div>
             )}
 
+            {/* DAYS OFF MODAL */}
+            {dayOffModal && (
+              <div style={modalOverlay}>
+                <div style={modalCard}>
+                  <h3 style={{ margin: 0, fontSize: '16px' }}>Καταγραφή Ρεπό</h3>
+                  <p style={{ fontSize: '12px', color: 'var(--muted)' }}>{dayOffModal.name}</p>
+
+                  <div style={{ marginTop: '15px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    {dayOffDates.map((dateValue, idx) => (
+                      <div key={`${dateValue}-${idx}`} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <input
+                          type="date"
+                          value={dateValue}
+                          onChange={(e) => {
+                            const next = [...dayOffDates]
+                            next[idx] = e.target.value
+                            setDayOffDates(next)
+                          }}
+                          style={{ ...inputStyle, marginTop: 0, flex: 1 }}
+                          autoFocus={idx === 0}
+                        />
+                        {dayOffDates.length > 1 && (
+                          <button
+                            type="button"
+                            style={miniIconBtnDanger}
+                            title="Αφαίρεση ημερομηνίας"
+                            onClick={() => setDayOffDates((prev) => prev.filter((_, i) => i !== idx))}
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setDayOffDates((prev) => [...prev, getTodayDateISO()])}
+                    style={{ ...cancelBtnSmall, width: '100%', marginTop: '10px' }}
+                  >
+                    + ΠΡΟΣΘΗΚΗ ΗΜΕΡΟΜΗΝΙΑΣ
+                  </button>
+
+                  <div style={{ display: 'flex', gap: '10px', marginTop: '20px' }}>
+                    <button
+                      onClick={() => {
+                        setDayOffModal(null)
+                        setDayOffDates([getTodayDateISO()])
+                      }}
+                      style={cancelBtnSmall}
+                    >
+                      ΑΚΥΡΟ
+                    </button>
+                    <button onClick={handleAddDayOff} style={saveBtnSmall}>
+                      ΑΠΟΘΗΚΕΥΣΗ
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {settlementModal && (
+              <div style={modalOverlay}>
+                <div style={{ ...modalCard, maxWidth: '440px', textAlign: 'left' }}>
+                  <h3 style={{ margin: 0, fontSize: '18px', color: 'var(--text)' }}>Εξόφληση Μισθοδοσίας</h3>
+                  <p style={{ margin: '6px 0 0 0', fontSize: '12px', color: 'var(--muted)', fontWeight: 700 }}>{settlementModal.name}</p>
+
+                  <div style={{ marginTop: '14px' }}>
+                    <label style={labelStyle}>Ημερομηνία εξόφλησης</label>
+                    <input
+                      type="date"
+                      value={settlementModal.settlementDate}
+                      onChange={(e) => {
+                        const nextDate = e.target.value
+                        setSettlementModal((prev) => {
+                          if (!prev) return prev
+                          return {
+                            ...prev,
+                            settlementDate: nextDate,
+                            preview: buildPayrollSettlementPreview(prev.employee, nextDate),
+                          }
+                        })
+                      }}
+                      style={inputStyle}
+                    />
+                    {(() => {
+                      const openPeriodStart = getPayrollCalculationStart(settlementModal.employee)
+                      const settlementDate = toBusinessDayDateFromInput(settlementModal.settlementDate, { normalizeToNoon: true })
+                      const isInvalidDate =
+                        !!openPeriodStart &&
+                        !!settlementDate &&
+                        !isNaN(openPeriodStart.getTime()) &&
+                        !isNaN(settlementDate.getTime()) &&
+                        settlementDate < openPeriodStart
+
+                      if (!isInvalidDate) return null
+
+                      return (
+                        <p style={{ margin: '8px 0 0 0', fontSize: '11px', color: colors.accentRed, fontWeight: 800 }}>
+                          Η ημερομηνία εξόφλησης δεν μπορεί να είναι πριν από την έναρξη ανοιχτής περιόδου ({formatBusinessDayDate(openPeriodStart)}).
+                        </p>
+                      )
+                    })()}
+                  </div>
+
+                  {settlementModal.preview ? (
+                    <div style={{ marginTop: '14px', border: '1px solid var(--border)', borderRadius: '12px', padding: '12px', background: 'var(--surface)' }}>
+                      <p style={{ margin: 0, fontWeight: 900, fontSize: '11px', color: 'var(--muted)' }}>
+                        ΠΕΡΙΟΔΟΣ: {settlementModal.preview.periodStartLabel} - {settlementModal.preview.periodEndLabel}
+                      </p>
+                      <p style={{ margin: '8px 0 0 0', fontWeight: 700, fontSize: '12px', color: 'var(--muted)' }}>
+                        Βασικός: {settlementModal.preview.monthlySalary.toFixed(2)}€
+                      </p>
+                      <p style={{ margin: '4px 0 0 0', fontWeight: 700, fontSize: '12px', color: 'var(--muted)' }}>
+                        Συμφωνημένο extra: {settlementModal.preview.agreedExtraSalary.toFixed(2)}€
+                      </p>
+                      <p style={{ margin: '4px 0 0 0', fontWeight: 700, fontSize: '12px', color: 'var(--muted)' }}>
+                        Προκαταβολές: {settlementModal.preview.totalAdvances.toFixed(2)}€
+                      </p>
+                      <p style={{ margin: '4px 0 0 0', fontWeight: 700, fontSize: '12px', color: 'var(--muted)' }}>
+                        Εκκρεμείς υπερωρίες: {settlementModal.preview.pendingOvertimeHours.toFixed(2)} ώρες / {settlementModal.preview.pendingOvertimeAmount.toFixed(2)}€
+                      </p>
+                      <p style={{ margin: '4px 0 0 0', fontWeight: 700, fontSize: '12px', color: 'var(--muted)' }}>
+                        Αφαίρεση extra ρεπό: {settlementModal.preview.daysOffDeduction.toFixed(2)}€
+                      </p>
+                      <p style={{ margin: '10px 0 0 0', fontWeight: 900, fontSize: '14px', color: 'var(--text)' }}>
+                        Τελικό πληρωτέο: {settlementModal.preview.finalPayable.toFixed(2)}€
+                      </p>
+                    </div>
+                  ) : (
+                    <p style={{ marginTop: '12px', fontSize: '12px', color: colors.accentRed, fontWeight: 700 }}>
+                      Δεν βρέθηκε έγκυρη ανοιχτή περίοδος για εξόφληση.
+                    </p>
+                  )}
+
+                  <div style={{ display: 'flex', gap: '10px', marginTop: '18px' }}>
+                    <button onClick={() => setSettlementModal(null)} style={cancelBtnSmall}>
+                      ΑΚΥΡΟ
+                    </button>
+                    <button
+                      onClick={handleConfirmPayrollSettlement}
+                      disabled={
+                        isSettlingPayroll ||
+                        !settlementModal.preview ||
+                        (() => {
+                          const openPeriodStart = getPayrollCalculationStart(settlementModal.employee)
+                          const settlementDate = toBusinessDayDateFromInput(settlementModal.settlementDate, { normalizeToNoon: true })
+                          if (!openPeriodStart || !settlementDate) return false
+                          if (isNaN(openPeriodStart.getTime()) || isNaN(settlementDate.getTime())) return true
+                          return settlementDate < openPeriodStart
+                        })()
+                      }
+                      style={{
+                        ...saveBtnSmall,
+                        backgroundColor: colors.accentGreen,
+                        opacity:
+                          isSettlingPayroll ||
+                          !settlementModal.preview ||
+                          (() => {
+                            const openPeriodStart = getPayrollCalculationStart(settlementModal.employee)
+                            const settlementDate = toBusinessDayDateFromInput(settlementModal.settlementDate, { normalizeToNoon: true })
+                            if (!openPeriodStart || !settlementDate) return false
+                            if (isNaN(openPeriodStart.getTime()) || isNaN(settlementDate.getTime())) return true
+                            return settlementDate < openPeriodStart
+                          })()
+                            ? 0.6
+                            : 1,
+                        cursor:
+                          isSettlingPayroll ||
+                          !settlementModal.preview ||
+                          (() => {
+                            const openPeriodStart = getPayrollCalculationStart(settlementModal.employee)
+                            const settlementDate = toBusinessDayDateFromInput(settlementModal.settlementDate, { normalizeToNoon: true })
+                            if (!openPeriodStart || !settlementDate) return false
+                            if (isNaN(openPeriodStart.getTime()) || isNaN(settlementDate.getTime())) return true
+                            return settlementDate < openPeriodStart
+                          })()
+                            ? 'not-allowed'
+                            : 'pointer',
+                      }}
+                    >
+                      {isSettlingPayroll ? 'ΓΙΝΕΤΑΙ ΕΞΟΦΛΗΣΗ...' : 'ΕΞΟΦΛΗΣΗ ΤΩΡΑ'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* ✅ HERO: Current month payroll + current month tips (BUSINESS MONTH) */}
             <div style={payrollHeroCard}>
               <div style={payrollHeroTopRow}>
@@ -987,27 +1807,27 @@ function EmployeesContent() {
             {showTipsList && (
               <div style={tipsListWrap}>
                 {tipsStats.lastTips.length === 0 ? (
-                  <p style={{ margin: 0, fontSize: '12px', color: colors.secondaryText, fontWeight: 700 }}>
+                  <p style={{ margin: 0, fontSize: '12px', color: 'var(--muted)', fontWeight: 700 }}>
                     Δεν υπάρχουν tips καταγραφές για αυτόν τον μήνα.
                   </p>
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                     {tipsStats.lastTips.map((t) => {
-                      const d = new Date(t.date)
+                      const d = parseDateInputSafe(t.date)
                       return (
                         <div key={t.id} style={tipsListItem}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', alignItems: 'center' }}>
                             <div style={{ display: 'flex', flexDirection: 'column' }}>
-                              <span style={{ fontWeight: 900, color: colors.primaryDark, fontSize: '12px' }}>{t.name}</span>
-                              <span style={{ fontSize: '10px', color: colors.secondaryText, fontWeight: 800 }}>
+                              <span style={{ fontWeight: 900, color: 'var(--text)', fontSize: '12px' }}>{t.name}</span>
+                              <span style={{ fontSize: '10px', color: 'var(--muted)', fontWeight: 800 }}>
                                 {/* ✅ display with business-day */}
-                                {isNaN(d.getTime()) ? '—' : formatBusinessDateShort(d)}
+                                {!d || isNaN(d.getTime()) ? '—' : formatBusinessDayDate(d)}
                               </span>
-                              <span style={{ fontSize: '10px', color: '#b45309', fontWeight: 900 }}>Tips</span>
+                              <span style={{ fontSize: '10px', color: 'var(--muted)', fontWeight: 900 }}>Tips</span>
                             </div>
 
                             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                              <span style={{ fontWeight: 900, color: '#b45309', fontSize: '12px' }}>{t.amount.toFixed(2)}€</span>
+                              <span style={{ fontWeight: 900, color: 'var(--muted)', fontSize: '12px' }}>{t.amount.toFixed(2)}€</span>
 
                               {isAdmin && (
                                 <button
@@ -1036,6 +1856,28 @@ function EmployeesContent() {
                 )}
               </div>
             )}
+
+            <div style={kpiGridWrap}>
+              <div style={kpiCard}>
+                <p style={kpiCardLabel}>ΔΕΔΟΥΛΕΥΜΕΝΟ ΠΡΟΣΩΠΙΚΟΥ</p>
+                <p style={kpiCardValue}>{accruedPayrollMonthToDate.toFixed(2)}€</p>
+              </div>
+
+              <div style={{ ...kpiCard, ...payrollPctVisual.card }}>
+                <p style={kpiCardLabel}>ΜΙΣΘΟΔΟΣΙΑ % ΤΖΙΡΟΥ</p>
+                <p style={{ ...kpiCardValue, color: payrollPctVisual.valueColor }}>{payrollPercentOfRevenue.toFixed(1)}%</p>
+              </div>
+
+              <div style={kpiCard}>
+                <p style={kpiCardLabel}>ΣΥΝΟΛΟ ΠΡΟΣΩΠΙΚΟΥ</p>
+                <p style={kpiCardValue}>{employees.length}</p>
+              </div>
+
+              <div style={kpiCard}>
+                <p style={kpiCardLabel}>ΑΠΑΙΤΟΥΜΕΝΟΣ ΤΖΙΡΟΣ (25%)</p>
+                <p style={kpiCardValue}>{requiredRevenue.toFixed(2)}€</p>
+              </div>
+            </div>
 
             {/* ADD + SHOW INACTIVE */}
             <div style={{ display: 'flex', gap: '10px', marginBottom: '14px' }}>
@@ -1083,11 +1925,10 @@ function EmployeesContent() {
                   </button>
                 </div>
 
-                <div style={{ display: 'flex', gap: '12px', marginTop: '16px' }}>
-                  {/* Salary/Daily + Monthly Days (if monthly) */}
-                  <div style={{ display: 'flex', gap: '12px', flex: 1 }}>
-                    <div style={{ flex: 1 }}>
-                      <label style={labelStyle}>{payBasis === 'monthly' ? 'Μισθός (€) *' : 'Ημερομίσθιο (€) *'}</label>
+                <div style={employeeFormRowsWrap}>
+                  <div style={employeeFormTwoColGrid}>
+                    <div style={employeeFormCell}>
+                      <label style={employeeFormFieldLabel}>{payBasis === 'monthly' ? 'Βασικός Μισθός' : 'Ημερομίσθιο (€) *'}</label>
                       <div style={amountInputWrap}>
                         <input
                           type="number"
@@ -1105,16 +1946,40 @@ function EmployeesContent() {
                               [payBasis === 'monthly' ? 'monthly_salary' : 'daily_rate']: e.target.value,
                             })
                           }
-                          style={{ ...amountInputStyle, ...(isAmountFocused ? amountInputFocusedStyle : null) }}
+                          style={{ ...amountInputStyle, ...employeeFormInputBase, ...(isAmountFocused ? amountInputFocusedStyle : null) }}
                           placeholder="0"
                         />
                         <span style={euroAdornmentStyle}>€</span>
                       </div>
                     </div>
 
-                    {payBasis === 'monthly' && (
-                      <div style={{ flex: 1 }}>
-                        <label style={labelStyle}>Μέρες Μήνα</label>
+                    {payBasis === 'monthly' ? (
+                      <div style={employeeFormCell}>
+                        <label style={employeeFormFieldLabel}>Συμφωνημένο Extra</label>
+                        <div style={amountInputWrap}>
+                          <input
+                            type="number"
+                            inputMode="decimal"
+                            value={formData.agreed_extra_salary}
+                            onFocus={(e) => {
+                              if (e.target.value === '0') setFormData({ ...formData, agreed_extra_salary: '' })
+                            }}
+                            onChange={(e) => setFormData({ ...formData, agreed_extra_salary: e.target.value })}
+                            style={{ ...amountInputStyle, ...employeeFormInputBase }}
+                            placeholder="0"
+                          />
+                          <span style={euroAdornmentStyle}>€</span>
+                        </div>
+                      </div>
+                    ) : (
+                      <div style={employeeFormCell} />
+                    )}
+                  </div>
+
+                  <div style={employeeFormTwoColGrid}>
+                    {payBasis === 'monthly' ? (
+                      <div style={employeeFormCell}>
+                        <label style={employeeFormFieldLabel}>Μέρες Μήνα</label>
                         <div style={daysSelectorRow}>
                           {monthlyDayOptions.map((option) => (
                             <button
@@ -1128,17 +1993,19 @@ function EmployeesContent() {
                           ))}
                         </div>
                       </div>
+                    ) : (
+                      <div style={employeeFormCell} />
                     )}
-                  </div>
 
-                  <div style={{ flex: 1 }}>
-                    <label style={labelStyle}>Ημ. Πρόσληψης</label>
-                    <input
-                      type="date"
-                      value={formData.start_date}
-                      onChange={(e) => setFormData({ ...formData, start_date: e.target.value })}
-                      style={inputStyle}
-                    />
+                    <div style={employeeFormCell}>
+                      <label style={employeeFormFieldLabel}>Ημ. Πρόσληψης</label>
+                      <input
+                        type="date"
+                        value={formData.start_date}
+                        onChange={(e) => setFormData({ ...formData, start_date: e.target.value })}
+                        style={{ ...inputStyle, ...employeeFormInputBase }}
+                      />
+                    </div>
                   </div>
                 </div>
 
@@ -1175,11 +2042,68 @@ function EmployeesContent() {
                 const yearlyStats = getYearlyStats(emp.id)
                 const isSelected = selectedEmpId === emp.id
                 const daysLeft = getDaysUntilPayment(emp.start_date)
-                const pendingOt = getPendingOtHours(emp.id)
+                const payrollSummary = payrollCardsByEmployeeId[emp.id]
                 const pendingOtItems = overtimes
                   .filter((ot) => ot.employee_id === emp.id)
-                  .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+                  .sort((a, b) => (parseDateInputSafe(b.date)?.getTime() ?? 0) - (parseDateInputSafe(a.date)?.getTime() ?? 0))
+                const hasPayrollSummary = Boolean(payrollSummary)
                 const isInactive = emp.is_active === false
+                const monthlyDays = Number(emp.work_days_per_month ?? emp.monthly_days ?? 0)
+                const monthlySalary = Number(emp.monthly_salary ?? 0)
+                const agreedExtraSalary = hasPayrollSummary
+                  ? Number(payrollSummary?.agreed_extra_salary ?? emp.agreed_extra_salary ?? emp.agreed_extra ?? 0)
+                  : Number(emp.agreed_extra_salary ?? emp.agreed_extra ?? 0)
+                const agreedMonthlyPay = monthlySalary + agreedExtraSalary
+                const isMonthlyEmployee = (emp.pay_basis || 'monthly') === 'monthly'
+                const payrollWindow = getEmployeePayrollWindow(emp.start_date, new Date())
+                const visibleDayOffRows = (daysOffByEmployee[emp.id] || [])
+                  .filter((row) => {
+                    if (!payrollWindow) return false
+                    const rowDate = getDayOffDateValue(row)
+                    const businessDate = toBusinessDayDateFromInput(rowDate, { normalizeToNoon: true })
+                    if (!businessDate || isNaN(businessDate.getTime())) return false
+                    return businessDate >= payrollWindow.periodStart && businessDate <= payrollWindow.periodEnd
+                  })
+                  .sort((a, b) => {
+                    const aTime = parseDateInputSafe(getDayOffDateValue(a))?.getTime() ?? 0
+                    const bTime = parseDateInputSafe(getDayOffDateValue(b))?.getTime() ?? 0
+                    return aTime - bTime
+                  })
+                const daysOffLabel = visibleDayOffRows.map((row) => formatShortDayMonth(getDayOffDateValue(row))).join(', ')
+
+                const visibleDaysOffCount = visibleDayOffRows.length
+
+                const includedDaysOffLocal = getIncludedDaysOff(monthlyDays)
+                const actualDaysOffLocal = visibleDaysOffCount
+                const extraDaysOffLocal = Math.max(actualDaysOffLocal - includedDaysOffLocal, 0)
+                const dailyCostLocal = isMonthlyEmployee && monthlyDays > 0 ? agreedMonthlyPay / monthlyDays : Number(emp.daily_rate ?? 0)
+                const hourlyRateLocal = isMonthlyEmployee ? dailyCostLocal / 8 : 0
+                const totalAdvancesLocal = transactions
+                  .filter((t) => {
+                    if (String(t.employee_id || '') !== emp.id && String(t.fixed_asset_id || '') !== emp.id) return false
+                    return String(t.type || '') === 'salary_advance'
+                  })
+                  .reduce((acc, t) => acc + Math.abs(Number(t.amount) || 0), 0)
+                const pendingOtHoursLocal = overtimes.filter((ot) => ot.employee_id === emp.id).reduce((acc, curr) => acc + Number(curr.hours), 0)
+                const pendingOtAmountLocal = isMonthlyEmployee ? pendingOtHoursLocal * hourlyRateLocal : 0
+                const daysOffDeductionLocal = isMonthlyEmployee ? extraDaysOffLocal * dailyCostLocal : 0
+                const dailyCost = isMonthlyEmployee ? dailyCostLocal : hasPayrollSummary ? Number(payrollSummary?.daily_cost ?? 0) : dailyCostLocal
+                const hourlyRate = hasPayrollSummary ? Number(payrollSummary?.hourly_cost ?? 0) : hourlyRateLocal
+                const totalAdvances = hasPayrollSummary ? Number(payrollSummary?.total_advances ?? 0) : totalAdvancesLocal
+                const pendingOtHours = hasPayrollSummary ? Number(payrollSummary?.pending_overtime_hours ?? 0) : pendingOtHoursLocal
+                const pendingOtAmount = hasPayrollSummary ? Number(payrollSummary?.pending_overtime_amount ?? 0) : pendingOtAmountLocal
+                const displayedIncludedDaysOff = includedDaysOffLocal
+                const displayedActualDaysOff = visibleDaysOffCount
+                const displayedExtraDaysOff = Math.max(displayedActualDaysOff - displayedIncludedDaysOff, 0)
+                const displayedDaysOffDeduction = isMonthlyEmployee ? displayedExtraDaysOff * dailyCostLocal : 0
+                const displayedPayrollOnly = isMonthlyEmployee ? monthlySalary - totalAdvances + pendingOtAmount - displayedDaysOffDeduction : 0
+                const displayedFinalPayable = displayedPayrollOnly + agreedExtraSalary
+                const pendingOt = pendingOtHours
+                const yearDaysOffCount = (daysOffByEmployee[emp.id] || []).filter((row) => {
+                  const businessDate = toBusinessDayDateFromInput(getDayOffDateValue(row), { normalizeToNoon: true })
+                  if (!businessDate || isNaN(businessDate.getTime())) return false
+                  return businessDate.getFullYear() === selectedBusinessMonth.year
+                }).length
 
                 return (
                   <div key={emp.id} style={{ ...employeeCard, opacity: isInactive ? 0.6 : 1 }}>
@@ -1189,100 +2113,191 @@ function EmployeesContent() {
                         padding: '18px',
                         cursor: 'pointer',
                         display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
+                        flexDirection: 'column',
+                        alignItems: 'stretch',
+                        gap: '10px',
                       }}
                     >
-                      <div style={{ flex: 1 }}>
-                        <p style={{ fontWeight: '700', color: colors.primaryDark, fontSize: '16px', margin: 0 }}>
-                          {String(emp.name || '').toUpperCase()}
-                        </p>
+                      <p style={{ fontWeight: '700', color: 'var(--text)', fontSize: '16px', margin: 0 }}>
+                        {String(emp.name || '').toUpperCase()}
+                      </p>
 
-                        <div style={{ marginTop: '6px', display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
-                          <span
-                            style={{
-                              ...badgeStyle,
-                              backgroundColor: daysLeft === 0 || daysLeft === null ? '#fef2f2' : '#eff6ff',
-                              color: daysLeft === 0 || daysLeft === null ? colors.accentRed : colors.accentBlue,
-                            }}
-                          >
-                            {daysLeft === null ? 'ΟΡΙΣΕ ΗΜ. ΠΡΟΣΛΗΨΗΣ' : daysLeft === 0 ? 'ΣΗΜΕΡΑ 💰' : `ΣΕ ${daysLeft} ΗΜΕΡΕΣ 📅`}
-                          </span>
-
-                          {pendingOt > 0 && (
-                            <span style={{ ...badgeStyle, backgroundColor: '#fff7ed', color: '#c2410c' }}>⏱️ {pendingOt} ΩΡΕΣ</span>
-                          )}
-                          {isInactive && <span style={{ ...badgeStyle, backgroundColor: '#fef2f2', color: colors.accentRed }}>ΑΝΕΝΕΡΓΟΣ</span>}
-                        </div>
+                      <div style={employeeMetaRow}>
+                        <span style={employeeMetaPill}>
+                          {isMonthlyEmployee ? `Βασικός Μισθός ${monthlySalary.toFixed(2)}€` : `ΗΜΕΡΟΜΙΣΘΙΟ ${Number(emp.daily_rate ?? 0).toFixed(2)}€`}
+                        </span>
+                        {isMonthlyEmployee && <span style={employeeMetaPill}>{`Συμφωνημένο Extra ${agreedExtraSalary.toFixed(2)}€`}</span>}
+                        <span style={employeeMetaPill}>ΚΟΣΤΟΣ/ΗΜΕΡΑ {dailyCost.toFixed(2)}€</span>
+                        {isMonthlyEmployee && <span style={employeeMetaPill}>ΜΕΡΕΣ {monthlyDays}</span>}
                       </div>
 
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        {!isInactive && (
-                          <>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                setOtModal({ empId: emp.id, name: emp.name })
-                              }}
-                              style={quickOtBtn}
-                            >
-                              + ⏱️
-                            </button>
+                      {!isInactive && (
+                        <div style={employeeQuickActionsRow}>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setOtModal({ empId: emp.id, name: emp.name })
+                            }}
+                            style={{ ...quickOtBtn, flex: 1 }}
+                          >
+                            + ⏱️
+                          </button>
 
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                setTipModal({ empId: emp.id, name: emp.name })
-                              }}
-                              style={quickTipBtn}
-                            >
-                              +💰 Tips
-                            </button>
-                          </>
-                        )}
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setTipModal({ empId: emp.id, name: emp.name })
+                            }}
+                            style={{ ...quickTipBtn, flex: 1 }}
+                          >
+                            +💰 Tips
+                          </button>
 
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setDayOffModal({ empId: emp.id, name: emp.name })
+                              setDayOffDates([getTodayDateISO()])
+                            }}
+                            style={{ ...quickDayOffBtn, flex: 1 }}
+                          >
+                            + Ρεπό
+                          </button>
+                        </div>
+                      )}
+
+                      <div style={employeePaymentsRow}>
                         <Link
                           href={`/pay-employee?id=${emp.id}&name=${encodeURIComponent(emp.name || '')}&store=${storeId}`}
                           onClick={(e) => e.stopPropagation()}
-                          style={payBtnStyle}
+                          style={{ ...payBtnStyle, flex: 1, textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                         >
                           ΠΛΗΡΩΜΗ
                         </Link>
+
+                        <Link
+                          href={`/pay-employee?id=${emp.id}&name=${encodeURIComponent(emp.name || '')}&store=${storeId}&mode=advance`}
+                          onClick={(e) => e.stopPropagation()}
+                          style={{ ...advanceBtnStyle, flex: 1, textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                        >
+                          ΠΡΟΚΑΤΑΒΟΛΗ
+                        </Link>
+                      </div>
+
+                      <div style={{ ...employeeMiniSummaryRow, marginTop: 0 }}>
+                        <span
+                          style={{
+                            ...badgeStyle,
+                            backgroundColor: 'var(--surface)',
+                            color: 'var(--muted)',
+                          }}
+                        >
+                          {daysLeft === null ? 'ΟΡΙΣΕ ΗΜ. ΠΡΟΣΛΗΨΗΣ' : daysLeft === 0 ? 'ΣΗΜΕΡΑ 💰' : `ΣΕ ${daysLeft} ΗΜΕΡΕΣ 📅`}
+                        </span>
+
+                        {pendingOt > 0 && <span style={{ ...badgeStyle, backgroundColor: 'var(--surface)', color: 'var(--muted)' }}>⏱️ {pendingOt} ΩΡΕΣ</span>}
+                        <span style={{ ...badgeStyle, backgroundColor: '#eef2ff', color: '#3730a3' }}>
+                          ΡΕΠΟ {displayedActualDaysOff}/{displayedIncludedDaysOff}
+                        </span>
+                        {isMonthlyEmployee && <span style={{ ...badgeStyle, backgroundColor: '#ecfdf5', color: '#047857' }}>ΥΠΟΛΟΙΠΟ {displayedFinalPayable.toFixed(2)}€</span>}
+                        {isInactive && <span style={{ ...badgeStyle, backgroundColor: 'var(--surface)', color: 'var(--muted)' }}>ΑΝΕΝΕΡΓΟΣ</span>}
                       </div>
                     </div>
 
                     {isSelected && (
-                      <div style={{ backgroundColor: '#ffffff', padding: '18px', borderTop: `1px solid ${colors.border}` }}>
+                      <div style={{ backgroundColor: 'var(--surface)', padding: '18px', borderTop: '1px solid var(--border)' }}>
                         <div
                           style={{
                             marginBottom: '20px',
                             padding: '12px',
-                            backgroundColor: colors.slate100,
+                            backgroundColor: 'var(--surface)',
                             borderRadius: '12px',
                             fontSize: '12px',
                           }}
                         >
-                          <p style={{ margin: '0 0 5px 0', fontWeight: '800', color: colors.secondaryText }}>ΣΤΟΙΧΕΙΑ ΠΛΗΡΩΜΗΣ</p>
+                          <p style={{ margin: '0 0 5px 0', fontWeight: '800', color: 'var(--muted)' }}>ΣΤΟΙΧΕΙΑ ΠΛΗΡΩΜΗΣ</p>
                           <p style={{ margin: 0, fontWeight: '700' }}>🏦 {emp.bank_name || 'Δεν ορίστηκε'}</p>
-                          <p style={{ margin: '3px 0 0 0', fontWeight: '600', color: colors.accentBlue, fontSize: '11px' }}>
+                          <p style={{ margin: '3px 0 0 0', fontWeight: '600', color: 'var(--muted)', fontSize: '11px' }}>
                             {emp.iban || 'Δεν ορίστηκε IBAN'}
                           </p>
                           {pendingOt > 0 && (
-                            <p style={{ margin: '8px 0 0 0', fontWeight: '800', color: '#c2410c', fontSize: '11px' }}>
+                            <p style={{ margin: '8px 0 0 0', fontWeight: '800', color: 'var(--muted)', fontSize: '11px' }}>
                               ⚠️ ΕΚΚΡΕΜΟΥΝ: {pendingOt} ώρες υπερωρίας
                             </p>
                           )}
                         </div>
 
+                        <div style={daysOffStatsWrap}>
+                          <p style={{ margin: 0, fontWeight: '800', color: 'var(--muted)', fontSize: '11px' }}>
+                            Ρεπό κύκλου: {daysOffLabel || '—'}
+                          </p>
+                          <p style={{ margin: '5px 0 0 0', fontWeight: 800, color: 'var(--muted)', fontSize: '11px' }}>
+                            Σύνολο ρεπό: {displayedActualDaysOff} / {displayedIncludedDaysOff}
+                          </p>
+                          <p style={{ margin: '5px 0 0 0', fontWeight: 800, color: 'var(--muted)', fontSize: '11px' }}>
+                            Extra ρεπό: {displayedExtraDaysOff}
+                          </p>
+                          <p style={{ margin: '5px 0 0 0', fontWeight: 800, color: 'var(--muted)', fontSize: '11px' }}>
+                            Προκαταβολές: {totalAdvances.toFixed(2)}€
+                          </p>
+                          <p style={{ margin: '5px 0 0 0', fontWeight: 800, color: 'var(--muted)', fontSize: '11px' }}>
+                            Εκκρεμείς υπερωρίες: {pendingOtHours.toFixed(2)} ώρες / {pendingOtAmount.toFixed(2)}€
+                          </p>
+                          <p style={{ margin: '5px 0 0 0', fontWeight: 800, color: 'var(--muted)', fontSize: '11px' }}>
+                            Αφαίρεση extra ρεπό: {displayedDaysOffDeduction.toFixed(2)}€
+                          </p>
+                          <p style={{ margin: '5px 0 0 0', fontWeight: 800, color: 'var(--muted)', fontSize: '11px' }}>
+                            Ωριαίο κόστος: {hourlyRate.toFixed(2)}€
+                          </p>
+                          {isMonthlyEmployee && (
+                            <p style={{ margin: '5px 0 0 0', fontWeight: 900, color: 'var(--text)', fontSize: '11px' }}>
+                              Υπόλοιπο πληρωμής: {displayedFinalPayable.toFixed(2)}€
+                            </p>
+                          )}
+
+                          <div style={daysOffTotalCard}>
+                            <p style={daysOffTotalCardLabel}>ΣΥΝΟΛΟ ΡΕΠΟ ΕΤΟΥΣ</p>
+                            <p style={daysOffTotalCardValue}>{yearDaysOffCount}</p>
+                          </div>
+
+                          {visibleDayOffRows.length > 0 && (
+                            <div style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                              {visibleDayOffRows.map((row) => (
+                                <div
+                                  key={row.id}
+                                  style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between',
+                                    backgroundColor: 'var(--surface)',
+                                    border: '1px solid var(--border)',
+                                    borderRadius: '10px',
+                                    padding: '6px 8px',
+                                  }}
+                                >
+                                  <span style={{ fontWeight: 800, color: 'var(--muted)', fontSize: '11px' }}>
+                                    {formatShortDayMonth(getDayOffDateValue(row))}
+                                  </span>
+                                  {isAdmin && (
+                                    <button style={miniIconBtnDanger} title="Διαγραφή ρεπό" onClick={() => handleDeleteDayOff(row.id)}>
+                                      <Trash2 size={16} />
+                                    </button>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+
                         {pendingOtItems.length > 0 && (
                           <div style={pendingOtListWrap}>
-                            <p style={{ margin: '0 0 8px 0', fontWeight: 900, fontSize: '10px', color: colors.secondaryText }}>ΕΚΚΡΕΜΕΙΣ ΥΠΕΡΩΡΙΕΣ</p>
+                            <p style={{ margin: '0 0 8px 0', fontWeight: 900, fontSize: '10px', color: 'var(--muted)' }}>ΕΚΚΡΕΜΕΙΣ ΥΠΕΡΩΡΙΕΣ</p>
                             {pendingOtItems.map((ot) => (
                               <div key={ot.id} style={pendingOtRow}>
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                                  <span style={{ fontWeight: 800, fontSize: '11px', color: '#c2410c' }}>{Number(ot.hours).toFixed(2)} ώρες</span>
-                                  <span style={{ fontSize: '10px', color: colors.secondaryText, fontWeight: 700 }}>
-                                    {new Date(ot.date).toLocaleDateString('el-GR')}
+                                  <span style={{ fontWeight: 800, fontSize: '11px', color: 'var(--muted)' }}>{Number(ot.hours).toFixed(2)} ώρες</span>
+                                  <span style={{ fontSize: '10px', color: 'var(--muted)', fontWeight: 700 }}>
+                                    {formatDateEl(ot.date)}
                                   </span>
                                 </div>
 
@@ -1337,18 +2352,25 @@ function EmployeesContent() {
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '20px' }}>
                           {transactions
                             .filter((t) => {
-                              if (t.fixed_asset_id !== emp.id) return false
+                              if (String(t.employee_id || '') !== emp.id && String(t.fixed_asset_id || '') !== emp.id) return false
                               const d = parseTxDate(t)
                               if (!d) return false
                               return getBusinessYear(d) === viewYear
                             })
                             .map((t) => {
                               const note = String(t.notes || '')
-                              const isTip = /tips/i.test(note) || String(t.type || '') === 'tip_entry'
-                              const noteLabel = isTip ? note.split('[')[0]?.trim() || 'Tips' : note.split('[')[1]?.replace(']', '') || 'Πληρωμή'
+                              const txType = String(t.type || '')
+                              const isTip = /tips/i.test(note) || txType === 'tip_entry'
+                              const isAdvance = txType === 'salary_advance'
+                              let noteLabel = 'Πληρωμή'
+                              if (isAdvance) noteLabel = 'ΠΡΟΚΑΤΑΒΟΛΗ'
+                              else if (isTip) noteLabel = note.split('[')[0]?.trim() || 'Tips'
+                              else noteLabel = note.split('[')[1]?.replace(']', '') || 'Πληρωμή'
 
                               const d = parseTxDate(t)
-                              const dateLabel = d ? formatBusinessDateShort(d) : new Date(t.date).toLocaleDateString('el-GR')
+                              const dateLabel = d ? formatBusinessDayDate(d) : formatDateEl(t.date)
+
+                              const displayAmount = Math.abs(Number(t.amount) || 0)
 
                               return (
                                 <div key={t.id} style={historyItemExtended}>
@@ -1356,7 +2378,7 @@ function EmployeesContent() {
                                     <span style={{ color: colors.secondaryText, fontWeight: '700', fontSize: '11px' }}>{dateLabel}</span>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                                       <span>{t.method === 'Τράπεζα' ? '🏦' : '💵'}</span>
-                                      <span style={{ fontWeight: '800', color: colors.primaryDark }}>{Number(t.amount).toFixed(2)}€</span>
+                                      <span style={{ fontWeight: '800', color: colors.primaryDark }}>{displayAmount.toFixed(2)}€</span>
                                       {isAdmin && (
                                         <button onClick={() => deleteTransaction(t.id)} style={transDeleteBtn}>
                                           🗑️
@@ -1369,9 +2391,9 @@ function EmployeesContent() {
                                     style={{
                                       margin: '4px 0 0',
                                       fontSize: '10px',
-                                      color: isTip ? '#b45309' : colors.secondaryText,
+                                      color: isTip ? '#b45309' : isAdvance ? '#f59e0b' : colors.secondaryText,
                                       fontStyle: 'italic',
-                                      fontWeight: isTip ? 900 : 600,
+                                      fontWeight: isTip ? 900 : isAdvance ? 800 : 600,
                                     }}
                                   >
                                     {noteLabel}
@@ -1386,23 +2408,8 @@ function EmployeesContent() {
                             <button
                               onClick={() => {
                                 const nextPayBasis: PayBasis = (emp.pay_basis as PayBasis) || 'monthly'
-                                const monthlySalaryValue =
-                                  nextPayBasis === 'monthly' ? (emp.monthly_salary != null ? String(emp.monthly_salary) : '') : ''
-                                const dailyRateValue =
-                                  nextPayBasis === 'daily' ? (emp.daily_rate != null ? String(emp.daily_rate) : '') : ''
-
                                 setPayBasis(nextPayBasis)
-                                setFormData({
-                                  full_name: emp.name || '',
-                                  position: emp.position || '',
-                                  amka: emp.amka || '',
-                                  iban: emp.iban || '',
-                                  bank_name: emp.bank_name || 'Εθνική Τράπεζα',
-                                  monthly_salary: monthlySalaryValue,
-                                  daily_rate: dailyRateValue,
-                                  monthly_days: emp.monthly_days != null ? String(emp.monthly_days) : '25',
-                                  start_date: emp.start_date || new Date().toISOString().split('T')[0],
-                                })
+                                setFormData(toEmployeeFormState({ ...emp, pay_basis: nextPayBasis }))
                                 setEditingId(emp.id)
                                 setIsAdding(true)
                                 setTimeout(() => formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50)
@@ -1416,6 +2423,15 @@ function EmployeesContent() {
                           {isAdmin && (
                             <button onClick={() => deleteEmployee(emp.id, emp.name)} style={deleteBtn}>
                               ΔΙΑΓΡΑΦΗ 🗑️
+                            </button>
+                          )}
+
+                          {isAdmin && (
+                            <button
+                              onClick={() => openPayrollSettlementModal(emp)}
+                              style={settlementBtn}
+                            >
+                              ΕΞΟΦΛΗΣΗ
                             </button>
                           )}
 
@@ -1450,8 +2466,8 @@ function EmployeesContent() {
 
 // --- STYLES ---
 const iphoneWrapper: any = {
-  backgroundColor: colors.bgLight,
-  minHeight: '100dvh',
+  background: 'var(--bg-grad)',
+  minHeight: '100vh',
   padding: '20px',
   overflowY: 'auto',
   position: 'absolute',
@@ -1474,7 +2490,7 @@ const logoBoxStyle: any = {
 
 const backBtnStyle: any = {
   textDecoration: 'none',
-  color: colors.secondaryText,
+  color: 'var(--muted)',
   fontSize: '18px',
   fontWeight: 'bold',
   width: '38px',
@@ -1482,9 +2498,62 @@ const backBtnStyle: any = {
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
-  backgroundColor: colors.white,
+  background: 'var(--surface)',
   borderRadius: '12px',
-  border: `1px solid ${colors.border}`,
+  border: '1px solid var(--border)',
+}
+
+const headerFiltersRow: any = {
+  display: 'flex',
+  gap: '8px',
+  marginBottom: '14px',
+  flexWrap: 'wrap',
+}
+
+const headerFilterChip: any = {
+  border: '1px solid var(--border)',
+  backgroundColor: 'var(--surface)',
+  color: 'var(--muted)',
+  padding: '7px 10px',
+  borderRadius: '12px',
+  fontWeight: 800,
+  fontSize: '10px',
+}
+
+const headerFilterChipActive: any = {
+  ...headerFilterChip,
+  backgroundColor: colors.primaryDark,
+  color: 'white',
+  border: `1px solid ${colors.primaryDark}`,
+}
+
+const kpiGridWrap: any = {
+  display: 'grid',
+  gridTemplateColumns: '1fr 1fr',
+  gap: '10px',
+  marginBottom: '14px',
+}
+
+const kpiCard: any = {
+  backgroundColor: 'var(--surface)',
+  border: '1px solid var(--border)',
+  borderRadius: '16px',
+  padding: '12px',
+  boxShadow: '0 8px 20px rgba(15, 23, 42, 0.06)',
+}
+
+const kpiCardLabel: any = {
+  margin: 0,
+  color: 'var(--muted)',
+  fontSize: '9px',
+  fontWeight: 900,
+}
+
+const kpiCardValue: any = {
+  margin: '6px 0 0 0',
+  color: 'var(--text)',
+  fontSize: '18px',
+  fontWeight: 900,
 }
 
 const payBtnStyle: any = {
@@ -1496,6 +2565,17 @@ const payBtnStyle: any = {
   fontWeight: '800',
   textDecoration: 'none',
   boxShadow: '0 4px 8px rgba(37, 99, 235, 0.2)',
+}
+
+const advanceBtnStyle: any = {
+  backgroundColor: '#f59e0b',
+  color: 'white',
+  padding: '8px 14px',
+  borderRadius: '10px',
+  fontSize: '10px',
+  fontWeight: '800',
+  textDecoration: 'none',
+  boxShadow: '0 4px 8px rgba(245, 158, 11, 0.18)',
 }
 
 const addBtn: any = {
@@ -1513,12 +2593,12 @@ const addBtn: any = {
 const cancelBtn: any = { ...addBtn, backgroundColor: colors.white, color: colors.secondaryText, border: `1px solid ${colors.border}` }
 
 const formCard: any = {
-  backgroundColor: colors.white,
+  background: 'var(--surface)',
   padding: '24px',
   borderRadius: '24px',
-  border: '2px solid',
+  border: '1.5px solid var(--border)',
   marginBottom: '25px',
-  boxShadow: '0 4px 12px rgba(0,0,0,0.05)',
+  boxShadow: 'var(--shadow)',
 }
 
 const labelStyle: any = {
@@ -1573,6 +2653,45 @@ const daysSelectorRow: any = {
   flexWrap: 'wrap',
 }
 
+const employeeFormRowsWrap: any = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '12px',
+  marginTop: '16px',
+}
+
+const employeeFormTwoColGrid: any = {
+  display: 'grid',
+  gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+  gap: '12px',
+  alignItems: 'start',
+}
+
+const employeeFormCell: any = {
+  minWidth: 0,
+}
+
+const employeeFormFieldLabel: any = {
+  ...labelStyle,
+  fontSize: '11px',
+  lineHeight: 1.2,
+  maxHeight: '2.4em',
+  overflow: 'hidden',
+  display: '-webkit-box',
+  WebkitLineClamp: 2,
+  WebkitBoxOrient: 'vertical',
+}
+
+const employeeFormInputBase: any = {
+  width: '100%',
+  minWidth: 0,
+  padding: '14px',
+  fontSize: '16px',
+  boxSizing: 'border-box',
+  overflow: 'visible',
+  textOverflow: 'clip',
+}
+
 const dayToggleBase: any = {
   flex: '1 1 120px',
   minHeight: '46px',
@@ -1609,44 +2728,89 @@ const saveBtnStyle: any = {
 }
 
 const employeeCard: any = {
-  backgroundColor: colors.white,
+  background: 'var(--surface)',
   borderRadius: '22px',
-  border: `1px solid ${colors.border}`,
+  border: '1px solid var(--border)',
   overflow: 'hidden',
   marginBottom: '12px',
+  boxShadow: 'var(--shadow)',
 }
 
 const badgeStyle: any = { fontSize: '9px', fontWeight: '700', padding: '4px 10px', borderRadius: '6px' }
+
+const employeeCostLine: any = {
+  margin: '5px 0 0 0',
+  color: 'var(--muted)',
+  fontSize: '10px',
+  fontWeight: 800,
+}
+
+const employeeMetaRow: any = {
+  display: 'flex',
+  gap: '6px',
+  flexWrap: 'wrap',
+  alignItems: 'center',
+}
+
+const employeeMetaPill: any = {
+  fontSize: '10px',
+  fontWeight: 800,
+  color: 'var(--muted)',
+  backgroundColor: 'var(--surface)',
+  border: '1px solid var(--border)',
+  borderRadius: '10px',
+  padding: '5px 8px',
+}
+
+const employeeQuickActionsRow: any = {
+  display: 'flex',
+  gap: '8px',
+  alignItems: 'center',
+}
+
+const employeePaymentsRow: any = {
+  display: 'flex',
+  gap: '8px',
+  alignItems: 'stretch',
+}
+
+const employeeMiniSummaryRow: any = {
+  display: 'flex',
+  gap: '8px',
+  flexWrap: 'wrap',
+  alignItems: 'center',
+}
 
 const filterContainer: any = {
   display: 'flex',
   gap: '8px',
   marginBottom: '15px',
   padding: '8px',
-  backgroundColor: colors.slate100,
+  background: 'var(--surface)',
   borderRadius: '12px',
+  boxShadow: 'var(--shadow)',
 }
 
 const filterSelect: any = {
   padding: '6px',
   borderRadius: '8px',
-  border: `1px solid ${colors.border}`,
-  backgroundColor: colors.white,
+  border: '1px solid var(--border)',
+  background: 'var(--surface)',
   fontSize: '12px',
   fontWeight: '800',
 }
 
 const statsGrid: any = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '25px' }
-const statBox: any = { padding: '15px', backgroundColor: colors.slate100, borderRadius: '16px', textAlign: 'center' }
-const statLabel: any = { margin: 0, fontSize: '8px', fontWeight: '800', color: colors.secondaryText }
-const statValue: any = { margin: '4px 0 0', fontSize: '16px', fontWeight: '900', color: colors.primaryDark }
+const statBox: any = { padding: '15px', background: 'var(--surface)', borderRadius: '16px', textAlign: 'center', boxShadow: 'var(--shadow)' }
+const statLabel: any = { margin: 0, fontSize: '8px', fontWeight: '800', color: 'var(--muted)' }
+const statValue: any = { margin: '4px 0 0', fontSize: '16px', fontWeight: '900', color: 'var(--text)' }
 
-const historyTitle: any = { fontSize: '9px', fontWeight: '800', color: colors.secondaryText, marginBottom: '12px', textTransform: 'uppercase' }
+const historyTitle: any = { fontSize: '9px', fontWeight: '800', color: 'var(--muted)', marginBottom: '12px', textTransform: 'uppercase' }
 const historyItemExtended: any = {
   padding: '12px',
   borderRadius: '14px',
-  border: `1px solid ${colors.border}`,
-  backgroundColor: colors.bgLight,
+  border: '1px solid var(--border)',
+  background: 'var(--surface)',
   marginBottom: '8px',
 }
 const transDeleteBtn: any = { background: 'none', border: 'none', cursor: 'pointer', fontSize: '12px', opacity: 0.5 }
@@ -1697,6 +2861,18 @@ const activateBtn: any = {
   color: colors.accentGreen,
 }
 
+const settlementBtn: any = {
+  flex: 3,
+  background: '#dcfce7',
+  border: '1px solid #86efac',
+  padding: '12px',
+  borderRadius: '10px',
+  cursor: 'pointer',
+  fontSize: '11px',
+  fontWeight: '800',
+  color: '#166534',
+}
+
 const activeToggle: any = {
   flex: 1,
   padding: '12px',
@@ -1734,6 +2910,16 @@ const quickTipBtn: any = {
   backgroundColor: '#ecfeff',
   color: '#0e7490',
   border: '1px solid #67e8f9',
+  padding: '10px 12px',
+  borderRadius: '10px',
+  fontSize: '11px',
+  fontWeight: '800',
+  cursor: 'pointer',
+}
+const quickDayOffBtn: any = {
+  backgroundColor: '#eef2ff',
+  color: '#3730a3',
+  border: '1px solid #c7d2fe',
   padding: '10px 12px',
   borderRadius: '10px',
   fontSize: '11px',
@@ -1797,16 +2983,34 @@ const miniIconBtn: any = {
   color: colors.primaryDark,
 }
 const miniIconBtnDanger: any = { ...miniIconBtn, border: '1px solid #fecaca', backgroundColor: '#fef2f2', color: colors.accentRed }
-const readOnlyBannerStyle: any = {
-  marginBottom: '14px',
-  padding: '10px 12px',
-  borderRadius: '12px',
-  border: '1px solid #cbd5e1',
+const daysOffStatsWrap: any = {
   backgroundColor: '#f8fafc',
-  color: '#475569',
-  fontSize: '12px',
-  fontWeight: '800',
-  textAlign: 'center',
+  border: '1px solid #e2e8f0',
+  borderRadius: '14px',
+  padding: '12px',
+  marginBottom: '16px',
+}
+const daysOffTotalCard: any = {
+  marginTop: '10px',
+  padding: '10px',
+  borderRadius: '12px',
+  border: '1px solid #dbeafe',
+  backgroundColor: '#eff6ff',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+}
+const daysOffTotalCardLabel: any = {
+  margin: 0,
+  fontWeight: 900,
+  fontSize: '10px',
+  color: '#1e3a8a',
+}
+const daysOffTotalCardValue: any = {
+  margin: 0,
+  fontWeight: 900,
+  fontSize: '16px',
+  color: '#1d4ed8',
 }
 const pendingOtListWrap: any = { backgroundColor: '#fff7ed', border: '1px solid #fed7aa', borderRadius: '14px', padding: '12px', marginBottom: '16px' }
 const pendingOtRow: any = {
