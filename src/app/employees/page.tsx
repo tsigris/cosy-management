@@ -95,6 +95,39 @@ const formatShortDayMonth = (dateInput: string) => {
   return `${day}/${month}`
 }
 
+function getEmployeePayrollWindow(startDateInput: string | Date | null | undefined, asOfInput: string | Date): { periodStart: Date; periodEnd: Date } | null {
+  const startDate = toBusinessDayDateFromInput(startDateInput, { normalizeToNoon: true })
+  const asOfDate = toBusinessDayDateFromInput(asOfInput, { normalizeToNoon: true })
+
+  if (!startDate || isNaN(startDate.getTime())) return null
+  if (!asOfDate || isNaN(asOfDate.getTime())) return null
+  if (asOfDate < startDate) return null
+
+  const anchorDay = startDate.getDate()
+  const buildAnchor = (year: number, monthIndex: number) => {
+    const daysInMonth = new Date(year, monthIndex + 1, 0).getDate()
+    const day = Math.min(anchorDay, daysInMonth)
+    return new Date(year, monthIndex, day, 12, 0, 0, 0)
+  }
+
+  let periodStart = buildAnchor(asOfDate.getFullYear(), asOfDate.getMonth())
+  if (periodStart > asOfDate) {
+    periodStart = buildAnchor(asOfDate.getFullYear(), asOfDate.getMonth() - 1)
+  }
+
+  if (periodStart < startDate) {
+    periodStart = new Date(startDate)
+    periodStart.setHours(12, 0, 0, 0)
+  }
+
+  const nextPeriodStart = buildAnchor(periodStart.getFullYear(), periodStart.getMonth() + 1)
+  const periodEnd = new Date(nextPeriodStart)
+  periodEnd.setDate(periodEnd.getDate() - 1)
+  periodEnd.setHours(12, 0, 0, 0)
+
+  return { periodStart, periodEnd }
+}
+
 function getPayrollCalculationStart(employee: any): Date | null {
   const lastSettlement = toBusinessDayDateFromInput(employee?.last_payroll_settlement_date, { normalizeToNoon: true })
   if (lastSettlement && !isNaN(lastSettlement.getTime())) {
@@ -172,6 +205,7 @@ function EmployeesContent() {
   const [overtimes, setOvertimes] = useState<any[]>([])
   const [employeeDaysOff, setEmployeeDaysOff] = useState<any[]>([])
   const [employeeDayOffDateColumn, setEmployeeDayOffDateColumn] = useState<'off_date' | 'date'>('date')
+  const [payrollCardsByEmployeeId, setPayrollCardsByEmployeeId] = useState<Record<string, any>>({})
   const [loading, setLoading] = useState(true)
 
   const [isAdding, setIsAdding] = useState(false)
@@ -366,7 +400,9 @@ function EmployeesContent() {
       setEmployeeDayOffDateColumn(dayOffDateColumn)
       const dayOffSelect = dayOffDateColumn === 'off_date' ? 'id, employee_id, store_id, off_date' : 'id, employee_id, store_id, date'
 
-      const [empsRes, transRes, otRes, dayOffRes, allStoreTransRes, storeRes] = await Promise.all([
+      const businessAsOfDate = getTodayDateISO()
+
+      const [empsRes, transRes, otRes, dayOffRes, allStoreTransRes, payrollSummaryRes, storeRes] = await Promise.all([
         getEmployees(storeId),
         supabase
           .from('transactions')
@@ -377,6 +413,10 @@ function EmployeesContent() {
         supabase.from('employee_overtimes').select('*').eq('store_id', storeId).eq('is_paid', false),
         supabase.from('employee_days_off').select(dayOffSelect).eq('store_id', storeId).order(dayOffDateColumn, { ascending: true }),
         supabase.from('transactions').select('id,amount,date,created_at,category,type,notes,employee_id,fixed_asset_id').eq('store_id', storeId),
+        supabase.rpc('get_employee_payroll_cards_summary', {
+          p_store_id: storeId,
+          p_as_of_date: businessAsOfDate,
+        }),
         supabase.from('stores').select('name').eq('id', storeId).maybeSingle(),
       ])
 
@@ -385,6 +425,18 @@ function EmployeesContent() {
       if (allStoreTransRes.data) setAllStoreTransactions(allStoreTransRes.data)
       if (otRes.data) setOvertimes(otRes.data)
       if (dayOffRes.data) setEmployeeDaysOff(dayOffRes.data)
+      if (payrollSummaryRes.error) {
+        console.error(payrollSummaryRes.error)
+      }
+      if (payrollSummaryRes.data) {
+        const nextMap = (payrollSummaryRes.data as any[]).reduce((acc: Record<string, any>, row: any) => {
+          const key = String(row?.employee_id || '')
+          if (!key) return acc
+          acc[key] = row
+          return acc
+        }, {})
+        setPayrollCardsByEmployeeId(nextMap)
+      }
       setStoreDisplayName(String(storeRes.data?.name || '').trim() || 'Κατάστημα')
     } catch (err) {
       console.error(err)
@@ -584,7 +636,10 @@ function EmployeesContent() {
     const todayKey = toDateKey(kpiDateContext.today)
 
     return employees.reduce((acc: number, emp: any) => {
-      const startDate = getPayrollCalculationStart(emp)
+      const startRaw = emp?.start_date
+      if (!startRaw) return acc
+
+      const startDate = toBusinessDayDateFromInput(startRaw, { normalizeToNoon: true })
       if (!startDate || isNaN(startDate.getTime())) return acc
       if (startDate > kpiDateContext.today) return acc
 
@@ -638,7 +693,10 @@ function EmployeesContent() {
     const todayKey = toDateKey(today)
 
     return employees.reduce((acc: number, emp: any) => {
-      const startDate = getPayrollCalculationStart(emp)
+      const startRaw = emp?.start_date
+      if (!startRaw) return acc
+
+      const startDate = toBusinessDayDateFromInput(startRaw, { normalizeToNoon: true })
       if (!startDate || isNaN(startDate.getTime()) || startDate > today) return acc
 
       const monthlyDays = Number(emp.work_days_per_month ?? emp.monthly_days ?? 0)
@@ -1921,17 +1979,20 @@ function EmployeesContent() {
                 const yearlyStats = getYearlyStats(emp.id)
                 const isSelected = selectedEmpId === emp.id
                 const daysLeft = getDaysUntilPayment(emp.start_date)
+                const payrollSummary = payrollCardsByEmployeeId[emp.id]
                 const pendingOtItems = overtimes
                   .filter((ot) => ot.employee_id === emp.id)
                   .sort((a, b) => (parseDateInputSafe(b.date)?.getTime() ?? 0) - (parseDateInputSafe(a.date)?.getTime() ?? 0))
+                const hasPayrollSummary = Boolean(payrollSummary)
                 const isInactive = emp.is_active === false
                 const monthlyDays = Number(emp.work_days_per_month ?? emp.monthly_days ?? 0)
                 const monthlySalary = Number(emp.monthly_salary ?? 0)
-                const agreedExtraSalary = Number(emp.agreed_extra_salary ?? emp.agreed_extra ?? 0)
+                const agreedExtraSalary = hasPayrollSummary
+                  ? Number(payrollSummary?.agreed_extra_salary ?? emp.agreed_extra_salary ?? emp.agreed_extra ?? 0)
+                  : Number(emp.agreed_extra_salary ?? emp.agreed_extra ?? 0)
                 const agreedMonthlyPay = monthlySalary + agreedExtraSalary
                 const isMonthlyEmployee = (emp.pay_basis || 'monthly') === 'monthly'
-                const settlementPreview = buildPayrollSettlementPreview(emp, getTodayDateISO())
-                const payrollWindow = getPayrollSettlementWindow(emp, getTodayDateISO())
+                const payrollWindow = getEmployeePayrollWindow(emp.start_date, new Date())
                 const visibleDayOffRows = (daysOffByEmployee[emp.id] || [])
                   .filter((row) => {
                     if (!payrollWindow) return false
@@ -1949,18 +2010,31 @@ function EmployeesContent() {
 
                 const visibleDaysOffCount = visibleDayOffRows.length
 
+                const includedDaysOffLocal = getIncludedDaysOff(monthlyDays)
+                const actualDaysOffLocal = visibleDaysOffCount
+                const extraDaysOffLocal = Math.max(actualDaysOffLocal - includedDaysOffLocal, 0)
                 const dailyCostLocal = isMonthlyEmployee && monthlyDays > 0 ? agreedMonthlyPay / monthlyDays : Number(emp.daily_rate ?? 0)
-                const hourlyRateLocal = dailyCostLocal > 0 ? dailyCostLocal / 8 : 0
-                const dailyCost = settlementPreview ? settlementPreview.dailyCost : dailyCostLocal
-                const hourlyRate = settlementPreview ? settlementPreview.hourlyCost : hourlyRateLocal
-                const totalAdvances = settlementPreview ? settlementPreview.totalAdvances : 0
-                const pendingOtHours = settlementPreview ? settlementPreview.pendingOvertimeHours : 0
-                const pendingOtAmount = settlementPreview ? settlementPreview.pendingOvertimeAmount : 0
-                const displayedIncludedDaysOff = settlementPreview ? settlementPreview.includedDaysOffForPeriod : 0
-                const displayedActualDaysOff = settlementPreview ? settlementPreview.actualDaysOff : visibleDaysOffCount
-                const displayedExtraDaysOff = settlementPreview ? settlementPreview.extraDaysOff : 0
-                const displayedDaysOffDeduction = settlementPreview ? settlementPreview.daysOffDeduction : 0
-                const displayedFinalPayable = settlementPreview ? settlementPreview.finalPayable : 0
+                const hourlyRateLocal = isMonthlyEmployee ? dailyCostLocal / 8 : 0
+                const totalAdvancesLocal = transactions
+                  .filter((t) => {
+                    if (String(t.employee_id || '') !== emp.id && String(t.fixed_asset_id || '') !== emp.id) return false
+                    return String(t.type || '') === 'salary_advance'
+                  })
+                  .reduce((acc, t) => acc + Math.abs(Number(t.amount) || 0), 0)
+                const pendingOtHoursLocal = overtimes.filter((ot) => ot.employee_id === emp.id).reduce((acc, curr) => acc + Number(curr.hours), 0)
+                const pendingOtAmountLocal = isMonthlyEmployee ? pendingOtHoursLocal * hourlyRateLocal : 0
+                const daysOffDeductionLocal = isMonthlyEmployee ? extraDaysOffLocal * dailyCostLocal : 0
+                const dailyCost = isMonthlyEmployee ? dailyCostLocal : hasPayrollSummary ? Number(payrollSummary?.daily_cost ?? 0) : dailyCostLocal
+                const hourlyRate = hasPayrollSummary ? Number(payrollSummary?.hourly_cost ?? 0) : hourlyRateLocal
+                const totalAdvances = hasPayrollSummary ? Number(payrollSummary?.total_advances ?? 0) : totalAdvancesLocal
+                const pendingOtHours = hasPayrollSummary ? Number(payrollSummary?.pending_overtime_hours ?? 0) : pendingOtHoursLocal
+                const pendingOtAmount = hasPayrollSummary ? Number(payrollSummary?.pending_overtime_amount ?? 0) : pendingOtAmountLocal
+                const displayedIncludedDaysOff = includedDaysOffLocal
+                const displayedActualDaysOff = visibleDaysOffCount
+                const displayedExtraDaysOff = Math.max(displayedActualDaysOff - displayedIncludedDaysOff, 0)
+                const displayedDaysOffDeduction = isMonthlyEmployee ? displayedExtraDaysOff * dailyCostLocal : 0
+                const displayedPayrollOnly = isMonthlyEmployee ? monthlySalary - totalAdvances + pendingOtAmount - displayedDaysOffDeduction : 0
+                const displayedFinalPayable = displayedPayrollOnly + agreedExtraSalary
                 const pendingOt = pendingOtHours
                 const yearDaysOffCount = (daysOffByEmployee[emp.id] || []).filter((row) => {
                   const businessDate = toBusinessDayDateFromInput(getDayOffDateValue(row), { normalizeToNoon: true })
@@ -2106,11 +2180,6 @@ function EmployeesContent() {
                           <p style={{ margin: '5px 0 0 0', fontWeight: 800, color: 'var(--muted)', fontSize: '11px' }}>
                             Εκκρεμείς υπερωρίες: {pendingOtHours.toFixed(2)} ώρες / {pendingOtAmount.toFixed(2)}€
                           </p>
-                          {settlementPreview && (
-                            <p style={{ margin: '5px 0 0 0', fontWeight: 800, color: 'var(--muted)', fontSize: '11px' }}>
-                              Περίοδος εξόφλησης: {settlementPreview.periodStartLabel} - {settlementPreview.periodEndLabel}
-                            </p>
-                          )}
                           <p style={{ margin: '5px 0 0 0', fontWeight: 800, color: 'var(--muted)', fontSize: '11px' }}>
                             Αφαίρεση extra ρεπό: {displayedDaysOffDeduction.toFixed(2)}€
                           </p>
