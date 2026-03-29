@@ -1009,6 +1009,20 @@ function EmployeesContent() {
       return
     }
 
+    const openPeriodStart = getPayrollCalculationStart(settlementModal.employee)
+    const settlementDate = toBusinessDayDateFromInput(settlementModal.settlementDate, { normalizeToNoon: true })
+    if (!openPeriodStart || !settlementDate || isNaN(openPeriodStart.getTime()) || isNaN(settlementDate.getTime())) {
+      toast.error('Μη έγκυρη περίοδος εξόφλησης.')
+      return
+    }
+    if (settlementDate < openPeriodStart) {
+      toast.error(`Η ημερομηνία εξόφλησης πρέπει να είναι από ${formatBusinessDayDate(openPeriodStart)} και μετά.`)
+      return
+    }
+
+    const shouldProceed = confirm('Είσαι σίγουρος ότι θέλεις να κλείσεις αυτή την περίοδο;')
+    if (!shouldProceed) return
+
     setIsSettlingPayroll(true)
     try {
       const { error } = await supabase.rpc('settle_employee_payroll_period_atomic', {
@@ -1021,7 +1035,7 @@ function EmployeesContent() {
 
       if (error) throw error
 
-      toast.success(`Η μισθοδοσία του/της ${settlementModal.name} εξοφλήθηκε.`)
+      toast.success(`Η μισθοδοσία του/της ${settlementModal.name} εξοφλήθηκε και έγινε ανανέωση.`)
       setSettlementModal(null)
       fetchInitialData()
     } catch (error) {
@@ -1664,6 +1678,24 @@ function EmployeesContent() {
                       }}
                       style={inputStyle}
                     />
+                    {(() => {
+                      const openPeriodStart = getPayrollCalculationStart(settlementModal.employee)
+                      const settlementDate = toBusinessDayDateFromInput(settlementModal.settlementDate, { normalizeToNoon: true })
+                      const isInvalidDate =
+                        !!openPeriodStart &&
+                        !!settlementDate &&
+                        !isNaN(openPeriodStart.getTime()) &&
+                        !isNaN(settlementDate.getTime()) &&
+                        settlementDate < openPeriodStart
+
+                      if (!isInvalidDate) return null
+
+                      return (
+                        <p style={{ margin: '8px 0 0 0', fontSize: '11px', color: colors.accentRed, fontWeight: 800 }}>
+                          Η ημερομηνία εξόφλησης δεν μπορεί να είναι πριν από την έναρξη ανοιχτής περιόδου ({formatBusinessDayDate(openPeriodStart)}).
+                        </p>
+                      )
+                    })()}
                   </div>
 
                   {settlementModal.preview ? (
@@ -1702,12 +1734,44 @@ function EmployeesContent() {
                     </button>
                     <button
                       onClick={handleConfirmPayrollSettlement}
-                      disabled={isSettlingPayroll || !settlementModal.preview}
+                      disabled={
+                        isSettlingPayroll ||
+                        !settlementModal.preview ||
+                        (() => {
+                          const openPeriodStart = getPayrollCalculationStart(settlementModal.employee)
+                          const settlementDate = toBusinessDayDateFromInput(settlementModal.settlementDate, { normalizeToNoon: true })
+                          if (!openPeriodStart || !settlementDate) return false
+                          if (isNaN(openPeriodStart.getTime()) || isNaN(settlementDate.getTime())) return true
+                          return settlementDate < openPeriodStart
+                        })()
+                      }
                       style={{
                         ...saveBtnSmall,
                         backgroundColor: colors.accentGreen,
-                        opacity: isSettlingPayroll || !settlementModal.preview ? 0.6 : 1,
-                        cursor: isSettlingPayroll || !settlementModal.preview ? 'not-allowed' : 'pointer',
+                        opacity:
+                          isSettlingPayroll ||
+                          !settlementModal.preview ||
+                          (() => {
+                            const openPeriodStart = getPayrollCalculationStart(settlementModal.employee)
+                            const settlementDate = toBusinessDayDateFromInput(settlementModal.settlementDate, { normalizeToNoon: true })
+                            if (!openPeriodStart || !settlementDate) return false
+                            if (isNaN(openPeriodStart.getTime()) || isNaN(settlementDate.getTime())) return true
+                            return settlementDate < openPeriodStart
+                          })()
+                            ? 0.6
+                            : 1,
+                        cursor:
+                          isSettlingPayroll ||
+                          !settlementModal.preview ||
+                          (() => {
+                            const openPeriodStart = getPayrollCalculationStart(settlementModal.employee)
+                            const settlementDate = toBusinessDayDateFromInput(settlementModal.settlementDate, { normalizeToNoon: true })
+                            if (!openPeriodStart || !settlementDate) return false
+                            if (isNaN(openPeriodStart.getTime()) || isNaN(settlementDate.getTime())) return true
+                            return settlementDate < openPeriodStart
+                          })()
+                            ? 'not-allowed'
+                            : 'pointer',
                       }}
                     >
                       {isSettlingPayroll ? 'ΓΙΝΕΤΑΙ ΕΞΟΦΛΗΣΗ...' : 'ΕΞΟΦΛΗΣΗ ΤΩΡΑ'}
