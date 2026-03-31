@@ -1,10 +1,3 @@
-// Helper για αναγνώριση tips
-const isTipTransaction = (t: any) => {
-  const type = String(t?.type || '').trim().toLowerCase()
-  const notes = String(t?.notes || t?.description || '')
-  const category = String(t?.category || '').trim().toLowerCase()
-  return type === 'tip_entry' || /tips/i.test(notes) || category === 'tips'
-}
 'use client'
 export const dynamic = 'force-dynamic'
 
@@ -22,6 +15,13 @@ import { Toaster, toast } from 'sonner'
 import { TrendingUp, TrendingDown, Menu, X, ChevronLeft, ChevronRight, CreditCard } from 'lucide-react'
 import ErrorBoundary from '@/components/ErrorBoundary'
 
+// Helper για αναγνώριση tips
+const isTipTransaction = (t: any) => {
+  const type = String(t?.type || '').trim().toLowerCase()
+  const notes = String(t?.notes || t?.description || '')
+  const category = String(t?.category || '').trim().toLowerCase()
+  return type === 'tip_entry' || /tips/i.test(notes) || category === 'tips'
+}
 // --- MODERN PREMIUM PALETTE ---
 const colors = {
   primaryDark: 'var(--text)',
@@ -480,6 +480,7 @@ function DashboardContent() {
           profiles: profilesByUserId[String(row?.user_id || '')] || null,
         }))
       }
+      
 
       // ✅ DEDUPE
       const map = new Map<string, DashboardTransaction>()
