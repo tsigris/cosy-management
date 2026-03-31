@@ -1,3 +1,10 @@
+// Helper για αναγνώριση tips
+const isTipTransaction = (t: any) => {
+  const type = String(t?.type || '').trim().toLowerCase()
+  const notes = String(t?.notes || t?.description || '')
+  const category = String(t?.category || '').trim().toLowerCase()
+  return type === 'tip_entry' || /tips/i.test(notes) || category === 'tips'
+}
 'use client'
 export const dynamic = 'force-dynamic'
 
@@ -488,13 +495,7 @@ function DashboardContent() {
 
   const loadTotals = useCallback(async () => {
     try {
-      const txRows = Array.isArray(transactions) ? transactions : []
-
-      console.log('[dashboard-kpi-source]', {
-        selectedDate,
-        transactionCount: txRows.length,
-        ids: txRows.map((r) => r.id),
-      })
+      const txRows = Array.isArray(transactions) ? transactions.filter((t) => !isTipTransaction(t)) : []
 
       let incomeTotal = 0
       let expenseTotal = 0
@@ -525,22 +526,6 @@ function DashboardContent() {
           normalizedNotes.includes('loan') ||
           normalizedNotes.includes('settlement')
 
-        if (isLoanLikeRow) {
-          console.log('[dashboard-loan-kpi-row]', {
-            amount,
-            type: row.type,
-            category: row.category,
-            method: row.method,
-            payment_method: row.payment_method,
-            notes: row.notes,
-            resolvedMethod: method,
-            isBank: isBankMethod(method),
-            isCash: isCashMethod(method),
-            creditLike,
-            isIncome,
-          })
-        }
-
         if (creditLike) {
           creditTotal += amount
           continue
@@ -563,15 +548,6 @@ function DashboardContent() {
       }
 
       const availableBalance = cashTotal + bankTotal
-
-      console.log('[dashboard-kpi-final]', {
-        incomeTotal,
-        expenseTotal,
-        creditTotal,
-        cashTotal,
-        bankTotal,
-        availableBalance,
-      })
 
       setTotals({
         income: incomeTotal,
