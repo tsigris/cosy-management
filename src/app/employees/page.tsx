@@ -1,14 +1,3 @@
-// Helper για αναγνώριση tips (σύμφωνα με οδηγίες)
-function isTipTransaction(tx: any): boolean {
-  const type = String(tx?.type || '').trim().toLowerCase()
-  const category = String(tx?.category || '').trim().toLowerCase()
-  const notes = String(tx?.notes || tx?.description || '').trim().toLowerCase()
-  return (
-    type === 'tip_entry' ||
-    category === 'tips' ||
-    /tips?/i.test(notes)
-  )
-}
 'use client'
 export const dynamic = 'force-dynamic'
 
@@ -24,6 +13,17 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { toast, Toaster } from 'sonner'
 import { Eye, EyeOff, Coins, Pencil, Trash2 } from 'lucide-react'
 
+// Helper για αναγνώριση tips (σύμφωνα με οδηγίες)
+function isTipTransaction(tx: any): boolean {
+  const type = String(tx?.type || '').trim().toLowerCase()
+  const category = String(tx?.category || '').trim().toLowerCase()
+  const notes = String(tx?.notes || tx?.description || '').trim().toLowerCase()
+  return (
+    type === 'tip_entry' ||
+    category === 'tips' ||
+    /tips?/i.test(notes)
+  )
+}
 // --- ΠΑΛΕΤΑ ΧΡΩΜΑΤΩΝ ---
 const colors = {
   primaryDark: '#1e293b',
