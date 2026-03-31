@@ -1,3 +1,14 @@
+// Helper για αναγνώριση tips (σύμφωνα με οδηγίες)
+function isTipTransaction(tx: any): boolean {
+  const type = String(tx?.type || '').trim().toLowerCase()
+  const category = String(tx?.category || '').trim().toLowerCase()
+  const notes = String(tx?.notes || tx?.description || '').trim().toLowerCase()
+  return (
+    type === 'tip_entry' ||
+    category === 'tips' ||
+    /tips?/i.test(notes)
+  )
+}
 'use client'
 export const dynamic = 'force-dynamic'
 
@@ -289,99 +300,53 @@ function EmployeesContent() {
     }
   }, [storeId, router])
 
-  // ✅ Tips stats fetcher (CURRENT MONTH with BUSINESS MONTH logic + last 5)
-  const getTipsStats = useCallback(async () => {
-    try {
-      if (!storeId || storeId === 'null') return
+  // ✅ Tips stats fetcher (BUSINESS MONTH, all tip transactions)
+  const getTipsStats = useCallback(() => {
+    if (!storeId || storeId === 'null') return
 
-      const start = new Date()
-      start.setDate(1)
-      start.setHours(0, 0, 0, 0)
+    // Use allStoreTransactions for full coverage
+    const now = new Date()
+    const currentBusinessYear = getBusinessYear(now)
+    const currentBusinessMonth = getBusinessMonth(now)
+    const employeeNamesById = new Map(employees.map((e: any) => [String(e.id), String(e.name || '')]))
 
-      const end = new Date(start)
-      end.setMonth(end.getMonth() + 1)
-
-      const { data, error } = await supabase
-        .from('transactions')
-        .select('id,date,created_at,notes,employee_id,fixed_asset_id,amount,type')
-        .eq('store_id', storeId)
-        .eq('type', 'tip_entry')
-        .gte('date', start.toISOString().slice(0, 10))
-        .lt('date', end.toISOString().slice(0, 10))
-        .order('date', { ascending: false })
-
-      if (error) {
-        console.error(error)
-        return
-      }
-
-      const now = new Date()
-      const currentBusinessYear = getBusinessYear(now)
-      const currentBusinessMonth = getBusinessMonth(now)
-      const employeeNamesById = new Map(employees.map((e: any) => [String(e.id), String(e.name || '')]))
-
-      let monthlyTips = 0
-
-      const tipsThisBusinessMonth = (data || [])
-        .map((t: any) => {
-          const note = String(t.notes || '')
-          const isTip = /tips/i.test(note) || String(t.type || '') === 'tip_entry'
-
-          const d = parseTxDate(t)
-          if (!d) {
-            return {
-              id: t.id,
-              name: employeeNamesById.get(String(t.employee_id || '')) || employeeNamesById.get(String(t.fixed_asset_id || '')) || t?.fixed_assets?.name || '—',
-              date: t.date,
-              amount: 0,
-              note,
-              _d: null as Date | null,
-              _isTip: isTip,
-            }
-          }
-
-          // amount από DB (σωστό), fallback από notes για παλιές εγγραφές
-          let amount = Number(t.amount) || 0
-          if (isTip && amount === 0) {
-            const m = note.replace(',', '.').match(/[\d.]+/)
-            amount = m ? parseFloat(m[0]) : 0
-          }
-
-          return {
-            id: t.id,
-            name: employeeNamesById.get(String(t.employee_id || '')) || employeeNamesById.get(String(t.fixed_asset_id || '')) || t?.fixed_assets?.name || '—',
-            date: t.date,
-            amount,
-            note,
-            _d: d,
-            _isTip: isTip,
-          }
-        })
-        .filter((t: any) => {
-          if (!t._isTip) return false
-          if (!t._d) return false
-          return getBusinessYear(t._d) === currentBusinessYear && getBusinessMonth(t._d) === currentBusinessMonth
-        })
-        // keep most recent by actual timestamp
-        .sort((a: any, b: any) => (b._d?.getTime() || 0) - (a._d?.getTime() || 0))
-
-      tipsThisBusinessMonth.forEach((t: any) => {
-        monthlyTips += t.amount
+    // Filter all transactions for current business month and isTipTransaction
+    const tipsThisBusinessMonth = (allStoreTransactions || [])
+      .filter((t: any) => {
+        const d = parseTxDate(t)
+        if (!d) return false
+        return (
+          getBusinessYear(d) === currentBusinessYear &&
+          getBusinessMonth(d) === currentBusinessMonth &&
+          isTipTransaction(t)
+        )
       })
-
-      setTipsStats({
-        monthlyTips,
-        lastTips: tipsThisBusinessMonth.slice(0, 5).map((t: any) => ({
+      .map((t: any) => {
+        let amount = Number(t.amount) || 0
+        if (amount === 0) {
+          const note = String(t.notes || t.description || '')
+          const m = note.replace(',', '.').match(/\d+(\.\d+)?/)
+          amount = m ? parseFloat(m[0]) : 0
+        }
+        return {
           id: t.id,
-          name: t.name,
+          name:
+            employeeNamesById.get(String(t.employee_id || '')) ||
+            employeeNamesById.get(String(t.fixed_asset_id || '')) ||
+            t?.fixed_assets?.name || '—',
           date: t.date,
-          amount: t.amount,
-        })),
+          amount,
+        }
       })
-    } catch (e) {
-      console.error(e)
-    }
-  }, [storeId, employees])
+      .sort((a: any, b: any) => (b.date || '').localeCompare(a.date || ''))
+
+    const monthlyTips = tipsThisBusinessMonth.reduce((sum: number, t: any) => sum + Math.abs(Number(t.amount || 0)), 0)
+
+    setTipsStats({
+      monthlyTips,
+      lastTips: tipsThisBusinessMonth.slice(0, 5),
+    })
+  }, [storeId, employees, allStoreTransactions])
 
   const fetchInitialData = useCallback(async () => {
     setLoading(true)
