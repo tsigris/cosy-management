@@ -267,6 +267,7 @@ function EmployeesContent() {
   const [showTipsList, setShowTipsList] = useState(false)
   const [isAmountFocused, setIsAmountFocused] = useState(false)
   const formRef = useRef<HTMLDivElement | null>(null)
+  const [selectedMonthDate, setSelectedMonthDate] = useState(() => new Date())
 
   const availableYears: number[] = []
   for (let y = 2024; y <= new Date().getFullYear(); y++) availableYears.push(y)
@@ -302,14 +303,27 @@ function EmployeesContent() {
     }
   }, [storeId, router])
 
+  const selectedMonthYear = selectedMonthDate.getFullYear()
+  const selectedMonthIndex = selectedMonthDate.getMonth()
+  const selectedMonthLabel = useMemo(() => {
+    return selectedMonthDate.toLocaleString('el-GR', { month: 'long', year: 'numeric' }).toUpperCase()
+  }, [selectedMonthDate])
+
+  const shiftSelectedMonth = useCallback((delta: number) => {
+    setSelectedMonthDate((prev) => {
+      const next = new Date(prev)
+      next.setMonth(next.getMonth() + delta)
+      return next
+    })
+  }, [])
+
   // ✅ Tips stats fetcher (BUSINESS MONTH, all tip transactions)
   const getTipsStats = useCallback(() => {
     if (!storeId || storeId === 'null') return
 
     // Use allStoreTransactions for full coverage
-    const now = new Date()
-    const currentBusinessYear = getBusinessYear(now)
-    const currentBusinessMonth = getBusinessMonth(now)
+    const currentBusinessYear = selectedMonthYear
+    const currentBusinessMonth = selectedMonthIndex
     const employeeNamesById = new Map(employees.map((e: any) => [String(e.id), String(e.name || '')]))
 
     // Filter all transactions for current business month and isTipTransaction
@@ -348,7 +362,7 @@ function EmployeesContent() {
       monthlyTips,
       lastTips: tipsThisBusinessMonth.slice(0, 5),
     })
-  }, [storeId, employees, allStoreTransactions])
+  }, [storeId, employees, allStoreTransactions, selectedMonthYear, selectedMonthIndex])
 
   const fetchInitialData = useCallback(async () => {
     setLoading(true)
@@ -542,8 +556,7 @@ function EmployeesContent() {
 
   // ✅ HERO KPI: Σύνολο πληρωμών υπαλλήλων τρέχοντος ΜΗΝΑ (BUSINESS MONTH) (EXCLUDES tips)
   const currentMonthPayrollTotal = useMemo(() => {
-    const now = new Date()
-    const todayBusinessDate = now
+    const todayBusinessDate = selectedMonthDate
     const y = todayBusinessDate.getFullYear()
     const m = todayBusinessDate.getMonth()
     const day = todayBusinessDate.getDate()
@@ -575,17 +588,16 @@ function EmployeesContent() {
         return true
       })
       .reduce((acc: number, t: any) => acc + (Math.abs(Number(t.amount)) || 0), 0)
-  }, [transactions, employees, kpiPeriod])
+  }, [transactions, employees, kpiPeriod, selectedMonthDate])
 
   const kpiDateContext = useMemo(() => {
-    const now = new Date()
     return {
-      today: now,
-      year: now.getFullYear(),
-      month: now.getMonth(),
-      monthStart: new Date(now.getFullYear(), now.getMonth(), 1),
+      today: selectedMonthDate,
+      year: selectedMonthYear,
+      month: selectedMonthIndex,
+      monthStart: new Date(selectedMonthYear, selectedMonthIndex, 1),
     }
-  }, [])
+  }, [selectedMonthDate, selectedMonthYear, selectedMonthIndex])
 
   const accruedPayrollMonthToDate = useMemo(() => {
     const msPerDay = 1000 * 60 * 60 * 24
@@ -1405,10 +1417,7 @@ function EmployeesContent() {
   }
 
   // ✅ current month label (BUSINESS MONTH)
-  const currentMonthLabel = useMemo(() => {
-    const d = new Date()
-    return d.toLocaleString('el-GR', { month: 'long', year: 'numeric' }).toUpperCase()
-  }, [])
+  const currentMonthLabel = selectedMonthLabel
 
   const selectedBusinessMonth = useMemo(() => {
     const d = new Date()
@@ -1747,6 +1756,14 @@ function EmployeesContent() {
             <div style={payrollHeroCard}>
               <div style={payrollHeroTopRow}>
                 <div style={payrollHeroPill}>ΣΥΝΟΛΟ ΥΠΑΛΛΗΛΩΝ • {currentMonthLabel}</div>
+                <div style={monthNavWrap}>
+                  <button type="button" onClick={() => shiftSelectedMonth(-1)} style={monthNavBtn} aria-label="Previous month">
+                    ◀
+                  </button>
+                  <button type="button" onClick={() => shiftSelectedMonth(1)} style={monthNavBtn} aria-label="Next month">
+                    ▶
+                  </button>
+                </div>
               </div>
 
               <div style={payrollHeroAmount}>{currentMonthPayrollTotal.toFixed(2)}€</div>
@@ -3024,6 +3041,25 @@ const payrollHeroTipsBtn: any = {
   fontWeight: 900,
   fontSize: '12px',
   cursor: 'pointer',
+}
+
+const monthNavWrap: any = {
+  display: 'flex',
+  gap: '6px',
+  alignItems: 'center',
+}
+
+const monthNavBtn: any = {
+  width: '28px',
+  height: '28px',
+  borderRadius: '10px',
+  border: '1px solid rgba(255,255,255,0.18)',
+  backgroundColor: 'rgba(255,255,255,0.08)',
+  color: 'white',
+  fontWeight: 900,
+  fontSize: '12px',
+  cursor: 'pointer',
+  lineHeight: 1,
 }
 
 export default function EmployeesPage() {
