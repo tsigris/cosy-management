@@ -18,9 +18,15 @@ import ErrorBoundary from '@/components/ErrorBoundary'
 // Helper για αναγνώριση tips
 const isTipTransaction = (t: any) => {
   const type = String(t?.type || '').trim().toLowerCase()
-  const notes = String(t?.notes || t?.description || '')
+  const notes = String(t?.notes || t?.description || '').trim().toLowerCase()
   const category = String(t?.category || '').trim().toLowerCase()
-  return type === 'tip_entry' || /tips/i.test(notes) || category === 'tips'
+  return (
+    type === 'tip_entry' ||
+    category.includes('tip') ||
+    category.includes('φιλο') ||
+    notes.includes('tip') ||
+    notes.includes('φιλο')
+  )
 }
 // --- MODERN PREMIUM PALETTE ---
 const colors = {

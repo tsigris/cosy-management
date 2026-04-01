@@ -18,11 +18,13 @@ function isTipTransaction(tx: any): boolean {
   const type = String(tx?.type || '').trim().toLowerCase()
   const category = String(tx?.category || '').trim().toLowerCase()
   const notes = String(tx?.notes || tx?.description || '').trim().toLowerCase()
-  return (
-    type === 'tip_entry' ||
-    category === 'tips' ||
-    /tips?/i.test(notes)
-  )
+    return (
+      type === 'tip_entry' ||
+      category.includes('tip') ||
+      category.includes('φιλο') ||
+      notes.includes('tip') ||
+      notes.includes('φιλο')
+    )
 }
 // --- ΠΑΛΕΤΑ ΧΡΩΜΑΤΩΝ ---
 const colors = {
@@ -567,9 +569,7 @@ function EmployeesContent() {
         }
 
         // exclude tips (και παλιές/νέες εγγραφές)
-        const note = String(t.notes || '')
-        const txType = String(t.type || '')
-        const isTip = /tips/i.test(note) || txType === 'tip_entry'
+        const isTip = isTipTransaction(t)
         if (isTip) return false
 
         return true
@@ -718,10 +718,8 @@ function EmployeesContent() {
         const amount = Number(t.amount) || 0
         if (amount <= 0) return false
 
-        const note = String(t.notes || '')
-        const txType = String(t.type || '')
         const category = String(t.category || '').toLowerCase()
-        const isTip = /tips/i.test(note) || txType === 'tip_entry'
+        const isTip = isTipTransaction(t)
         if (isTip) return false
         if (category === 'staff') return false
 
@@ -1227,7 +1225,7 @@ function EmployeesContent() {
     yearTrans.forEach((t) => {
       const note = String(t.notes || '')
       const txType = String(t.type || '')
-      const isTip = /tips/i.test(note) || txType === 'tip_entry'
+      const isTip = isTipTransaction(t)
       const isAdvance = txType === 'salary_advance'
 
       if (!isTip) {
@@ -2325,7 +2323,7 @@ function EmployeesContent() {
                             .map((t) => {
                               const note = String(t.notes || '')
                               const txType = String(t.type || '')
-                              const isTip = /tips/i.test(note) || txType === 'tip_entry'
+                              const isTip = isTipTransaction(t)
                               const isAdvance = txType === 'salary_advance'
                               let noteLabel = 'Πληρωμή'
                               if (isAdvance) noteLabel = 'ΠΡΟΚΑΤΑΒΟΛΗ'
