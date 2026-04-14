@@ -2080,6 +2080,7 @@ function EmployeesContent() {
                 const displayedPayrollOnly = isMonthlyEmployee ? monthlySalary - totalAdvances + pendingOtAmount - displayedDaysOffDeduction : 0
                 const displayedFinalPayable = displayedPayrollOnly + agreedExtraSalary
                 const pendingOt = pendingOtHours
+                const totalPayableWithCarryover = displayedFinalPayable + carryoverAdvances
                 const yearDaysOffCount = (daysOffByEmployee[emp.id] || []).filter((row) => {
                   const businessDate = toBusinessDayDateFromInput(getDayOffDateValue(row), { normalizeToNoon: true })
                   if (!businessDate || isNaN(businessDate.getTime())) return false
@@ -2180,7 +2181,11 @@ function EmployeesContent() {
                         <span style={{ ...badgeStyle, backgroundColor: '#eef2ff', color: '#3730a3' }}>
                           ΡΕΠΟ {displayedActualDaysOff}/{displayedIncludedDaysOff}
                         </span>
-                        {isMonthlyEmployee && <span style={{ ...badgeStyle, backgroundColor: '#ecfdf5', color: '#047857' }}>ΥΠΟΛΟΙΠΟ {displayedFinalPayable.toFixed(2)}€</span>}
+                        {isMonthlyEmployee && (
+                          <span style={{ ...badgeStyle, backgroundColor: '#ecfdf5', color: '#047857' }}>
+                            ΥΠΟΛΟΙΠΟ ΚΥΚΛΟΥ {displayedFinalPayable.toFixed(2)}€
+                          </span>
+                        )}
                         {carryoverAdvances > 0 && (
                           <span style={{ ...badgeStyle, backgroundColor: '#fff7ed', color: '#9a3412' }}>
                             ΠΡΟΗΓ. ΚΥΚΛΟΣ {carryoverAdvances.toFixed(2)}€
@@ -2242,7 +2247,12 @@ function EmployeesContent() {
                           </p>
                           {isMonthlyEmployee && (
                             <p style={{ margin: '5px 0 0 0', fontWeight: 900, color: 'var(--text)', fontSize: '11px' }}>
-                              Υπόλοιπο πληρωμής: {displayedFinalPayable.toFixed(2)}€
+                              Υπόλοιπο κύκλου: {displayedFinalPayable.toFixed(2)}€
+                            </p>
+                          )}
+                          {carryoverAdvances > 0 && (
+                            <p style={{ margin: '5px 0 0 0', fontWeight: 900, color: 'var(--text)', fontSize: '11px' }}>
+                              Σύνολο πληρωτέο: {totalPayableWithCarryover.toFixed(2)}€
                             </p>
                           )}
 

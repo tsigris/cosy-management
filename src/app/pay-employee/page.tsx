@@ -49,6 +49,7 @@ function PayEmployeeContent() {
   const [paymentMethod, setPaymentMethod] = useState<'Μετρητά' | 'Τράπεζα'>('Μετρητά')
   const [date, setDate] = useState(getTodayDateISO())
   const [loading, setLoading] = useState(true)
+  const [isSettlingCarryover, setIsSettlingCarryover] = useState(false)
 
   const loadEmployeeData = useCallback(async () => {
     if (!empId || !storeId) return;
@@ -210,8 +211,8 @@ function PayEmployeeContent() {
     total_advances: payrollSummaryRow?.total_advances,
     totalPayrollCost,
   })
-  const bankAmountNum = clampAmount(parseAmount(bankAmount), totalPayableSafe)
-  const cashAmountNum = clampAmount(parseAmount(cashAmount), totalPayableSafe)
+  const bankAmountNum = clampAmount(parseAmount(bankAmount), finalPayableSafe)
+  const cashAmountNum = clampAmount(parseAmount(cashAmount), finalPayableSafe)
   console.log('[pay-employee-split-init-fix]', {
     finalPayable,
     bankAmount,
@@ -220,16 +221,16 @@ function PayEmployeeContent() {
   })
 
   const handleBankAmountChange = (value: string) => {
-    const normalizedBank = clampAmount(parseAmount(value), totalPayableSafe)
-    const normalizedCash = Math.max(0, totalPayableSafe - normalizedBank)
+    const normalizedBank = clampAmount(parseAmount(value), finalPayableSafe)
+    const normalizedCash = Math.max(0, finalPayableSafe - normalizedBank)
     setLastEditedField('bank')
     setBankAmount(value === '' ? '' : String(normalizedBank))
     setCashAmount(normalizedCash.toFixed(2))
   }
 
   const handleCashAmountChange = (value: string) => {
-    const normalizedCash = clampAmount(parseAmount(value), totalPayableSafe)
-    const normalizedBank = Math.max(0, totalPayableSafe - normalizedCash)
+    const normalizedCash = clampAmount(parseAmount(value), finalPayableSafe)
+    const normalizedBank = Math.max(0, finalPayableSafe - normalizedCash)
     setLastEditedField('cash')
     setCashAmount(value === '' ? '' : String(normalizedCash))
     setBankAmount(normalizedBank.toFixed(2))
@@ -240,8 +241,8 @@ function PayEmployeeContent() {
     if (lastEditedField === null) return
 
     if (lastEditedField === 'cash') {
-      const nextCash = clampAmount(parseAmount(cashAmount), totalPayableSafe)
-      const nextBank = Math.max(0, totalPayableSafe - nextCash)
+      const nextCash = clampAmount(parseAmount(cashAmount), finalPayableSafe)
+      const nextBank = Math.max(0, finalPayableSafe - nextCash)
       const nextCashText = nextCash.toFixed(2)
       const nextBankText = nextBank.toFixed(2)
       if (cashAmount !== '' && cashAmount !== nextCashText) setCashAmount(nextCashText)
@@ -249,13 +250,13 @@ function PayEmployeeContent() {
       return
     }
 
-    const nextBank = clampAmount(parseAmount(bankAmount), totalPayableSafe)
-    const nextCash = Math.max(0, totalPayableSafe - nextBank)
+    const nextBank = clampAmount(parseAmount(bankAmount), finalPayableSafe)
+    const nextCash = Math.max(0, finalPayableSafe - nextBank)
     const nextBankText = bankAmount === '' ? '' : nextBank.toFixed(2)
     const nextCashText = nextCash.toFixed(2)
     if (bankAmount !== nextBankText) setBankAmount(nextBankText)
     if (cashAmount !== nextCashText) setCashAmount(nextCashText)
-  }, [totalPayableSafe, mode, lastEditedField])
+  }, [finalPayableSafe, mode, lastEditedField])
 
   async function handleFinalPayment() {
     console.log('[pay-employee] CLICKED handleFinalPayment', {
@@ -318,8 +319,8 @@ function PayEmployeeContent() {
       }
 
       // normal final payment (remaining payroll + agreed extra + manual bonus)
-      if (totalPayableSafe <= 0) {
-        console.log('[pay-employee] BLOCKED: totalPayableSafe <= 0', { totalPayableSafe })
+      if (finalPayableSafe <= 0) {
+        console.log('[pay-employee] BLOCKED: finalPayableSafe <= 0', { finalPayableSafe })
         setLoading(false)
         return toast.error('Το ποσό πληρωμής πρέπει να είναι μεγαλύτερο από 0')
       }
@@ -338,30 +339,30 @@ function PayEmployeeContent() {
       // Fallback when both fields are empty: use selected payment method for full amount.
       if (isBankEmpty && isCashEmpty) {
         if (paymentMethod === 'Τράπεζα') {
-          normalizedBank = totalPayableSafe
+          normalizedBank = finalPayableSafe
           normalizedCash = 0
         } else {
           normalizedBank = 0
-          normalizedCash = totalPayableSafe
+          normalizedCash = finalPayableSafe
         }
       } else if (!isBankEmpty && isCashEmpty) {
-        normalizedBank = clampAmount(bankAmountNum, totalPayableSafe)
-        normalizedCash = Math.max(0, totalPayableSafe - normalizedBank)
+        normalizedBank = clampAmount(bankAmountNum, finalPayableSafe)
+        normalizedCash = Math.max(0, finalPayableSafe - normalizedBank)
       } else if (isBankEmpty && !isCashEmpty) {
-        normalizedCash = clampAmount(cashAmountNum, totalPayableSafe)
-        normalizedBank = Math.max(0, totalPayableSafe - normalizedCash)
+        normalizedCash = clampAmount(cashAmountNum, finalPayableSafe)
+        normalizedBank = Math.max(0, finalPayableSafe - normalizedCash)
       } else {
-        normalizedBank = clampAmount(bankAmountNum, totalPayableSafe)
-        normalizedCash = clampAmount(cashAmountNum, totalPayableSafe)
+        normalizedBank = clampAmount(bankAmountNum, finalPayableSafe)
+        normalizedCash = clampAmount(cashAmountNum, finalPayableSafe)
 
         const total = normalizedBank + normalizedCash
-        const diff = totalPayableSafe - total
+        const diff = finalPayableSafe - total
 
         if (Math.abs(diff) <= epsilon) {
           if (lastEditedField === 'cash') {
-            normalizedBank = Math.max(0, Math.min(totalPayableSafe, normalizedBank + diff))
+            normalizedBank = Math.max(0, Math.min(finalPayableSafe, normalizedBank + diff))
           } else {
-            normalizedCash = Math.max(0, Math.min(totalPayableSafe, normalizedCash + diff))
+            normalizedCash = Math.max(0, Math.min(finalPayableSafe, normalizedCash + diff))
           }
         }
       }
@@ -372,8 +373,8 @@ function PayEmployeeContent() {
         return toast.error('Τα ποσά πληρωμής δεν μπορεί να είναι αρνητικά.')
       }
 
-      if (normalizedBank > totalPayableSafe || normalizedCash > totalPayableSafe) {
-        console.log('[pay-employee] BLOCKED: amount exceeds final payable', { normalizedBank, normalizedCash, totalPayableSafe })
+      if (normalizedBank > finalPayableSafe || normalizedCash > finalPayableSafe) {
+        console.log('[pay-employee] BLOCKED: amount exceeds final payable', { normalizedBank, normalizedCash, finalPayableSafe })
         setLoading(false)
         return toast.error('Κάποιο ποσό είναι μεγαλύτερο από το τελικό πληρωτέο.')
       }
@@ -384,31 +385,29 @@ function PayEmployeeContent() {
         normalizedBank,
         normalizedCash,
         normalizedTotal: normalizedBank + normalizedCash,
-        totalPayableSafe,
+        finalPayableSafe,
         paymentMethod,
         bankAmount,
         cashAmount,
       })
 
-      if (Math.abs(normalizedTotal - totalPayableSafe) > 0.01) {
+      if (Math.abs(normalizedTotal - finalPayableSafe) > 0.01) {
         console.log('[pay-employee] BLOCKED: split total mismatch', {
           normalizedBank,
           normalizedCash,
           normalizedTotal,
-          totalPayableSafe,
+          finalPayableSafe,
         })
         setLoading(false)
         return toast.error('Το split πληρωμής πρέπει να ισούται με το τελικό πληρωτέο.')
       }
 
       const hasSplit = normalizedBank > 0 && normalizedCash > 0
-      const ratioBank = totalPayableSafe > 0 ? normalizedBank / totalPayableSafe : 0
-      const ratioCash = totalPayableSafe > 0 ? normalizedCash / totalPayableSafe : 0
+      const ratioBank = finalPayableSafe > 0 ? normalizedBank / finalPayableSafe : 0
+      const ratioCash = finalPayableSafe > 0 ? normalizedCash / finalPayableSafe : 0
 
       const currentCycleBank = Number((finalPayableSafe * ratioBank).toFixed(2))
       const currentCycleCash = Number((finalPayableSafe - currentCycleBank).toFixed(2))
-      const carryoverBank = Number((carryoverPayable * ratioBank).toFixed(2))
-      const carryoverCash = Number((carryoverPayable - carryoverBank).toFixed(2))
 
       if (finalPayableSafe > 0) {
         const settlementMethod = hasSplit ? 'Μικτή' : normalizedBank > 0 ? 'Τράπεζα' : 'Μετρητά'
@@ -482,31 +481,6 @@ function PayEmployeeContent() {
         }
       }
 
-      if (carryoverPayable > 0) {
-        const carryoverMethod = hasSplit ? 'Μικτή' : normalizedBank > 0 ? 'Τράπεζα' : 'Μετρητά'
-        const carryoverNotes = hasSplit
-          ? `Carryover | Split: Τράπεζα ${carryoverBank.toFixed(2)} / Μετρητά ${carryoverCash.toFixed(2)}`
-          : 'Carryover'
-
-        console.log('[pay-employee] BEFORE carryover settlement RPC', {
-          storeId,
-          empId,
-          settlementDate: date,
-          carryoverMethod,
-          carryoverNotes,
-        })
-
-        const { data: carryoverData, error: carryoverError } = await supabase.rpc('settle_employee_payroll_carryover_atomic', {
-          p_store_id: storeId,
-          p_employee_id: empId,
-          p_settlement_date: date,
-          p_method: carryoverMethod,
-          p_notes: carryoverNotes,
-        })
-
-        console.log('[pay-employee] AFTER carryover settlement RPC', { error: carryoverError, data: carryoverData })
-        if (carryoverError) throw carryoverError
-      }
 
       toast.success('Η πληρωμή καταχωρήθηκε και οι υπερωρίες εκκαθαρίστηκαν!');
       router.push(`/employees?store=${storeId}`);
@@ -518,7 +492,65 @@ function PayEmployeeContent() {
     }
   }
 
-  const isPayButtonDisabled = loading || (mode === 'advance' ? Number(advanceAmount) <= 0 : totalPayableSafe <= 0)
+  async function handleCarryoverPayment() {
+    console.log('[pay-employee] CLICKED handleCarryoverPayment', {
+      storeId,
+      empId,
+      paymentMethod,
+      date,
+      carryoverPayable,
+    })
+
+    if (!storeId) {
+      console.log('[pay-employee] BLOCKED: missing storeId (carryover)')
+      return toast.error('Σφάλμα καταστήματος')
+    }
+
+    if (!empId) {
+      console.log('[pay-employee] BLOCKED: missing empId (carryover)')
+      return toast.error('Σφάλμα υπαλλήλου')
+    }
+
+    if (carryoverPayable <= 0) {
+      console.log('[pay-employee] BLOCKED: carryoverPayable <= 0', { carryoverPayable })
+      return toast.error('Δεν υπάρχει οφειλή προηγούμενου κύκλου.')
+    }
+
+    setIsSettlingCarryover(true)
+    try {
+      const carryoverNotes = `ΕΞΟΦΛΗΣΗ ΠΡΟΗΓ. ΚΥΚΛΟΥ ${carryoverPayable.toFixed(2)}€`
+
+      console.log('[pay-employee] BEFORE carryover settlement RPC', {
+        storeId,
+        empId,
+        settlementDate: date,
+        carryoverMethod: paymentMethod,
+        carryoverNotes,
+      })
+
+      const { data: carryoverData, error: carryoverError } = await supabase.rpc('settle_employee_payroll_carryover_atomic', {
+        p_store_id: storeId,
+        p_employee_id: empId,
+        p_settlement_date: date,
+        p_method: paymentMethod,
+        p_notes: carryoverNotes,
+      })
+
+      console.log('[pay-employee] AFTER carryover settlement RPC', { error: carryoverError, data: carryoverData })
+      if (carryoverError) throw carryoverError
+
+      toast.success('Η οφειλή προηγούμενου κύκλου εξοφλήθηκε!')
+      await loadEmployeeData()
+    } catch (err: any) {
+      console.error('[pay-employee] CARRYOVER PAYMENT ERROR', err)
+      toast.error(err?.message || 'Αποτυχία εξόφλησης προηγούμενου κύκλου')
+    } finally {
+      setIsSettlingCarryover(false)
+    }
+  }
+
+  const isPayButtonDisabled = loading || (mode === 'advance' ? Number(advanceAmount) <= 0 : finalPayableSafe <= 0)
+  const isCarryoverButtonDisabled = loading || isSettlingCarryover || carryoverPayable <= 0
 
   console.log('[pay-employee] render state', {
     loading,
@@ -654,7 +686,7 @@ function PayEmployeeContent() {
             ) : (
               <div style={{display: 'flex', flexDirection: 'column', gap: '8px'}}>
                 <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
-                  <span style={resultLabel}>ΥΠΟΛΟΙΠΟ ΜΙΣΘΟΔΟΣΙΑΣ</span>
+                  <span style={resultLabel}>ΥΠΟΛΟΙΠΟ ΚΥΚΛΟΥ</span>
                   <span style={resultValue}>{effectiveRemainingPayroll.toFixed(2)}€</span>
                 </div>
                 <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
@@ -674,13 +706,15 @@ function PayEmployeeContent() {
                   <span style={resultValue}>{manualBonus.toFixed(2)}€</span>
                 </div>
                 <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
-                  <span style={resultLabel}>ΤΕΛΙΚΟ ΠΛΗΡΩΤΕΟ</span>
+                  <span style={resultLabel}>ΠΛΗΡΩΤΕΟ ΚΥΚΛΟΥ</span>
                   <span style={resultValue}>{finalPayable.toFixed(2)}€</span>
                 </div>
-                <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
-                  <span style={resultLabel}>ΣΥΝΟΛΟ ΠΛΗΡΩΤΕΟ</span>
-                  <span style={resultValue}>{totalPayableSafe.toFixed(2)}€</span>
-                </div>
+                {carryoverPayable > 0 && (
+                  <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
+                    <span style={resultLabel}>ΣΥΝΟΛΟ ΠΛΗΡΩΤΕΟ</span>
+                    <span style={resultValue}>{totalPayableSafe.toFixed(2)}€</span>
+                  </div>
+                )}
                 <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
                   <span style={resultLabel}>ΣΥΝΟΛΙΚΟ ΚΟΣΤΟΣ</span>
                   <span style={resultValue}>{totalPayrollCost.toFixed(2)}€</span>
@@ -688,6 +722,28 @@ function PayEmployeeContent() {
               </div>
             )}
           </div>
+
+          {mode !== 'advance' && carryoverPayable > 0 && (
+            <div style={{ marginTop: '14px', padding: '16px', borderRadius: '16px', border: `1px solid ${colors.border}`, backgroundColor: '#fff7ed' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ ...resultLabel, color: '#9a3412' }}>ΟΦΕΙΛΗ ΠΡΟΗΓ. ΚΥΚΛΟΥ</span>
+                <span style={{ ...resultValue, color: '#9a3412' }}>{carryoverPayable.toFixed(2)}€</span>
+              </div>
+              <button
+                onClick={handleCarryoverPayment}
+                disabled={isCarryoverButtonDisabled}
+                style={{
+                  ...payBtn,
+                  marginTop: '12px',
+                  backgroundColor: '#ea580c',
+                  opacity: isCarryoverButtonDisabled ? 0.6 : 1,
+                  cursor: isCarryoverButtonDisabled ? 'not-allowed' : 'pointer',
+                }}
+              >
+                {isSettlingCarryover ? 'ΓΙΝΕΤΑΙ ΕΞΟΦΛΗΣΗ...' : 'ΕΞΟΦΛΗΣΗ ΠΡΟΗΓ. ΚΥΚΛΟΥ'}
+              </button>
+            </div>
+          )}
 
           <div style={{marginTop: '20px'}}>
             <label style={smallLabel}>ΗΜΕΡΟΜΗΝΙΑ ΠΛΗΡΩΜΗΣ</label>
