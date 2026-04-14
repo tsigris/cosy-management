@@ -714,4 +714,4 @@ const inputGroup = { display: 'flex', flexDirection: 'column' as const };
 
 export default function PayEmployeePage() {
   return <Suspense fallback={null}><PayEmployeeContent /></Suspense>
-}
+} 
