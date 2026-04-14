@@ -2027,6 +2027,7 @@ function EmployeesContent() {
                   .filter((ot) => ot.employee_id === emp.id)
                   .sort((a, b) => (parseDateInputSafe(b.date)?.getTime() ?? 0) - (parseDateInputSafe(a.date)?.getTime() ?? 0))
                 const hasPayrollSummary = Boolean(payrollSummary)
+                const carryoverAdvances = hasPayrollSummary ? Number(payrollSummary?.carryover_advances ?? 0) : 0
                 const isInactive = emp.is_active === false
                 const monthlyDays = Number(emp.work_days_per_month ?? emp.monthly_days ?? 0)
                 const monthlySalary = Number(emp.monthly_salary ?? 0)
@@ -2180,6 +2181,11 @@ function EmployeesContent() {
                           ΡΕΠΟ {displayedActualDaysOff}/{displayedIncludedDaysOff}
                         </span>
                         {isMonthlyEmployee && <span style={{ ...badgeStyle, backgroundColor: '#ecfdf5', color: '#047857' }}>ΥΠΟΛΟΙΠΟ {displayedFinalPayable.toFixed(2)}€</span>}
+                        {carryoverAdvances > 0 && (
+                          <span style={{ ...badgeStyle, backgroundColor: '#fff7ed', color: '#9a3412' }}>
+                            ΠΡΟΗΓ. ΚΥΚΛΟΣ {carryoverAdvances.toFixed(2)}€
+                          </span>
+                        )}
                         {isInactive && <span style={{ ...badgeStyle, backgroundColor: 'var(--surface)', color: 'var(--muted)' }}>ΑΝΕΝΕΡΓΟΣ</span>}
                       </div>
                     </div>
@@ -2220,6 +2226,11 @@ function EmployeesContent() {
                           <p style={{ margin: '5px 0 0 0', fontWeight: 800, color: 'var(--muted)', fontSize: '11px' }}>
                             Προκαταβολές: {totalAdvances.toFixed(2)}€
                           </p>
+                          {carryoverAdvances > 0 && (
+                            <p style={{ margin: '5px 0 0 0', fontWeight: 800, color: 'var(--muted)', fontSize: '11px' }}>
+                              Υπόλοιπο προηγ. κύκλου: {carryoverAdvances.toFixed(2)}€
+                            </p>
+                          )}
                           <p style={{ margin: '5px 0 0 0', fontWeight: 800, color: 'var(--muted)', fontSize: '11px' }}>
                             Εκκρεμείς υπερωρίες: {pendingOtHours.toFixed(2)} ώρες / {pendingOtAmount.toFixed(2)}€
                           </p>

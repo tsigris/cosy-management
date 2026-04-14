@@ -185,6 +185,8 @@ function PayEmployeeContent() {
   const effectiveFinalPayable = hasRpcSummary ? rpcFinalPayable : Math.max(0, effectivePayrollRemaining + effectiveAgreedExtraSalary)
   const finalPayable = hasRpcSummary ? rpcFinalPayable + manualBonus : Math.max(0, effectiveFinalPayable + manualBonus)
   const finalPayableSafe = Math.max(0, finalPayable)
+  const carryoverPayable = Math.max(Number(payrollSummaryRow?.carryover_advances ?? 0), 0)
+  const totalPayableSafe = Math.max(0, finalPayableSafe + carryoverPayable)
   const parseAmount = (value: string) => {
     const parsed = Number(value)
     return Number.isFinite(parsed) ? parsed : 0
@@ -208,8 +210,8 @@ function PayEmployeeContent() {
     total_advances: payrollSummaryRow?.total_advances,
     totalPayrollCost,
   })
-  const bankAmountNum = clampAmount(parseAmount(bankAmount), finalPayableSafe)
-  const cashAmountNum = clampAmount(parseAmount(cashAmount), finalPayableSafe)
+  const bankAmountNum = clampAmount(parseAmount(bankAmount), totalPayableSafe)
+  const cashAmountNum = clampAmount(parseAmount(cashAmount), totalPayableSafe)
   console.log('[pay-employee-split-init-fix]', {
     finalPayable,
     bankAmount,
@@ -218,16 +220,16 @@ function PayEmployeeContent() {
   })
 
   const handleBankAmountChange = (value: string) => {
-    const normalizedBank = clampAmount(parseAmount(value), finalPayableSafe)
-    const normalizedCash = Math.max(0, finalPayableSafe - normalizedBank)
+    const normalizedBank = clampAmount(parseAmount(value), totalPayableSafe)
+    const normalizedCash = Math.max(0, totalPayableSafe - normalizedBank)
     setLastEditedField('bank')
     setBankAmount(value === '' ? '' : String(normalizedBank))
     setCashAmount(normalizedCash.toFixed(2))
   }
 
   const handleCashAmountChange = (value: string) => {
-    const normalizedCash = clampAmount(parseAmount(value), finalPayableSafe)
-    const normalizedBank = Math.max(0, finalPayableSafe - normalizedCash)
+    const normalizedCash = clampAmount(parseAmount(value), totalPayableSafe)
+    const normalizedBank = Math.max(0, totalPayableSafe - normalizedCash)
     setLastEditedField('cash')
     setCashAmount(value === '' ? '' : String(normalizedCash))
     setBankAmount(normalizedBank.toFixed(2))
@@ -238,8 +240,8 @@ function PayEmployeeContent() {
     if (lastEditedField === null) return
 
     if (lastEditedField === 'cash') {
-      const nextCash = clampAmount(parseAmount(cashAmount), finalPayableSafe)
-      const nextBank = Math.max(0, finalPayableSafe - nextCash)
+      const nextCash = clampAmount(parseAmount(cashAmount), totalPayableSafe)
+      const nextBank = Math.max(0, totalPayableSafe - nextCash)
       const nextCashText = nextCash.toFixed(2)
       const nextBankText = nextBank.toFixed(2)
       if (cashAmount !== '' && cashAmount !== nextCashText) setCashAmount(nextCashText)
@@ -247,13 +249,13 @@ function PayEmployeeContent() {
       return
     }
 
-    const nextBank = clampAmount(parseAmount(bankAmount), finalPayableSafe)
-    const nextCash = Math.max(0, finalPayableSafe - nextBank)
+    const nextBank = clampAmount(parseAmount(bankAmount), totalPayableSafe)
+    const nextCash = Math.max(0, totalPayableSafe - nextBank)
     const nextBankText = bankAmount === '' ? '' : nextBank.toFixed(2)
     const nextCashText = nextCash.toFixed(2)
     if (bankAmount !== nextBankText) setBankAmount(nextBankText)
     if (cashAmount !== nextCashText) setCashAmount(nextCashText)
-  }, [finalPayableSafe, mode, lastEditedField])
+  }, [totalPayableSafe, mode, lastEditedField])
 
   async function handleFinalPayment() {
     console.log('[pay-employee] CLICKED handleFinalPayment', {
@@ -265,6 +267,8 @@ function PayEmployeeContent() {
       date,
       finalPayable,
       finalPayableSafe,
+      carryoverPayable,
+      totalPayableSafe,
       effectivePayrollRemaining,
       bankAmount,
       cashAmount,
@@ -314,8 +318,8 @@ function PayEmployeeContent() {
       }
 
       // normal final payment (remaining payroll + agreed extra + manual bonus)
-      if (finalPayableSafe <= 0) {
-        console.log('[pay-employee] BLOCKED: finalPayableSafe <= 0', { finalPayableSafe })
+      if (totalPayableSafe <= 0) {
+        console.log('[pay-employee] BLOCKED: totalPayableSafe <= 0', { totalPayableSafe })
         setLoading(false)
         return toast.error('Το ποσό πληρωμής πρέπει να είναι μεγαλύτερο από 0')
       }
@@ -334,30 +338,30 @@ function PayEmployeeContent() {
       // Fallback when both fields are empty: use selected payment method for full amount.
       if (isBankEmpty && isCashEmpty) {
         if (paymentMethod === 'Τράπεζα') {
-          normalizedBank = finalPayableSafe
+          normalizedBank = totalPayableSafe
           normalizedCash = 0
         } else {
           normalizedBank = 0
-          normalizedCash = finalPayableSafe
+          normalizedCash = totalPayableSafe
         }
       } else if (!isBankEmpty && isCashEmpty) {
-        normalizedBank = clampAmount(bankAmountNum, finalPayableSafe)
-        normalizedCash = Math.max(0, finalPayableSafe - normalizedBank)
+        normalizedBank = clampAmount(bankAmountNum, totalPayableSafe)
+        normalizedCash = Math.max(0, totalPayableSafe - normalizedBank)
       } else if (isBankEmpty && !isCashEmpty) {
-        normalizedCash = clampAmount(cashAmountNum, finalPayableSafe)
-        normalizedBank = Math.max(0, finalPayableSafe - normalizedCash)
+        normalizedCash = clampAmount(cashAmountNum, totalPayableSafe)
+        normalizedBank = Math.max(0, totalPayableSafe - normalizedCash)
       } else {
-        normalizedBank = clampAmount(bankAmountNum, finalPayableSafe)
-        normalizedCash = clampAmount(cashAmountNum, finalPayableSafe)
+        normalizedBank = clampAmount(bankAmountNum, totalPayableSafe)
+        normalizedCash = clampAmount(cashAmountNum, totalPayableSafe)
 
         const total = normalizedBank + normalizedCash
-        const diff = finalPayableSafe - total
+        const diff = totalPayableSafe - total
 
         if (Math.abs(diff) <= epsilon) {
           if (lastEditedField === 'cash') {
-            normalizedBank = Math.max(0, Math.min(finalPayableSafe, normalizedBank + diff))
+            normalizedBank = Math.max(0, Math.min(totalPayableSafe, normalizedBank + diff))
           } else {
-            normalizedCash = Math.max(0, Math.min(finalPayableSafe, normalizedCash + diff))
+            normalizedCash = Math.max(0, Math.min(totalPayableSafe, normalizedCash + diff))
           }
         }
       }
@@ -368,8 +372,8 @@ function PayEmployeeContent() {
         return toast.error('Τα ποσά πληρωμής δεν μπορεί να είναι αρνητικά.')
       }
 
-      if (normalizedBank > finalPayableSafe || normalizedCash > finalPayableSafe) {
-        console.log('[pay-employee] BLOCKED: amount exceeds final payable', { normalizedBank, normalizedCash, finalPayableSafe })
+      if (normalizedBank > totalPayableSafe || normalizedCash > totalPayableSafe) {
+        console.log('[pay-employee] BLOCKED: amount exceeds final payable', { normalizedBank, normalizedCash, totalPayableSafe })
         setLoading(false)
         return toast.error('Κάποιο ποσό είναι μεγαλύτερο από το τελικό πληρωτέο.')
       }
@@ -380,94 +384,128 @@ function PayEmployeeContent() {
         normalizedBank,
         normalizedCash,
         normalizedTotal: normalizedBank + normalizedCash,
-        finalPayableSafe,
+        totalPayableSafe,
         paymentMethod,
         bankAmount,
         cashAmount,
       })
 
-      if (Math.abs(normalizedTotal - finalPayableSafe) > 0.01) {
+      if (Math.abs(normalizedTotal - totalPayableSafe) > 0.01) {
         console.log('[pay-employee] BLOCKED: split total mismatch', {
           normalizedBank,
           normalizedCash,
           normalizedTotal,
-          finalPayableSafe,
+          totalPayableSafe,
         })
         setLoading(false)
         return toast.error('Το split πληρωμής πρέπει να ισούται με το τελικό πληρωτέο.')
       }
 
       const hasSplit = normalizedBank > 0 && normalizedCash > 0
-      const settlementMethod = hasSplit ? 'Μικτή' : normalizedBank > 0 ? 'Τράπεζα' : 'Μετρητά'
-      const settlementNotes = hasSplit
-        ? `${notes} | Split: Τράπεζα ${normalizedBank.toFixed(2)} / Μετρητά ${normalizedCash.toFixed(2)}`
-        : notes
+      const ratioBank = totalPayableSafe > 0 ? normalizedBank / totalPayableSafe : 0
+      const ratioCash = totalPayableSafe > 0 ? normalizedCash / totalPayableSafe : 0
 
-      console.log('[pay-employee] BEFORE payroll settlement RPC', {
-        storeId,
-        empId,
-        settlementDate: date,
-        settlementMethod,
-        settlementNotes,
-      })
+      const currentCycleBank = Number((finalPayableSafe * ratioBank).toFixed(2))
+      const currentCycleCash = Number((finalPayableSafe - currentCycleBank).toFixed(2))
+      const carryoverBank = Number((carryoverPayable * ratioBank).toFixed(2))
+      const carryoverCash = Number((carryoverPayable - carryoverBank).toFixed(2))
 
-      const { data: settlementData, error: settlementError } = await supabase.rpc('settle_employee_payroll_period_atomic', {
-        p_store_id: storeId,
-        p_employee_id: empId,
-        p_settlement_date: date,
-        p_method: settlementMethod,
-        p_notes: settlementNotes,
-      })
+      if (finalPayableSafe > 0) {
+        const settlementMethod = hasSplit ? 'Μικτή' : normalizedBank > 0 ? 'Τράπεζα' : 'Μετρητά'
+        const settlementNotes = hasSplit
+          ? `${notes} | Split: Τράπεζα ${currentCycleBank.toFixed(2)} / Μετρητά ${currentCycleCash.toFixed(2)}`
+          : notes
 
-      console.log('[pay-employee] AFTER payroll settlement RPC', { error: settlementError, data: settlementData })
-      if (settlementError) throw settlementError
+        console.log('[pay-employee] BEFORE payroll settlement RPC', {
+          storeId,
+          empId,
+          settlementDate: date,
+          settlementMethod,
+          settlementNotes,
+        })
 
-      const settlementRow = Array.isArray(settlementData) ? settlementData[0] : settlementData
-      const settlementFinalPayable = Number(settlementRow?.final_payable ?? 0)
-      const extraAmount = Math.max(finalPayableSafe - settlementFinalPayable, 0)
+        const { data: settlementData, error: settlementError } = await supabase.rpc('settle_employee_payroll_period_atomic', {
+          p_store_id: storeId,
+          p_employee_id: empId,
+          p_settlement_date: date,
+          p_method: settlementMethod,
+          p_notes: settlementNotes,
+        })
 
-      if (extraAmount > 0) {
-        const ratioBank = finalPayableSafe > 0 ? normalizedBank / finalPayableSafe : 0
-        const ratioCash = finalPayableSafe > 0 ? normalizedCash / finalPayableSafe : 0
-        const extraBank = hasSplit ? Number((extraAmount * ratioBank).toFixed(2)) : normalizedBank > 0 ? extraAmount : 0
-        const extraCash = Number((extraAmount - extraBank).toFixed(2))
+        console.log('[pay-employee] AFTER payroll settlement RPC', { error: settlementError, data: settlementData })
+        if (settlementError) throw settlementError
 
-        const extraInserts: Array<any> = []
+        const settlementRow = Array.isArray(settlementData) ? settlementData[0] : settlementData
+        const settlementFinalPayable = Number(settlementRow?.final_payable ?? 0)
+        const extraAmount = Math.max(finalPayableSafe - settlementFinalPayable, 0)
 
-        if (extraBank > 0) {
-          extraInserts.push({
-            amount: -Math.abs(extraBank),
-            type: 'expense',
-            category: 'Staff',
-            method: 'Τράπεζα',
-            employee_id: empId,
-            fixed_asset_id: empId,
-            store_id: storeId,
-            date,
-            notes: `${notes} | Extra: ${extraAmount.toFixed(2)}`,
-          })
+        if (extraAmount > 0) {
+          const extraBank = hasSplit ? Number((extraAmount * ratioBank).toFixed(2)) : normalizedBank > 0 ? extraAmount : 0
+          const extraCash = Number((extraAmount - extraBank).toFixed(2))
+
+          const extraInserts: Array<any> = []
+
+          if (extraBank > 0) {
+            extraInserts.push({
+              amount: -Math.abs(extraBank),
+              type: 'expense',
+              category: 'Staff',
+              method: 'Τράπεζα',
+              employee_id: empId,
+              fixed_asset_id: empId,
+              store_id: storeId,
+              date,
+              notes: `${notes} | Extra: ${extraAmount.toFixed(2)}`,
+            })
+          }
+
+          if (extraCash > 0) {
+            extraInserts.push({
+              amount: -Math.abs(extraCash),
+              type: 'expense',
+              category: 'Staff',
+              method: 'Μετρητά',
+              employee_id: empId,
+              fixed_asset_id: empId,
+              store_id: storeId,
+              date,
+              notes: `${notes} | Extra: ${extraAmount.toFixed(2)}`,
+            })
+          }
+
+          if (extraInserts.length > 0) {
+            console.log('[pay-employee] BEFORE extra payments insert', extraInserts)
+            const { error: extraInsertError } = await supabase.from('transactions').insert(extraInserts)
+            console.log('[pay-employee] AFTER extra payments insert', { extraInsertError })
+            if (extraInsertError) throw extraInsertError
+          }
         }
+      }
 
-        if (extraCash > 0) {
-          extraInserts.push({
-            amount: -Math.abs(extraCash),
-            type: 'expense',
-            category: 'Staff',
-            method: 'Μετρητά',
-            employee_id: empId,
-            fixed_asset_id: empId,
-            store_id: storeId,
-            date,
-            notes: `${notes} | Extra: ${extraAmount.toFixed(2)}`,
-          })
-        }
+      if (carryoverPayable > 0) {
+        const carryoverMethod = hasSplit ? 'Μικτή' : normalizedBank > 0 ? 'Τράπεζα' : 'Μετρητά'
+        const carryoverNotes = hasSplit
+          ? `Carryover | Split: Τράπεζα ${carryoverBank.toFixed(2)} / Μετρητά ${carryoverCash.toFixed(2)}`
+          : 'Carryover'
 
-        if (extraInserts.length > 0) {
-          console.log('[pay-employee] BEFORE extra payments insert', extraInserts)
-          const { error: extraInsertError } = await supabase.from('transactions').insert(extraInserts)
-          console.log('[pay-employee] AFTER extra payments insert', { extraInsertError })
-          if (extraInsertError) throw extraInsertError
-        }
+        console.log('[pay-employee] BEFORE carryover settlement RPC', {
+          storeId,
+          empId,
+          settlementDate: date,
+          carryoverMethod,
+          carryoverNotes,
+        })
+
+        const { data: carryoverData, error: carryoverError } = await supabase.rpc('settle_employee_payroll_carryover_atomic', {
+          p_store_id: storeId,
+          p_employee_id: empId,
+          p_settlement_date: date,
+          p_method: carryoverMethod,
+          p_notes: carryoverNotes,
+        })
+
+        console.log('[pay-employee] AFTER carryover settlement RPC', { error: carryoverError, data: carryoverData })
+        if (carryoverError) throw carryoverError
       }
 
       toast.success('Η πληρωμή καταχωρήθηκε και οι υπερωρίες εκκαθαρίστηκαν!');
@@ -480,7 +518,7 @@ function PayEmployeeContent() {
     }
   }
 
-  const isPayButtonDisabled = loading || (mode === 'advance' ? Number(advanceAmount) <= 0 : finalPayableSafe <= 0)
+  const isPayButtonDisabled = loading || (mode === 'advance' ? Number(advanceAmount) <= 0 : totalPayableSafe <= 0)
 
   console.log('[pay-employee] render state', {
     loading,
@@ -488,6 +526,8 @@ function PayEmployeeContent() {
     effectivePayrollRemaining,
     finalPayable,
     finalPayableSafe,
+    carryoverPayable,
+    totalPayableSafe,
     isPayButtonDisabled,
   })
 
@@ -496,6 +536,7 @@ function PayEmployeeContent() {
     mode,
     advanceAmount,
     effectivePayrollRemaining,
+    totalPayableSafe,
     isPayButtonDisabled,
   })
 
@@ -625,12 +666,20 @@ function PayEmployeeContent() {
                   <span style={resultValue}>{rpcTotalAdvances.toFixed(2)}€</span>
                 </div>
                 <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
+                  <span style={resultLabel}>ΥΠΟΛΟΙΠΟ ΠΡΟΗΓ. ΚΥΚΛΟΥ</span>
+                  <span style={resultValue}>{carryoverPayable.toFixed(2)}€</span>
+                </div>
+                <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
                   <span style={resultLabel}>Bonus</span>
                   <span style={resultValue}>{manualBonus.toFixed(2)}€</span>
                 </div>
                 <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
                   <span style={resultLabel}>ΤΕΛΙΚΟ ΠΛΗΡΩΤΕΟ</span>
                   <span style={resultValue}>{finalPayable.toFixed(2)}€</span>
+                </div>
+                <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
+                  <span style={resultLabel}>ΣΥΝΟΛΟ ΠΛΗΡΩΤΕΟ</span>
+                  <span style={resultValue}>{totalPayableSafe.toFixed(2)}€</span>
                 </div>
                 <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
                   <span style={resultLabel}>ΣΥΝΟΛΙΚΟ ΚΟΣΤΟΣ</span>
