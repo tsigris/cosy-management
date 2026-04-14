@@ -251,13 +251,28 @@ function PayEmployeeContent() {
   }, [finalPayableSafe, mode, lastEditedField])
 
   async function handleFinalPayment() {
-    console.log('CLICKED COMPLETE PAYMENT')
+    console.log('[pay-employee] CLICKED handleFinalPayment', {
+      storeId,
+      empId,
+      mode,
+      loading,
+      paymentMethod,
+      date,
+      finalPayable,
+      finalPayableSafe,
+      effectivePayrollRemaining,
+      bankAmount,
+      cashAmount,
+      bankAmountNum,
+      cashAmountNum,
+      lastEditedField,
+    })
     if (!storeId) {
-      console.log('BLOCKED: missing store id')
+      console.log('[pay-employee] BLOCKED: missing storeId')
       return toast.error('Σφάλμα καταστήματος');
     }
     if (!empId) {
-      console.log('BLOCKED: missing employee id')
+      console.log('[pay-employee] BLOCKED: missing empId')
       return toast.error('Σφάλμα υπαλλήλου');
     }
     setLoading(true);
@@ -266,20 +281,12 @@ function PayEmployeeContent() {
       if (mode === 'advance') {
         const amountNum = Number(advanceAmount)
         if (Number.isNaN(amountNum) || amountNum <= 0) {
+          console.log('[pay-employee] BLOCKED: invalid advance amount', { amountNum, advanceAmount })
           setLoading(false)
           return toast.error('Το ποσό πρέπει να είναι μεγαλύτερο από 0')
         }
 
         const notes = `Προκαταβολή μισθού | ${empName || ''}`
-
-        console.log('BEFORE PAYMENT REQUEST', {
-          paymentDate: date,
-          paymentMethod,
-          cashAmount,
-          bankAmount,
-          finalPayable,
-          selectedEmployeeId: empId,
-        })
 
         const { error: transError } = await supabase.from('transactions').insert([{
           amount: -Math.abs(amountNum),
@@ -303,13 +310,13 @@ function PayEmployeeContent() {
 
       // normal final payment (remaining payroll + agreed extra + manual bonus)
       if (effectivePayrollRemaining < 0) {
-        console.log('BLOCKED: advances exceed payroll remaining', { effectivePayrollRemaining })
+        console.log('[pay-employee] BLOCKED: effectivePayrollRemaining < 0', { effectivePayrollRemaining })
         setLoading(false)
         return toast.error('Οι προκαταβολές είναι περισσότερες από το υπολογισμένο ποσό')
       }
 
       if (finalPayable <= 0) {
-        console.log('BLOCKED: invalid final payable', { finalPayable })
+        console.log('[pay-employee] BLOCKED: finalPayable <= 0', { finalPayable })
         setLoading(false)
         return toast.error('Το ποσό πληρωμής πρέπει να είναι μεγαλύτερο από 0')
       }
@@ -357,20 +364,36 @@ function PayEmployeeContent() {
       }
 
       if (normalizedBank < 0 || normalizedCash < 0) {
-        console.log('BLOCKED: negative payment split', { normalizedBank, normalizedCash })
+        console.log('[pay-employee] BLOCKED: negative normalized amounts', { normalizedBank, normalizedCash })
         setLoading(false)
         return toast.error('Τα ποσά πληρωμής δεν μπορεί να είναι αρνητικά.')
       }
 
       if (normalizedBank > finalPayableSafe || normalizedCash > finalPayableSafe) {
-        console.log('BLOCKED: split exceeds final payable', { normalizedBank, normalizedCash, finalPayableSafe })
+        console.log('[pay-employee] BLOCKED: amount exceeds final payable', { normalizedBank, normalizedCash, finalPayableSafe })
         setLoading(false)
         return toast.error('Κάποιο ποσό είναι μεγαλύτερο από το τελικό πληρωτέο.')
       }
 
       const normalizedTotal = normalizedBank + normalizedCash
+
+      console.log('[pay-employee] normalized split', {
+        normalizedBank,
+        normalizedCash,
+        normalizedTotal: normalizedBank + normalizedCash,
+        finalPayableSafe,
+        paymentMethod,
+        bankAmount,
+        cashAmount,
+      })
+
       if (Math.abs(normalizedTotal - finalPayableSafe) > 0.01) {
-        console.log('BLOCKED: split mismatch', { normalizedTotal, finalPayableSafe })
+        console.log('[pay-employee] BLOCKED: split total mismatch', {
+          normalizedBank,
+          normalizedCash,
+          normalizedTotal,
+          finalPayableSafe,
+        })
         setLoading(false)
         return toast.error('Το split πληρωμής πρέπει να ισούται με το τελικό πληρωτέο.')
       }
@@ -406,31 +429,15 @@ function PayEmployeeContent() {
       }
 
       if (inserts.length === 0) {
-        console.log('BLOCKED: no payment entries created', { normalizedBank, normalizedCash })
+        console.log('[pay-employee] BLOCKED: inserts.length === 0')
         setLoading(false)
         return toast.error('Βάλε ποσό πληρωμής σε Τράπεζα ή Μετρητά.')
       }
 
-      console.log('BEFORE PAYMENT REQUEST', {
-        paymentDate: date,
-        paymentMethod,
-        cashAmount: normalizedCash,
-        bankAmount: normalizedBank,
-        finalPayable,
-        selectedEmployeeId: empId,
-      })
-
+      console.log('[pay-employee] BEFORE transactions insert', inserts)
       const { error: splitInsertError } = await supabase.from('transactions').insert(inserts)
+      console.log('[pay-employee] AFTER transactions insert', { splitInsertError })
       if (splitInsertError) throw splitInsertError
-
-      console.log('BEFORE PAYMENT REQUEST', {
-        paymentDate: date,
-        paymentMethod,
-        cashAmount: normalizedCash,
-        bankAmount: normalizedBank,
-        finalPayable,
-        selectedEmployeeId: empId,
-      })
 
       const { error: settleAdvancesError } = await supabase
         .from('transactions')
@@ -439,16 +446,8 @@ function PayEmployeeContent() {
         .eq('type', 'salary_advance')
         .eq('is_settled', false)
         .or(`employee_id.eq.${empId},fixed_asset_id.eq.${empId}`)
+      console.log('[pay-employee] AFTER advances settlement', { settleAdvancesError })
       if (settleAdvancesError) throw settleAdvancesError
-
-      console.log('BEFORE PAYMENT REQUEST', {
-        paymentDate: date,
-        paymentMethod,
-        cashAmount: normalizedCash,
-        bankAmount: normalizedBank,
-        finalPayable,
-        selectedEmployeeId: empId,
-      })
 
       const { error: settleOvertimeError } = await supabase
         .from('employee_overtimes')
@@ -456,14 +455,14 @@ function PayEmployeeContent() {
         .eq('store_id', storeId)
         .eq('employee_id', empId)
         .eq('is_paid', false)
+      console.log('[pay-employee] AFTER overtime settlement', { settleOvertimeError })
       if (settleOvertimeError) throw settleOvertimeError
 
       toast.success('Η πληρωμή καταχωρήθηκε και οι υπερωρίες εκκαθαρίστηκαν!');
       router.push(`/employees?store=${storeId}`);
-    } catch (error: any) {
-      console.error('PAYMENT ERROR', error)
-      console.error('[pay-employee] payment save failed', error)
-      toast.error(error?.message || 'Αποτυχία πληρωμής');
+    } catch (err: any) {
+      console.error('[pay-employee] PAYMENT ERROR', err)
+      toast.error(err?.message || 'Αποτυχία πληρωμής');
     } finally {
       setLoading(false);
     }
@@ -471,15 +470,12 @@ function PayEmployeeContent() {
 
   const isPayButtonDisabled = loading || (mode === 'advance' ? Number(advanceAmount) <= 0 : effectivePayrollRemaining < 0)
 
-  console.log('BUTTON DISABLED CHECK', {
+  console.log('[pay-employee] button disabled check', {
     loading,
     mode,
     advanceAmount,
     effectivePayrollRemaining,
-    paymentMethod,
-    cashAmount,
-    bankAmount,
-    finalPayable,
+    isPayButtonDisabled,
   })
 
   return (
@@ -666,7 +662,15 @@ function PayEmployeeContent() {
             </>
           )}
 
-          <button onClick={handleFinalPayment} disabled={isPayButtonDisabled} style={payBtn}>
+          <button
+            onClick={handleFinalPayment}
+            disabled={isPayButtonDisabled}
+            style={{
+              ...payBtn,
+              opacity: isPayButtonDisabled ? 0.6 : 1,
+              cursor: isPayButtonDisabled ? 'not-allowed' : 'pointer',
+            }}
+          >
             {loading
               ? 'ΓΙΝΕΤΑΙ ΚΑΤΑΧΩΡΗΣΗ...'
               : mode === 'advance' ? <><Banknote size={18} /> ΚΑΤΑΧΩΡΗΣΗ ΠΡΟΚΑΤΑΒΟΛΗΣ</> : <><Banknote size={18} /> ΟΛΟΚΛΗΡΩΣΗ ΠΛΗΡΩΜΗΣ</>}
