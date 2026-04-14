@@ -251,8 +251,15 @@ function PayEmployeeContent() {
   }, [finalPayableSafe, mode, lastEditedField])
 
   async function handleFinalPayment() {
-    if (!storeId) return toast.error('Σφάλμα καταστήματος');
-    if (!empId) return toast.error('Σφάλμα υπαλλήλου');
+    console.log('CLICKED COMPLETE PAYMENT')
+    if (!storeId) {
+      console.log('BLOCKED: missing store id')
+      return toast.error('Σφάλμα καταστήματος');
+    }
+    if (!empId) {
+      console.log('BLOCKED: missing employee id')
+      return toast.error('Σφάλμα υπαλλήλου');
+    }
     setLoading(true);
 
     try {
@@ -264,6 +271,15 @@ function PayEmployeeContent() {
         }
 
         const notes = `Προκαταβολή μισθού | ${empName || ''}`
+
+        console.log('BEFORE PAYMENT REQUEST', {
+          paymentDate: date,
+          paymentMethod,
+          cashAmount,
+          bankAmount,
+          finalPayable,
+          selectedEmployeeId: empId,
+        })
 
         const { error: transError } = await supabase.from('transactions').insert([{
           amount: -Math.abs(amountNum),
@@ -287,11 +303,13 @@ function PayEmployeeContent() {
 
       // normal final payment (remaining payroll + agreed extra + manual bonus)
       if (effectivePayrollRemaining < 0) {
+        console.log('BLOCKED: advances exceed payroll remaining', { effectivePayrollRemaining })
         setLoading(false)
         return toast.error('Οι προκαταβολές είναι περισσότερες από το υπολογισμένο ποσό')
       }
 
       if (finalPayable <= 0) {
+        console.log('BLOCKED: invalid final payable', { finalPayable })
         setLoading(false)
         return toast.error('Το ποσό πληρωμής πρέπει να είναι μεγαλύτερο από 0')
       }
@@ -339,17 +357,20 @@ function PayEmployeeContent() {
       }
 
       if (normalizedBank < 0 || normalizedCash < 0) {
+        console.log('BLOCKED: negative payment split', { normalizedBank, normalizedCash })
         setLoading(false)
         return toast.error('Τα ποσά πληρωμής δεν μπορεί να είναι αρνητικά.')
       }
 
       if (normalizedBank > finalPayableSafe || normalizedCash > finalPayableSafe) {
+        console.log('BLOCKED: split exceeds final payable', { normalizedBank, normalizedCash, finalPayableSafe })
         setLoading(false)
         return toast.error('Κάποιο ποσό είναι μεγαλύτερο από το τελικό πληρωτέο.')
       }
 
       const normalizedTotal = normalizedBank + normalizedCash
       if (Math.abs(normalizedTotal - finalPayableSafe) > 0.01) {
+        console.log('BLOCKED: split mismatch', { normalizedTotal, finalPayableSafe })
         setLoading(false)
         return toast.error('Το split πληρωμής πρέπει να ισούται με το τελικό πληρωτέο.')
       }
@@ -385,12 +406,31 @@ function PayEmployeeContent() {
       }
 
       if (inserts.length === 0) {
+        console.log('BLOCKED: no payment entries created', { normalizedBank, normalizedCash })
         setLoading(false)
         return toast.error('Βάλε ποσό πληρωμής σε Τράπεζα ή Μετρητά.')
       }
 
+      console.log('BEFORE PAYMENT REQUEST', {
+        paymentDate: date,
+        paymentMethod,
+        cashAmount: normalizedCash,
+        bankAmount: normalizedBank,
+        finalPayable,
+        selectedEmployeeId: empId,
+      })
+
       const { error: splitInsertError } = await supabase.from('transactions').insert(inserts)
       if (splitInsertError) throw splitInsertError
+
+      console.log('BEFORE PAYMENT REQUEST', {
+        paymentDate: date,
+        paymentMethod,
+        cashAmount: normalizedCash,
+        bankAmount: normalizedBank,
+        finalPayable,
+        selectedEmployeeId: empId,
+      })
 
       const { error: settleAdvancesError } = await supabase
         .from('transactions')
@@ -400,6 +440,15 @@ function PayEmployeeContent() {
         .eq('is_settled', false)
         .or(`employee_id.eq.${empId},fixed_asset_id.eq.${empId}`)
       if (settleAdvancesError) throw settleAdvancesError
+
+      console.log('BEFORE PAYMENT REQUEST', {
+        paymentDate: date,
+        paymentMethod,
+        cashAmount: normalizedCash,
+        bankAmount: normalizedBank,
+        finalPayable,
+        selectedEmployeeId: empId,
+      })
 
       const { error: settleOvertimeError } = await supabase
         .from('employee_overtimes')
@@ -411,13 +460,27 @@ function PayEmployeeContent() {
 
       toast.success('Η πληρωμή καταχωρήθηκε και οι υπερωρίες εκκαθαρίστηκαν!');
       router.push(`/employees?store=${storeId}`);
-    } catch (err: any) {
-      console.error('[pay-employee] payment save failed', err)
-      toast.error(err?.message || 'Αποτυχία πληρωμής');
+    } catch (error: any) {
+      console.error('PAYMENT ERROR', error)
+      console.error('[pay-employee] payment save failed', error)
+      toast.error(error?.message || 'Αποτυχία πληρωμής');
     } finally {
       setLoading(false);
     }
   }
+
+  const isPayButtonDisabled = loading || (mode === 'advance' ? Number(advanceAmount) <= 0 : effectivePayrollRemaining < 0)
+
+  console.log('BUTTON DISABLED CHECK', {
+    loading,
+    mode,
+    advanceAmount,
+    effectivePayrollRemaining,
+    paymentMethod,
+    cashAmount,
+    bankAmount,
+    finalPayable,
+  })
 
   return (
     <div style={iphoneWrapper}>
@@ -603,11 +666,7 @@ function PayEmployeeContent() {
             </>
           )}
 
-          <button
-            onClick={handleFinalPayment}
-            disabled={loading || (mode === 'advance' ? Number(advanceAmount) <= 0 : effectivePayrollRemaining < 0)}
-            style={payBtn}
-          >
+          <button onClick={handleFinalPayment} disabled={isPayButtonDisabled} style={payBtn}>
             {loading
               ? 'ΓΙΝΕΤΑΙ ΚΑΤΑΧΩΡΗΣΗ...'
               : mode === 'advance' ? <><Banknote size={18} /> ΚΑΤΑΧΩΡΗΣΗ ΠΡΟΚΑΤΑΒΟΛΗΣ</> : <><Banknote size={18} /> ΟΛΟΚΛΗΡΩΣΗ ΠΛΗΡΩΜΗΣ</>}
