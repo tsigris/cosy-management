@@ -397,65 +397,78 @@ function PayEmployeeContent() {
         return toast.error('Το split πληρωμής πρέπει να ισούται με το τελικό πληρωτέο.')
       }
 
-      const inserts: Array<any> = []
+      const hasSplit = normalizedBank > 0 && normalizedCash > 0
+      const settlementMethod = hasSplit ? 'Μικτή' : normalizedBank > 0 ? 'Τράπεζα' : 'Μετρητά'
+      const settlementNotes = hasSplit
+        ? `${notes} | Split: Τράπεζα ${normalizedBank.toFixed(2)} / Μετρητά ${normalizedCash.toFixed(2)}`
+        : notes
 
-      if (normalizedBank > 0) {
-        inserts.push({
-          amount: -Math.abs(normalizedBank),
-          type: 'expense',
-          category: 'Staff',
-          method: 'Τράπεζα',
-          employee_id: empId,
-          fixed_asset_id: empId,
-          store_id: storeId,
-          date,
-          notes,
-        })
+      console.log('[pay-employee] BEFORE payroll settlement RPC', {
+        storeId,
+        empId,
+        settlementDate: date,
+        settlementMethod,
+        settlementNotes,
+      })
+
+      const { data: settlementData, error: settlementError } = await supabase.rpc('settle_employee_payroll_period_atomic', {
+        p_store_id: storeId,
+        p_employee_id: empId,
+        p_settlement_date: date,
+        p_method: settlementMethod,
+        p_notes: settlementNotes,
+      })
+
+      console.log('[pay-employee] AFTER payroll settlement RPC', { error: settlementError, data: settlementData })
+      if (settlementError) throw settlementError
+
+      const settlementRow = Array.isArray(settlementData) ? settlementData[0] : settlementData
+      const settlementFinalPayable = Number(settlementRow?.final_payable ?? 0)
+      const extraAmount = Math.max(finalPayableSafe - settlementFinalPayable, 0)
+
+      if (extraAmount > 0) {
+        const ratioBank = finalPayableSafe > 0 ? normalizedBank / finalPayableSafe : 0
+        const ratioCash = finalPayableSafe > 0 ? normalizedCash / finalPayableSafe : 0
+        const extraBank = hasSplit ? Number((extraAmount * ratioBank).toFixed(2)) : normalizedBank > 0 ? extraAmount : 0
+        const extraCash = Number((extraAmount - extraBank).toFixed(2))
+
+        const extraInserts: Array<any> = []
+
+        if (extraBank > 0) {
+          extraInserts.push({
+            amount: -Math.abs(extraBank),
+            type: 'expense',
+            category: 'Staff',
+            method: 'Τράπεζα',
+            employee_id: empId,
+            fixed_asset_id: empId,
+            store_id: storeId,
+            date,
+            notes: `${notes} | Extra: ${extraAmount.toFixed(2)}`,
+          })
+        }
+
+        if (extraCash > 0) {
+          extraInserts.push({
+            amount: -Math.abs(extraCash),
+            type: 'expense',
+            category: 'Staff',
+            method: 'Μετρητά',
+            employee_id: empId,
+            fixed_asset_id: empId,
+            store_id: storeId,
+            date,
+            notes: `${notes} | Extra: ${extraAmount.toFixed(2)}`,
+          })
+        }
+
+        if (extraInserts.length > 0) {
+          console.log('[pay-employee] BEFORE extra payments insert', extraInserts)
+          const { error: extraInsertError } = await supabase.from('transactions').insert(extraInserts)
+          console.log('[pay-employee] AFTER extra payments insert', { extraInsertError })
+          if (extraInsertError) throw extraInsertError
+        }
       }
-
-      if (normalizedCash > 0) {
-        inserts.push({
-          amount: -Math.abs(normalizedCash),
-          type: 'expense',
-          category: 'Staff',
-          method: 'Μετρητά',
-          employee_id: empId,
-          fixed_asset_id: empId,
-          store_id: storeId,
-          date,
-          notes,
-        })
-      }
-
-      if (inserts.length === 0) {
-        console.log('[pay-employee] BLOCKED: inserts.length === 0')
-        setLoading(false)
-        return toast.error('Βάλε ποσό πληρωμής σε Τράπεζα ή Μετρητά.')
-      }
-
-      console.log('[pay-employee] BEFORE transactions insert', inserts)
-      const { error: splitInsertError } = await supabase.from('transactions').insert(inserts)
-      console.log('[pay-employee] AFTER transactions insert', { splitInsertError })
-      if (splitInsertError) throw splitInsertError
-
-      const { error: settleAdvancesError } = await supabase
-        .from('transactions')
-        .update({ is_settled: true })
-        .eq('store_id', storeId)
-        .eq('type', 'salary_advance')
-        .eq('is_settled', false)
-        .or(`employee_id.eq.${empId},fixed_asset_id.eq.${empId}`)
-      console.log('[pay-employee] AFTER advances settlement', { settleAdvancesError })
-      if (settleAdvancesError) throw settleAdvancesError
-
-      const { error: settleOvertimeError } = await supabase
-        .from('employee_overtimes')
-        .update({ is_paid: true })
-        .eq('store_id', storeId)
-        .eq('employee_id', empId)
-        .eq('is_paid', false)
-      console.log('[pay-employee] AFTER overtime settlement', { settleOvertimeError })
-      if (settleOvertimeError) throw settleOvertimeError
 
       toast.success('Η πληρωμή καταχωρήθηκε και οι υπερωρίες εκκαθαρίστηκαν!');
       router.push(`/employees?store=${storeId}`);
