@@ -138,6 +138,11 @@ function PayEmployeeContent() {
     } catch (err) {
       console.error('[pay-employee] loadEmployeeData failed', err)
     } finally {
+      console.log('[pay-employee] loadEmployeeData finished', {
+        empId,
+        storeId,
+        loadingWillBecomeFalse: true,
+      })
       setLoading(false)
     }
   }, [empId, storeId])
@@ -468,7 +473,16 @@ function PayEmployeeContent() {
     }
   }
 
-  const isPayButtonDisabled = loading || (mode === 'advance' ? Number(advanceAmount) <= 0 : effectivePayrollRemaining < 0)
+  const isPayButtonDisabled = loading || (mode === 'advance' ? Number(advanceAmount) <= 0 : finalPayableSafe <= 0)
+
+  console.log('[pay-employee] render state', {
+    loading,
+    mode,
+    effectivePayrollRemaining,
+    finalPayable,
+    finalPayableSafe,
+    isPayButtonDisabled,
+  })
 
   console.log('[pay-employee] button disabled check', {
     loading,
