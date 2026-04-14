@@ -314,14 +314,8 @@ function PayEmployeeContent() {
       }
 
       // normal final payment (remaining payroll + agreed extra + manual bonus)
-      if (effectivePayrollRemaining < 0) {
-        console.log('[pay-employee] BLOCKED: effectivePayrollRemaining < 0', { effectivePayrollRemaining })
-        setLoading(false)
-        return toast.error('Οι προκαταβολές είναι περισσότερες από το υπολογισμένο ποσό')
-      }
-
-      if (finalPayable <= 0) {
-        console.log('[pay-employee] BLOCKED: finalPayable <= 0', { finalPayable })
+      if (finalPayableSafe <= 0) {
+        console.log('[pay-employee] BLOCKED: finalPayableSafe <= 0', { finalPayableSafe })
         setLoading(false)
         return toast.error('Το ποσό πληρωμής πρέπει να είναι μεγαλύτερο από 0')
       }
