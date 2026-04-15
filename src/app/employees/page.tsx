@@ -286,11 +286,16 @@ function EmployeesContent() {
           .from('transactions')
           .select('*')
           .eq('store_id', storeId)
+          .is('voided_at', null)
           .or('fixed_asset_id.not.is.null,employee_id.not.is.null')
           .order('date', { ascending: false }),
-        supabase.from('employee_overtimes').select('*').eq('store_id', storeId).eq('is_paid', false),
+        supabase.from('employee_overtimes').select('*').eq('store_id', storeId).eq('is_paid', false).is('voided_at', null),
         supabase.from('employee_days_off').select(dayOffSelect).eq('store_id', storeId).order(dayOffDateColumn, { ascending: true }),
-        supabase.from('transactions').select('id,amount,date,created_at,category,type,notes,employee_id,fixed_asset_id').eq('store_id', storeId),
+        supabase
+          .from('transactions')
+          .select('id,amount,date,created_at,category,type,notes,employee_id,fixed_asset_id')
+          .eq('store_id', storeId)
+          .is('voided_at', null),
         supabase.from('stores').select('name').eq('id', storeId).maybeSingle(),
       ])
 
@@ -743,7 +748,7 @@ function EmployeesContent() {
   }
 
   async function deleteOvertime(id: string) {
-    if (!confirm('Διαγραφή αυτής της υπερωρίας;')) return
+    if (!confirm('Ακύρωση (void) αυτής της υπερωρίας;')) return
 
     let tenantStoreId: string
     try {
@@ -753,14 +758,30 @@ function EmployeesContent() {
       return
     }
 
-    const { error } = await supabase.from('employee_overtimes').delete().eq('id', id).eq('store_id', tenantStoreId)
+    const reason = prompt('Λόγος ακύρωσης (void):')
+    if (reason === null) return
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+
+    const { error } = await supabase
+      .from('employee_overtimes')
+      .update({
+        voided_at: new Date().toISOString(),
+        voided_by: user?.id ?? null,
+        void_reason: reason.trim() || null,
+      })
+      .eq('id', id)
+      .eq('store_id', tenantStoreId)
     if (error) {
       console.error(error)
-      toast.error('Αποτυχία διαγραφής υπερωρίας.')
+      toast.error('Αποτυχία ακύρωσης υπερωρίας.')
       return
     }
 
-    toast.success('Η υπερωρία διαγράφηκε ✅')
+    toast.success('Η υπερωρία ακυρώθηκε ✅')
+    setOvertimes((prev) => prev.filter((row) => row.id !== id))
     fetchInitialData()
   }
 
@@ -927,7 +948,7 @@ function EmployeesContent() {
 
   // ✅ Διαγραφή Tip entry
   async function deleteTipTransaction(id: string) {
-    if (!confirm('Διαγραφή αυτής της καταγραφής Tips;')) return
+    if (!confirm('Ακύρωση (void) αυτής της καταγραφής Tips;')) return
 
     let tenantStoreId: string
     try {
@@ -937,14 +958,31 @@ function EmployeesContent() {
       return
     }
 
-    const { error } = await supabase.from('transactions').delete().eq('id', id).eq('store_id', tenantStoreId)
+    const reason = prompt('Λόγος ακύρωσης (void):')
+    if (reason === null) return
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+
+    const { error } = await supabase
+      .from('transactions')
+      .update({
+        voided_at: new Date().toISOString(),
+        voided_by: user?.id ?? null,
+        void_reason: reason.trim() || null,
+      })
+      .eq('id', id)
+      .eq('store_id', tenantStoreId)
     if (error) {
       console.error(error)
-      toast.error('Αποτυχία διαγραφής tips.')
+      toast.error('Αποτυχία ακύρωσης tips.')
       return
     }
 
-    toast.success('Διαγράφηκε ✅')
+    toast.success('Ακυρώθηκε ✅')
+    setTransactions((prev) => prev.filter((row) => row.id !== id))
+    setAllStoreTransactions((prev) => prev.filter((row) => row.id !== id))
     fetchInitialData()
     getTipsStats()
   }
@@ -1109,14 +1147,28 @@ function EmployeesContent() {
 
     setLoading(true)
 
+    const reason = prompt('Λόγος ακύρωσης (void) συναλλαγών μισθοδοσίας:')
+    if (reason === null) {
+      setLoading(false)
+      return
+    }
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+
     const { error: transErr } = await supabase
       .from('transactions')
-      .delete()
+      .update({
+        voided_at: new Date().toISOString(),
+        voided_by: user?.id ?? null,
+        void_reason: reason.trim() || null,
+      })
       .eq('store_id', tenantStoreId)
       .or(`employee_id.eq.${id},fixed_asset_id.eq.${id}`)
     if (transErr) {
       console.error(transErr)
-      toast.error('Αποτυχία διαγραφής συναλλαγών.')
+      toast.error('Αποτυχία ακύρωσης συναλλαγών.')
       setLoading(false)
       return
     }
@@ -1130,6 +1182,9 @@ function EmployeesContent() {
     }
 
     toast.success('Διαγράφηκε ✅')
+    setEmployees((prev) => prev.filter((emp) => emp.id !== id))
+    setTransactions((prev) => prev.filter((row) => String(row.employee_id || '') !== id && String(row.fixed_asset_id || '') !== id))
+    setAllStoreTransactions((prev) => prev.filter((row) => String(row.employee_id || '') !== id && String(row.fixed_asset_id || '') !== id))
     fetchInitialData()
     setLoading(false)
   }
@@ -1162,8 +1217,12 @@ function EmployeesContent() {
       .eq('id', id)
       .eq('store_id', tenantStoreId)
 
-    if (!error) fetchInitialData()
-    else {
+    if (!error) {
+      setTransactions((prev) => prev.filter((row) => row.id !== id))
+      setAllStoreTransactions((prev) => prev.filter((row) => row.id !== id))
+      fetchInitialData()
+      getTipsStats()
+    } else {
       console.error(error)
       toast.error('Αποτυχία ακύρωσης πληρωμής.')
     }
