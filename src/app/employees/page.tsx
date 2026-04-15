@@ -13,30 +13,16 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { toast, Toaster } from 'sonner'
 import { Eye, EyeOff, Coins, Pencil, Trash2 } from 'lucide-react'
 
-// Helper για αναγνώριση tips (σύμφωνα με οδηγίες)
-function isTipTransaction(tx: any): boolean {
-  const type = String(tx?.type || '').trim().toLowerCase()
-  const category = String(tx?.category || '').trim().toLowerCase()
-  const notes = String(tx?.notes || tx?.description || '').trim().toLowerCase()
-    return (
-      type === 'tip_entry' ||
-      category.includes('tip') ||
-      category.includes('φιλο') ||
-      notes.includes('tip') ||
-      notes.includes('φιλο')
-    )
-}
-// --- ΠΑΛΕΤΑ ΧΡΩΜΑΤΩΝ ---
 const colors = {
-  primaryDark: '#1e293b',
-  secondaryText: '#64748b',
+  primaryDark: 'var(--text)',
+  secondaryText: 'var(--muted)',
+  accentOrange: '#f97316',
+  bgLight: 'var(--bg)',
+  border: 'var(--border)',
+  white: 'var(--surfaceSolid)',
   accentBlue: '#2563eb',
-  accentGreen: '#059669',
   accentRed: '#dc2626',
-  bgLight: '#f8fafc',
-  border: '#e2e8f0',
-  white: '#ffffff',
-  slate100: '#f1f5f9',
+  accentGreen: '#10b981',
 }
 
 type PayBasis = 'monthly' | 'daily'
@@ -54,39 +40,25 @@ type EmployeeFormState = {
   start_date: string
 }
 
-type PayrollSettlementWindow = {
-  periodStart: Date
-  periodEnd: Date
-  payrollAnchorDay: number
-}
-
-type PayrollSettlementPreview = {
-  periodStartDate: Date
-  periodEndDate: Date
-  periodStartLabel: string
-  periodEndLabel: string
-  monthlySalary: number
-  agreedExtraSalary: number
-  dailyCost: number
-  hourlyCost: number
-  includedDaysOffForPeriod: number
-  actualDaysOff: number
-  extraDaysOff: number
-  daysOffDeduction: number
-  totalAdvances: number
-  pendingOvertimeHours: number
-  pendingOvertimeAmount: number
-  payrollOnlyPayable: number
-  finalPayable: number
-  notes: string
-}
-
-// ✅ safest date parser (handles ISO/date-only/timestamp)
-const parseTxDate = (t: any): Date | null => {
-  if (!t) return null
-  const raw = t.date || t.created_at
+const parseTxDate = (r: any) => {
+  if (!r) return null
+  const raw = r.date
   if (!raw) return null
   return parseDateInputSafe(raw)
+}
+
+// Helper για αναγνώριση tips (σύμφωνα με οδηγίες)
+function isTipTransaction(tx: any): boolean {
+  const type = String(tx?.type || '').trim().toLowerCase()
+  const category = String(tx?.category || '').trim().toLowerCase()
+  const notes = String(tx?.notes || tx?.description || '').trim().toLowerCase()
+  return (
+    type === 'tip_entry' ||
+    category.includes('tip') ||
+    category.includes('φιλο') ||
+    notes.includes('tip') ||
+    notes.includes('φιλο')
+  )
 }
 
 const getBusinessYear = (d: Date) => d.getFullYear()
@@ -106,71 +78,6 @@ const formatShortDayMonth = (dateInput: string) => {
   const day = String(d.getDate()).padStart(2, '0')
   const month = String(d.getMonth() + 1).padStart(2, '0')
   return `${day}/${month}`
-}
-
-function getEmployeePayrollWindow(startDateInput: string | Date | null | undefined, asOfInput: string | Date): { periodStart: Date; periodEnd: Date } | null {
-  const startDate = toBusinessDayDateFromInput(startDateInput, { normalizeToNoon: true })
-  const asOfDate = toBusinessDayDateFromInput(asOfInput, { normalizeToNoon: true })
-
-  if (!startDate || isNaN(startDate.getTime())) return null
-  if (!asOfDate || isNaN(asOfDate.getTime())) return null
-  if (asOfDate < startDate) return null
-
-  const anchorDay = startDate.getDate()
-  const buildAnchor = (year: number, monthIndex: number) => {
-    const daysInMonth = new Date(year, monthIndex + 1, 0).getDate()
-    const day = Math.min(anchorDay, daysInMonth)
-    return new Date(year, monthIndex, day, 12, 0, 0, 0)
-  }
-
-  let periodStart = buildAnchor(asOfDate.getFullYear(), asOfDate.getMonth())
-  if (periodStart > asOfDate) {
-    periodStart = buildAnchor(asOfDate.getFullYear(), asOfDate.getMonth() - 1)
-  }
-
-  if (periodStart < startDate) {
-    periodStart = new Date(startDate)
-    periodStart.setHours(12, 0, 0, 0)
-  }
-
-  const nextPeriodStart = buildAnchor(periodStart.getFullYear(), periodStart.getMonth() + 1)
-  const periodEnd = new Date(nextPeriodStart)
-  periodEnd.setDate(periodEnd.getDate() - 1)
-  periodEnd.setHours(12, 0, 0, 0)
-
-  return { periodStart, periodEnd }
-}
-
-function getPayrollCalculationStart(employee: any): Date | null {
-  const lastSettlement = toBusinessDayDateFromInput(employee?.last_payroll_settlement_date, { normalizeToNoon: true })
-  if (lastSettlement && !isNaN(lastSettlement.getTime())) {
-    const nextDay = new Date(lastSettlement)
-    nextDay.setDate(nextDay.getDate() + 1)
-    nextDay.setHours(12, 0, 0, 0)
-    return nextDay
-  }
-
-  const startDate = toBusinessDayDateFromInput(employee?.start_date, { normalizeToNoon: true })
-  if (!startDate || isNaN(startDate.getTime())) return null
-  return startDate
-}
-
-function getPayrollSettlementWindow(employee: any, settlementDateInput: string | Date): PayrollSettlementWindow | null {
-  const settlementDate = toBusinessDayDateFromInput(settlementDateInput, { normalizeToNoon: true })
-  const periodStart = getPayrollCalculationStart(employee)
-
-  if (!settlementDate || isNaN(settlementDate.getTime())) return null
-  if (!periodStart || isNaN(periodStart.getTime())) return null
-  if (settlementDate < periodStart) return null
-
-  const rawAnchor = Number(employee?.payroll_anchor_day ?? 1)
-  const payrollAnchorDay = Number.isFinite(rawAnchor) ? Math.min(Math.max(Math.trunc(rawAnchor), 1), 31) : 1
-
-  return {
-    periodStart,
-    periodEnd: settlementDate,
-    payrollAnchorDay,
-  }
 }
 
 function toEmployeeFormState(source?: any): EmployeeFormState {
@@ -218,7 +125,7 @@ function EmployeesContent() {
   const [overtimes, setOvertimes] = useState<any[]>([])
   const [employeeDaysOff, setEmployeeDaysOff] = useState<any[]>([])
   const [employeeDayOffDateColumn, setEmployeeDayOffDateColumn] = useState<'off_date' | 'date'>('date')
-  const [payrollCardsByEmployeeId, setPayrollCardsByEmployeeId] = useState<Record<string, any>>({})
+  const [payrollSnapshotsByEmployeeId, setPayrollSnapshotsByEmployeeId] = useState<Record<string, any>>({})
   const [loading, setLoading] = useState(true)
 
   const [isAdding, setIsAdding] = useState(false)
@@ -236,16 +143,6 @@ function EmployeesContent() {
   // States για overtime modal
   const [otModal, setOtModal] = useState<{ empId: string; name: string } | null>(null)
   const [otHours, setOtHours] = useState('')
-
-  // Payroll settlement modal
-  const [settlementModal, setSettlementModal] = useState<{
-    empId: string
-    name: string
-    settlementDate: string
-    employee: any
-    preview: PayrollSettlementPreview | null
-  } | null>(null)
-  const [isSettlingPayroll, setIsSettlingPayroll] = useState(false)
 
   // States για days-off modal
   const [dayOffModal, setDayOffModal] = useState<{ empId: string; name: string } | null>(null)
@@ -383,7 +280,7 @@ function EmployeesContent() {
 
       const businessAsOfDate = getTodayDateISO()
 
-      const [empsRes, transRes, otRes, dayOffRes, allStoreTransRes, payrollSummaryRes, storeRes] = await Promise.all([
+      const [empsRes, transRes, otRes, dayOffRes, allStoreTransRes, storeRes] = await Promise.all([
         getEmployees(storeId),
         supabase
           .from('transactions')
@@ -394,10 +291,6 @@ function EmployeesContent() {
         supabase.from('employee_overtimes').select('*').eq('store_id', storeId).eq('is_paid', false),
         supabase.from('employee_days_off').select(dayOffSelect).eq('store_id', storeId).order(dayOffDateColumn, { ascending: true }),
         supabase.from('transactions').select('id,amount,date,created_at,category,type,notes,employee_id,fixed_asset_id').eq('store_id', storeId),
-        supabase.rpc('get_employee_payroll_cards_summary', {
-          p_store_id: storeId,
-          p_as_of_date: businessAsOfDate,
-        }),
         supabase.from('stores').select('name').eq('id', storeId).maybeSingle(),
       ])
 
@@ -406,17 +299,35 @@ function EmployeesContent() {
       if (allStoreTransRes.data) setAllStoreTransactions(allStoreTransRes.data)
       if (otRes.data) setOvertimes(otRes.data)
       if (dayOffRes.data) setEmployeeDaysOff(dayOffRes.data)
-      if (payrollSummaryRes.error) {
-        console.error(payrollSummaryRes.error)
-      }
-      if (payrollSummaryRes.data) {
-        const nextMap = (payrollSummaryRes.data as any[]).reduce((acc: Record<string, any>, row: any) => {
-          const key = String(row?.employee_id || '')
-          if (!key) return acc
-          acc[key] = row
+      if (Array.isArray(empsRes) && empsRes.length > 0) {
+        const snapshotRows = await Promise.all(
+          empsRes.map(async (emp: any) => {
+            const { data, error } = await supabase
+              .rpc('get_employee_payroll_snapshot', {
+                p_store_id: storeId,
+                p_employee_id: emp.id,
+                p_as_of_date: businessAsOfDate,
+              })
+              .maybeSingle()
+
+            if (error) {
+              console.error('[payroll-snapshot]', error)
+              return null
+            }
+
+            return { id: String(emp.id), row: data }
+          }),
+        )
+
+        const nextMap = snapshotRows.reduce((acc: Record<string, any>, item: any) => {
+          if (!item?.id || !item?.row) return acc
+          acc[item.id] = item.row
           return acc
         }, {})
-        setPayrollCardsByEmployeeId(nextMap)
+
+        setPayrollSnapshotsByEmployeeId(nextMap)
+      } else {
+        setPayrollSnapshotsByEmployeeId({})
       }
       setStoreDisplayName(String(storeRes.data?.name || '').trim() || 'Κατάστημα')
     } catch (err) {
@@ -458,101 +369,6 @@ function EmployeesContent() {
       return acc
     }, {})
   }, [employeeDaysOff])
-
-  const buildPayrollSettlementPreview = useCallback(
-    (employee: any, settlementDateInput: string | Date): PayrollSettlementPreview | null => {
-      const window = getPayrollSettlementWindow(employee, settlementDateInput)
-      if (!window) return null
-
-      const { periodStart, periodEnd } = window
-      const startTime = periodStart.getTime()
-      const endTime = periodEnd.getTime()
-      const daysInPeriod = Math.max(Math.floor((endTime - startTime) / (1000 * 60 * 60 * 24)) + 1, 0)
-
-      const monthlySalary = Number(employee?.monthly_salary ?? 0)
-      const agreedExtraSalary = Number(employee?.agreed_extra_salary ?? employee?.agreed_extra ?? 0)
-      const monthlyDays = Number(employee?.work_days_per_month ?? employee?.monthly_days ?? 0)
-      const isMonthlyEmployee = (employee?.pay_basis || 'monthly') === 'monthly'
-      const agreedMonthlyPay = monthlySalary + agreedExtraSalary
-
-      const dailyCost = isMonthlyEmployee
-        ? monthlyDays > 0 && Number.isFinite(agreedMonthlyPay)
-          ? agreedMonthlyPay / monthlyDays
-          : 0
-        : Number(employee?.daily_rate ?? 0)
-      const hourlyCost = dailyCost > 0 ? dailyCost / 8 : 0
-
-      const dayOffRows = (daysOffByEmployee[employee.id] || []).filter((row) => {
-        const businessDate = toBusinessDayDateFromInput(getDayOffDateValue(row), { normalizeToNoon: true })
-        if (!businessDate || isNaN(businessDate.getTime())) return false
-        return businessDate >= periodStart && businessDate <= periodEnd
-      })
-
-      const actualDaysOff = dayOffRows.length
-      const includedDaysOff = isMonthlyEmployee ? getIncludedDaysOff(monthlyDays) : 0
-      const includedDaysOffForPeriod =
-        isMonthlyEmployee && monthlyDays > 0
-          ? Math.max(0, Math.floor((includedDaysOff * Math.min(daysInPeriod, monthlyDays)) / monthlyDays))
-          : 0
-      const extraDaysOff = Math.max(actualDaysOff - includedDaysOffForPeriod, 0)
-      const daysOffDeduction = extraDaysOff * Math.max(dailyCost, 0)
-
-      const totalAdvances = transactions
-        .filter((t) => {
-          if (String(t.employee_id || '') !== employee.id && String(t.fixed_asset_id || '') !== employee.id) return false
-          if (String(t.type || '') !== 'salary_advance') return false
-          if (t.is_settled === true) return false
-          const d = parseTxDate(t)
-          if (!d) return false
-          return d >= periodStart && d <= periodEnd
-        })
-        .reduce((acc, t) => acc + Math.abs(Number(t.amount) || 0), 0)
-
-      const pendingOvertimeHours = overtimes
-        .filter((ot) => {
-          if (String(ot.employee_id || '') !== employee.id) return false
-          if (ot.is_paid === true) return false
-          const d = toBusinessDayDateFromInput(ot.date, { normalizeToNoon: true })
-          if (!d || isNaN(d.getTime())) return false
-          return d >= periodStart && d <= periodEnd
-        })
-        .reduce((acc, curr) => acc + Number(curr.hours || 0), 0)
-
-      const pendingOvertimeAmount = pendingOvertimeHours * Math.max(hourlyCost, 0)
-
-      const payrollBase = isMonthlyEmployee
-        ? Math.max(dailyCost, 0) * daysInPeriod
-        : Math.max(dailyCost, 0) * Math.max(daysInPeriod - actualDaysOff, 0)
-
-      const payrollOnlyPayable = payrollBase - totalAdvances + pendingOvertimeAmount - daysOffDeduction
-      const finalPayable = Math.max(payrollOnlyPayable, 0)
-
-      const periodStartLabel = formatBusinessDayDate(periodStart)
-      const periodEndLabel = formatBusinessDayDate(periodEnd)
-
-      return {
-        periodStartDate: periodStart,
-        periodEndDate: periodEnd,
-        periodStartLabel,
-        periodEndLabel,
-        monthlySalary,
-        agreedExtraSalary,
-        dailyCost: Math.max(dailyCost, 0),
-        hourlyCost: Math.max(hourlyCost, 0),
-        includedDaysOffForPeriod,
-        actualDaysOff,
-        extraDaysOff,
-        daysOffDeduction,
-        totalAdvances,
-        pendingOvertimeHours,
-        pendingOvertimeAmount,
-        payrollOnlyPayable,
-        finalPayable,
-        notes: `ΕΞΟΦΛΗΣΗ ΜΙΣΘΟΔΟΣΙΑΣ [${periodStartLabel} - ${periodEndLabel}] | Βασικός: ${monthlySalary.toFixed(2)} | Extra: ${agreedExtraSalary.toFixed(2)} | Προκαταβολές: ${totalAdvances.toFixed(2)} | Υπερωρίες: ${pendingOvertimeAmount.toFixed(2)} | Ρεπό: -${daysOffDeduction.toFixed(2)}`,
-      }
-    },
-    [daysOffByEmployee, getDayOffDateValue, overtimes, transactions],
-  )
 
   // ✅ HERO KPI: Σύνολο πληρωμών υπαλλήλων τρέχοντος ΜΗΝΑ (BUSINESS MONTH) (EXCLUDES tips)
   const currentMonthPayrollTotal = useMemo(() => {
@@ -948,79 +764,6 @@ function EmployeesContent() {
     fetchInitialData()
   }
 
-  const openPayrollSettlementModal = useCallback(
-    (employee: any) => {
-      const settlementDate = getTodayDateISO()
-      const preview = buildPayrollSettlementPreview(employee, settlementDate)
-      if (!preview) {
-        toast.error('Δεν βρέθηκε έγκυρη ανοιχτή περίοδος εξόφλησης.')
-        return
-      }
-
-      setSettlementModal({
-        empId: String(employee.id),
-        name: String(employee.name || ''),
-        settlementDate,
-        employee,
-        preview,
-      })
-    },
-    [buildPayrollSettlementPreview],
-  )
-
-  async function handleConfirmPayrollSettlement() {
-    if (!settlementModal) return
-
-    let tenantStoreId: string
-    try {
-      tenantStoreId = requireTenantStoreId()
-    } catch (error) {
-      console.error(error)
-      return
-    }
-
-    if (!settlementModal.preview) {
-      toast.error('Δεν υπάρχει έγκυρος υπολογισμός εξόφλησης.')
-      return
-    }
-
-    const openPeriodStart = getPayrollCalculationStart(settlementModal.employee)
-    const settlementDate = toBusinessDayDateFromInput(settlementModal.settlementDate, { normalizeToNoon: true })
-    if (!openPeriodStart || !settlementDate || isNaN(openPeriodStart.getTime()) || isNaN(settlementDate.getTime())) {
-      toast.error('Μη έγκυρη περίοδος εξόφλησης.')
-      return
-    }
-    if (settlementDate < openPeriodStart) {
-      toast.error(`Η ημερομηνία εξόφλησης πρέπει να είναι από ${formatBusinessDayDate(openPeriodStart)} και μετά.`)
-      return
-    }
-
-    const shouldProceed = confirm('Είσαι σίγουρος ότι θέλεις να κλείσεις αυτή την περίοδο;')
-    if (!shouldProceed) return
-
-    setIsSettlingPayroll(true)
-    try {
-      const { error } = await supabase.rpc('settle_employee_payroll_period_atomic', {
-        p_store_id: tenantStoreId,
-        p_employee_id: settlementModal.empId,
-        p_settlement_date: settlementModal.settlementDate,
-        p_method: 'Μετρητά',
-        p_notes: settlementModal.preview.notes,
-      })
-
-      if (error) throw error
-
-      toast.success(`Η μισθοδοσία του/της ${settlementModal.name} εξοφλήθηκε και έγινε ανανέωση.`)
-      setSettlementModal(null)
-      fetchInitialData()
-    } catch (error) {
-      console.error(error)
-      toast.error('Αποτυχία εξόφλησης μισθοδοσίας.')
-    } finally {
-      setIsSettlingPayroll(false)
-    }
-  }
-
   async function handleAddDayOff() {
     if (!dayOffModal) return
 
@@ -1392,7 +1135,7 @@ function EmployeesContent() {
   }
 
   async function deleteTransaction(id: string) {
-    if (!confirm('Διαγραφή αυτής της πληρωμής;')) return
+    if (!confirm('Ακύρωση (void) αυτής της πληρωμής;')) return
 
     let tenantStoreId: string
     try {
@@ -1402,11 +1145,27 @@ function EmployeesContent() {
       return
     }
 
-    const { error } = await supabase.from('transactions').delete().eq('id', id).eq('store_id', tenantStoreId)
+    const reason = prompt('Λόγος ακύρωσης (void):')
+    if (reason === null) return
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+
+    const { error } = await supabase
+      .from('transactions')
+      .update({
+        voided_at: new Date().toISOString(),
+        voided_by: user?.id ?? null,
+        void_reason: reason.trim() || null,
+      })
+      .eq('id', id)
+      .eq('store_id', tenantStoreId)
+
     if (!error) fetchInitialData()
     else {
       console.error(error)
-      toast.error('Αποτυχία διαγραφής πληρωμής.')
+      toast.error('Αποτυχία ακύρωσης πληρωμής.')
     }
   }
 
@@ -1619,133 +1378,6 @@ function EmployeesContent() {
                     </button>
                     <button onClick={handleAddDayOff} style={saveBtnSmall}>
                       ΑΠΟΘΗΚΕΥΣΗ
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {settlementModal && (
-              <div style={modalOverlay}>
-                <div style={{ ...modalCard, maxWidth: '440px', textAlign: 'left' }}>
-                  <h3 style={{ margin: 0, fontSize: '18px', color: 'var(--text)' }}>Εξόφληση Μισθοδοσίας</h3>
-                  <p style={{ margin: '6px 0 0 0', fontSize: '12px', color: 'var(--muted)', fontWeight: 700 }}>{settlementModal.name}</p>
-
-                  <div style={{ marginTop: '14px' }}>
-                    <label style={labelStyle}>Ημερομηνία εξόφλησης</label>
-                    <input
-                      type="date"
-                      value={settlementModal.settlementDate}
-                      onChange={(e) => {
-                        const nextDate = e.target.value
-                        setSettlementModal((prev) => {
-                          if (!prev) return prev
-                          return {
-                            ...prev,
-                            settlementDate: nextDate,
-                            preview: buildPayrollSettlementPreview(prev.employee, nextDate),
-                          }
-                        })
-                      }}
-                      style={inputStyle}
-                    />
-                    {(() => {
-                      const openPeriodStart = getPayrollCalculationStart(settlementModal.employee)
-                      const settlementDate = toBusinessDayDateFromInput(settlementModal.settlementDate, { normalizeToNoon: true })
-                      const isInvalidDate =
-                        !!openPeriodStart &&
-                        !!settlementDate &&
-                        !isNaN(openPeriodStart.getTime()) &&
-                        !isNaN(settlementDate.getTime()) &&
-                        settlementDate < openPeriodStart
-
-                      if (!isInvalidDate) return null
-
-                      return (
-                        <p style={{ margin: '8px 0 0 0', fontSize: '11px', color: colors.accentRed, fontWeight: 800 }}>
-                          Η ημερομηνία εξόφλησης δεν μπορεί να είναι πριν από την έναρξη ανοιχτής περιόδου ({formatBusinessDayDate(openPeriodStart)}).
-                        </p>
-                      )
-                    })()}
-                  </div>
-
-                  {settlementModal.preview ? (
-                    <div style={{ marginTop: '14px', border: '1px solid var(--border)', borderRadius: '12px', padding: '12px', background: 'var(--surface)' }}>
-                      <p style={{ margin: 0, fontWeight: 900, fontSize: '11px', color: 'var(--muted)' }}>
-                        ΠΕΡΙΟΔΟΣ: {settlementModal.preview.periodStartLabel} - {settlementModal.preview.periodEndLabel}
-                      </p>
-                      <p style={{ margin: '8px 0 0 0', fontWeight: 700, fontSize: '12px', color: 'var(--muted)' }}>
-                        Βασικός: {settlementModal.preview.monthlySalary.toFixed(2)}€
-                      </p>
-                      <p style={{ margin: '4px 0 0 0', fontWeight: 700, fontSize: '12px', color: 'var(--muted)' }}>
-                        Συμφωνημένο extra: {settlementModal.preview.agreedExtraSalary.toFixed(2)}€
-                      </p>
-                      <p style={{ margin: '4px 0 0 0', fontWeight: 700, fontSize: '12px', color: 'var(--muted)' }}>
-                        Προκαταβολές: {settlementModal.preview.totalAdvances.toFixed(2)}€
-                      </p>
-                      <p style={{ margin: '4px 0 0 0', fontWeight: 700, fontSize: '12px', color: 'var(--muted)' }}>
-                        Εκκρεμείς υπερωρίες: {settlementModal.preview.pendingOvertimeHours.toFixed(2)} ώρες / {settlementModal.preview.pendingOvertimeAmount.toFixed(2)}€
-                      </p>
-                      <p style={{ margin: '4px 0 0 0', fontWeight: 700, fontSize: '12px', color: 'var(--muted)' }}>
-                        Αφαίρεση extra ρεπό: {settlementModal.preview.daysOffDeduction.toFixed(2)}€
-                      </p>
-                      <p style={{ margin: '10px 0 0 0', fontWeight: 900, fontSize: '14px', color: 'var(--text)' }}>
-                        Τελικό πληρωτέο: {settlementModal.preview.finalPayable.toFixed(2)}€
-                      </p>
-                    </div>
-                  ) : (
-                    <p style={{ marginTop: '12px', fontSize: '12px', color: colors.accentRed, fontWeight: 700 }}>
-                      Δεν βρέθηκε έγκυρη ανοιχτή περίοδος για εξόφληση.
-                    </p>
-                  )}
-
-                  <div style={{ display: 'flex', gap: '10px', marginTop: '18px' }}>
-                    <button onClick={() => setSettlementModal(null)} style={cancelBtnSmall}>
-                      ΑΚΥΡΟ
-                    </button>
-                    <button
-                      onClick={handleConfirmPayrollSettlement}
-                      disabled={
-                        isSettlingPayroll ||
-                        !settlementModal.preview ||
-                        (() => {
-                          const openPeriodStart = getPayrollCalculationStart(settlementModal.employee)
-                          const settlementDate = toBusinessDayDateFromInput(settlementModal.settlementDate, { normalizeToNoon: true })
-                          if (!openPeriodStart || !settlementDate) return false
-                          if (isNaN(openPeriodStart.getTime()) || isNaN(settlementDate.getTime())) return true
-                          return settlementDate < openPeriodStart
-                        })()
-                      }
-                      style={{
-                        ...saveBtnSmall,
-                        backgroundColor: colors.accentGreen,
-                        opacity:
-                          isSettlingPayroll ||
-                          !settlementModal.preview ||
-                          (() => {
-                            const openPeriodStart = getPayrollCalculationStart(settlementModal.employee)
-                            const settlementDate = toBusinessDayDateFromInput(settlementModal.settlementDate, { normalizeToNoon: true })
-                            if (!openPeriodStart || !settlementDate) return false
-                            if (isNaN(openPeriodStart.getTime()) || isNaN(settlementDate.getTime())) return true
-                            return settlementDate < openPeriodStart
-                          })()
-                            ? 0.6
-                            : 1,
-                        cursor:
-                          isSettlingPayroll ||
-                          !settlementModal.preview ||
-                          (() => {
-                            const openPeriodStart = getPayrollCalculationStart(settlementModal.employee)
-                            const settlementDate = toBusinessDayDateFromInput(settlementModal.settlementDate, { normalizeToNoon: true })
-                            if (!openPeriodStart || !settlementDate) return false
-                            if (isNaN(openPeriodStart.getTime()) || isNaN(settlementDate.getTime())) return true
-                            return settlementDate < openPeriodStart
-                          })()
-                            ? 'not-allowed'
-                            : 'pointer',
-                      }}
-                    >
-                      {isSettlingPayroll ? 'ΓΙΝΕΤΑΙ ΕΞΟΦΛΗΣΗ...' : 'ΕΞΟΦΛΗΣΗ ΤΩΡΑ'}
                     </button>
                   </div>
                 </div>
@@ -2022,70 +1654,18 @@ function EmployeesContent() {
                 const yearlyStats = getYearlyStats(emp.id)
                 const isSelected = selectedEmpId === emp.id
                 const daysLeft = getDaysUntilPayment(emp.start_date)
-                const payrollSummary = payrollCardsByEmployeeId[emp.id]
+                const snapshot = payrollSnapshotsByEmployeeId[emp.id]
                 const pendingOtItems = overtimes
                   .filter((ot) => ot.employee_id === emp.id)
                   .sort((a, b) => (parseDateInputSafe(b.date)?.getTime() ?? 0) - (parseDateInputSafe(a.date)?.getTime() ?? 0))
-                const hasPayrollSummary = Boolean(payrollSummary)
-                const carryoverAdvances = hasPayrollSummary ? Number(payrollSummary?.carryover_advances ?? 0) : 0
                 const isInactive = emp.is_active === false
                 const monthlyDays = Number(emp.work_days_per_month ?? emp.monthly_days ?? 0)
                 const monthlySalary = Number(emp.monthly_salary ?? 0)
-                const agreedExtraSalary = hasPayrollSummary
-                  ? Number(payrollSummary?.agreed_extra_salary ?? emp.agreed_extra_salary ?? emp.agreed_extra ?? 0)
-                  : Number(emp.agreed_extra_salary ?? emp.agreed_extra ?? 0)
-                const agreedMonthlyPay = monthlySalary + agreedExtraSalary
                 const isMonthlyEmployee = (emp.pay_basis || 'monthly') === 'monthly'
-                const payrollWindow = getEmployeePayrollWindow(emp.start_date, new Date())
-                const visibleDayOffRows = (daysOffByEmployee[emp.id] || [])
-                  .filter((row) => {
-                    if (!payrollWindow) return false
-                    const rowDate = getDayOffDateValue(row)
-                    const businessDate = toBusinessDayDateFromInput(rowDate, { normalizeToNoon: true })
-                    if (!businessDate || isNaN(businessDate.getTime())) return false
-                    return businessDate >= payrollWindow.periodStart && businessDate <= payrollWindow.periodEnd
-                  })
-                  .sort((a, b) => {
-                    const aTime = parseDateInputSafe(getDayOffDateValue(a))?.getTime() ?? 0
-                    const bTime = parseDateInputSafe(getDayOffDateValue(b))?.getTime() ?? 0
-                    return aTime - bTime
-                  })
-                const daysOffLabel = visibleDayOffRows.map((row) => formatShortDayMonth(getDayOffDateValue(row))).join(', ')
-
-                const visibleDaysOffCount = visibleDayOffRows.length
-
-                const includedDaysOffLocal = getIncludedDaysOff(monthlyDays)
-                const actualDaysOffLocal = visibleDaysOffCount
-                const extraDaysOffLocal = Math.max(actualDaysOffLocal - includedDaysOffLocal, 0)
-                const dailyCostLocal = isMonthlyEmployee && monthlyDays > 0 ? agreedMonthlyPay / monthlyDays : Number(emp.daily_rate ?? 0)
-                const hourlyRateLocal = isMonthlyEmployee ? dailyCostLocal / 8 : 0
-                const totalAdvancesLocal = transactions
-                  .filter((t) => {
-                    if (String(t.employee_id || '') !== emp.id && String(t.fixed_asset_id || '') !== emp.id) return false
-                    return String(t.type || '') === 'salary_advance'
-                  })
-                  .reduce((acc, t) => acc + Math.abs(Number(t.amount) || 0), 0)
-                const pendingOtHoursLocal = overtimes.filter((ot) => ot.employee_id === emp.id).reduce((acc, curr) => acc + Number(curr.hours), 0)
-                const pendingOtAmountLocal = isMonthlyEmployee ? pendingOtHoursLocal * hourlyRateLocal : 0
-                const daysOffDeductionLocal = isMonthlyEmployee ? extraDaysOffLocal * dailyCostLocal : 0
-                const dailyCost = isMonthlyEmployee ? dailyCostLocal : hasPayrollSummary ? Number(payrollSummary?.daily_cost ?? 0) : dailyCostLocal
-                const hourlyRate = hasPayrollSummary ? Number(payrollSummary?.hourly_cost ?? 0) : hourlyRateLocal
-                const totalAdvances = hasPayrollSummary ? Number(payrollSummary?.total_advances ?? 0) : totalAdvancesLocal
-                const pendingOtHours = hasPayrollSummary ? Number(payrollSummary?.pending_overtime_hours ?? 0) : pendingOtHoursLocal
-                const pendingOtAmount = hasPayrollSummary ? Number(payrollSummary?.pending_overtime_amount ?? 0) : pendingOtAmountLocal
-                const displayedIncludedDaysOff = includedDaysOffLocal
-                const displayedActualDaysOff = visibleDaysOffCount
-                const displayedExtraDaysOff = Math.max(displayedActualDaysOff - displayedIncludedDaysOff, 0)
-                const displayedDaysOffDeduction = isMonthlyEmployee ? displayedExtraDaysOff * dailyCostLocal : 0
-                const displayedPayrollOnly = isMonthlyEmployee ? monthlySalary - totalAdvances + pendingOtAmount - displayedDaysOffDeduction : 0
-                const displayedFinalPayable = displayedPayrollOnly + agreedExtraSalary
-                const pendingOt = pendingOtHours
-                const totalPayableWithCarryover = displayedFinalPayable + carryoverAdvances
-                const yearDaysOffCount = (daysOffByEmployee[emp.id] || []).filter((row) => {
-                  const businessDate = toBusinessDayDateFromInput(getDayOffDateValue(row), { normalizeToNoon: true })
-                  if (!businessDate || isNaN(businessDate.getTime())) return false
-                  return businessDate.getFullYear() === selectedBusinessMonth.year
-                }).length
+                const currentCyclePayable = Number(snapshot?.current_cycle_payable ?? 0)
+                const carryoverPayable = Number(snapshot?.carryover_payable ?? 0)
+                const totalPayable = Number(snapshot?.total_payable ?? 0)
+                const pendingOt = pendingOtItems.reduce((acc, curr) => acc + Number(curr.hours || 0), 0)
 
                 return (
                   <div key={emp.id} style={{ ...employeeCard, opacity: isInactive ? 0.6 : 1 }}>
@@ -2105,12 +1685,9 @@ function EmployeesContent() {
                       </p>
 
                       <div style={employeeMetaRow}>
-                        <span style={employeeMetaPill}>
-                          {isMonthlyEmployee ? `Βασικός Μισθός ${monthlySalary.toFixed(2)}€` : `ΗΜΕΡΟΜΙΣΘΙΟ ${Number(emp.daily_rate ?? 0).toFixed(2)}€`}
-                        </span>
-                        {isMonthlyEmployee && <span style={employeeMetaPill}>{`Συμφωνημένο Extra ${agreedExtraSalary.toFixed(2)}€`}</span>}
-                        <span style={employeeMetaPill}>ΚΟΣΤΟΣ/ΗΜΕΡΑ {dailyCost.toFixed(2)}€</span>
-                        {isMonthlyEmployee && <span style={employeeMetaPill}>ΜΕΡΕΣ {monthlyDays}</span>}
+                        <span style={employeeMetaPill}>Τρέχων κύκλος {currentCyclePayable.toFixed(2)}€</span>
+                        <span style={employeeMetaPill}>Προηγ. κύκλος {carryoverPayable.toFixed(2)}€</span>
+                        <span style={{ ...employeeMetaPill, backgroundColor: '#ecfdf5', color: '#047857' }}>Σύνολο {totalPayable.toFixed(2)}€</span>
                       </div>
 
                       {!isInactive && (
@@ -2178,19 +1755,15 @@ function EmployeesContent() {
                         </span>
 
                         {pendingOt > 0 && <span style={{ ...badgeStyle, backgroundColor: 'var(--surface)', color: 'var(--muted)' }}>⏱️ {pendingOt} ΩΡΕΣ</span>}
-                        <span style={{ ...badgeStyle, backgroundColor: '#eef2ff', color: '#3730a3' }}>
-                          ΡΕΠΟ {displayedActualDaysOff}/{displayedIncludedDaysOff}
+                        <span style={{ ...badgeStyle, backgroundColor: '#ecfdf5', color: '#047857' }}>
+                          Τρέχων κύκλος {currentCyclePayable.toFixed(2)}€
                         </span>
-                        {isMonthlyEmployee && (
-                          <span style={{ ...badgeStyle, backgroundColor: '#ecfdf5', color: '#047857' }}>
-                            ΥΠΟΛΟΙΠΟ ΚΥΚΛΟΥ {displayedFinalPayable.toFixed(2)}€
-                          </span>
-                        )}
-                        {carryoverAdvances > 0 && (
-                          <span style={{ ...badgeStyle, backgroundColor: '#fff7ed', color: '#9a3412' }}>
-                            ΠΡΟΗΓ. ΚΥΚΛΟΣ {carryoverAdvances.toFixed(2)}€
-                          </span>
-                        )}
+                        <span style={{ ...badgeStyle, backgroundColor: '#fff7ed', color: '#9a3412' }}>
+                          Προηγ. κύκλος {carryoverPayable.toFixed(2)}€
+                        </span>
+                        <span style={{ ...badgeStyle, backgroundColor: '#111827', color: '#f9fafb' }}>
+                          Σύνολο {totalPayable.toFixed(2)}€
+                        </span>
                         {isInactive && <span style={{ ...badgeStyle, backgroundColor: 'var(--surface)', color: 'var(--muted)' }}>ΑΝΕΝΕΡΓΟΣ</span>}
                       </div>
                     </div>
@@ -2219,75 +1792,19 @@ function EmployeesContent() {
                         </div>
 
                         <div style={daysOffStatsWrap}>
-                          <p style={{ margin: 0, fontWeight: '800', color: 'var(--muted)', fontSize: '11px' }}>
-                            Ρεπό κύκλου: {daysOffLabel || '—'}
-                          </p>
-                          <p style={{ margin: '5px 0 0 0', fontWeight: 800, color: 'var(--muted)', fontSize: '11px' }}>
-                            Σύνολο ρεπό: {displayedActualDaysOff} / {displayedIncludedDaysOff}
-                          </p>
-                          <p style={{ margin: '5px 0 0 0', fontWeight: 800, color: 'var(--muted)', fontSize: '11px' }}>
-                            Extra ρεπό: {displayedExtraDaysOff}
-                          </p>
-                          <p style={{ margin: '5px 0 0 0', fontWeight: 800, color: 'var(--muted)', fontSize: '11px' }}>
-                            Προκαταβολές: {totalAdvances.toFixed(2)}€
-                          </p>
-                          {carryoverAdvances > 0 && (
-                            <p style={{ margin: '5px 0 0 0', fontWeight: 800, color: 'var(--muted)', fontSize: '11px' }}>
-                              Υπόλοιπο προηγ. κύκλου: {carryoverAdvances.toFixed(2)}€
+                          {carryoverPayable > 0 && (
+                            <p style={{ margin: 0, fontWeight: 800, color: '#9a3412', fontSize: '12px' }}>
+                              Χρωστάς από προηγούμενο μήνα: {carryoverPayable.toFixed(2)}€
                             </p>
                           )}
-                          <p style={{ margin: '5px 0 0 0', fontWeight: 800, color: 'var(--muted)', fontSize: '11px' }}>
-                            Εκκρεμείς υπερωρίες: {pendingOtHours.toFixed(2)} ώρες / {pendingOtAmount.toFixed(2)}€
-                          </p>
-                          <p style={{ margin: '5px 0 0 0', fontWeight: 800, color: 'var(--muted)', fontSize: '11px' }}>
-                            Αφαίρεση extra ρεπό: {displayedDaysOffDeduction.toFixed(2)}€
-                          </p>
-                          <p style={{ margin: '5px 0 0 0', fontWeight: 800, color: 'var(--muted)', fontSize: '11px' }}>
-                            Ωριαίο κόστος: {hourlyRate.toFixed(2)}€
-                          </p>
-                          {isMonthlyEmployee && (
-                            <p style={{ margin: '5px 0 0 0', fontWeight: 900, color: 'var(--text)', fontSize: '11px' }}>
-                              Υπόλοιπο κύκλου: {displayedFinalPayable.toFixed(2)}€
+                          {currentCyclePayable > 0 && (
+                            <p style={{ margin: '6px 0 0 0', fontWeight: 800, color: '#065f46', fontSize: '12px' }}>
+                              Τρέχων μισθός: {currentCyclePayable.toFixed(2)}€
                             </p>
                           )}
-                          {carryoverAdvances > 0 && (
-                            <p style={{ margin: '5px 0 0 0', fontWeight: 900, color: 'var(--text)', fontSize: '11px' }}>
-                              Σύνολο πληρωτέο: {totalPayableWithCarryover.toFixed(2)}€
-                            </p>
-                          )}
-
-                          <div style={daysOffTotalCard}>
-                            <p style={daysOffTotalCardLabel}>ΣΥΝΟΛΟ ΡΕΠΟ ΕΤΟΥΣ</p>
-                            <p style={daysOffTotalCardValue}>{yearDaysOffCount}</p>
-                          </div>
-
-                          {visibleDayOffRows.length > 0 && (
-                            <div style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                              {visibleDayOffRows.map((row) => (
-                                <div
-                                  key={row.id}
-                                  style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'space-between',
-                                    backgroundColor: 'var(--surface)',
-                                    border: '1px solid var(--border)',
-                                    borderRadius: '10px',
-                                    padding: '6px 8px',
-                                  }}
-                                >
-                                  <span style={{ fontWeight: 800, color: 'var(--muted)', fontSize: '11px' }}>
-                                    {formatShortDayMonth(getDayOffDateValue(row))}
-                                  </span>
-                                  {isAdmin && (
-                                    <button style={miniIconBtnDanger} title="Διαγραφή ρεπό" onClick={() => handleDeleteDayOff(row.id)}>
-                                      <Trash2 size={16} />
-                                    </button>
-                                  )}
-                                </div>
-                              ))}
-                            </div>
-                          )}
+                          <p style={{ margin: '6px 0 0 0', fontWeight: 900, color: 'var(--text)', fontSize: '12px' }}>
+                            Σύνολο πληρωτέο: {totalPayable.toFixed(2)}€
+                          </p>
                         </div>
 
                         {pendingOtItems.length > 0 && (
@@ -2424,15 +1941,6 @@ function EmployeesContent() {
                           {isAdmin && (
                             <button onClick={() => deleteEmployee(emp.id, emp.name)} style={deleteBtn}>
                               ΔΙΑΓΡΑΦΗ 🗑️
-                            </button>
-                          )}
-
-                          {isAdmin && (
-                            <button
-                              onClick={() => openPayrollSettlementModal(emp)}
-                              style={settlementBtn}
-                            >
-                              ΕΞΟΦΛΗΣΗ
                             </button>
                           )}
 

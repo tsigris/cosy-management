@@ -7,7 +7,7 @@ import { getSupabase } from '@/lib/supabase'
 import { getTodayDateISO } from '@/lib/businessDate'
 import Link from 'next/link'
 import { toast, Toaster } from 'sonner'
-import { ChevronLeft, Calculator, Clock, Banknote } from 'lucide-react'
+import { ChevronLeft, Calculator, Banknote } from 'lucide-react'
 
 const colors = {
   primaryDark: '#1e293b',
@@ -17,288 +17,78 @@ const colors = {
   accentRed: '#dc2626',
   bgLight: '#f8fafc',
   border: '#e2e8f0',
-  white: '#ffffff'
-};
+  white: '#ffffff',
+}
 
 function PayEmployeeContent() {
   const supabase = getSupabase()
   const searchParams = useSearchParams()
   const router = useRouter()
-  
-  const empId = searchParams.get('id') // fixed_asset_id
+
+  const empId = searchParams.get('id')
   const empName = searchParams.get('name')
   const storeId = searchParams.get('store')
   const mode = searchParams.get('mode')
 
-  const [agreementType, setAgreementType] = useState('monthly') 
-  const [baseAmount, setBaseAmount] = useState<number>(0)
-  const [agreementDays, setAgreementDays] = useState<number>(26)
-  const [absences, setAbsences] = useState<number>(0)
-  const [workedDays, setWorkedDays] = useState<number>(1) 
-  
-  const [bonus, setBonus] = useState<string>('')
-  const [extraOvertimeEuro, setExtraOvertimeEuro] = useState<string>('')
-  const [agreedExtraSalary, setAgreedExtraSalary] = useState<number>(0)
-  const [pendingOvertimeHours, setPendingOvertimeHours] = useState<number>(0)
   const [advanceAmount, setAdvanceAmount] = useState<string>('')
-  const [bankAmount, setBankAmount] = useState<string>('')
-  const [cashAmount, setCashAmount] = useState<string>('')
-  const [lastEditedField, setLastEditedField] = useState<'bank' | 'cash' | null>(null)
-  const [advanceTotal, setAdvanceTotal] = useState<number>(0)
-  const [payrollSummaryRow, setPayrollSummaryRow] = useState<any | null>(null)
   const [paymentMethod, setPaymentMethod] = useState<'Μετρητά' | 'Τράπεζα'>('Μετρητά')
-  const [date, setDate] = useState(getTodayDateISO())
   const [loading, setLoading] = useState(true)
-  const [isSettlingCarryover, setIsSettlingCarryover] = useState(false)
+  const [isPaying, setIsPaying] = useState(false)
+  const [snapshot, setSnapshot] = useState<any | null>(null)
 
-  const loadEmployeeData = useCallback(async () => {
-    if (!empId || !storeId) return;
+  const loadSnapshot = useCallback(async () => {
+    if (!empId || !storeId) return
     try {
       setLoading(true)
-      const { data: empRows, error: empError } = await supabase
-        .from('fixed_assets')
-        .select('id, pay_basis, monthly_salary, daily_rate, monthly_days, agreed_extra_salary, store_id')
-        .eq('id', empId)
-        .or(`store_id.eq.${storeId},store_id.is.null`)
-        .limit(1)
-
-      const emp = empRows?.[0] ?? null
-
-      console.log('[pay-employee] empError', empError)
-      console.log('[pay-employee] empRows', empRows)
-      console.log('[pay-employee] emp', emp)
-      console.log('[pay-employee] emp monthly_salary', emp?.monthly_salary)
-      console.log('[pay-employee] emp monthly_days', emp?.monthly_days)
-      console.log('[pay-employee] emp agreed_extra_salary', emp?.agreed_extra_salary)
-
-      if (emp) {
-        const agreedExtraSalary = Number(emp?.agreed_extra_salary ?? 0)
-        setAgreementType(emp.pay_basis || 'monthly')
-        setBaseAmount(
-          emp.pay_basis === 'monthly'
-            ? Number(emp.monthly_salary ?? 0)
-            : Number(emp.daily_rate ?? 0)
-        )
-        setAgreementDays(Number(emp.monthly_days ?? 26))
-        setAgreedExtraSalary(agreedExtraSalary)
-      }
-
       const businessAsOfDate = getTodayDateISO()
-      const { data: rpcRowData, error: payrollRpcError } = await supabase.rpc('get_employee_payroll_card_for_employee', {
-        p_store_id: storeId,
-        p_employee_id: empId,
-        p_as_of_date: businessAsOfDate,
-      }).maybeSingle()
-      const rpcRow = (rpcRowData as any) || null
+      const { data, error } = await supabase
+        .rpc('get_employee_payroll_snapshot', {
+          p_store_id: storeId,
+          p_employee_id: empId,
+          p_as_of_date: businessAsOfDate,
+        })
+        .maybeSingle()
 
-      if (payrollRpcError) {
-        console.error('[pay-employee] payroll RPC load failed', payrollRpcError)
-      }
-      console.log('[pay-employee] payrollSummaryRow', rpcRow)
-      console.log('[pay-employee] rpcRow', rpcRow)
-
-      setPayrollSummaryRow(rpcRow || null)
-
-      if (rpcRow) {
-        const rpcMonthlySalary = Number(rpcRow.monthly_salary || 0)
-        const rpcMonthlyDays = Number(rpcRow.monthly_days || 26)
-        setBaseAmount(rpcMonthlySalary)
-        setAgreementDays(rpcMonthlyDays)
-        setAdvanceTotal(Number(rpcRow.total_advances || 0))
-        setPendingOvertimeHours(Number(rpcRow.pending_overtime_hours || 0))
-        setAbsences(Number(rpcRow.extra_days_off_current_month || 0))
-        setExtraOvertimeEuro(Number(rpcRow.pending_overtime_amount || 0).toFixed(2))
-        setAgreedExtraSalary(Number(rpcRow.agreed_extra_salary ?? emp?.agreed_extra_salary ?? 0))
-      }
-
-      const { data: overtimeRows, error: overtimeError } = await supabase
-        .from('employee_overtimes')
-        .select('hours')
-        .eq('employee_id', empId)
-        .eq('store_id', storeId)
-        .eq('is_paid', false);
-
-      if (!rpcRow && !overtimeError) {
-        const totalPendingHours = (overtimeRows || []).reduce((sum, row) => sum + (Number(row.hours) || 0), 0);
-        setPendingOvertimeHours(totalPendingHours);
-      }
-
-      // Fetch existing salary advances for this employee in this store
-      const { data: advanceRows, error: advanceError } = await supabase
-        .from('transactions')
-        .select('amount')
-        .eq('store_id', storeId)
-        .eq('type', 'salary_advance')
-        .eq('is_settled', false)
-        .or(`employee_id.eq.${empId},fixed_asset_id.eq.${empId}`);
-
-      if (!rpcRow && !advanceError) {
-        const totalAdvance = (advanceRows || []).reduce((sum, r) => sum + Math.abs(Number(r.amount) || 0), 0);
-        setAdvanceTotal(totalAdvance);
+      if (error) {
+        console.error('[pay-employee] snapshot load failed', error)
+        setSnapshot(null)
+      } else {
+        console.log('PAYROLL SNAPSHOT', data)
+        setSnapshot(data || null)
       }
     } catch (err) {
-      console.error('[pay-employee] loadEmployeeData failed', err)
+      console.error('[pay-employee] snapshot load failed', err)
+      setSnapshot(null)
     } finally {
-      console.log('[pay-employee] loadEmployeeData finished', {
-        empId,
-        storeId,
-        loadingWillBecomeFalse: true,
-      })
       setLoading(false)
     }
-  }, [empId, storeId])
-
-  useEffect(() => { loadEmployeeData() }, [loadEmployeeData])
-
-  // Υπολογισμός Βασικού Ποσού βάσει ημερών
-  const calculateCurrentBase = () => {
-    if (agreementType === 'monthly') {
-      const ratePerDay = baseAmount / agreementDays;
-      return Math.max(0, (agreementDays - absences) * ratePerDay);
-    }
-    return workedDays * baseAmount;
-  };
-
-  const manualBonus = Number(bonus || 0)
-  const manualOvertime = Number(extraOvertimeEuro) || 0
-  const computedGrossPayable = calculateCurrentBase() + manualOvertime
-  const computedRawRemainingPayroll = computedGrossPayable - (advanceTotal || 0)
-
-  const hasRpcSummary = mode !== 'advance' && agreementType === 'monthly' && Boolean(payrollSummaryRow)
-  const rpcMonthlySalary = Number(payrollSummaryRow?.monthly_salary || 0)
-  const rpcAgreedExtraSalary = Number(payrollSummaryRow?.agreed_extra_salary || 0)
-  const rpcTotalAdvances = Number(payrollSummaryRow?.total_advances || 0)
-  const rpcPendingOvertimeHours = Number(payrollSummaryRow?.pending_overtime_hours || 0)
-  const rpcPendingOvertimeAmount = Number(payrollSummaryRow?.pending_overtime_amount || 0)
-  const rpcHourlyCost = Number(payrollSummaryRow?.hourly_cost || 0)
-  const rpcIncludedDaysOff = Number(payrollSummaryRow?.included_days_off || 0)
-  const rpcActualDaysOff = Number(payrollSummaryRow?.actual_days_off_current_month || 0)
-  const rpcExtraDaysOff = Number(payrollSummaryRow?.extra_days_off_current_month || 0)
-  const rpcDaysOffDeduction = Number(payrollSummaryRow?.days_off_deduction || 0)
-  const remainingPayrollOnly = Number(payrollSummaryRow?.remaining_payroll_only ?? 0)
-  const agreedExtraSalaryFromRpc = Number(payrollSummaryRow?.agreed_extra_salary ?? 0)
-  const rpcFinalPayable = Number(payrollSummaryRow?.final_payable ?? 0)
-  const totalPayrollCost = Number(payrollSummaryRow?.final_payable || 0) + Number(payrollSummaryRow?.total_advances || 0)
-
-  const effectiveAgreedExtraSalary = hasRpcSummary ? agreedExtraSalaryFromRpc : agreedExtraSalary
-  const effectivePayrollRemaining = hasRpcSummary ? remainingPayrollOnly : computedRawRemainingPayroll
-  const effectiveRemainingPayroll = Math.max(0, effectivePayrollRemaining)
-  const effectiveFinalPayable = hasRpcSummary ? rpcFinalPayable : Math.max(0, effectivePayrollRemaining + effectiveAgreedExtraSalary)
-  const finalPayable = hasRpcSummary ? rpcFinalPayable + manualBonus : Math.max(0, effectiveFinalPayable + manualBonus)
-  const finalPayableSafe = Math.max(0, finalPayable)
-  const carryoverPayable = Math.max(Number(payrollSummaryRow?.carryover_advances ?? 0), 0)
-  const totalPayableSafe = Math.max(0, finalPayableSafe + carryoverPayable)
-  const parseAmount = (value: string) => {
-    const parsed = Number(value)
-    return Number.isFinite(parsed) ? parsed : 0
-  }
-  const clampAmount = (value: number, maxValue: number) => Math.min(Math.max(value, 0), maxValue)
-
-  const rpcDisplaySalaryBasis = rpcMonthlySalary + rpcAgreedExtraSalary
-  console.log('[payroll-rpc-display-cost]', {
-    monthly_salary: rpcMonthlySalary,
-    agreed_extra_salary: rpcAgreedExtraSalary,
-    display_salary_basis: rpcDisplaySalaryBasis,
-    monthly_days: Number(payrollSummaryRow?.monthly_days || 0),
-    daily_cost: Number(payrollSummaryRow?.daily_cost || 0),
-    hourly_cost: Number(payrollSummaryRow?.hourly_cost || 0),
-  })
-
-  console.log('[pay-employee-rpc] payrollSummaryRow', payrollSummaryRow)
-  console.log('[pay-employee-rpc] remaining_payroll_only', payrollSummaryRow?.remaining_payroll_only, 'agreed_extra_salary', payrollSummaryRow?.agreed_extra_salary, 'final_payable', payrollSummaryRow?.final_payable, 'bonus', Number(bonus || 0))
-  console.log('[pay-employee-total-cost]', {
-    final_payable: payrollSummaryRow?.final_payable,
-    total_advances: payrollSummaryRow?.total_advances,
-    totalPayrollCost,
-  })
-  const bankAmountNum = clampAmount(parseAmount(bankAmount), finalPayableSafe)
-  const cashAmountNum = clampAmount(parseAmount(cashAmount), finalPayableSafe)
-  console.log('[pay-employee-split-init-fix]', {
-    finalPayable,
-    bankAmount,
-    cashAmount,
-    lastEditedField,
-  })
-
-  const handleBankAmountChange = (value: string) => {
-    const normalizedBank = clampAmount(parseAmount(value), finalPayableSafe)
-    const normalizedCash = Math.max(0, finalPayableSafe - normalizedBank)
-    setLastEditedField('bank')
-    setBankAmount(value === '' ? '' : String(normalizedBank))
-    setCashAmount(normalizedCash.toFixed(2))
-  }
-
-  const handleCashAmountChange = (value: string) => {
-    const normalizedCash = clampAmount(parseAmount(value), finalPayableSafe)
-    const normalizedBank = Math.max(0, finalPayableSafe - normalizedCash)
-    setLastEditedField('cash')
-    setCashAmount(value === '' ? '' : String(normalizedCash))
-    setBankAmount(normalizedBank.toFixed(2))
-  }
+  }, [empId, storeId, supabase])
 
   useEffect(() => {
-    if (mode === 'advance') return
-    if (lastEditedField === null) return
+    void loadSnapshot()
+  }, [loadSnapshot])
 
-    if (lastEditedField === 'cash') {
-      const nextCash = clampAmount(parseAmount(cashAmount), finalPayableSafe)
-      const nextBank = Math.max(0, finalPayableSafe - nextCash)
-      const nextCashText = nextCash.toFixed(2)
-      const nextBankText = nextBank.toFixed(2)
-      if (cashAmount !== '' && cashAmount !== nextCashText) setCashAmount(nextCashText)
-      if (bankAmount !== nextBankText) setBankAmount(nextBankText)
-      return
+  const currentCyclePayable = Number(snapshot?.current_cycle_payable ?? 0)
+  const carryoverPayable = Number(snapshot?.carryover_payable ?? 0)
+  const totalPayable = Number(snapshot?.total_payable ?? 0)
+  const hasCurrentCyclePayable = Boolean(snapshot?.has_current_cycle_payable)
+  const hasCarryover = Boolean(snapshot?.has_carryover)
+  const canPayFull = hasCurrentCyclePayable || hasCarryover
+
+  async function handleAdvance() {
+    if (!storeId) return toast.error('Σφάλμα καταστήματος')
+    if (!empId) return toast.error('Σφάλμα υπαλλήλου')
+
+    const amountNum = Number(advanceAmount)
+    if (Number.isNaN(amountNum) || amountNum <= 0) {
+      return toast.error('Το ποσό πρέπει να είναι μεγαλύτερο από 0')
     }
 
-    const nextBank = clampAmount(parseAmount(bankAmount), finalPayableSafe)
-    const nextCash = Math.max(0, finalPayableSafe - nextBank)
-    const nextBankText = bankAmount === '' ? '' : nextBank.toFixed(2)
-    const nextCashText = nextCash.toFixed(2)
-    if (bankAmount !== nextBankText) setBankAmount(nextBankText)
-    if (cashAmount !== nextCashText) setCashAmount(nextCashText)
-  }, [finalPayableSafe, mode, lastEditedField])
-
-  async function handleFinalPayment() {
-    console.log('[pay-employee] CLICKED handleFinalPayment', {
-      storeId,
-      empId,
-      mode,
-      loading,
-      paymentMethod,
-      date,
-      finalPayable,
-      finalPayableSafe,
-      carryoverPayable,
-      totalPayableSafe,
-      effectivePayrollRemaining,
-      bankAmount,
-      cashAmount,
-      bankAmountNum,
-      cashAmountNum,
-      lastEditedField,
-    })
-    if (!storeId) {
-      console.log('[pay-employee] BLOCKED: missing storeId')
-      return toast.error('Σφάλμα καταστήματος');
-    }
-    if (!empId) {
-      console.log('[pay-employee] BLOCKED: missing empId')
-      return toast.error('Σφάλμα υπαλλήλου');
-    }
-    setLoading(true);
-
+    setIsPaying(true)
     try {
-      if (mode === 'advance') {
-        const amountNum = Number(advanceAmount)
-        if (Number.isNaN(amountNum) || amountNum <= 0) {
-          console.log('[pay-employee] BLOCKED: invalid advance amount', { amountNum, advanceAmount })
-          setLoading(false)
-          return toast.error('Το ποσό πρέπει να είναι μεγαλύτερο από 0')
-        }
-
-        const notes = `Προκαταβολή μισθού | ${empName || ''}`
-
-        const { error: transError } = await supabase.from('transactions').insert([{
+      const notes = `Προκαταβολή μισθού | ${empName || ''}`
+      const { error } = await supabase.from('transactions').insert([
+        {
           amount: -Math.abs(amountNum),
           type: 'salary_advance',
           category: 'Staff',
@@ -306,538 +96,258 @@ function PayEmployeeContent() {
           employee_id: empId,
           fixed_asset_id: empId,
           store_id: storeId,
-          date: date,
-          notes: notes,
-          is_settled: false,
-        }]);
+          date: getTodayDateISO(),
+          notes,
+          source_context: 'payroll_advance',
+        },
+      ])
 
-        if (transError) throw transError;
+      if (error) throw error
 
-        toast.success('Η προκαταβολή καταχωρήθηκε!');
-        router.push(`/employees?store=${storeId}`);
-        return;
-      }
-
-      // normal final payment (remaining payroll + agreed extra + manual bonus)
-      if (finalPayableSafe <= 0) {
-        console.log('[pay-employee] BLOCKED: finalPayableSafe <= 0', { finalPayableSafe })
-        setLoading(false)
-        return toast.error('Το ποσό πληρωμής πρέπει να είναι μεγαλύτερο από 0')
-      }
-
-      const agreementLabel = agreementType === 'monthly' ? 'Βασικός Μισθός' : 'Ημερομίσθιο';
-      const daysOrAbsencesLabel = agreementType === 'monthly' ? `Απουσίες: ${absences}` : `Ημέρες: ${workedDays}`;
-      const notes = `Εκκαθάριση ${empName || ''} | ${agreementLabel} | Ημέρες/Απουσίες: ${daysOrAbsencesLabel}`;
-
-      const isBankEmpty = bankAmount.trim() === ''
-      const isCashEmpty = cashAmount.trim() === ''
-      const epsilon = 0.01
-
-      let normalizedBank = 0
-      let normalizedCash = 0
-
-      // Fallback when both fields are empty: use selected payment method for full amount.
-      if (isBankEmpty && isCashEmpty) {
-        if (paymentMethod === 'Τράπεζα') {
-          normalizedBank = finalPayableSafe
-          normalizedCash = 0
-        } else {
-          normalizedBank = 0
-          normalizedCash = finalPayableSafe
-        }
-      } else if (!isBankEmpty && isCashEmpty) {
-        normalizedBank = clampAmount(bankAmountNum, finalPayableSafe)
-        normalizedCash = Math.max(0, finalPayableSafe - normalizedBank)
-      } else if (isBankEmpty && !isCashEmpty) {
-        normalizedCash = clampAmount(cashAmountNum, finalPayableSafe)
-        normalizedBank = Math.max(0, finalPayableSafe - normalizedCash)
-      } else {
-        normalizedBank = clampAmount(bankAmountNum, finalPayableSafe)
-        normalizedCash = clampAmount(cashAmountNum, finalPayableSafe)
-
-        const total = normalizedBank + normalizedCash
-        const diff = finalPayableSafe - total
-
-        if (Math.abs(diff) <= epsilon) {
-          if (lastEditedField === 'cash') {
-            normalizedBank = Math.max(0, Math.min(finalPayableSafe, normalizedBank + diff))
-          } else {
-            normalizedCash = Math.max(0, Math.min(finalPayableSafe, normalizedCash + diff))
-          }
-        }
-      }
-
-      if (normalizedBank < 0 || normalizedCash < 0) {
-        console.log('[pay-employee] BLOCKED: negative normalized amounts', { normalizedBank, normalizedCash })
-        setLoading(false)
-        return toast.error('Τα ποσά πληρωμής δεν μπορεί να είναι αρνητικά.')
-      }
-
-      if (normalizedBank > finalPayableSafe || normalizedCash > finalPayableSafe) {
-        console.log('[pay-employee] BLOCKED: amount exceeds final payable', { normalizedBank, normalizedCash, finalPayableSafe })
-        setLoading(false)
-        return toast.error('Κάποιο ποσό είναι μεγαλύτερο από το τελικό πληρωτέο.')
-      }
-
-      const normalizedTotal = normalizedBank + normalizedCash
-
-      console.log('[pay-employee] normalized split', {
-        normalizedBank,
-        normalizedCash,
-        normalizedTotal: normalizedBank + normalizedCash,
-        finalPayableSafe,
-        paymentMethod,
-        bankAmount,
-        cashAmount,
-      })
-
-      if (Math.abs(normalizedTotal - finalPayableSafe) > 0.01) {
-        console.log('[pay-employee] BLOCKED: split total mismatch', {
-          normalizedBank,
-          normalizedCash,
-          normalizedTotal,
-          finalPayableSafe,
-        })
-        setLoading(false)
-        return toast.error('Το split πληρωμής πρέπει να ισούται με το τελικό πληρωτέο.')
-      }
-
-      const hasSplit = normalizedBank > 0 && normalizedCash > 0
-      const ratioBank = finalPayableSafe > 0 ? normalizedBank / finalPayableSafe : 0
-      const ratioCash = finalPayableSafe > 0 ? normalizedCash / finalPayableSafe : 0
-
-      const currentCycleBank = Number((finalPayableSafe * ratioBank).toFixed(2))
-      const currentCycleCash = Number((finalPayableSafe - currentCycleBank).toFixed(2))
-
-      if (finalPayableSafe > 0) {
-        const settlementMethod = hasSplit ? 'Μικτή' : normalizedBank > 0 ? 'Τράπεζα' : 'Μετρητά'
-        const settlementNotes = hasSplit
-          ? `${notes} | Split: Τράπεζα ${currentCycleBank.toFixed(2)} / Μετρητά ${currentCycleCash.toFixed(2)}`
-          : notes
-
-        console.log('[pay-employee] BEFORE payroll settlement RPC', {
-          storeId,
-          empId,
-          settlementDate: date,
-          settlementMethod,
-          settlementNotes,
-        })
-
-        const { data: settlementData, error: settlementError } = await supabase.rpc('settle_employee_payroll_period_atomic', {
-          p_store_id: storeId,
-          p_employee_id: empId,
-          p_settlement_date: date,
-          p_method: settlementMethod,
-          p_notes: settlementNotes,
-        })
-
-        console.log('[pay-employee] AFTER payroll settlement RPC', { error: settlementError, data: settlementData })
-        if (settlementError) throw settlementError
-
-        const settlementRow = Array.isArray(settlementData) ? settlementData[0] : settlementData
-        const settlementFinalPayable = Number(settlementRow?.final_payable ?? 0)
-        const extraAmount = Math.max(finalPayableSafe - settlementFinalPayable, 0)
-
-        if (extraAmount > 0) {
-          const extraBank = hasSplit ? Number((extraAmount * ratioBank).toFixed(2)) : normalizedBank > 0 ? extraAmount : 0
-          const extraCash = Number((extraAmount - extraBank).toFixed(2))
-
-          const extraInserts: Array<any> = []
-
-          if (extraBank > 0) {
-            extraInserts.push({
-              amount: -Math.abs(extraBank),
-              type: 'expense',
-              category: 'Staff',
-              method: 'Τράπεζα',
-              employee_id: empId,
-              fixed_asset_id: empId,
-              store_id: storeId,
-              date,
-              notes: `${notes} | Extra: ${extraAmount.toFixed(2)}`,
-            })
-          }
-
-          if (extraCash > 0) {
-            extraInserts.push({
-              amount: -Math.abs(extraCash),
-              type: 'expense',
-              category: 'Staff',
-              method: 'Μετρητά',
-              employee_id: empId,
-              fixed_asset_id: empId,
-              store_id: storeId,
-              date,
-              notes: `${notes} | Extra: ${extraAmount.toFixed(2)}`,
-            })
-          }
-
-          if (extraInserts.length > 0) {
-            console.log('[pay-employee] BEFORE extra payments insert', extraInserts)
-            const { error: extraInsertError } = await supabase.from('transactions').insert(extraInserts)
-            console.log('[pay-employee] AFTER extra payments insert', { extraInsertError })
-            if (extraInsertError) throw extraInsertError
-          }
-        }
-      }
-
-
-      toast.success('Η πληρωμή καταχωρήθηκε και οι υπερωρίες εκκαθαρίστηκαν!');
-      router.push(`/employees?store=${storeId}`);
+      toast.success('Η προκαταβολή καταχωρήθηκε!')
+      router.push(`/employees?store=${storeId}`)
     } catch (err: any) {
-      console.error('[pay-employee] PAYMENT ERROR', err)
-      toast.error(err?.message || 'Αποτυχία πληρωμής');
+      console.error('[pay-employee] ADVANCE ERROR', err)
+      toast.error(err?.message || 'Αποτυχία προκαταβολής')
     } finally {
-      setLoading(false);
+      setIsPaying(false)
     }
   }
 
-  async function handleCarryoverPayment() {
-    console.log('[pay-employee] CLICKED handleCarryoverPayment', {
-      storeId,
-      empId,
-      paymentMethod,
-      date,
-      carryoverPayable,
-    })
+  async function handlePayCurrentCycle() {
+    if (!storeId) return toast.error('Σφάλμα καταστήματος')
+    if (!empId) return toast.error('Σφάλμα υπαλλήλου')
+    if (!hasCurrentCyclePayable) return
 
-    if (!storeId) {
-      console.log('[pay-employee] BLOCKED: missing storeId (carryover)')
-      return toast.error('Σφάλμα καταστήματος')
-    }
-
-    if (!empId) {
-      console.log('[pay-employee] BLOCKED: missing empId (carryover)')
-      return toast.error('Σφάλμα υπαλλήλου')
-    }
-
-    if (carryoverPayable <= 0) {
-      console.log('[pay-employee] BLOCKED: carryoverPayable <= 0', { carryoverPayable })
-      return toast.error('Δεν υπάρχει οφειλή προηγούμενου κύκλου.')
-    }
-
-    setIsSettlingCarryover(true)
+    setIsPaying(true)
     try {
-      const carryoverNotes = `ΕΞΟΦΛΗΣΗ ΠΡΟΗΓ. ΚΥΚΛΟΥ ${carryoverPayable.toFixed(2)}€`
-
-      console.log('[pay-employee] BEFORE carryover settlement RPC', {
-        storeId,
-        empId,
-        settlementDate: date,
-        carryoverMethod: paymentMethod,
-        carryoverNotes,
-      })
-
-      const { data: carryoverData, error: carryoverError } = await supabase.rpc('settle_employee_payroll_carryover_atomic', {
+      const notes = `Πληρωμή τρέχοντος κύκλου | ${empName || ''}`
+      const { error } = await supabase.rpc('payroll_pay_current_cycle_atomic', {
         p_store_id: storeId,
         p_employee_id: empId,
-        p_settlement_date: date,
         p_method: paymentMethod,
-        p_notes: carryoverNotes,
+        p_notes: notes,
       })
 
-      console.log('[pay-employee] AFTER carryover settlement RPC', { error: carryoverError, data: carryoverData })
-      if (carryoverError) throw carryoverError
+      if (error) throw error
 
-      toast.success('Η οφειλή προηγούμενου κύκλου εξοφλήθηκε!')
-      await loadEmployeeData()
+      toast.success('Η πληρωμή τρέχοντος κύκλου καταχωρήθηκε!')
+      await loadSnapshot()
     } catch (err: any) {
-      console.error('[pay-employee] CARRYOVER PAYMENT ERROR', err)
-      toast.error(err?.message || 'Αποτυχία εξόφλησης προηγούμενου κύκλου')
+      console.error('[pay-employee] CURRENT CYCLE ERROR', err)
+      toast.error(err?.message || 'Αποτυχία πληρωμής')
     } finally {
-      setIsSettlingCarryover(false)
+      setIsPaying(false)
     }
   }
 
-  const isPayButtonDisabled = loading || (mode === 'advance' ? Number(advanceAmount) <= 0 : finalPayableSafe <= 0)
-  const isCarryoverButtonDisabled = loading || isSettlingCarryover || carryoverPayable <= 0
+  async function handlePayCarryover() {
+    if (!storeId) return toast.error('Σφάλμα καταστήματος')
+    if (!empId) return toast.error('Σφάλμα υπαλλήλου')
+    if (!hasCarryover) return
 
-  console.log('[pay-employee] render state', {
-    loading,
-    mode,
-    effectivePayrollRemaining,
-    finalPayable,
-    finalPayableSafe,
-    carryoverPayable,
-    totalPayableSafe,
-    isPayButtonDisabled,
-  })
+    setIsPaying(true)
+    try {
+      const notes = `Εξόφληση προηγούμενου κύκλου | ${empName || ''}`
+      const { error } = await supabase.rpc('payroll_pay_carryover_atomic', {
+        p_store_id: storeId,
+        p_employee_id: empId,
+        p_method: paymentMethod,
+        p_notes: notes,
+      })
 
-  console.log('[pay-employee] button disabled check', {
-    loading,
-    mode,
-    advanceAmount,
-    effectivePayrollRemaining,
-    totalPayableSafe,
-    isPayButtonDisabled,
-  })
+      if (error) throw error
+
+      toast.success('Η οφειλή προηγούμενου κύκλου εξοφλήθηκε!')
+      await loadSnapshot()
+    } catch (err: any) {
+      console.error('[pay-employee] CARRYOVER ERROR', err)
+      toast.error(err?.message || 'Αποτυχία εξόφλησης προηγ. κύκλου')
+    } finally {
+      setIsPaying(false)
+    }
+  }
+
+  async function handlePayFull() {
+    if (!storeId) return toast.error('Σφάλμα καταστήματος')
+    if (!empId) return toast.error('Σφάλμα υπαλλήλου')
+    if (!canPayFull) return
+
+    setIsPaying(true)
+    try {
+      const notes = `Πλήρης εξόφληση μισθοδοσίας | ${empName || ''}`
+      const { error } = await supabase.rpc('payroll_pay_full_atomic', {
+        p_store_id: storeId,
+        p_employee_id: empId,
+        p_method: paymentMethod,
+        p_notes: notes,
+      })
+
+      if (error) throw error
+
+      toast.success('Η πλήρης πληρωμή καταχωρήθηκε!')
+      await loadSnapshot()
+    } catch (err: any) {
+      console.error('[pay-employee] FULL PAYMENT ERROR', err)
+      toast.error(err?.message || 'Αποτυχία πλήρους πληρωμής')
+    } finally {
+      setIsPaying(false)
+    }
+  }
+
+  const isCurrentCycleDisabled = loading || isPaying || !hasCurrentCyclePayable
+  const isCarryoverDisabled = loading || isPaying || !hasCarryover
+  const isFullDisabled = loading || isPaying || !canPayFull
+  const isAdvanceDisabled = loading || isPaying || Number(advanceAmount) <= 0
 
   return (
     <div style={iphoneWrapper}>
       <Toaster position="top-center" richColors />
       <div style={{ maxWidth: '500px', margin: '0 auto', paddingBottom: '100px' }}>
-        
         <header style={headerStyle}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <div style={logoBoxStyle}><Calculator size={20} color="#2563eb" /></div>
             <div>
-              <h1 style={titleStyle}>{mode === 'advance' ? 'Προκαταβολή' : 'Εκκαθάριση'}</h1>
+              <h1 style={titleStyle}>{mode === 'advance' ? 'Προκαταβολή' : 'Πληρωμή'}</h1>
               <p style={subTitleStyle}>{empName?.toUpperCase()}</p>
             </div>
           </div>
           <Link href={`/employees?store=${storeId}`} style={backBtnStyle}><ChevronLeft size={20} /></Link>
         </header>
 
-          <div style={cardStyle}>
-          {mode !== 'advance' && (
-            <>
-              <label style={labelStyle}>ΤΥΠΟΣ ΣΥΜΦΩΝΙΑΣ: <span style={{color: colors.accentBlue}}>{agreementType === 'monthly' ? 'ΜΗΝΙΑΙΟΣ' : 'ΗΜΕΡΟΜΙΣΘΙΟ'}</span></label>
-              
-              <div style={gridRow}>
-                {agreementType === 'monthly' ? (
-                  <>
-                    <div style={inputGroup}>
-                      <label style={smallLabel}>ΑΠΟΥΣΙΕΣ (ΗΜΕΡΕΣ)</label>
-                      <input
-                        type="number"
-                        value={hasRpcSummary ? rpcExtraDaysOff : absences}
-                        onChange={e => setAbsences(Number(e.target.value))}
-                        style={inputStyle}
-                        readOnly={hasRpcSummary}
-                      />
-                    </div>
-                    <div style={inputGroup}>
-                      <label style={smallLabel}>Βασικός Μισθός</label>
-                      <div style={staticValue}>{(hasRpcSummary ? rpcMonthlySalary : baseAmount).toFixed(2)}€</div>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <div style={inputGroup}>
-                      <label style={smallLabel}>ΗΜΕΡΕΣ ΕΡΓΑΣΙΑΣ</label>
-                      <input type="number" value={workedDays} onChange={e => setWorkedDays(Number(e.target.value))} style={inputStyle} />
-                    </div>
-                    <div style={inputGroup}>
-                      <label style={smallLabel}>ΗΜΕΡΟΜΙΣΘΙΟ</label>
-                      <div style={staticValue}>{baseAmount}€ / ημ.</div>
-                    </div>
-                  </>
-                )}
-              </div>
-            </>
-          )}
-
-          {mode === 'advance' && (
+        <div style={cardStyle}>
+          {mode === 'advance' ? (
             <div style={{ marginBottom: '14px' }}>
               <label style={smallLabel}>ΠΟΣΟ ΠΡΟΚΑΤΑΒΟΛΗΣ (€)</label>
-              <input type="number" value={advanceAmount} onChange={e => setAdvanceAmount(e.target.value)} style={inputStyle} placeholder="0.00" />
-            </div>
-          )}
+              <input
+                type="number"
+                value={advanceAmount}
+                onChange={(e) => setAdvanceAmount(e.target.value)}
+                style={inputStyle}
+                placeholder="0.00"
+              />
 
-          {mode !== 'advance' && (
-            <>
-              <div style={{...divider, margin: '20px 0'}} />
-
-              <div style={inputGroup}>
-                <label style={smallLabel}>Συμφωνημένο Extra</label>
-                <div style={staticValue}>{effectiveAgreedExtraSalary.toFixed(2)}€</div>
-              </div>
-
-              <div style={inputGroup}>
-                <label style={smallLabel}>Bonus</label>
-                <input type="number" value={bonus} onChange={e => setBonus(e.target.value)} style={inputStyle} placeholder="0.00" />
-              </div>
-
-              <div style={{...inputGroup, marginTop: '15px'}}>
-                <label style={smallLabel}>ΥΠΕΡΩΡΙΕΣ ΠΡΟΣ ΠΛΗΡΩΜΗ (€)</label>
-                <input
-                  type="number"
-                  value={hasRpcSummary ? rpcPendingOvertimeAmount.toFixed(2) : extraOvertimeEuro}
-                  onChange={e => setExtraOvertimeEuro(e.target.value)}
-                  style={{...inputStyle, borderColor: colors.accentBlue}}
-                  placeholder="0.00"
-                  readOnly={hasRpcSummary}
-                />
-                <div style={overtimeHint}>
-                  <Clock size={14} />
-                  <span>Εκκρεμούν: {(hasRpcSummary ? rpcPendingOvertimeHours : pendingOvertimeHours).toFixed(2)} ώρες</span>
-                </div>
-              </div>
-
-              {hasRpcSummary && (
-                <div style={rpcSummaryBox}>
-                  <p style={rpcSummaryTitle}>ΣΥΝΟΨΗ ΑΠΟ RPC</p>
-                  <p style={rpcSummaryLine}>Ρεπό μήνα: {rpcActualDaysOff} / {rpcIncludedDaysOff}</p>
-                  <p style={rpcSummaryLine}>Extra ρεπό: {rpcExtraDaysOff}</p>
-                  <p style={rpcSummaryLine}>Αφαίρεση ρεπό: {rpcDaysOffDeduction.toFixed(2)}€</p>
-                  <p style={rpcSummaryLine}>Εκκρεμείς υπερωρίες: {rpcPendingOvertimeHours.toFixed(2)} ώρες</p>
-                  <p style={rpcSummaryLine}>Ωριαίο κόστος: {rpcHourlyCost.toFixed(2)}€</p>
-                </div>
-              )}
-            </>
-          )}
-
-          <div style={resultBox}>
-            {mode === 'advance' ? (
-              <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
-                <span style={resultLabel}>ΠΟΣΟ ΠΡΟΚΑΤΑΒΟΛΗΣ</span>
-                <span style={resultValue}>{(Number(advanceAmount) || 0).toFixed(2)}€</span>
-              </div>
-            ) : (
-              <div style={{display: 'flex', flexDirection: 'column', gap: '8px'}}>
-                <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
-                  <span style={resultLabel}>ΥΠΟΛΟΙΠΟ ΚΥΚΛΟΥ</span>
-                  <span style={resultValue}>{effectiveRemainingPayroll.toFixed(2)}€</span>
-                </div>
-                <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
-                  <span style={resultLabel}>Συμφωνημένο Extra</span>
-                  <span style={resultValue}>{effectiveAgreedExtraSalary.toFixed(2)}€</span>
-                </div>
-                <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
-                  <span style={resultLabel}>ΠΡΟΚΑΤΑΒΟΛΕΣ</span>
-                  <span style={resultValue}>{rpcTotalAdvances.toFixed(2)}€</span>
-                </div>
-                <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
-                  <span style={resultLabel}>ΥΠΟΛΟΙΠΟ ΠΡΟΗΓ. ΚΥΚΛΟΥ</span>
-                  <span style={resultValue}>{carryoverPayable.toFixed(2)}€</span>
-                </div>
-                <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
-                  <span style={resultLabel}>Bonus</span>
-                  <span style={resultValue}>{manualBonus.toFixed(2)}€</span>
-                </div>
-                <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
-                  <span style={resultLabel}>ΠΛΗΡΩΤΕΟ ΚΥΚΛΟΥ</span>
-                  <span style={resultValue}>{finalPayable.toFixed(2)}€</span>
-                </div>
-                {carryoverPayable > 0 && (
-                  <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
-                    <span style={resultLabel}>ΣΥΝΟΛΟ ΠΛΗΡΩΤΕΟ</span>
-                    <span style={resultValue}>{totalPayableSafe.toFixed(2)}€</span>
-                  </div>
-                )}
-                <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
-                  <span style={resultLabel}>ΣΥΝΟΛΙΚΟ ΚΟΣΤΟΣ</span>
-                  <span style={resultValue}>{totalPayrollCost.toFixed(2)}€</span>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {mode !== 'advance' && carryoverPayable > 0 && (
-            <div style={{ marginTop: '14px', padding: '16px', borderRadius: '16px', border: `1px solid ${colors.border}`, backgroundColor: '#fff7ed' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ ...resultLabel, color: '#9a3412' }}>ΟΦΕΙΛΗ ΠΡΟΗΓ. ΚΥΚΛΟΥ</span>
-                <span style={{ ...resultValue, color: '#9a3412' }}>{carryoverPayable.toFixed(2)}€</span>
-              </div>
               <button
-                onClick={handleCarryoverPayment}
-                disabled={isCarryoverButtonDisabled}
+                onClick={handleAdvance}
+                disabled={isAdvanceDisabled}
                 style={{
                   ...payBtn,
-                  marginTop: '12px',
-                  backgroundColor: '#ea580c',
-                  opacity: isCarryoverButtonDisabled ? 0.6 : 1,
-                  cursor: isCarryoverButtonDisabled ? 'not-allowed' : 'pointer',
+                  marginTop: '16px',
+                  opacity: isAdvanceDisabled ? 0.6 : 1,
+                  cursor: isAdvanceDisabled ? 'not-allowed' : 'pointer',
                 }}
               >
-                {isSettlingCarryover ? 'ΓΙΝΕΤΑΙ ΕΞΟΦΛΗΣΗ...' : 'ΕΞΟΦΛΗΣΗ ΠΡΟΗΓ. ΚΥΚΛΟΥ'}
+                <Banknote size={18} /> ΚΑΤΑΧΩΡΗΣΗ ΠΡΟΚΑΤΑΒΟΛΗΣ
               </button>
             </div>
-          )}
-
-          <div style={{marginTop: '20px'}}>
-            <label style={smallLabel}>ΗΜΕΡΟΜΗΝΙΑ ΠΛΗΡΩΜΗΣ</label>
-            <input type="date" value={date} onChange={e => setDate(e.target.value)} style={inputStyle} />
-          </div>
-
-          <div style={{ marginTop: '15px' }}>
-            <label style={smallLabel}>ΜΕΘΟΔΟΣ ΠΛΗΡΩΜΗΣ</label>
-            <div style={methodToggleWrap}>
-              <button type="button" onClick={() => setPaymentMethod('Μετρητά')} style={{ ...methodToggleBtn, ...(paymentMethod === 'Μετρητά' ? methodToggleBtnActive : {}) }}>
-                Μετρητά
-              </button>
-              <button type="button" onClick={() => setPaymentMethod('Τράπεζα')} style={{ ...methodToggleBtn, ...(paymentMethod === 'Τράπεζα' ? methodToggleBtnActive : {}) }}>
-                Τράπεζα
-              </button>
-            </div>
-          </div>
-
-          {mode !== 'advance' && (
+          ) : (
             <>
-              <div style={{ marginTop: '15px' }}>
-                <label style={smallLabel}>ΠΟΣΟ ΤΡΑΠΕΖΑΣ (€)</label>
-                <input
-                  type="number"
-                  value={bankAmount}
-                  onChange={e => handleBankAmountChange(e.target.value)}
-                  style={inputStyle}
-                  placeholder="0.00"
-                />
+              <div style={resultBox}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {carryoverPayable > 0 && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={resultLabel}>Χρωστάς από προηγούμενο μήνα</span>
+                      <span style={resultValue}>{carryoverPayable.toFixed(2)}€</span>
+                    </div>
+                  )}
+                  {currentCyclePayable > 0 && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={resultLabel}>Τρέχων μισθός</span>
+                      <span style={resultValue}>{currentCyclePayable.toFixed(2)}€</span>
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ ...resultLabel, color: '#fef3c7' }}>ΣΥΝΟΛΟ</span>
+                    <span style={{ ...resultValue, color: '#fef3c7' }}>{totalPayable.toFixed(2)}€</span>
+                  </div>
+                </div>
               </div>
 
-              <div style={{ marginTop: '10px' }}>
-                <label style={smallLabel}>ΠΟΣΟ ΜΕΤΡΗΤΩΝ (€)</label>
-                <input
-                  type="number"
-                  value={cashAmount}
-                  onChange={e => handleCashAmountChange(e.target.value)}
-                  style={inputStyle}
-                  placeholder="0.00"
-                />
+              <div style={{ marginTop: '15px' }}>
+                <label style={smallLabel}>ΜΕΘΟΔΟΣ ΠΛΗΡΩΜΗΣ</label>
+                <div style={methodToggleWrap}>
+                  <button type="button" onClick={() => setPaymentMethod('Μετρητά')} style={{ ...methodToggleBtn, ...(paymentMethod === 'Μετρητά' ? methodToggleBtnActive : {}) }}>
+                    Μετρητά
+                  </button>
+                  <button type="button" onClick={() => setPaymentMethod('Τράπεζα')} style={{ ...methodToggleBtn, ...(paymentMethod === 'Τράπεζα' ? methodToggleBtnActive : {}) }}>
+                    Τράπεζα
+                  </button>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '18px' }}>
+                <button
+                  onClick={handlePayFull}
+                  disabled={isFullDisabled}
+                  style={{
+                    ...payBtn,
+                    backgroundColor: colors.accentGreen,
+                    opacity: isFullDisabled ? 0.6 : 1,
+                    cursor: isFullDisabled ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  <Banknote size={18} /> ΠΛΗΡΩΜΗ ΣΥΝΟΛΟΥ
+                </button>
+
+                <button
+                  onClick={handlePayCurrentCycle}
+                  disabled={isCurrentCycleDisabled}
+                  style={{
+                    ...payBtn,
+                    backgroundColor: colors.accentBlue,
+                    opacity: isCurrentCycleDisabled ? 0.6 : 1,
+                    cursor: isCurrentCycleDisabled ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  ΠΛΗΡΩΜΗ ΤΡΕΧΟΝΤΟΣ ΚΥΚΛΟΥ
+                </button>
+
+                <button
+                  onClick={handlePayCarryover}
+                  disabled={isCarryoverDisabled}
+                  style={{
+                    ...payBtn,
+                    backgroundColor: '#ea580c',
+                    opacity: isCarryoverDisabled ? 0.6 : 1,
+                    cursor: isCarryoverDisabled ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  ΕΞΟΦΛΗΣΗ ΠΡΟΗΓΟΥΜΕΝΟΥ ΚΥΚΛΟΥ
+                </button>
               </div>
             </>
           )}
-
-          <button
-            onClick={handleFinalPayment}
-            disabled={isPayButtonDisabled}
-            style={{
-              ...payBtn,
-              opacity: isPayButtonDisabled ? 0.6 : 1,
-              cursor: isPayButtonDisabled ? 'not-allowed' : 'pointer',
-            }}
-          >
-            {loading
-              ? 'ΓΙΝΕΤΑΙ ΚΑΤΑΧΩΡΗΣΗ...'
-              : mode === 'advance' ? <><Banknote size={18} /> ΚΑΤΑΧΩΡΗΣΗ ΠΡΟΚΑΤΑΒΟΛΗΣ</> : <><Banknote size={18} /> ΟΛΟΚΛΗΡΩΣΗ ΠΛΗΡΩΜΗΣ</>}
-          </button>
         </div>
       </div>
     </div>
   )
 }
 
-// STYLES (✅ 16px Optimized)
-const iphoneWrapper: any = { backgroundColor: colors.bgLight, minHeight: '100dvh', padding: '20px', overflowY: 'auto' };
-const headerStyle: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px' };
-const titleStyle = { fontWeight: '900', fontSize: '20px', margin: 0, color: colors.primaryDark };
-const subTitleStyle = { margin: 0, fontSize: '12px', fontWeight: '800', color: colors.secondaryText };
-const logoBoxStyle: any = { width: '42px', height: '42px', backgroundColor: '#eef2ff', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' };
-const backBtnStyle: any = { textDecoration: 'none', color: colors.secondaryText, width: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: colors.white, borderRadius: '12px', border: `1px solid ${colors.border}` };
+// STYLES
+const iphoneWrapper: any = { backgroundColor: colors.bgLight, minHeight: '100dvh', padding: '20px', overflowY: 'auto' }
+const headerStyle: any = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px' }
+const titleStyle = { fontWeight: '900', fontSize: '20px', margin: 0, color: colors.primaryDark }
+const subTitleStyle = { margin: 0, fontSize: '12px', fontWeight: '800', color: colors.secondaryText }
+const logoBoxStyle: any = { width: '42px', height: '42px', backgroundColor: '#eef2ff', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }
+const backBtnStyle: any = { textDecoration: 'none', color: colors.secondaryText, width: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: colors.white, borderRadius: '12px', border: `1px solid ${colors.border}` }
 
-const cardStyle: any = { backgroundColor: colors.white, padding: '25px', borderRadius: '24px', border: `1px solid ${colors.border}`, boxShadow: '0 4px 15px rgba(0,0,0,0.02)' };
-const labelStyle: any = { fontSize: '12px', fontWeight: '900', color: colors.secondaryText, display: 'block', marginBottom: '15px' };
-const smallLabel: any = { fontSize: '11px', fontWeight: '800', color: colors.secondaryText, marginBottom: '6px', display: 'block' };
-const inputStyle: any = { width: '100%', padding: '14px', borderRadius: '12px', border: `1px solid ${colors.border}`, fontSize: '16px', fontWeight: '700', backgroundColor: colors.bgLight, outline: 'none' };
-const staticValue: any = { padding: '14px', fontSize: '16px', fontWeight: '800', color: colors.primaryDark };
-const gridRow: any = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' };
-const divider = { height: '1px', backgroundColor: colors.border };
+const cardStyle: any = { backgroundColor: colors.white, padding: '25px', borderRadius: '24px', border: `1px solid ${colors.border}`, boxShadow: '0 4px 15px rgba(0,0,0,0.02)' }
+const smallLabel: any = { fontSize: '11px', fontWeight: '800', color: colors.secondaryText, marginBottom: '6px', display: 'block' }
+const inputStyle: any = { width: '100%', padding: '14px', borderRadius: '12px', border: `1px solid ${colors.border}`, fontSize: '16px', fontWeight: '700', backgroundColor: colors.bgLight, outline: 'none' }
 
-const resultBox: any = { marginTop: '25px', padding: '20px', backgroundColor: colors.primaryDark, borderRadius: '18px', color: 'white' };
-const resultLabel = { fontSize: '12px', fontWeight: '800', opacity: 0.8 };
-const resultValue = { fontSize: '24px', fontWeight: '900' };
+const resultBox: any = { marginTop: '5px', padding: '20px', backgroundColor: colors.primaryDark, borderRadius: '18px', color: 'white' }
+const resultLabel = { fontSize: '12px', fontWeight: '800', opacity: 0.8 }
+const resultValue = { fontSize: '22px', fontWeight: '900' }
 
-const payBtn: any = { width: '100%', marginTop: '25px', padding: '18px', backgroundColor: colors.accentGreen, color: 'white', border: 'none', borderRadius: '16px', fontSize: '16px', fontWeight: '900', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px' };
-const overtimeHint: any = { marginTop: '8px', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: '700', color: colors.secondaryText };
-const rpcSummaryBox: any = { marginTop: '12px', padding: '12px', borderRadius: '12px', border: `1px solid ${colors.border}`, backgroundColor: colors.bgLight };
-const rpcSummaryTitle: any = { margin: '0 0 8px 0', fontSize: '11px', fontWeight: '900', color: colors.primaryDark };
-const rpcSummaryLine: any = { margin: '4px 0 0 0', fontSize: '11px', fontWeight: '700', color: colors.secondaryText };
-const methodToggleWrap: any = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', backgroundColor: colors.bgLight, border: `1px solid ${colors.border}`, borderRadius: '12px', padding: '4px' };
-const methodToggleBtn: any = { border: 'none', borderRadius: '8px', padding: '10px 12px', fontSize: '13px', fontWeight: '800', backgroundColor: 'transparent', color: colors.secondaryText, cursor: 'pointer' };
-const methodToggleBtnActive: any = { backgroundColor: colors.white, color: colors.primaryDark, boxShadow: '0 1px 2px rgba(0,0,0,0.08)' };
-
-const inputGroup = { display: 'flex', flexDirection: 'column' as const };
+const payBtn: any = { width: '100%', padding: '16px', backgroundColor: colors.accentGreen, color: 'white', border: 'none', borderRadius: '16px', fontSize: '14px', fontWeight: '900', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px' }
+const methodToggleWrap: any = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', backgroundColor: colors.bgLight, border: `1px solid ${colors.border}`, borderRadius: '12px', padding: '4px' }
+const methodToggleBtn: any = { border: 'none', borderRadius: '8px', padding: '10px 12px', fontSize: '13px', fontWeight: '800', backgroundColor: 'transparent', color: colors.secondaryText, cursor: 'pointer' }
+const methodToggleBtnActive: any = { backgroundColor: colors.white, color: colors.primaryDark, boxShadow: '0 1px 2px rgba(0,0,0,0.08)' }
 
 export default function PayEmployeePage() {
-  return <Suspense fallback={null}><PayEmployeeContent /></Suspense>
-} 
+  return (
+    <Suspense fallback={null}>
+      <PayEmployeeContent />
+    </Suspense>
+  )
+}
