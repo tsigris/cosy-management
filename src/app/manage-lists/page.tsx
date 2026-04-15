@@ -127,6 +127,7 @@ function ManageListsContent() {
   const [selectedYear, setSelectedYear] = useState<number>(currentYear)
   const RECEIVED_TYPES = useMemo(() => ['debt_payment', 'debt_received', 'income_collection'], [])
   const EXPENSE_TURNOVER_TYPES = useMemo(() => new Set(['expense', 'debt_payment']), [])
+  const SUPPLIER_TURNOVER_TYPES = useMemo(() => new Set(['expense']), [])
   const STAFF_REGISTER_TYPES = useMemo(() => new Set(['expense', 'salary_advance', 'debt_payment']), [])
 
   const copyToClipboard = async (text: string) => {
@@ -277,7 +278,7 @@ function ManageListsContent() {
 
       // suppliers
       if (activeTab === 'suppliers') {
-        return !!t?.supplier_id && EXPENSE_TURNOVER_TYPES.has(type)
+        return !!t?.supplier_id && SUPPLIER_TURNOVER_TYPES.has(type)
       }
 
       // revenue sources
@@ -299,7 +300,7 @@ function ManageListsContent() {
       const sub = fixedAssetSubMap.get(String(t.fixed_asset_id)) || ''
       return sub === tabSub
     })
-  }, [transactions, activeTab, currentTab.subCategory, fixedAssetSubMap, fixedAssets, EXPENSE_TURNOVER_TYPES, STAFF_REGISTER_TYPES])
+  }, [transactions, activeTab, currentTab.subCategory, fixedAssetSubMap, fixedAssets, EXPENSE_TURNOVER_TYPES, SUPPLIER_TURNOVER_TYPES, STAFF_REGISTER_TYPES])
 
   // ✅ Year dropdown: μόνο έτη που υπάρχουν κινήσεις ΓΙΑ ΤΟ ΕΝΕΡΓΟ TAB
   const yearOptions = useMemo(() => {
@@ -391,8 +392,15 @@ function ManageListsContent() {
   }, [activeTab])
 
   const heroHint = useMemo(() => {
+    if (activeTab === 'suppliers') return 'Μετράει μόνο αγορές (expense). Δεν μετράει πληρωμές χρέους.'
     if (activeTab === 'revenue') return 'Μετράει μόνο έσοδα (income).'
     return 'Περιλαμβάνει αγορές/έξοδα (expense) και πληρωμές ρυθμίσεων/δανείων (debt_payment) όταν είναι linked στην καρτέλα.'
+  }, [activeTab])
+
+  const footerHint = useMemo(() => {
+    if (activeTab === 'suppliers') return '* Ο τζίρος προμηθευτών υπολογίζεται μόνο από αγορές (expense).'
+    if (activeTab === 'revenue') return '* Ο τζίρος εσόδων υπολογίζεται μόνο από income κινήσεις.'
+    return '* Ο τζίρος στο μητρώο υπολογίζεται αποκλειστικά από relation ids και περιλαμβάνει expense + debt_payment για linked expense καρτέλες.'
   }, [activeTab])
 
   // -------------------- LIST --------------------
@@ -887,6 +895,7 @@ function ManageListsContent() {
         })
         .filter((t: any) => isTxInYear(t, year))
 
+      const isSupplier = activeTab === 'suppliers'
       const creditTxs = isIncome
         ? entityTrans
             .filter((t: any) => t.is_credit === true)
@@ -895,6 +904,7 @@ function ManageListsContent() {
             .filter((t: any) => {
               const type = String(t.type || '')
               if (activeTab === 'staff') return STAFF_REGISTER_TYPES.has(type)
+              if (isSupplier) return type === 'expense'
               return type === 'expense' || type === 'debt_payment'
             })
             .sort((a: any, b: any) => (getTxDate(b)?.getTime() || 0) - (getTxDate(a)?.getTime() || 0))
@@ -1605,9 +1615,7 @@ function ManageListsContent() {
           )}
         </div>
 
-        <p style={{ marginTop: 14, fontSize: 12, fontWeight: 700, color: 'var(--muted)' }}>
-          * Ο τζίρος στο μητρώο υπολογίζεται αποκλειστικά από relation ids και περιλαμβάνει expense + debt_payment για linked expense καρτέλες.
-        </p>
+        <p style={{ marginTop: 14, fontSize: 12, fontWeight: 700, color: 'var(--muted)' }}>{footerHint}</p>
       </div>
     </div>
   )
