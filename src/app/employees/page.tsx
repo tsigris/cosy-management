@@ -337,8 +337,23 @@ function EmployeesContent() {
             })
 
             if (error) {
-              console.error('[payroll-snapshot]', error)
-              toast.error(`Payroll snapshot error for ${emp?.name || emp?.id}`)
+              console.error('[payroll-snapshot] full error', {
+                employeeId: emp?.id,
+                employeeName: emp?.name,
+                error,
+                message: error?.message,
+                details: error?.details,
+                hint: error?.hint,
+                code: error?.code,
+              })
+              if (error?.details || error?.hint) {
+                console.error('[payroll-snapshot] extra', {
+                  employeeId: emp?.id,
+                  details: error?.details,
+                  hint: error?.hint,
+                })
+              }
+              toast.error(`Payroll snapshot error for ${emp?.name || emp?.id}: ${error?.message || 'unknown error'}`)
               return { id: String(emp.id), row: null, error }
             }
 
