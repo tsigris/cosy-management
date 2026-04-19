@@ -231,10 +231,10 @@ begin
         from public.employee_days_off edo
         where edo.store_id = p_store_id
           and edo.employee_id = p_employee_id
-          and (
-            (v_has_off_date and edo.off_date between cw.cycle_start and cw.cycle_end)
-            or (not v_has_off_date and edo.date between cw.cycle_start and cw.cycle_end)
-          )
+          and coalesce(
+            (to_jsonb(edo)->>'off_date')::date,
+            (to_jsonb(edo)->>'date')::date
+          ) between cw.cycle_start and cw.cycle_end
       ) as actual_days_off,
       (
         select coalesce(sum(coalesce(ot.hours, 0)), 0)::numeric
