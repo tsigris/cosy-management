@@ -40,6 +40,12 @@ type EmployeeFormState = {
   start_date: string
 }
 
+type PayrollSnapshot = {
+  current_cycle_payable: number | string | null
+  carryover_payable: number | string | null
+  total_payable: number | string | null
+}
+
 const parseTxDate = (r: any) => {
   if (!r) return null
   const raw = r.date
@@ -321,12 +327,13 @@ function EmployeesContent() {
               })
               .maybeSingle()
 
-            console.debug('[payroll-snapshot] response', { employeeId: emp.id, data, error })
+            const snapshot = data as PayrollSnapshot | null
+            console.debug('[payroll-snapshot] response', { employeeId: emp.id, data: snapshot, error })
             console.debug('[payroll-snapshot] parsed', {
               employeeId: emp.id,
-              current_cycle_payable: Number(data?.current_cycle_payable ?? 0),
-              carryover_payable: Number(data?.carryover_payable ?? 0),
-              total_payable: Number(data?.total_payable ?? 0),
+              current_cycle_payable: Number(snapshot?.current_cycle_payable ?? 0),
+              carryover_payable: Number(snapshot?.carryover_payable ?? 0),
+              total_payable: Number(snapshot?.total_payable ?? 0),
             })
 
             if (error) {
