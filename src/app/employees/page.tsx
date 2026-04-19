@@ -307,6 +307,12 @@ function EmployeesContent() {
       if (Array.isArray(empsRes) && empsRes.length > 0) {
         const snapshotRows = await Promise.all(
           empsRes.map(async (emp: any) => {
+            const rpcParams = {
+              p_store_id: storeId,
+              p_employee_id: emp.id,
+              p_as_of_date: businessAsOfDate,
+            }
+            console.debug('[payroll-snapshot] request', { employeeId: emp.id, params: rpcParams })
             const { data, error } = await supabase
               .rpc('get_employee_payroll_snapshot', {
                 p_store_id: storeId,
@@ -315,9 +321,18 @@ function EmployeesContent() {
               })
               .maybeSingle()
 
+            console.debug('[payroll-snapshot] response', { employeeId: emp.id, data, error })
+            console.debug('[payroll-snapshot] parsed', {
+              employeeId: emp.id,
+              current_cycle_payable: Number(data?.current_cycle_payable ?? 0),
+              carryover_payable: Number(data?.carryover_payable ?? 0),
+              total_payable: Number(data?.total_payable ?? 0),
+            })
+
             if (error) {
               console.error('[payroll-snapshot]', error)
-              return null
+              toast.error(`Payroll snapshot error for ${emp?.name || emp?.id}`)
+              return { id: String(emp.id), row: null, error }
             }
 
             return { id: String(emp.id), row: data }
