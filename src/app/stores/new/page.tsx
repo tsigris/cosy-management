@@ -20,25 +20,31 @@ export default function NewStorePage() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.user?.id) throw new Error('Δεν βρέθηκε ενεργή συνεδρία χρήστη.');
 
-      // 1. Δημιουργία Καταστήματος
-      // ΣΗΜΕΙΩΣΗ: Μόλις δημιουργηθεί το κατάστημα, το SQL Trigger στη βάση 
-      // θα τρέξει αυτόματα και:
-      // α) Θα σε ορίσει ως ADMIN.
-      // β) Θα δημιουργήσει τα Πάγια (Ενοίκιο, ΔΕΗ κλπ).
-      const { data: store, error: sErr } = await supabase
-        .from('stores')
-        .insert([{ 
-          name: name.trim().toUpperCase(), 
-          owner_id: session.user.id 
-        }])
-        .select()
-        .single();
+      const payload = {
+        name: name.trim().toUpperCase(),
+      }
 
-      if (sErr) throw sErr;
+      console.log('[create-store] current auth user id:', session.user.id)
+      console.log('[create-store] insert payload:', {
+        ...payload,
+        owner_id: session.user.id,
+      })
 
-      // --- [ΑΦΑΙΡΕΣΑΜΕ ΤΟ ΒΗΜΑ 2] ---
-      // Δεν προσπαθούμε πλέον να γράψουμε στο store_access από εδώ,
-      // γιατί το κάνει η βάση μόνη της. Έτσι αποφεύγουμε το "infinite recursion".
+      const response = await fetch('/api/stores/create', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Supabase-Auth': session.access_token,
+        },
+        body: JSON.stringify(payload),
+      })
+
+      const result = await response.json().catch(() => null)
+
+      if (!response.ok || !result?.ok) {
+        console.error('[create-store] full Supabase error object:', result?.debug || result)
+        throw new Error(result?.error || 'Κάτι πήγε στραβά κατά τη δημιουργία καταστήματος.')
+      }
 
       toast.success('Το κατάστημα δημιουργήθηκε με επιτυχία!');
       
