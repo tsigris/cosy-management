@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useMemo, useRef, useCallback } from 'react'
+import { useEffect, useState, useMemo, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { LogOut, Plus, ArrowRight, RefreshCw, Store as StoreIcon, ArrowLeftRight } from 'lucide-react'
 import { toast, Toaster } from 'sonner'
@@ -22,7 +22,6 @@ function SelectStorePage() {
   const [showRetryButton, setShowRetryButton] = useState(false)
   const [retryNonce, setRetryNonce] = useState(0)
 
-  const hasAutoRedirected = useRef(false)
   const router = useRouter()
 
   const [liveDateTime, setLiveDateTime] = useState<string>('')
@@ -65,17 +64,6 @@ function SelectStorePage() {
   const handleSelect = useCallback((storeId: string) => {
     window.location.href = `/?store=${storeId}`
   }, [])
-
-  const maybeAutoRedirectSingleStore = useCallback(
-    (stores: StoreCard[]) => {
-      if (hasAutoRedirected.current) return false
-      if (stores.length !== 1) return false
-      hasAutoRedirected.current = true
-      handleSelect(stores[0].id)
-      return true
-    },
-    [handleSelect]
-  )
 
   // Refactored: fetchStores function for refresh
   const fetchStores = async () => {
@@ -128,7 +116,6 @@ function SelectStorePage() {
       setIsRetrying(false)
       setShowRetryButton(false)
 
-      maybeAutoRedirectSingleStore(stores || [])
     } catch (err: any) {
       console.error('Fetch error:', err)
       toast.error('Πρόβλημα σύνδεσης με τη βάση δεδομένων')
@@ -141,7 +128,7 @@ function SelectStorePage() {
   useEffect(() => {
     void fetchStores()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [router, maybeAutoRedirectSingleStore, retryNonce, supabase])
+  }, [router, retryNonce, supabase])
 
   // Μεταφορά Κεφαλαίου
   const handleTransferFunds = async (
