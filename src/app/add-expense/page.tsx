@@ -1025,14 +1025,16 @@ function AddExpenseForm() {
         return toast.error('Δεν βρέθηκε κατάστημα (store)')
       }
 
+      const category = categoryFromSelection(selectedEntity, smartItemMap)
+      const txType: 'expense' | 'debt_payment' = isAgainstDebt ? 'debt_payment' : 'expense'
+      const isExpense = txType === 'expense' || txType === 'debt_payment'
+
       const lastZ = await checkBalanceLock()
-      if (lastZ && selectedDate < lastZ) {
+      const isDateLockedByZ = !!(lastZ && selectedDate <= lastZ)
+      if (!isExpense && isDateLockedByZ) {
         toast.error(`Η ημερομηνία είναι κλειδωμένη (τελευταίο Z: ${lastZ})`)
         return
       }
-
-      const category = categoryFromSelection(selectedEntity, smartItemMap)
-      const txType: 'expense' | 'debt_payment' = isAgainstDebt ? 'debt_payment' : 'expense'
 
       const finalIsCredit = txType === 'debt_payment' ? false : !!isCredit
       const chosenMethod: PaymentMethod = method === 'Πίστωση' ? 'Μετρητά' : method
