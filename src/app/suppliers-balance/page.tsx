@@ -11,6 +11,7 @@ import {
   ChevronLeft,
   Receipt,
   CreditCard,
+  Search,
   Copy,
   Hash,
   Landmark,
@@ -54,6 +55,49 @@ const isValidUUID = (id: any) => {
 
 const normalize = (v: any) => String(v ?? '').trim().toLowerCase()
 
+function normalizeSearchText(value: string) {
+  return String(value || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/ς/g, 'σ')
+    .trim()
+}
+
+function greekToGreeklish(value: string) {
+  const map: Record<string, string> = {
+    α: 'a',
+    β: 'v',
+    γ: 'g',
+    δ: 'd',
+    ε: 'e',
+    ζ: 'z',
+    η: 'i',
+    θ: 'th',
+    ι: 'i',
+    κ: 'k',
+    λ: 'l',
+    μ: 'm',
+    ν: 'n',
+    ξ: 'x',
+    ο: 'o',
+    π: 'p',
+    ρ: 'r',
+    σ: 's',
+    τ: 't',
+    υ: 'y',
+    φ: 'f',
+    χ: 'x',
+    ψ: 'ps',
+    ω: 'o',
+  }
+
+  return normalizeSearchText(value)
+    .split('')
+    .map((char) => map[char] ?? char)
+    .join('')
+}
+
 const isExpenseCardCharge = (t: any) => {
   if (!t) return false
 
@@ -88,6 +132,8 @@ function BalancesContent() {
   const [viewMode, setViewMode] = useState<ViewMode>('expenses')
   const [loading, setLoading] = useState(true)
   const [selectedEntityId, setSelectedEntityId] = useState<string>('all')
+  const [selectorOpen, setSelectorOpen] = useState(false)
+  const [selectorSearch, setSelectorSearch] = useState('')
 
   const [rawTransactions, setRawTransactions] = useState<any[]>([])
   const [rawSuppliers, setRawSuppliers] = useState<any[]>([])
@@ -565,6 +611,50 @@ function BalancesContent() {
   const totalLabel = viewMode === 'income' ? 'ΣΥΝΟΛΙΚΟ ΑΝΟΙΧΤΟ ΥΠΟΛΟΙΠΟ ΕΣΟΔΩΝ' : 'ΣΥΝΟΛΙΚΟ ΑΝΟΙΧΤΟ ΥΠΟΛΟΙΠΟ ΕΞΟΔΩΝ'
   const selectTitle = viewMode === 'income' ? 'ΟΛΕΣ ΟΙ ΠΗΓΕΣ ΕΣΟΔΩΝ' : 'ΟΛΕΣ ΟΙ ΟΦΕΙΛΕΣ'
 
+  const selectorOptions = useMemo(
+    () =>
+      computedBalanceList.map((s) => ({
+        id: s.id,
+        label: String(s.name || '').toUpperCase(),
+      })),
+    [computedBalanceList],
+  )
+
+  const selectedEntityLabel = useMemo(() => {
+    if (selectedEntityId === 'all') return selectTitle
+    return selectorOptions.find((option) => option.id === selectedEntityId)?.label || selectTitle
+  }, [selectedEntityId, selectorOptions, selectTitle])
+
+  const filteredSelectorOptions = useMemo(() => {
+    const q = normalizeSearchText(selectorSearch)
+    if (!q) return selectorOptions
+
+    const qGreeklish = greekToGreeklish(selectorSearch)
+
+    return selectorOptions.filter((option) => {
+      const normalizedLabel = normalizeSearchText(option.label)
+      const greeklishLabel = greekToGreeklish(option.label)
+
+      return (
+        normalizedLabel.includes(q) ||
+        greeklishLabel.includes(q) ||
+        normalizedLabel.includes(qGreeklish) ||
+        greeklishLabel.includes(qGreeklish)
+      )
+    })
+  }, [selectorOptions, selectorSearch])
+
+  const handleSelectEntity = useCallback((id: string) => {
+    setSelectedEntityId(id)
+    setSelectorOpen(false)
+  }, [])
+
+  useEffect(() => {
+    if (!selectorOpen) {
+      setSelectorSearch('')
+    }
+  }, [selectorOpen])
+
   useEffect(() => {
     const rowsSum = totalRowsForDisplay.reduce((s, r) => s + (Number(r?.balance) || 0), 0)
     const diff = Math.abs(rowsSum - totalDisplay)
@@ -701,14 +791,63 @@ function BalancesContent() {
         {/* SELECT FILTER */}
         <div style={{ marginBottom: '18px' }}>
           <div style={{ position: 'relative' }}>
-            <select value={selectedEntityId} onChange={(e) => setSelectedEntityId(e.target.value)} style={selectStyle}>
-              <option value="all">{selectTitle}</option>
-              {computedBalanceList.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {String(s.name || '').toUpperCase()}
-                </option>
-              ))}
-            </select>
+            <button type="button" onClick={() => setSelectorOpen(true)} style={selectorOpenBtnStyle}>
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{selectedEntityLabel}</span>
+              <ChevronDown size={16} />
+            </button>
+
+            {selectorOpen && (
+              <div style={selectorModalOverlay} onClick={() => setSelectorOpen(false)}>
+                <div style={selectorModalCard} onClick={(e) => e.stopPropagation()}>
+                  <div style={selectorModalHeader}>
+                    <h3 style={{ margin: 0, fontSize: 14, fontWeight: 950, color: 'var(--text)' }}>Επιλογή καρτέλας</h3>
+                    <button type="button" style={selectorCloseBtn} onClick={() => setSelectorOpen(false)} aria-label="Κλείσιμο">
+                      <X size={16} />
+                    </button>
+                  </div>
+
+                  <div style={selectorSearchWrap}>
+                    <Search size={14} color="var(--muted)" />
+                    <input
+                      value={selectorSearch}
+                      onChange={(e) => setSelectorSearch(e.target.value)}
+                      placeholder="Αναζήτηση καρτέλας..."
+                      style={selectorSearchInput}
+                    />
+                  </div>
+
+                  <div style={selectorListWrap}>
+                    {normalizeSearchText(selectorSearch) === '' && (
+                      <label style={selectorOptionRow}>
+                        <input
+                          type="radio"
+                          name="ledger-selector"
+                          checked={selectedEntityId === 'all'}
+                          onChange={() => handleSelectEntity('all')}
+                        />
+                        <span>{selectTitle}</span>
+                      </label>
+                    )}
+
+                    {filteredSelectorOptions.map((option) => (
+                      <label key={option.id} style={selectorOptionRow}>
+                        <input
+                          type="radio"
+                          name="ledger-selector"
+                          checked={selectedEntityId === option.id}
+                          onChange={() => handleSelectEntity(option.id)}
+                        />
+                        <span>{option.label}</span>
+                      </label>
+                    ))}
+
+                    {filteredSelectorOptions.length === 0 && (
+                      <div style={selectorNoResults}>Δεν βρέθηκε καρτέλα</div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -1126,6 +1265,108 @@ const selectStyle: any = {
   outline: 'none',
   color: 'var(--text)',
   appearance: 'none',
+}
+
+const selectorOpenBtnStyle: any = {
+  ...selectStyle,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: 10,
+  cursor: 'pointer',
+}
+
+const selectorModalOverlay: any = {
+  position: 'fixed',
+  inset: 0,
+  background: 'rgba(15, 23, 42, 0.38)',
+  zIndex: 1000,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  padding: 16,
+}
+
+const selectorModalCard: any = {
+  width: '100%',
+  maxWidth: 520,
+  maxHeight: '75vh',
+  background: 'var(--surface)',
+  border: '1px solid var(--border)',
+  borderRadius: 18,
+  boxShadow: '0 18px 50px rgba(15, 23, 42, 0.18)',
+  display: 'flex',
+  flexDirection: 'column',
+  padding: 14,
+}
+
+const selectorModalHeader: any = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  marginBottom: 10,
+}
+
+const selectorCloseBtn: any = {
+  border: '1px solid var(--border)',
+  background: 'var(--surface)',
+  color: 'var(--muted)',
+  width: 32,
+  height: 32,
+  borderRadius: 10,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  cursor: 'pointer',
+}
+
+const selectorSearchWrap: any = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 8,
+  border: '1px solid var(--border)',
+  borderRadius: 12,
+  padding: '10px 12px',
+  marginBottom: 10,
+  background: 'var(--surface)',
+}
+
+const selectorSearchInput: any = {
+  flex: 1,
+  border: 'none',
+  outline: 'none',
+  fontSize: 13,
+  fontWeight: 700,
+  color: 'var(--text)',
+  background: 'transparent',
+}
+
+const selectorListWrap: any = {
+  overflowY: 'auto',
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 8,
+  paddingRight: 4,
+}
+
+const selectorOptionRow: any = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 10,
+  border: '1px solid var(--border)',
+  borderRadius: 12,
+  padding: '10px 12px',
+  fontSize: 13,
+  fontWeight: 800,
+  color: 'var(--text)',
+}
+
+const selectorNoResults: any = {
+  textAlign: 'center',
+  padding: '14px 10px',
+  color: 'var(--muted)',
+  fontSize: 13,
+  fontWeight: 800,
 }
 
 const detailsWrap: any = {
