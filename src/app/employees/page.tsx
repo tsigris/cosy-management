@@ -1172,7 +1172,7 @@ function EmployeesContent() {
 
   // ✅ Delete staff: transition cleanup by employee_id OR fixed_asset_id, then delete fixed_assets
   async function deleteEmployee(id: string, name: string) {
-    if (!confirm(`Οριστική διαγραφή του/της ${name}; Θα σβηστεί και το ιστορικό.`)) return
+    if (!confirm(`Οριστική διαγραφή του/της ${name};`)) return
 
     let tenantStoreId: string
     try {
@@ -1184,36 +1184,40 @@ function EmployeesContent() {
 
     setLoading(true)
 
-    const reason = prompt('Λόγος ακύρωσης (void) συναλλαγών μισθοδοσίας:')
-    if (reason === null) {
-      setLoading(false)
-      return
-    }
-
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
-
-    const { error: transErr } = await supabase
+    const { data: historyRows, error: historyErr } = await supabase
       .from('transactions')
-      .update({
-        voided_at: new Date().toISOString(),
-        voided_by: user?.id ?? null,
-        void_reason: reason.trim() || null,
-      })
+      .select('id')
       .eq('store_id', tenantStoreId)
       .or(`employee_id.eq.${id},fixed_asset_id.eq.${id}`)
-    if (transErr) {
-      console.error(transErr)
-      toast.error('Αποτυχία ακύρωσης συναλλαγών.')
+      .limit(1)
+
+    if (historyErr) {
+      console.error('Delete employee history check error:', historyErr)
+      toast.error(`Αποτυχία διαγραφής υπαλλήλου: ${historyErr.message}`)
       setLoading(false)
       return
     }
 
-    const { error: empErr } = await supabase.from('fixed_assets').delete().eq('id', id).eq('store_id', tenantStoreId)
+    if ((historyRows || []).length > 0) {
+      toast.error('Δεν μπορεί να διαγραφεί γιατί υπάρχουν πληρωμές ή κινήσεις σε αυτόν τον υπάλληλο. Κάνε απενεργοποίηση αντί για διαγραφή.')
+      setLoading(false)
+      return
+    }
+
+    const { error: empErr } = await supabase
+      .from('fixed_assets')
+      .delete()
+      .eq('id', id)
+      .eq('store_id', tenantStoreId)
+      .eq('sub_category', 'staff')
+
     if (empErr) {
-      console.error(empErr)
-      toast.error('Αποτυχία διαγραφής υπαλλήλου.')
+      console.error('Delete employee error:', empErr)
+      if (empErr.code === '23503') {
+        toast.error('Δεν μπορεί να διαγραφεί γιατί υπάρχουν πληρωμές ή κινήσεις σε αυτόν τον υπάλληλο. Κάνε απενεργοποίηση αντί για διαγραφή.')
+      } else {
+        toast.error(`Αποτυχία διαγραφής υπαλλήλου: ${empErr.message}`)
+      }
       setLoading(false)
       return
     }
