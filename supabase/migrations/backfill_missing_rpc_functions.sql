@@ -269,10 +269,10 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 AS $function$
 BEGIN
-    INSERT INTO public.transactions (store_id, type, amount, category, description, user_id)
+  INSERT INTO public.transactions (store_id, type, amount, category, notes, user_id)
     VALUES (p_from_store_id, 'expense', p_amount, 'Μεταφορά Κεφαλαίου', 'Προς: ' || p_description, auth.uid());
 
-    INSERT INTO public.transactions (store_id, type, amount, category, description, user_id)
+  INSERT INTO public.transactions (store_id, type, amount, category, notes, user_id)
     VALUES (p_to_store_id, 'income', p_amount, 'Μεταφορά Κεφαλαίου', 'Από: ' || p_description, auth.uid());
 END;
 $function$;
