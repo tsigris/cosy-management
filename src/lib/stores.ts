@@ -7,7 +7,9 @@ export type StoreCard = {
   expenses: number
   profit: number
   lastUpdated?: string | null
+  organization_id?: string | null
   organizationId?: string | null
+  owner_id?: string | null
   ownerId?: string | null
   accessRole?: string | null
 }
@@ -129,7 +131,9 @@ export async function fetchStoresForUser(userId: string): Promise<StoreCard[]> {
       // Expenses are stored as negative values, so net is income + expenses.
       profit: income + expenses,
       lastUpdated,
+      organization_id: meta.organizationId,
       organizationId: meta.organizationId,
+      owner_id: meta.ownerId,
       ownerId: meta.ownerId,
       accessRole: role,
     }

@@ -22,6 +22,8 @@ function SelectStorePage() {
   const [isRetrying, setIsRetrying] = useState(false)
   const [showRetryButton, setShowRetryButton] = useState(false)
   const [retryNonce, setRetryNonce] = useState(0)
+  const [organizationIdFromSession, setOrganizationIdFromSession] = useState<string | null>(null)
+  const [currentOrganizationId, setCurrentOrganizationId] = useState<string | null>(null)
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
 
   const router = useRouter()
@@ -105,6 +107,13 @@ function SelectStorePage() {
       }
       setCurrentUserId(session.user.id)
 
+      const sessionOrgRaw =
+        (session.user?.user_metadata as any)?.organization_id ||
+        (session.user?.app_metadata as any)?.organization_id ||
+        null
+      const sessionOrg = sessionOrgRaw ? String(sessionOrgRaw).trim() : ''
+      setOrganizationIdFromSession(sessionOrg || null)
+
       // 2) Φέρνουμε stores (με retry για RLS/replication delay)
       let stores = await fetchStoresForUser(session.user.id)
 
@@ -116,6 +125,12 @@ function SelectStorePage() {
       }
 
       setUserStores(stores || [])
+      const firstOrgFromStores = (stores || []).find((s) => !!((s as any)?.organization_id || s?.organizationId))
+      setCurrentOrganizationId(
+        firstOrgFromStores
+          ? String((firstOrgFromStores as any).organization_id || firstOrgFromStores.organizationId || '').trim() || null
+          : null,
+      )
       setIsRetrying(false)
       setShowRetryButton(false)
 
@@ -185,6 +200,12 @@ function SelectStorePage() {
     return localStorage.getItem('active_store_id')?.trim() || null
   }
 
+  const getOrganizationIdFromPage = () => {
+    if (typeof window === 'undefined') return null
+    const params = new URLSearchParams(window.location.search)
+    return params.get('organization_id')?.trim() || params.get('organization')?.trim() || null
+  }
+
   const handleDeleteStore = useCallback(
     async (store: StoreCard) => {
       if (!canDeleteStore(store)) {
@@ -192,8 +213,16 @@ function SelectStorePage() {
         return
       }
 
-      if (!store.organizationId) {
-        toast.error('Λείπει organization_id για ασφαλή διαγραφή καταστήματος.')
+      const organizationId =
+        String((store as any).organization_id || '').trim() ||
+        String(store.organizationId || '').trim() ||
+        String(currentOrganizationId || '').trim() ||
+        String(getOrganizationIdFromPage() || '').trim() ||
+        String(organizationIdFromSession || '').trim() ||
+        null
+
+      if (!organizationId) {
+        toast.error('Δεν βρέθηκε οργανισμός για διαγραφή καταστήματος.')
         return
       }
 
@@ -212,7 +241,7 @@ function SelectStorePage() {
 
       setDeletingStoreId(store.id)
       try {
-        await deleteStore(store.id, store.organizationId)
+        await deleteStore(store.id, organizationId)
 
         if (activeStoreId && activeStoreId === store.id && typeof window !== 'undefined') {
           const nextStore = userStores.find((s) => s.id !== store.id)
@@ -241,7 +270,7 @@ function SelectStorePage() {
         setDeletingStoreId(null)
       }
     },
-    [canDeleteStore, fetchStores, router, userStores],
+    [canDeleteStore, currentOrganizationId, fetchStores, organizationIdFromSession, router, userStores],
   )
 
   if (loading) {
