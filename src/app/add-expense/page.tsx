@@ -237,13 +237,14 @@ function AddExpenseForm() {
   const supabase = getSupabase()
 
   const editId = searchParams.get('editId')
-  const selectedDate = searchParams.get('date') || getTodayDateISO()
+  const initialExpenseDate = searchParams.get('date') || getTodayDateISO()
   const urlStoreId = searchParams.get('store')
 
   const urlSupId = searchParams.get('supId')
   const urlAssetId = searchParams.get('assetId')
 
   const [amount, setAmount] = useState('')
+  const [expenseDate, setExpenseDate] = useState(initialExpenseDate)
   const [method, setMethod] = useState<PaymentMethod>('Μετρητά')
   const [notes, setNotes] = useState('')
   const [isCredit, setIsCredit] = useState(false)
@@ -542,7 +543,7 @@ function AddExpenseForm() {
           .select('id, name, sub_category, phone, vat_number, bank_name, iban, monthly_days, monthly_salary, daily_rate, start_date, rf_code, pay_basis')
           .eq('store_id', activeStoreId)
           .order('name'),
-        supabase.from('transactions').select('amount, type, is_credit').eq('store_id', activeStoreId).eq('date', selectedDate),
+        supabase.from('transactions').select('amount, type, is_credit').eq('store_id', activeStoreId).eq('date', initialExpenseDate),
         editTxPromise,
       ])
 
@@ -596,6 +597,7 @@ function AddExpenseForm() {
         if (error) throw error
 
         if (tx) {
+          if (tx.date) setExpenseDate(String(tx.date))
           setAmount(Math.abs(tx.amount).toString())
 
           const m = String(tx.method || '').trim()
@@ -656,7 +658,7 @@ function AddExpenseForm() {
     } finally {
       setLoading(false)
     }
-  }, [editId, router, selectedDate, urlSupId, urlAssetId, searchParams, getActiveStoreId, supabase])
+  }, [editId, router, initialExpenseDate, urlSupId, urlAssetId, searchParams, getActiveStoreId, supabase])
 
   useEffect(() => {
     loadFormData()
@@ -990,7 +992,7 @@ function AddExpenseForm() {
         .from('transactions')
         .select('id')
         .eq('store_id', activeStoreId)
-        .eq('date', selectedDate)
+        .eq('date', expenseDate)
         .eq('type', txType)
         .eq(col, selectedEntity.id)
         .eq('amount', -Math.abs(amtAbs))
@@ -1030,7 +1032,7 @@ function AddExpenseForm() {
       const isExpense = txType === 'expense' || txType === 'debt_payment'
 
       const lastZ = await checkBalanceLock()
-      const isDateLockedByZ = !!(lastZ && selectedDate <= lastZ)
+      const isDateLockedByZ = !!(lastZ && expenseDate <= lastZ)
       if (!isExpense && isDateLockedByZ) {
         toast.error(`Η ημερομηνία είναι κλειδωμένη (τελευταίο Z: ${lastZ})`)
         return
@@ -1068,7 +1070,7 @@ function AddExpenseForm() {
         method: finalMethod,
         is_credit: finalIsCredit,
         type: txType,
-        date: selectedDate,
+        date: expenseDate,
         user_id: session.user.id,
         store_id: activeStoreId,
         supplier_id: selectedEntity.kind === 'supplier' ? selectedEntity.id : null,
@@ -1083,7 +1085,7 @@ function AddExpenseForm() {
         const safeExt = (imageFile.name.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '')
         const fileExt = safeExt || 'jpg'
         const fileName = `${session.user.id}-${Date.now()}.${fileExt}`
-        const { year, month } = ymFromDate(selectedDate)
+        const { year, month } = ymFromDate(expenseDate)
         const filePath = `${activeStoreId}/${year}/${month}/${fileName}`
 
         const { data: uploadData, error: uploadError } = await supabase.storage.from('invoices').upload(filePath, imageFile, {
@@ -1118,7 +1120,7 @@ function AddExpenseForm() {
       setSmartQuery('')
       setSmartOpen(false)
 
-      router.push(`/?date=${selectedDate}&store=${getActiveStoreId() || ''}`)
+      router.push(`/?date=${expenseDate}&store=${getActiveStoreId() || ''}`)
       router.refresh()
     } catch (error: unknown) {
       if (uploadedInvoicePath) {
@@ -1177,7 +1179,7 @@ function AddExpenseForm() {
             <div>
               <h1 style={{ fontWeight: 900, fontSize: 18, margin: 0, color: 'white' }}>{editId ? 'Διόρθωση' : 'Έξοδο'}</h1>
               <p style={{ margin: 0, fontSize: 14, color: 'rgba(255,255,255,0.85)', fontWeight: 700 }}>
-                {formatDateDMY(selectedDate)}
+                {formatDateDMY(expenseDate)}
               </p>
             </div>
           </div>
@@ -1188,6 +1190,11 @@ function AddExpenseForm() {
         </div>
 
         <div style={formCard}>
+          <div style={{ marginBottom: 14 }}>
+            <label style={labelStyle}>Ημερομηνία εξόδου</label>
+            <input type="date" value={expenseDate} onChange={(e) => setExpenseDate(e.target.value)} style={inputStyle} />
+          </div>
+
           {/* ✅ BENEFICIARY SECTION (colored) */}
           <div style={beneficiarySectionStyle}>
             <label style={{ ...labelStyle, color: colors.accentBlue }}>Δικαιούχος</label>
