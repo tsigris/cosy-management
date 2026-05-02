@@ -822,10 +822,11 @@ function BalancesContent() {
                         <input
                           type="radio"
                           name="ledger-selector"
+                          style={selectorRadioInput}
                           checked={selectedEntityId === 'all'}
                           onChange={() => handleSelectEntity('all')}
                         />
-                        <span>{selectTitle}</span>
+                        <span style={selectorOptionLabel}>{selectTitle}</span>
                       </label>
                     )}
 
@@ -834,10 +835,11 @@ function BalancesContent() {
                         <input
                           type="radio"
                           name="ledger-selector"
+                          style={selectorRadioInput}
                           checked={selectedEntityId === option.id}
                           onChange={() => handleSelectEntity(option.id)}
                         />
-                        <span>{option.label}</span>
+                        <span style={selectorOptionLabel}>{option.label}</span>
                       </label>
                     ))}
 
@@ -1290,7 +1292,7 @@ const selectorModalOverlay: any = {
 const selectorModalCard: any = {
   width: '100%',
   maxWidth: 520,
-  maxHeight: '75vh',
+  maxHeight: '80vh',
   background: 'var(--surface)',
   border: '1px solid var(--border)',
   borderRadius: 18,
@@ -1342,6 +1344,8 @@ const selectorSearchInput: any = {
 }
 
 const selectorListWrap: any = {
+  marginTop: 12,
+  maxHeight: '55vh',
   overflowY: 'auto',
   display: 'flex',
   flexDirection: 'column',
@@ -1350,15 +1354,33 @@ const selectorListWrap: any = {
 }
 
 const selectorOptionRow: any = {
+  width: '100%',
   display: 'flex',
   alignItems: 'center',
-  gap: 10,
+  gap: 12,
   border: '1px solid var(--border)',
   borderRadius: 12,
-  padding: '10px 12px',
+  padding: '12px 14px',
   fontSize: 13,
   fontWeight: 800,
   color: 'var(--text)',
+  cursor: 'pointer',
+  textAlign: 'left',
+}
+
+const selectorRadioInput: any = {
+  margin: 0,
+  flexShrink: 0,
+}
+
+const selectorOptionLabel: any = {
+  flex: 1,
+  minWidth: 0,
+  textAlign: 'left',
+  fontWeight: 700,
+  lineHeight: 1.25,
+  whiteSpace: 'normal',
+  overflowWrap: 'anywhere',
 }
 
 const selectorNoResults: any = {
