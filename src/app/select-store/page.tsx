@@ -2,11 +2,11 @@
 
 import { useEffect, useState, useMemo, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { LogOut, Plus, ArrowRight, RefreshCw, Store as StoreIcon, ArrowLeftRight } from 'lucide-react'
+import { LogOut, Plus, ArrowRight, RefreshCw, Store as StoreIcon, ArrowLeftRight, Trash2 } from 'lucide-react'
 import { toast, Toaster } from 'sonner'
 
 import { getSupabase } from '@/lib/supabase'
-import { fetchStoresForUser, type StoreCard } from '@/lib/stores'
+import { deleteStore, fetchStoresForUser, type StoreCard } from '@/lib/stores'
 import { formatDateDMY } from '@/lib/formatters'
 import TransferFundsModal from '@/components/TransferFundsModal'
 
@@ -16,11 +16,13 @@ function SelectStorePage() {
   const [userStores, setUserStores] = useState<StoreCard[]>([])
   const [showTransferModal, setShowTransferModal] = useState(false)
   const [transferLoading, setTransferLoading] = useState(false)
+  const [deletingStoreId, setDeletingStoreId] = useState<string | null>(null)
 
   const [loading, setLoading] = useState(true)
   const [isRetrying, setIsRetrying] = useState(false)
   const [showRetryButton, setShowRetryButton] = useState(false)
   const [retryNonce, setRetryNonce] = useState(0)
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null)
 
   const router = useRouter()
 
@@ -101,6 +103,7 @@ function SelectStorePage() {
         router.replace('/login')
         return
       }
+      setCurrentUserId(session.user.id)
 
       // 2) Φέρνουμε stores (με retry για RLS/replication delay)
       let stores = await fetchStoresForUser(session.user.id)
@@ -166,6 +169,80 @@ function SelectStorePage() {
     const expenses = safe.reduce((acc, s) => acc + (Number(s?.expenses) || 0), 0)
     return { income, expenses, profit: income + expenses }
   }, [userStores])
+
+  const canDeleteStore = useCallback(
+    (store: StoreCard) => {
+      const role = String(store.accessRole || '').toLowerCase()
+      const isAdmin = role === 'admin'
+      const isOwner = !!currentUserId && !!store.ownerId && String(store.ownerId) === String(currentUserId)
+      return isAdmin || isOwner
+    },
+    [currentUserId],
+  )
+
+  const getActiveStoreId = () => {
+    if (typeof window === 'undefined') return null
+    return localStorage.getItem('active_store_id')?.trim() || null
+  }
+
+  const handleDeleteStore = useCallback(
+    async (store: StoreCard) => {
+      if (!canDeleteStore(store)) {
+        toast.error('Δεν έχεις δικαίωμα διαγραφής για αυτό το κατάστημα.')
+        return
+      }
+
+      if (!store.organizationId) {
+        toast.error('Λείπει organization_id για ασφαλή διαγραφή καταστήματος.')
+        return
+      }
+
+      const confirmed = window.confirm(
+        `Σίγουρα θέλεις να διαγράψεις το κατάστημα ${store.name}; Αυτή η ενέργεια δεν αναιρείται.`,
+      )
+      if (!confirmed) return
+
+      const activeStoreId = getActiveStoreId()
+      if (activeStoreId && activeStoreId === store.id) {
+        const activeConfirmed = window.confirm(
+          'Το κατάστημα που διαγράφεις είναι το ενεργό κατάστημα. Θες να συνεχίσεις;'
+        )
+        if (!activeConfirmed) return
+      }
+
+      setDeletingStoreId(store.id)
+      try {
+        await deleteStore(store.id, store.organizationId)
+
+        if (activeStoreId && activeStoreId === store.id && typeof window !== 'undefined') {
+          const nextStore = userStores.find((s) => s.id !== store.id)
+          if (nextStore?.id) {
+            localStorage.setItem('active_store_id', nextStore.id)
+          } else {
+            localStorage.removeItem('active_store_id')
+            router.replace('/select-store')
+          }
+        }
+
+        toast.success('Το κατάστημα διαγράφηκε.')
+        await fetchStores()
+      } catch (err: any) {
+        const msg = String(err?.message || '')
+        if (msg.includes('Δεν μπορεί να διαγραφεί γιατί υπάρχουν κινήσεις/δεδομένα σε αυτό το κατάστημα.')) {
+          toast.error('Δεν μπορεί να διαγραφεί γιατί υπάρχουν κινήσεις/δεδομένα σε αυτό το κατάστημα.')
+          return
+        }
+        if (String(err?.code || '') === '23503') {
+          toast.error('Δεν μπορεί να διαγραφεί γιατί υπάρχουν κινήσεις/δεδομένα σε αυτό το κατάστημα.')
+          return
+        }
+        toast.error('Αποτυχία διαγραφής καταστήματος.')
+      } finally {
+        setDeletingStoreId(null)
+      }
+    },
+    [canDeleteStore, fetchStores, router, userStores],
+  )
 
   if (loading) {
     return (
@@ -283,6 +360,22 @@ function SelectStorePage() {
                   {(Number(store.profit) || 0).toFixed(2)} €
                 </span>
               </div>
+
+              {canDeleteStore(store) && (
+                <div style={storeActionsRow}>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      void handleDeleteStore(store)
+                    }}
+                    disabled={deletingStoreId === store.id}
+                    style={{ ...deleteStoreBtnStyle, opacity: deletingStoreId === store.id ? 0.6 : 1 }}
+                  >
+                    <Trash2 size={14} /> {deletingStoreId === store.id ? 'Διαγραφή...' : 'Διαγραφή'}
+                  </button>
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -436,6 +529,26 @@ const retryBtnStyle: any = {
   color: '#fff',
   fontWeight: '800',
   fontSize: '13px',
+  cursor: 'pointer',
+}
+
+const storeActionsRow: any = {
+  marginTop: 12,
+  display: 'flex',
+  justifyContent: 'flex-end',
+}
+
+const deleteStoreBtnStyle: any = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 6,
+  border: '1px solid #fecaca',
+  background: '#fff1f2',
+  color: '#b91c1c',
+  borderRadius: 10,
+  padding: '8px 12px',
+  fontSize: 12,
+  fontWeight: 900,
   cursor: 'pointer',
 }
 

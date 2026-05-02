@@ -7,6 +7,26 @@ export type StoreCard = {
   expenses: number
   profit: number
   lastUpdated?: string | null
+  organizationId?: string | null
+  ownerId?: string | null
+  accessRole?: string | null
+}
+
+export async function deleteStore(storeId: string, organizationId: string): Promise<void> {
+  const supabase = getSupabase()
+
+  const { error } = await supabase
+    .from('stores')
+    .delete()
+    .eq('id', storeId)
+    .eq('organization_id', organizationId)
+
+  if (error) {
+    if (error.code === '23503') {
+      throw new Error('Δεν μπορεί να διαγραφεί γιατί υπάρχουν κινήσεις/δεδομένα σε αυτό το κατάστημα.')
+    }
+    throw error
+  }
 }
 
 export async function fetchStoresForUser(userId: string): Promise<StoreCard[]> {
@@ -29,25 +49,67 @@ export async function fetchStoresForUser(userId: string): Promise<StoreCard[]> {
 
   const storeIds = (data ?? []).map((row: any) => String(row.id)).filter(Boolean)
   let latestTxByStoreId: Record<string, string> = {}
+  let accessRoleByStoreId: Record<string, string> = {}
+  let storeMetaByStoreId: Record<string, { organizationId: string | null; ownerId: string | null }> = {}
 
   if (storeIds.length > 0) {
-    const { data: txRows, error: txError } = await supabase
-      .from('transactions')
-      .select('store_id, created_at')
-      .in('store_id', storeIds)
-      .not('created_at', 'is', null)
-      .order('created_at', { ascending: false })
+    const [txRes, accessRes, metaRes] = await Promise.all([
+      supabase
+        .from('transactions')
+        .select('store_id, created_at')
+        .in('store_id', storeIds)
+        .not('created_at', 'is', null)
+        .order('created_at', { ascending: false }),
+      supabase
+        .from('store_access')
+        .select('store_id, role')
+        .eq('user_id', userId)
+        .in('store_id', storeIds),
+      supabase
+        .from('stores')
+        .select('id, organization_id, owner_id')
+        .in('id', storeIds),
+    ])
 
-    if (txError) {
-      console.error('fetchStoresForUser latest transactions error:', txError)
+    if (txRes.error) {
+      console.error('fetchStoresForUser latest transactions error:', txRes.error)
     } else {
-      latestTxByStoreId = (txRows ?? []).reduce((acc: Record<string, string>, tx: any) => {
+      latestTxByStoreId = (txRes.data ?? []).reduce((acc: Record<string, string>, tx: any) => {
         const storeId = String(tx?.store_id || '')
         const createdAt = tx?.created_at ? String(tx.created_at) : ''
         if (!storeId || !createdAt || acc[storeId]) return acc
         acc[storeId] = createdAt
         return acc
       }, {})
+    }
+
+    if (accessRes.error) {
+      console.error('fetchStoresForUser store_access roles error:', accessRes.error)
+    } else {
+      accessRoleByStoreId = (accessRes.data ?? []).reduce((acc: Record<string, string>, row: any) => {
+        const storeId = String(row?.store_id || '')
+        const role = String(row?.role || '')
+        if (!storeId) return acc
+        acc[storeId] = role
+        return acc
+      }, {})
+    }
+
+    if (metaRes.error) {
+      console.error('fetchStoresForUser stores meta error:', metaRes.error)
+    } else {
+      storeMetaByStoreId = (metaRes.data ?? []).reduce(
+        (acc: Record<string, { organizationId: string | null; ownerId: string | null }>, row: any) => {
+          const id = String(row?.id || '')
+          if (!id) return acc
+          acc[id] = {
+            organizationId: row?.organization_id ? String(row.organization_id) : null,
+            ownerId: row?.owner_id ? String(row.owner_id) : null,
+          }
+          return acc
+        },
+        {}
+      )
     }
   }
 
@@ -56,6 +118,8 @@ export async function fetchStoresForUser(userId: string): Promise<StoreCard[]> {
     const expenses = Number(row.expenses) || 0
     const storeId = String(row.id)
     const lastUpdated = latestTxByStoreId[storeId] ?? (row.last_updated ? String(row.last_updated) : null)
+    const role = accessRoleByStoreId[storeId] ?? null
+    const meta = storeMetaByStoreId[storeId] ?? { organizationId: null, ownerId: null }
 
     return {
       id: storeId,
@@ -65,6 +129,9 @@ export async function fetchStoresForUser(userId: string): Promise<StoreCard[]> {
       // Expenses are stored as negative values, so net is income + expenses.
       profit: income + expenses,
       lastUpdated,
+      organizationId: meta.organizationId,
+      ownerId: meta.ownerId,
+      accessRole: role,
     }
   })
 }
