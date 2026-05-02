@@ -818,29 +818,17 @@ function BalancesContent() {
 
                   <div style={selectorListWrap}>
                     {normalizeSearchText(selectorSearch) === '' && (
-                      <label style={selectorOptionRow}>
-                        <input
-                          type="radio"
-                          name="ledger-selector"
-                          style={selectorRadioInput}
-                          checked={selectedEntityId === 'all'}
-                          onChange={() => handleSelectEntity('all')}
-                        />
+                      <button type="button" style={selectorOptionRow} onClick={() => handleSelectEntity('all')}>
+                        <span style={{ ...selectorCircle, ...(selectedEntityId === 'all' ? selectorCircleSelected : {}) }} />
                         <span style={selectorOptionLabel}>{selectTitle}</span>
-                      </label>
+                      </button>
                     )}
 
                     {filteredSelectorOptions.map((option) => (
-                      <label key={option.id} style={selectorOptionRow}>
-                        <input
-                          type="radio"
-                          name="ledger-selector"
-                          style={selectorRadioInput}
-                          checked={selectedEntityId === option.id}
-                          onChange={() => handleSelectEntity(option.id)}
-                        />
+                      <button key={option.id} type="button" style={selectorOptionRow} onClick={() => handleSelectEntity(option.id)}>
+                        <span style={{ ...selectorCircle, ...(selectedEntityId === option.id ? selectorCircleSelected : {}) }} />
                         <span style={selectorOptionLabel}>{option.label}</span>
-                      </label>
+                      </button>
                     ))}
 
                     {filteredSelectorOptions.length === 0 && (
@@ -1283,6 +1271,7 @@ const selectorModalOverlay: any = {
   inset: 0,
   background: 'rgba(15, 23, 42, 0.38)',
   zIndex: 1000,
+  overflowX: 'hidden',
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
@@ -1290,9 +1279,10 @@ const selectorModalOverlay: any = {
 }
 
 const selectorModalCard: any = {
-  width: '100%',
-  maxWidth: 520,
+  width: 'min(92vw, 560px)',
+  maxWidth: 560,
   maxHeight: '80vh',
+  overflow: 'hidden',
   background: 'var(--surface)',
   border: '1px solid var(--border)',
   borderRadius: 18,
@@ -1323,6 +1313,7 @@ const selectorCloseBtn: any = {
 }
 
 const selectorSearchWrap: any = {
+  flexShrink: 0,
   display: 'flex',
   alignItems: 'center',
   gap: 8,
@@ -1344,9 +1335,11 @@ const selectorSearchInput: any = {
 }
 
 const selectorListWrap: any = {
+  flex: 1,
+  minHeight: 0,
   marginTop: 12,
-  maxHeight: '55vh',
   overflowY: 'auto',
+  overflowX: 'hidden',
   display: 'flex',
   flexDirection: 'column',
   gap: 8,
@@ -1354,33 +1347,56 @@ const selectorListWrap: any = {
 }
 
 const selectorOptionRow: any = {
-  width: '100%',
-  display: 'flex',
-  alignItems: 'center',
-  gap: 12,
+  appearance: 'none',
   border: '1px solid var(--border)',
+  background: 'var(--surface)',
   borderRadius: 12,
   padding: '12px 14px',
+  cursor: 'pointer',
+  boxSizing: 'border-box',
+  overflowX: 'hidden',
+
+  width: '100%',
+  maxWidth: '100%',
+  display: 'flex',
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'flex-start',
+  gap: 12,
+
+  color: 'var(--text)',
   fontSize: 13,
   fontWeight: 800,
-  color: 'var(--text)',
-  cursor: 'pointer',
   textAlign: 'left',
 }
 
-const selectorRadioInput: any = {
-  margin: 0,
-  flexShrink: 0,
+const selectorCircle: any = {
+  flex: '0 0 auto',
+  width: 16,
+  height: 16,
+  borderRadius: 999,
+  border: '2px solid #94a3b8',
+  background: '#ffffff',
+  boxSizing: 'border-box',
+}
+
+const selectorCircleSelected: any = {
+  borderColor: '#2563eb',
+  boxShadow: 'inset 0 0 0 4px #2563eb',
 }
 
 const selectorOptionLabel: any = {
-  flex: 1,
+  flex: '1 1 auto',
   minWidth: 0,
+  maxWidth: '100%',
   textAlign: 'left',
   fontWeight: 700,
   lineHeight: 1.25,
   whiteSpace: 'normal',
-  overflowWrap: 'anywhere',
+  wordBreak: 'break-word',
+  overflowWrap: 'break-word',
+  writingMode: 'horizontal-tb',
+  textOrientation: 'mixed',
 }
 
 const selectorNoResults: any = {
