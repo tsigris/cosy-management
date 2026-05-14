@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getAdminClient, mapErrorMessage, requireStoreMember } from '@/app/api/admin/_shared/auth'
+import { createClient } from '@supabase/supabase-js'
+import { mapErrorMessage } from '@/app/api/admin/_shared/auth'
 import { buildFinancialComparison } from '@/lib/server/analysisComparison'
 
 export const runtime = 'nodejs'
@@ -17,18 +18,60 @@ export async function POST(request: NextRequest) {
     const fromDate = typeof body?.fromDate === 'string' ? body.fromDate.trim() : ''
     const toDate = typeof body?.toDate === 'string' ? body.toDate.trim() : ''
 
-    if (!storeId || !fromDate || !toDate) {
+  if (!storeId || !fromDate || !toDate) {
       return NextResponse.json(
         { error: 'Missing storeId, fromDate, or toDate.' },
         { status: 400 },
       )
     }
 
-    const authResult = await requireStoreMember(request, storeId)
-    if (authResult instanceof NextResponse) return authResult
+    const token = request.headers.get('x-supabase-auth')?.trim() || ''
+    if (!token) {
+      return NextResponse.json({ error: 'Απαιτείται σύνδεση.' }, { status: 401 })
+    }
 
-    const adminClient = getAdminClient()
-    const payload = await buildFinancialComparison(adminClient, storeId, {
+    const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL
+    const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    if (!supabaseUrl || !anonKey) {
+      throw new Error('[analysis/comparison] Missing Supabase URL or anon key env vars')
+    }
+
+    const callerClient = createClient(supabaseUrl, anonKey, {
+      global: {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      },
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+        detectSessionInUrl: false,
+      },
+    })
+
+    const {
+      data: { user },
+      error: userError,
+    } = await callerClient.auth.getUser()
+
+    if (userError || !user) {
+      return NextResponse.json({ error: 'Απαιτείται σύνδεση.' }, { status: 401 })
+    }
+
+    const { data: membershipRow, error: membershipError } = await callerClient
+      .from('store_access')
+      .select('store_id')
+      .eq('user_id', user.id)
+      .eq('store_id', storeId)
+      .limit(1)
+      .maybeSingle()
+
+    if (membershipError) throw membershipError
+    if (!membershipRow) {
+      return NextResponse.json({ error: 'Δεν έχετε πρόσβαση σε αυτό το κατάστημα.' }, { status: 403 })
+    }
+
+    const payload = await buildFinancialComparison(callerClient, storeId, {
       from: fromDate,
       to: toDate,
     })
@@ -39,8 +82,17 @@ export async function POST(request: NextRequest) {
       },
     })
   } catch (error) {
-    console.error('[api/analysis/comparison] failed', error)
+    const errorMessage = error instanceof Error ? error.message : String(error)
+    const errorStack = error instanceof Error ? error.stack : undefined
+    console.error('[api/analysis/comparison] FAILED:', errorMessage)
+    if (errorStack) console.error(errorStack)
     const mapped = mapErrorMessage(error, 'Αποτυχία φόρτωσης σύγκρισης.')
-    return NextResponse.json({ error: mapped.message }, { status: mapped.status })
+    return NextResponse.json(
+      {
+        error: mapped.message,
+        ...(process.env.NODE_ENV !== 'production' && { _debug: errorMessage }),
+      },
+      { status: mapped.status },
+    )
   }
 }
