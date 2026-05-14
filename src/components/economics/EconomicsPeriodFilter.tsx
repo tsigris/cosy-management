@@ -2,8 +2,16 @@
 
 import React, { useEffect, useMemo, useState } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
+import {
+  addDaysToDateKey,
+  getCanonicalPeriodRange,
+  getMonthRange,
+  getTodayDateKey,
+  getYearRange,
+  type CanonicalPeriod,
+} from '@/lib/financialPeriods'
 
-type Period = 'month' | 'year' | '30days' | 'all'
+type Period = CanonicalPeriod
 
 type Props = {
   period: Period
@@ -14,19 +22,15 @@ type Props = {
 }
 
 export function getStartOfMonth(): Date {
-  const now = new Date()
-  return new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0)
+  return new Date(`${getMonthRange(getTodayDateKey()).from}T00:00:00`)
 }
 
 export function getStartOfYear(year: number): Date {
-  return new Date(year, 0, 1, 0, 0, 0, 0)
+  return new Date(`${getYearRange(year).from}T00:00:00`)
 }
 
 export function getLast30Days(): Date {
-  const d = new Date()
-  d.setDate(d.getDate() - 30)
-  d.setHours(0, 0, 0, 0)
-  return d
+  return new Date(`${getCanonicalPeriodRange({ period: '30days' }).from}T00:00:00`)
 }
 
 function isValidDateKey(value: string): boolean {
@@ -49,22 +53,9 @@ export default function EconomicsPeriodFilter({ period, onPeriodChange, selected
   const [start, setStart] = useState(queryStart)
   const [end, setEnd] = useState(queryEnd)
 
-  const today = useMemo(() => {
-    const d = new Date()
-    const y = d.getFullYear()
-    const m = String(d.getMonth() + 1).padStart(2, '0')
-    const day = String(d.getDate()).padStart(2, '0')
-    return `${y}-${m}-${day}`
-  }, [])
+  const today = useMemo(() => getTodayDateKey(), [])
 
-  const sevenDaysAgo = useMemo(() => {
-    const d = new Date()
-    d.setDate(d.getDate() - 7)
-    const y = d.getFullYear()
-    const m = String(d.getMonth() + 1).padStart(2, '0')
-    const day = String(d.getDate()).padStart(2, '0')
-    return `${y}-${m}-${day}`
-  }, [])
+  const sevenDaysAgo = useMemo(() => addDaysToDateKey(today, -6), [today])
 
   const updateQueryRange = (nextStart: string, nextEnd: string) => {
     const params = new URLSearchParams(searchParams?.toString() || '')

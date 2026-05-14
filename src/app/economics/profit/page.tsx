@@ -8,26 +8,16 @@ import EconomicsHeaderNav from '@/components/economics/EconomicsHeaderNav'
 import EconomicsContainer from '@/components/economics/EconomicsContainer'
 import { toast, Toaster } from 'sonner'
 import EconomicsPeriodFilter from '@/components/economics/EconomicsPeriodFilter'
-import { toBusinessDayDateFromInput } from '@/lib/businessDate'
+import {
+  aggregateCanonicalFinancialMetrics,
+  buildCanonicalMonthlySeries,
+  type CanonicalFinancialRow,
+} from '@/lib/canonicalFinancialMetrics'
+import { getCanonicalPeriodRange } from '@/lib/financialPeriods'
 
 const isValidUUID = (id: any) => {
 	const regex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 	return typeof id === 'string' && regex.test(id)
-}
-
-function getTxDate(t: any) {
-	if (!t) return null
-	const raw = t?.date
-	if (!raw) return null
-	const d = toBusinessDayDateFromInput(raw, { normalizeToNoon: true })
-	if (!d) return null
-	return isNaN(d.getTime()) ? null : d
-}
-
-function monthKeyFromDate(d: Date) {
-	const y = d.getFullYear()
-	const m = String(d.getMonth() + 1).padStart(2, '0')
-	return `${y}-${m}`
 }
 
 function prettyMonthLabel(ym: string) {
@@ -65,47 +55,25 @@ function ProfitContent() {
 		}
 	}, [hasValidStore, router])
 
-	const incomeTypes = ['income', 'income_collection', 'debt_received']
-	const expenseTypes = ['expense', 'debt_payment', 'salary_advance']
+	const range = useMemo(
+		() => getCanonicalPeriodRange({ period, selectedYear }),
+		[period, selectedYear],
+	)
 
 	const load = useCallback(async () => {
 		if (!storeIdFromUrl || !hasValidStore) return
 
-		const transactionSelect = 'id, store_id, date, created_at, type, amount'
+		const transactionSelect = 'id, store_id, date, created_at, type, amount, category, method, payment_method, notes, is_credit'
 
 		try {
 			setLoading(true)
 
-			let q = supabase
+			const transRes = await supabase
 				.from('transactions')
 				.select(transactionSelect)
 				.eq('store_id', storeIdFromUrl)
-
-			if (period !== 'all') {
-				const toDateKey = (d: Date) => {
-					const y = d.getFullYear()
-					const m = String(d.getMonth() + 1).padStart(2, '0')
-					const day = String(d.getDate()).padStart(2, '0')
-					return `${y}-${m}-${day}`
-				}
-
-				let fromDate = '1970-01-01'
-				if (period === 'month') {
-					const now = new Date()
-					fromDate = toDateKey(new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0))
-				} else if (period === 'year') {
-					fromDate = toDateKey(new Date(selectedYear, 0, 1, 0, 0, 0, 0))
-				} else if (period === '30days') {
-					const d = new Date()
-					d.setDate(d.getDate() - 30)
-					d.setHours(0, 0, 0, 0)
-					fromDate = toDateKey(d)
-				}
-
-				q = q.gte('date', fromDate).lte('date', '9999-12-31')
-			}
-
-			const transRes = await q
+				.gte('date', range.from)
+				.lte('date', range.to)
 			if (transRes.error) throw transRes.error
 			const txs = (transRes.data || []).filter((t: any) => t.is_deleted !== true)
 			setTransactions(txs)
@@ -130,7 +98,7 @@ function ProfitContent() {
 		} finally {
 			setLoading(false)
 		}
-	}, [storeIdFromUrl, hasValidStore, supabase, period, selectedYear])
+	}, [storeIdFromUrl, hasValidStore, range.from, range.to, supabase])
 
 	useEffect(() => {
 		if (!hasValidStore) return
@@ -142,73 +110,31 @@ function ProfitContent() {
 	}
 
 	const yearOptions = useMemo(() => {
-		const s = new Set<number>()
-		for (const t of transactions) {
-			const d = getTxDate(t)
-			if (d) s.add(d.getFullYear())
-		}
-		if (!s.size) s.add(new Date().getFullYear())
-		return Array.from(s).sort((a, b) => b - a)
-	}, [transactions])
+		const currentYear = new Date().getFullYear()
+		return [currentYear, currentYear - 1, currentYear - 2, currentYear - 3]
+	}, [])
 
 	useEffect(() => {
 		if (yearOptions.includes(selectedYear)) return
 		setSelectedYear(yearOptions[0])
 	}, [yearOptions, selectedYear])
 
-	// period helpers
-	const getStartOfMonth = useCallback(() => {
-		const now = new Date()
-		return new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0)
-	}, [])
-
-	const getStartOfYear = useCallback(() => {
-		return new Date(selectedYear, 0, 1, 0, 0, 0, 0)
-	}, [selectedYear])
-
-	const getLast30Days = useCallback(() => {
-		const d = new Date()
-		d.setDate(d.getDate() - 30)
-		d.setHours(0, 0, 0, 0)
-		return d
-	}, [])
-
-	const filteredTx = useMemo(() => {
-		return transactions.filter((tx) => {
-			if (!tx) return false
-			const d = getTxDate(tx)
-			if (!d) return false
-			if (period === 'all') return true
-			if (period === 'month') return d >= getStartOfMonth()
-			if (period === 'year') return d >= getStartOfYear()
-			if (period === '30days') return d >= getLast30Days()
-			return true
-		})
-	}, [transactions, period, getStartOfMonth, getStartOfYear, getLast30Days])
-
-	const totalRevenue = useMemo(
-		() => filteredTx.filter((t) => incomeTypes.includes(String(t?.type || ''))).reduce((a, t) => a + Number(t?.amount ?? 0), 0),
-		[filteredTx],
+	const canonicalRows = useMemo(() => transactions as CanonicalFinancialRow[], [transactions])
+	const summary = useMemo(
+		() => aggregateCanonicalFinancialMetrics(canonicalRows, { range }),
+		[canonicalRows, range],
 	)
-	const totalExpenses = useMemo(
-		() => filteredTx.filter((t) => expenseTypes.includes(String(t?.type || ''))).reduce((a, t) => a + Math.abs(Number(t?.amount ?? 0)), 0),
-		[filteredTx],
-	)
-	const totalProfit = useMemo(() => totalRevenue - totalExpenses, [totalRevenue, totalExpenses])
+	const totalRevenue = summary.totalRevenue
+	const totalExpenses = summary.totalExpenses
+	const totalProfit = summary.profit
 
-	const byMonth = useMemo(() => {
-		const map: Record<string, { revenue: number; expenses: number }> = {}
-		for (const t of filteredTx) {
-			if (!t) continue
-			const d = getTxDate(t)
-			const k = d ? monthKeyFromDate(d) : 'unknown'
-			if (!map[k]) map[k] = { revenue: 0, expenses: 0 }
-			if (incomeTypes.includes(String(t?.type || ''))) map[k].revenue += Number(t?.amount ?? 0)
-			if (expenseTypes.includes(String(t?.type || ''))) map[k].expenses += Math.abs(Number(t?.amount ?? 0))
-		}
-		const rows = Object.entries(map).map(([key, v]) => ({ month: key, revenue: v.revenue, expenses: v.expenses, profit: v.revenue - v.expenses }))
-		return rows.sort((a, b) => String(b.month).localeCompare(String(a.month)))
-	}, [filteredTx])
+	const byMonth = useMemo(
+		() =>
+			buildCanonicalMonthlySeries(canonicalRows, range)
+				.map((row) => ({ month: row.ym, revenue: row.revenue, expenses: row.expenses, profit: row.profit }))
+				.sort((a, b) => String(b.month).localeCompare(String(a.month))),
+		[canonicalRows, range],
+	)
 
 	const card: any = { background: 'var(--surface)', padding: 14, borderRadius: 16, border: '1px solid var(--border)', boxShadow: 'var(--shadow)', marginBottom: 12 }
 	const viewBtn: any = { flex: 1, minWidth: 90, padding: 10, borderRadius: 10, border: '1px solid var(--border)', background: 'transparent', fontWeight: 900 }

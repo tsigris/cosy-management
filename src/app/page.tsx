@@ -14,6 +14,7 @@ import { el } from 'date-fns/locale'
 import { Toaster, toast } from 'sonner'
 import { TrendingUp, TrendingDown, Menu, X, ChevronLeft, ChevronRight, CreditCard } from 'lucide-react'
 import ErrorBoundary from '@/components/ErrorBoundary'
+import { aggregateCanonicalFinancialMetrics, type CanonicalFinancialRow } from '@/lib/canonicalFinancialMetrics'
 
 // Helper για αναγνώριση tips
 const isTipTransaction = (t: any) => {
@@ -502,65 +503,19 @@ function DashboardContent() {
 
   const loadTotals = useCallback(async () => {
     try {
-      const txRows = Array.isArray(transactions) ? transactions.filter((t) => !isTipTransaction(t)) : []
+      const txRows = Array.isArray(transactions)
+        ? transactions.filter((t) => !isTipTransaction(t) && t.date === selectedDate)
+        : []
 
-      let incomeTotal = 0
-      let expenseTotal = 0
-      let creditTotal = 0
-      let cashTotal = 0
-      let bankTotal = 0
-
-      for (const row of txRows) {
-        const amount = Math.abs(Number(row.amount || 0))
-        const method = getKpiPaymentMethod(row)
-        const normalizedMethod = normalizeKpiText(method)
-        const treatAsCash = isCashMethod(method) || normalizedMethod.includes('χωρις αποδειξη')
-        const treatAsBank =
-          isBankMethod(method) || normalizedMethod.includes('καρτα') || normalizedMethod.includes('pos')
-        const creditLike = isCreditLikeMovement(row)
-        const isIncome = isIncomeTypeForKpi(row.type)
-        const normalizedType = normalizeKpiText(row.type)
-        const normalizedCategory = normalizeKpiText(row.category)
-        const normalizedNotes = normalizeKpiText(row.notes)
-        const isLoanLikeRow =
-          normalizedType === 'debt_payment' ||
-          normalizedCategory.includes('ρυθμιση') ||
-          normalizedCategory.includes('δοση') ||
-          normalizedCategory.includes('loan') ||
-          normalizedCategory.includes('settlement') ||
-          normalizedNotes.includes('ρυθμιση') ||
-          normalizedNotes.includes('δοση') ||
-          normalizedNotes.includes('loan') ||
-          normalizedNotes.includes('settlement')
-
-        if (creditLike) {
-          creditTotal += amount
-          continue
-        }
-
-        if (isIncome) {
-          incomeTotal += amount
-        } else {
-          expenseTotal += amount
-        }
-
-        if (treatAsCash) {
-          cashTotal += isIncome ? amount : -amount
-          continue
-        }
-
-        if (treatAsBank) {
-          bankTotal += isIncome ? amount : -amount
-        }
-      }
-
-      const availableBalance = cashTotal + bankTotal
+      const summary = aggregateCanonicalFinancialMetrics(txRows as CanonicalFinancialRow[], {
+        range: { from: selectedDate, to: selectedDate },
+      })
 
       setTotals({
-        income: incomeTotal,
-        expense: expenseTotal,
-        credits: creditTotal,
-        balance: availableBalance,
+        income: summary.totalRevenue,
+        expense: summary.totalExpenses,
+        credits: summary.credits,
+        balance: summary.totalBalance,
       })
     } catch (err) {
       console.error('[dashboard-kpi-error]', err)

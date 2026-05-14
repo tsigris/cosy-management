@@ -11,18 +11,6 @@ type UseAnalysisComparisonArgs = {
   enabled: boolean
 }
 
-type ComparisonCacheEntry = {
-  expiresAt: number
-  payload: FinancialComparisonResponse
-}
-
-const CACHE_TTL_MS = 60_000
-const cache = new Map<string, ComparisonCacheEntry>()
-
-function getCacheKey(storeId: string, fromDate: string, toDate: string) {
-  return `${storeId}::${fromDate}::${toDate}`
-}
-
 export function useAnalysisComparison({
   storeId,
   fromDate,
@@ -43,17 +31,6 @@ export function useAnalysisComparison({
     }
 
     const requestId = ++requestIdRef.current
-    const cacheKey = getCacheKey(storeId, fromDate, toDate)
-    const now = Date.now()
-    const cached = cache.get(cacheKey)
-
-    if (cached && cached.expiresAt > now) {
-      setData(cached.payload)
-      setLoading(false)
-      setError(null)
-      return
-    }
-
     let cancelled = false
 
     const run = async () => {
@@ -92,11 +69,6 @@ export function useAnalysisComparison({
         }
 
         if (cancelled || requestId !== requestIdRef.current) return
-
-        cache.set(cacheKey, {
-          expiresAt: now + CACHE_TTL_MS,
-          payload,
-        })
 
         setData(payload)
       } catch (err) {

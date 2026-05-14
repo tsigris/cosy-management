@@ -16,6 +16,8 @@ import {
 } from 'date-fns'
 import { formatDateDMY } from '@/lib/formatters'
 import AnalysisComparisonPanel from '@/components/analysis/AnalysisComparisonPanel'
+import { useCanonicalFinancialPeriod } from '@/hooks/useCanonicalFinancialPeriod'
+import { getCanonicalPeriodRange } from '@/lib/financialPeriods'
 import { toast, Toaster } from 'sonner'
 import {
   Coins,
@@ -188,24 +190,15 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
     return [y, y - 1, y - 2]
   }, [])
 
+  const canonicalRange = useMemo(
+    () => getCanonicalPeriodRange({ period, selectedYear }),
+    [period, selectedYear]
+  )
+
   useEffect(() => {
-    if (period === 'month') {
-      setStartDate(format(startOfMonth(new Date()), 'yyyy-MM-dd'))
-      setEndDate(format(endOfMonth(new Date()), 'yyyy-MM-dd'))
-    } else if (period === 'year') {
-      setStartDate(`${selectedYear}-01-01`)
-      setEndDate(`${selectedYear}-12-31`)
-    } else if (period === '30days') {
-      const d = subDays(new Date(), 30)
-      setStartDate(format(d, 'yyyy-MM-dd'))
-      setEndDate(format(new Date(), 'yyyy-MM-dd'))
-    } else if (period === 'all') {
-      // Use a safe early date instead of '0000-01-01' which Postgres rejects.
-      // We'll also avoid applying date filters to Supabase queries when period === 'all'.
-      setStartDate('1970-01-01')
-      setEndDate('9999-12-31')
-    }
-  }, [period, selectedYear])
+    setStartDate(canonicalRange.from)
+    setEndDate(canonicalRange.to)
+  }, [canonicalRange.from, canonicalRange.to])
 
   // Simple: drilldown filter
   const [filterA, setFilterA] = useState<FilterA>('Όλες')
@@ -486,23 +479,16 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
     loadData()
   }, [loadData])
 
-  const loadAnalysisSummary = useCallback(async () => {
-    const requestId = ++summaryRequestIdRef.current
-    setSummaryReady(false)
-    setRpcSummary({
-      income: 0,
-      expenses: 0,
-      tips: 0,
-      net_profit: 0,
-      cash_balance: 0,
-      bank_balance: 0,
-      total_balance: 0,
-      credit_outstanding: 0,
-      credit_incoming: 0,
-      savings_deposits: 0,
-      savings_withdrawals: 0,
-    })
+  const {
+    summary: canonicalSummary,
+    loading: canonicalSummaryLoading,
+  } = useCanonicalFinancialPeriod({
+    storeId,
+    range: canonicalRange,
+    enabled: authChecked && hasSession && !!storeId && storeId !== 'null',
+  })
 
+  useEffect(() => {
     if (!authChecked || !hasSession || !storeId || storeId === 'null') {
       setRpcSummary({
         income: 0,
@@ -521,59 +507,24 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
       return
     }
 
-    try {
-      const { data, error } = await supabase.rpc('get_analysis_summary', {
-        p_store_id: storeId,
-        p_start_date: startDate,
-        p_end_date: endDate,
-      })
+    setSummaryReady(!canonicalSummaryLoading)
 
-      if (error) throw error
+    if (!canonicalSummary) return
 
-      const raw = Array.isArray(data) ? data[0] : data
-      const payload = raw?.get_analysis_summary ?? raw ?? {}
-
-      if (requestId !== summaryRequestIdRef.current) return
-
-      setRpcSummary({
-        income: Number(payload.income || 0),
-        expenses: Number(payload.expenses || 0),
-        tips: Number(payload.tips || 0),
-        net_profit: Number(payload.net_profit || 0),
-        cash_balance: Number(payload.cash_balance || 0),
-        bank_balance: Number(payload.bank_balance || 0),
-        total_balance: Number(payload.total_balance || 0),
-        credit_outstanding: Number(payload.credit_outstanding || 0),
-        credit_incoming: Number(payload.credit_incoming || 0),
-        savings_deposits: Number(payload.savings_deposits || 0),
-        savings_withdrawals: Number(payload.savings_withdrawals || 0),
-      })
-    } catch (err) {
-      console.error('Analysis summary RPC error:', err)
-      if (requestId !== summaryRequestIdRef.current) return
-      setRpcSummary({
-        income: 0,
-        expenses: 0,
-        tips: 0,
-        net_profit: 0,
-        cash_balance: 0,
-        bank_balance: 0,
-        total_balance: 0,
-        credit_outstanding: 0,
-        credit_incoming: 0,
-        savings_deposits: 0,
-        savings_withdrawals: 0,
-      })
-    } finally {
-      if (requestId === summaryRequestIdRef.current) {
-        setSummaryReady(true)
-      }
-    }
-  }, [storeId, startDate, endDate, supabase, authChecked, hasSession])
-
-  useEffect(() => {
-    loadAnalysisSummary()
-  }, [loadAnalysisSummary])
+    setRpcSummary({
+      income: canonicalSummary.totalRevenue,
+      expenses: canonicalSummary.totalExpenses,
+      tips: 0,
+      net_profit: canonicalSummary.profit,
+      cash_balance: canonicalSummary.cashTotals,
+      bank_balance: canonicalSummary.bankTotals,
+      total_balance: canonicalSummary.totalBalance,
+      credit_outstanding: canonicalSummary.credits,
+      credit_incoming: 0,
+      savings_deposits: canonicalSummary.savingsDeposits,
+      savings_withdrawals: canonicalSummary.savingsWithdrawals,
+    })
+  }, [authChecked, canonicalSummary, canonicalSummaryLoading, hasSession, storeId])
 
   const loadCategoryBreakdown = useCallback(async () => {
     const requestId = ++categoryBreakdownRequestIdRef.current

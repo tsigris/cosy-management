@@ -1,5 +1,9 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import {
+  aggregateCanonicalFinancialMetrics,
+  type CanonicalFinancialRow,
+} from '@/lib/canonicalFinancialMetrics'
+import {
   countInclusiveDays,
   enumerateDateKeys,
   formatRangeLabel,
@@ -16,34 +20,10 @@ import type {
   FinancialMetricComparison,
 } from '@/types/analysisComparison'
 
-const TRANSFER_CATEGORIES = new Set(['μεταφορά κεφαλαίων', 'μεταφορά κεφαλαίου'])
-const CASH_METHOD_KEYS = ['μετρητά', 'μετρητά (z)', 'cash']
-const CARD_METHOD_KEYS = ['κάρτα', 'τράπεζα', 'card', 'bank', 'pos']
 const WEEKDAY_ORDER = ['Δευ', 'Τρί', 'Τετ', 'Πέμ', 'Παρ', 'Σάβ', 'Κυρ']
-
-type AnalysisSummaryRpc = {
-  income?: number | null
-  expenses?: number | null
-  net_profit?: number | null
-  credit_outstanding?: number | null
-}
 
 type PayrollPeriodRpc = {
   payroll_pct?: number | null
-}
-
-type CollapsedZRpc = {
-  date?: string | null
-  total_z?: number | null
-}
-
-type RevenueTxRow = {
-  date?: string | null
-  amount?: number | null
-  type?: string | null
-  method?: string | null
-  category?: string | null
-  is_credit?: boolean | null
 }
 
 type PeriodAggregate = {
@@ -69,24 +49,6 @@ function toNumber(value: unknown): number {
   return Number.isFinite(next) ? next : 0
 }
 
-function normalizeMethod(value: string | null | undefined): string {
-  return String(value || '').trim().toLowerCase()
-}
-
-function isTransferCategory(category: string | null | undefined): boolean {
-  return TRANSFER_CATEGORIES.has(String(category || '').trim().toLowerCase())
-}
-
-function isCashMethod(method: string | null | undefined): boolean {
-  const normalized = normalizeMethod(method)
-  return CASH_METHOD_KEYS.some((candidate) => normalized.includes(candidate))
-}
-
-function isCardMethod(method: string | null | undefined): boolean {
-  const normalized = normalizeMethod(method)
-  return CARD_METHOD_KEYS.some((candidate) => normalized.includes(candidate))
-}
-
 function buildComparisonMetric(current: number, previous: number): FinancialMetricComparison {
   const delta = current - previous
   const deltaPct = previous === 0 ? (current === 0 ? 0 : null) : (delta / previous) * 100
@@ -102,23 +64,6 @@ function buildComparisonMetric(current: number, previous: number): FinancialMetr
     deltaPct,
     trend,
   }
-}
-
-async function loadAnalysisSummary(
-  supabase: SupabaseClient,
-  storeId: string,
-  range: FinancialDateRange,
-): Promise<AnalysisSummaryRpc> {
-  const { data, error } = await supabase.rpc('get_analysis_summary', {
-    p_store_id: storeId,
-    p_start_date: range.from,
-    p_end_date: range.to,
-  })
-
-  if (error) throw error
-
-  const raw = Array.isArray(data) ? data[0] : data
-  return (raw?.get_analysis_summary ?? raw ?? {}) as AnalysisSummaryRpc
 }
 
 async function loadPayrollSummary(
@@ -138,37 +83,20 @@ async function loadPayrollSummary(
   return (raw ?? {}) as PayrollPeriodRpc
 }
 
-async function loadCollapsedZ(
+async function loadPeriodTransactions(
   supabase: SupabaseClient,
   storeId: string,
   range: FinancialDateRange,
-): Promise<CollapsedZRpc[]> {
-  const { data, error } = await supabase.rpc('get_analysis_collapsed_period', {
-    p_store_id: storeId,
-    p_start_date: range.from,
-    p_end_date: range.to,
-  })
-
-  if (error) throw error
-  return Array.isArray(data) ? (data as CollapsedZRpc[]) : []
-}
-
-async function loadRevenueRows(
-  supabase: SupabaseClient,
-  storeId: string,
-  range: FinancialDateRange,
-): Promise<RevenueTxRow[]> {
+): Promise<CanonicalFinancialRow[]> {
   const { data, error } = await supabase
     .from('transactions')
-    .select('date, amount, type, method, category, is_credit')
+    .select('date, amount, type, category, method, payment_method, notes, is_credit')
     .eq('store_id', storeId)
-    .eq('type', 'income')
-    .eq('is_credit', false)
     .gte('date', range.from)
     .lte('date', range.to)
 
   if (error) throw error
-  return Array.isArray(data) ? (data as RevenueTxRow[]) : []
+  return Array.isArray(data) ? (data as CanonicalFinancialRow[]) : []
 }
 
 async function loadPeriodAggregate(
@@ -181,56 +109,33 @@ async function loadPeriodAggregate(
     to: range.to,
   }
 
-  const [summary, payroll, zRows, revenueRows] = await Promise.all([
-    loadAnalysisSummary(supabase, storeId, normalizedRange),
+  const [payroll, rows] = await Promise.all([
     loadPayrollSummary(supabase, storeId, normalizedRange),
-    loadCollapsedZ(supabase, storeId, normalizedRange),
-    loadRevenueRows(supabase, storeId, normalizedRange),
+    loadPeriodTransactions(supabase, storeId, normalizedRange),
   ])
 
-  const filteredRevenueRows = revenueRows.filter((row) => !isTransferCategory(row.category))
-
-  const revenueByDate: Record<string, number> = {}
-  let cashRevenue = 0
-  let cardRevenue = 0
-
-  for (const row of filteredRevenueRows) {
-    const date = String(row.date || '')
-    if (!date) continue
-    const amount = toNumber(row.amount)
-    revenueByDate[date] = toNumber(revenueByDate[date]) + amount
-
-    if (isCashMethod(row.method)) cashRevenue += amount
-    else if (isCardMethod(row.method)) cardRevenue += amount
-  }
-
-  const zByDate: Record<string, number> = {}
-  for (const row of zRows) {
-    const date = String(row.date || '')
-    if (!date) continue
-    zByDate[date] = toNumber(zByDate[date]) + toNumber(row.total_z)
-  }
-
-  const totalRevenue = toNumber(summary.income)
-  const transactionCount = filteredRevenueRows.length
   const days = countInclusiveDays(normalizedRange)
+  const summary = aggregateCanonicalFinancialMetrics(rows, {
+    range: normalizedRange,
+    payrollPct: toNumber(payroll.payroll_pct),
+  })
 
   return {
     range: normalizedRange,
     days,
-    totalRevenue,
-    cashRevenue,
-    cardRevenue,
-    transactionCount,
-    averageTicket: transactionCount > 0 ? totalRevenue / transactionCount : 0,
-    averageDailyRevenue: days > 0 ? totalRevenue / days : 0,
-    expenses: toNumber(summary.expenses),
-    profit: toNumber(summary.net_profit),
-    payrollPct: toNumber(payroll.payroll_pct),
-    zTotals: Object.values(zByDate).reduce((sum, value) => sum + toNumber(value), 0),
-    creditTotals: toNumber(summary.credit_outstanding),
-    revenueByDate,
-    zByDate,
+    totalRevenue: summary.totalRevenue,
+    cashRevenue: summary.cashRevenue,
+    cardRevenue: summary.cardRevenue,
+    transactionCount: summary.transactionCount,
+    averageTicket: summary.averageTicket,
+    averageDailyRevenue: days > 0 ? summary.totalRevenue / days : 0,
+    expenses: summary.totalExpenses,
+    profit: summary.profit,
+    payrollPct: summary.payrollPct,
+    zTotals: summary.zTotals,
+    creditTotals: summary.credits,
+    revenueByDate: summary.revenueByDate,
+    zByDate: summary.zByDate,
   }
 }
 

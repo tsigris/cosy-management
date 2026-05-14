@@ -8,6 +8,14 @@ import EconomicsPeriodFilter from '@/components/economics/EconomicsPeriodFilter'
 import { getSupabase } from '@/lib/supabase'
 import { parseLocalDateOnly, toBusinessDayDateFromInput } from '@/lib/businessDate'
 import KpiCard from '@/components/KpiCard'
+import {
+  aggregateCanonicalFinancialMetrics,
+  isExpenseTransaction,
+  isRevenueTransaction,
+  isTransferMovement,
+  type CanonicalFinancialRow,
+} from '@/lib/canonicalFinancialMetrics'
+import { getCanonicalPeriodRange } from '@/lib/financialPeriods'
 
 // If your project already uses xlsx (you used it in Settings), keep this import.
 // If build complains "Cannot find module 'xlsx'", tell me and I’ll switch to CSV export.
@@ -26,18 +34,6 @@ type TxRow = {
 }
 
 type ThemeName = 'light' | 'dark'
-
-const INCOME_TYPES = new Set([
-  'income',
-  'income_collection',
-  'debt_received',
-  'revenue',
-  'sale',
-  'payment',
-  'booking',
-  'deposit',
-])
-const EXPENSE_TYPES = new Set(['expense', 'debt_payment', 'salary_advance'])
 
 function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n))
@@ -134,8 +130,9 @@ export default function EconomicsCashflowPage() {
 
   // Filters for ledger
   const today = useMemo(() => new Date(), [])
-  const defaultFrom = useMemo(() => startOfMonthStr(new Date()), [])
-  const defaultTo = useMemo(() => endOfMonthStr(new Date()), [])
+  const defaultRange = useMemo(() => getCanonicalPeriodRange({ period: 'month' }), [])
+  const defaultFrom = defaultRange.from
+  const defaultTo = defaultRange.to
 
   const [filterFrom, setFilterFrom] = useState(defaultFrom)
   const [filterTo, setFilterTo] = useState(defaultTo)
@@ -143,11 +140,7 @@ export default function EconomicsCashflowPage() {
   const [filterCategory, setFilterCategory] = useState('')
   const [filterMethod, setFilterMethod] = useState('')
 
-  // Canonical transfer detection (safe greek substring + english)
-  const isTransfer = useCallback((r: TxRow) => {
-    const c = (r.category || '').toLowerCase()
-    return c.includes('μεταφορ') || c.includes('transfer')
-  }, [])
+  const isTransfer = useCallback((r: TxRow) => isTransferMovement(r), [])
 
   // Load transactions (safe: store_id required)
   useEffect(() => {
@@ -219,40 +212,27 @@ export default function EconomicsCashflowPage() {
   const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear())
 
   const financialRows = useMemo(() => rows.filter((r) => isValidFinancialDate(r.date)), [rows])
+  const canonicalRange = useMemo(
+    () => getCanonicalPeriodRange({ period, selectedYear }),
+    [period, selectedYear],
+  )
 
   useEffect(() => {
-    // when period changes, update filterFrom/filterTo to match
-    if (period === 'month') {
-      setFilterFrom(startOfMonthStr(new Date()))
-      setFilterTo(endOfMonthStr(new Date()))
-    } else if (period === 'year') {
-      setFilterFrom(`${selectedYear}-01-01`)
-      setFilterTo(`${selectedYear}-12-31`)
-    } else if (period === '30days') {
-      const d = new Date()
-      d.setDate(d.getDate() - 30)
-      const y = d.getFullYear()
-      const m = String(d.getMonth() + 1).padStart(2, '0')
-      const day = String(d.getDate()).padStart(2, '0')
-      setFilterFrom(`${y}-${m}-${day}`)
-      setFilterTo(endOfMonthStr(new Date()))
-    } else if (period === 'all') {
-      setFilterFrom('1970-01-01')
-      setFilterTo('9999-12-31')
-    }
-  }, [period, selectedYear])
+    setFilterFrom(canonicalRange.from)
+    setFilterTo(canonicalRange.to)
+  }, [canonicalRange.from, canonicalRange.to])
 
   // Transfers + Organic split (canonical for SaaS)
   const internalTransfers = useMemo(() => financialRows.filter(isTransfer), [financialRows, isTransfer])
 
   const organicIncome = useMemo(
-    () => financialRows.filter((r) => INCOME_TYPES.has(r.type) && !isTransfer(r)),
-    [financialRows, isTransfer],
+    () => financialRows.filter((r) => isRevenueTransaction(r)),
+    [financialRows],
   )
 
   const organicExpense = useMemo(
-    () => financialRows.filter((r) => EXPENSE_TYPES.has(r.type) && !isTransfer(r)),
-    [financialRows, isTransfer],
+    () => financialRows.filter((r) => isExpenseTransaction(r)),
+    [financialRows],
   )
 
   const internalTransfersIn = useMemo(
@@ -279,50 +259,22 @@ export default function EconomicsCashflowPage() {
     return dateFormatter.format(new Date(year, month - 1, day))
   }
 
-  // KPI (canonical, consistent across stores)
   const KPI = useMemo(() => {
-    const now = new Date()
-    const monthStart = startOfMonthStr(now)
-    const monthEnd = endOfMonthStr(now)
-
-    let availableBalance = 0
-    let expectedIncome = 0 // credit income
-    let scheduledExpense = 0 // credit expense
-    let monthIncome = 0
-    let monthExpense = 0
-
-    for (const r of financialRows) {
-      const amt = Number(r.amount) || 0
-      const abs = Math.abs(amt)
-      const isInMonth = r.date >= monthStart && r.date <= monthEnd
-
-      // Available balance (best-effort): incomes - expenses
-      if (INCOME_TYPES.has(r.type)) {
-        availableBalance += amt
-        if (isInMonth) monthIncome += amt
-      } else if (EXPENSE_TYPES.has(r.type)) {
-        availableBalance -= abs
-        if (isInMonth) monthExpense += abs
-      }
-
-      // Expected/scheduled via credit flag
-      if (r.is_credit === true && INCOME_TYPES.has(r.type)) expectedIncome += abs
-      if (r.is_credit === true && EXPENSE_TYPES.has(r.type)) scheduledExpense += abs
-    }
-
-    const netMonth = monthIncome - monthExpense
+    const summary = aggregateCanonicalFinancialMetrics(financialRows as CanonicalFinancialRow[], {
+      range: { from: filterFrom || canonicalRange.from, to: filterTo || canonicalRange.to },
+    })
 
     return {
-      availableBalance,
-      expectedIncome,
-      scheduledExpense,
-      netMonth,
-      monthIncome,
-      monthExpense,
-      monthStart,
-      monthEnd,
+      availableBalance: summary.totalBalance,
+      expectedIncome: 0,
+      scheduledExpense: summary.credits,
+      netMonth: summary.profit,
+      monthIncome: summary.totalRevenue,
+      monthExpense: summary.totalExpenses,
+      monthStart: filterFrom || canonicalRange.from,
+      monthEnd: filterTo || canonicalRange.to,
     }
-  }, [financialRows])
+  }, [canonicalRange.from, canonicalRange.to, filterFrom, filterTo, financialRows])
 
   // Chart data: derive monthly income/expense & running balance from the
   // same filters the ledger uses (filterFrom/filterTo/filterType/category/method).
@@ -336,8 +288,8 @@ export default function EconomicsCashflowPage() {
 
     const source = financialRows.filter((r) => {
       if (r.date < from || r.date > to) return false
-      if (filterType === 'income' && !INCOME_TYPES.has(r.type)) return false
-      if (filterType === 'expense' && !EXPENSE_TYPES.has(r.type)) return false
+      if (filterType === 'income' && !isRevenueTransaction(r)) return false
+      if (filterType === 'expense' && !isExpenseTransaction(r)) return false
       if (cat && String(r.category || '').toLowerCase() !== cat.toLowerCase()) return false
       if (met && String(r.method || '').toLowerCase() !== met.toLowerCase()) return false
       return true
@@ -390,8 +342,8 @@ export default function EconomicsCashflowPage() {
       const amt = Number(r.amount) || 0
       const abs = Math.abs(amt)
 
-      if (INCOME_TYPES.has(r.type)) incomeBy[key] += amt
-      if (EXPENSE_TYPES.has(r.type)) expenseBy[key] += abs
+      if (isRevenueTransaction(r)) incomeBy[key] += amt
+      if (isExpenseTransaction(r)) expenseBy[key] += abs
     }
 
     const points = months.map((m) => {
@@ -491,9 +443,8 @@ export default function EconomicsCashflowPage() {
     return financialRows.filter((r) => {
       if (r.date < from || r.date > to) return false
 
-      // ✅ Canonical filter: income = INCOME_TYPES, expense = EXPENSE_TYPES
-      if (filterType === 'income' && !INCOME_TYPES.has(r.type)) return false
-      if (filterType === 'expense' && !EXPENSE_TYPES.has(r.type)) return false
+      if (filterType === 'income' && !isRevenueTransaction(r)) return false
+      if (filterType === 'expense' && !isExpenseTransaction(r)) return false
 
       if (cat && String(r.category || '').toLowerCase() !== cat.toLowerCase()) return false
       if (met && String(r.method || '').toLowerCase() !== met.toLowerCase()) return false
@@ -919,8 +870,8 @@ export default function EconomicsCashflowPage() {
                   const st = statusOf(r)
                   const transferRow = isTransfer(r)
 
-                  const isIncome = INCOME_TYPES.has(r.type)
-                  const isExpense = EXPENSE_TYPES.has(r.type)
+                  const isIncome = isRevenueTransaction(r)
+                  const isExpense = isExpenseTransaction(r)
 
                   const amt = Number(r.amount) || 0
                   const abs = Math.abs(amt)

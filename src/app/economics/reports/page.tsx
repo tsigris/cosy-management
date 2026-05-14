@@ -9,6 +9,14 @@ import EconomicsPeriodFilter from "@/components/economics/EconomicsPeriodFilter"
 import EconomicsContainer from "@/components/economics/EconomicsContainer"
 import { toast, Toaster } from "sonner"
 import { toBusinessDayDateFromInput } from "@/lib/businessDate"
+import {
+  aggregateCanonicalFinancialMetrics,
+  buildCanonicalMonthlySeries,
+  isExpenseTransaction,
+  isRevenueTransaction,
+  type CanonicalFinancialRow,
+} from "@/lib/canonicalFinancialMetrics"
+import { getCanonicalPeriodRange } from "@/lib/financialPeriods"
 
 const colors = {
   accentGreen: "#10b981",
@@ -149,43 +157,25 @@ function ReportsContent() {
     }
   }, [hasValidStore, router])
 
+  const range = useMemo(
+    () => getCanonicalPeriodRange({ period, selectedYear }),
+    [period, selectedYear]
+  )
+
   const load = useCallback(async () => {
     if (!storeIdFromUrl || !hasValidStore) return
 
-    const transactionSelect = "id, store_id, date, created_at, type, amount, category, method, notes"
+    const transactionSelect = "id, store_id, date, created_at, type, amount, category, method, payment_method, notes, is_credit"
 
     try {
       setLoading(true)
 
-      let q = supabase
+      const res = await supabase
         .from("transactions")
         .select(transactionSelect)
         .eq("store_id", storeIdFromUrl)
-
-      if (period !== "all") {
-        const toDateKey = (d: Date) => {
-          const y = d.getFullYear()
-          const m = String(d.getMonth() + 1).padStart(2, "0")
-          const day = String(d.getDate()).padStart(2, "0")
-          return `${y}-${m}-${day}`
-        }
-
-        let fromDate = "1970-01-01"
-        if (period === "month") {
-          const now = new Date()
-          fromDate = toDateKey(new Date(now.getFullYear(), now.getMonth(), 1))
-        } else if (period === "year") {
-          fromDate = toDateKey(new Date(selectedYear, 0, 1))
-        } else if (period === "30days") {
-          const d = new Date()
-          d.setDate(d.getDate() - 30)
-          fromDate = toDateKey(d)
-        }
-
-        q = q.gte("date", fromDate).lte("date", "9999-12-31")
-      }
-
-      const res = await q
+        .gte("date", range.from)
+        .lte("date", range.to)
 
       if (res.error) throw res.error
 
@@ -210,7 +200,7 @@ function ReportsContent() {
     } finally {
       setLoading(false)
     }
-  }, [storeIdFromUrl, hasValidStore, supabase, period, selectedYear])
+  }, [storeIdFromUrl, hasValidStore, range.from, range.to, supabase])
 
   useEffect(() => {
     if (!hasValidStore) return
@@ -240,93 +230,52 @@ function ReportsContent() {
     }
   }, [yearOptions, selectedYear])
 
-  const getStartOfMonth = () => {
-    const now = new Date()
-    return new Date(now.getFullYear(), now.getMonth(), 1)
-  }
-
-  const getStartOfYear = () => {
-    return new Date(selectedYear, 0, 1)
-  }
-
-  const getLast30Days = () => {
-    const d = new Date()
-    d.setDate(d.getDate() - 30)
-    return d
-  }
-
-  const filteredTx = useMemo(() => {
-    return transactions.filter((tx) => {
-      if (!tx) return false
-      const d = getTxDate(tx)
-      if (!d) return false
-
-      if (period === "all") return true
-      if (period === "month") return d >= getStartOfMonth()
-      if (period === "year") return d >= getStartOfYear()
-      if (period === "30days") return d >= getLast30Days()
-
-      return true
-    })
-  }, [transactions, period, selectedYear])
-
-  const incomeTypes = ["income", "income_collection", "debt_received"]
-  const expenseTypes = ["expense", "debt_payment", "salary_advance"]
-
-  const incomeTotal = useMemo(
-    () =>
-      filteredTx
-        .filter((t) => incomeTypes.includes(String(t?.type || "")))
-        .reduce((a, t) => a + Number(t?.amount ?? 0), 0),
-    [filteredTx]
+  const filteredTx = useMemo(
+    () => transactions.filter((tx) => !!getTxDate(tx)),
+    [transactions]
   )
+
+  const canonicalRows = useMemo(() => filteredTx as CanonicalFinancialRow[], [filteredTx])
+  const canonicalSummary = useMemo(
+    () => aggregateCanonicalFinancialMetrics(canonicalRows, { range }),
+    [canonicalRows, range]
+  )
+  const incomeTotal = canonicalSummary.totalRevenue
+  const expenseTotal = canonicalSummary.totalExpenses
+  const netTotal = canonicalSummary.profit
 
   const expenseSideTx = useMemo(
-    () => filteredTx.filter((t) => expenseTypes.includes(String(t?.type || ""))),
-    [filteredTx]
+    () => canonicalRows.filter((tx) => isExpenseTransaction(tx)),
+    [canonicalRows]
   )
 
-  const expenseTotal = useMemo(
-    () => expenseSideTx.reduce((a, t) => a + Math.abs(Number(t?.amount ?? 0)), 0),
-    [expenseSideTx]
+  const reportRows = useMemo(
+    () => canonicalRows.filter((tx) => isRevenueTransaction(tx) || isExpenseTransaction(tx)),
+    [canonicalRows]
   )
-
-  const netTotal = incomeTotal - expenseTotal
 
   const byCategory = useMemo(
-    () => groupBy(filteredTx, (t) => String(t?.category ?? t?.type ?? "Άγνωστο")),
-    [filteredTx]
+    () => groupBy(reportRows, (t) => String(t?.category ?? t?.type ?? "Άγνωστο")),
+    [reportRows]
   )
 
   const byMethod = useMemo(
     () =>
       groupBy(
-        filteredTx,
+        reportRows,
         (t) =>
           String((t?.method ?? t?.payment_method ?? "").trim() || "Άγνωστη Μέθοδος")
       ),
-    [filteredTx]
+    [reportRows]
   )
 
-  const byMonth = useMemo(() => {
-    const map: Record<string, { key: string; total: number; count: number }> =
-      {}
-
-    for (const t of filteredTx) {
-      if (!t) continue
-      const d = getTxDate(t)
-      const k = d ? monthKey(d) : "Άγνωστο"
-
-      if (!map[k]) map[k] = { key: k, total: 0, count: 0 }
-
-      map[k].total += Number(t?.amount ?? 0)
-      map[k].count += 1
-    }
-
-    return Object.values(map).sort((a, b) =>
-      String(b.key).localeCompare(String(a.key))
-    )
-  }, [filteredTx])
+  const byMonth = useMemo(
+    () =>
+      buildCanonicalMonthlySeries(canonicalRows, range)
+        .map((row) => ({ key: row.ym, total: row.profit, count: 0 }))
+        .sort((a, b) => String(b.key).localeCompare(String(a.key))),
+    [canonicalRows, range]
+  )
 
   const byDocument = useMemo(() => {
     const seed: Record<DocumentBucket, { key: DocumentBucket; total: number; count: number }> = {
@@ -347,11 +296,11 @@ function ReportsContent() {
 
   const recent = useMemo(
     () =>
-      filteredTx
+      reportRows
         .slice()
         .sort((a, b) => (getTxDate(b)?.getTime() || 0) - (getTxDate(a)?.getTime() || 0))
         .slice(0, 20),
-    [filteredTx]
+    [reportRows]
   )
 
   const card: any = {
