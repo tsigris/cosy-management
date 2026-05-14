@@ -15,6 +15,7 @@ import {
   addDays,
 } from 'date-fns'
 import { formatDateDMY } from '@/lib/formatters'
+import AnalysisComparisonPanel from '@/components/analysis/AnalysisComparisonPanel'
 import { toast, Toaster } from 'sonner'
 import {
   Coins,
@@ -116,6 +117,7 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
 
   const [uiMode, setUiMode] = useState<UiMode>('simple')
   const [printMode, setPrintMode] = useState<PrintMode>('full')
+  const [showComparison, setShowComparison] = useState(false)
 
   const [staff, setStaff] = useState<any[]>([])
   const [suppliers, setSuppliers] = useState<any[]>([])
@@ -1330,6 +1332,51 @@ function AnalysisContent({ embeddedInEconomics = false }: { embeddedInEconomics?
             yearOptions={yearOptions}
           />
         </div>
+
+        <div className="no-print" style={{ marginTop: 8, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            onClick={() => setShowComparison(false)}
+            style={{
+              borderRadius: 999,
+              border: `1px solid ${showComparison ? colors.border : colors.primary}`,
+              background: showComparison ? colors.surface : colors.primary,
+              color: showComparison ? colors.primary : '#ffffff',
+              padding: '10px 14px',
+              fontSize: 12,
+              fontWeight: 900,
+            }}
+          >
+            Επισκόπηση
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowComparison(true)}
+            style={{
+              borderRadius: 999,
+              border: `1px solid ${showComparison ? colors.primary : colors.border}`,
+              background: showComparison ? colors.primary : colors.surface,
+              color: showComparison ? '#ffffff' : colors.primary,
+              padding: '10px 14px',
+              fontSize: 12,
+              fontWeight: 900,
+            }}
+          >
+            Σύγκριση
+          </button>
+          <div style={{ fontSize: 12, fontWeight: 800, color: colors.secondary, alignSelf: 'center' }}>
+            Αυτόματη σύγκριση με την ίδια περίοδο πέρυσι
+          </div>
+        </div>
+
+        {showComparison && (
+          <AnalysisComparisonPanel
+            storeId={storeId}
+            fromDate={startDate}
+            toDate={endDate}
+            enabled={authChecked && hasSession && !!storeId && storeId !== 'null'}
+          />
+        )}
 
           {/* SIMPLE: TOP “ΑΠΟ/ΕΩΣ” PILL */}
         {!embeddedInEconomics && (
