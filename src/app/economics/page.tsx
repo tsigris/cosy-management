@@ -2,6 +2,7 @@
 
 import { useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
+import EconomicsShell from '@/components/economics/shell/EconomicsShell'
 
 export default function EconomicsRedirectPage() {
   const router = useRouter()
@@ -19,17 +20,19 @@ export default function EconomicsRedirectPage() {
 
   // minimal fallback για να μην είναι blank screen
   return (
-    <div
-      style={{
-        minHeight: '100dvh',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        fontWeight: 800,
-        color: '#64748b',
-      }}
-    >
-      Φόρτωση Οικονομικού Κέντρου...
-    </div>
+    <EconomicsShell storeId={storeId} activeRoute="home" showBottomNav={false}>
+      <div
+        style={{
+          minHeight: '100dvh',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          fontWeight: 800,
+          color: '#64748b',
+        }}
+      >
+        Φόρτωση Οικονομικού Κέντρου...
+      </div>
+    </EconomicsShell>
   )
 }
