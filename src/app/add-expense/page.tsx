@@ -1033,7 +1033,7 @@ function AddExpenseForm() {
 
       const lastZ = await checkBalanceLock()
       const isDateLockedByZ = !!(lastZ && expenseDate <= lastZ)
-      if (!isExpense && isDateLockedByZ) {
+      if (isDateLockedByZ) {
         toast.error(`Η ημερομηνία είναι κλειδωμένη (τελευταίο Z: ${lastZ})`)
         return
       }

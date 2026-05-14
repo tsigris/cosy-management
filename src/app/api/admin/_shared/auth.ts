@@ -105,6 +105,49 @@ export async function assertAdminAccess(
   return null
 }
 
+/**
+ * Phase 1 – store-membership guard for non-admin API routes (import, match, etc.).
+ *
+ * Validates the request JWT from the `x-supabase-auth` header and confirms the
+ * caller has ANY row in store_access for the given store (any role, any permission).
+ *
+ * Returns:
+ *   • null              – caller is authenticated AND is a member of the store.
+ *   • NextResponse 401  – missing / invalid JWT.
+ *   • NextResponse 403  – valid JWT but caller has no store_access row for storeId.
+ *
+ * Throws on unexpected Supabase errors so the caller's catch block handles them.
+ */
+export async function requireStoreMember(
+  request: NextRequest,
+  storeId: string,
+): Promise<{ userId: string } | NextResponse> {
+  const user = await getCallerFromHeader(request)
+  if (!user) {
+    return NextResponse.json({ ok: false, error: 'Απαιτείται σύνδεση.' }, { status: 401 })
+  }
+
+  const adminClient = getAdminClient()
+  const { data, error } = await adminClient
+    .from('store_access')
+    .select('store_id')
+    .eq('user_id', user.id)
+    .eq('store_id', storeId)
+    .limit(1)
+    .maybeSingle()
+
+  if (error) throw error
+
+  if (!data) {
+    return NextResponse.json(
+      { ok: false, error: 'Δεν έχετε πρόσβαση σε αυτό το κατάστημα.' },
+      { status: 403 },
+    )
+  }
+
+  return { userId: user.id }
+}
+
 // ---------------------------------------------------------------------------
 // Error mapping
 // ---------------------------------------------------------------------------

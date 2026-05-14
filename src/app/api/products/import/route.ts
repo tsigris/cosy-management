@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/server/supabaseAdmin'
 import { importProductsBatch } from '@/lib/productsModule'
+import { requireStoreMember } from '@/app/api/admin/_shared/auth'
 
 export const runtime = 'nodejs'
 
@@ -15,6 +16,10 @@ export async function POST(request: NextRequest) {
     if (!store_id) {
       return NextResponse.json({ error: 'Missing store_id' }, { status: 400 })
     }
+
+    // Phase 1 – auth guard: caller must be authenticated and a member of this store
+    const authResult = await requireStoreMember(request, store_id)
+    if (authResult instanceof NextResponse) return authResult
 
     if (rows.length === 0) {
       return NextResponse.json({ error: 'No rows provided' }, { status: 400 })
