@@ -67,6 +67,86 @@ function formatAmount(value?: number): string {
   return `${value >= 0 ? '' : '-'}${Math.abs(value).toLocaleString('el-GR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`
 }
 
+// ─── Context derivations (pure — from existing DTO fields) ─────────────────
+
+type DayContext = {
+  txCount: number
+  topIncomeTx: { amount: number; category: string | null } | null
+  topExpenseCategory: string | null
+}
+
+function deriveDayContext(detail: EconomicsDayDetailDto): DayContext {
+  const txs = detail.transactions
+  const incomes  = txs.filter((t) => t.isCredit === true)
+  const expenses = txs.filter((t) => t.isCredit !== true)
+
+  // Biggest income transaction
+  const topIncome = incomes.reduce<typeof incomes[0] | null>((best, t) =>
+    best === null || t.amount > best.amount ? t : best, null)
+
+  // Most frequent expense category
+  const catCounts: Record<string, number> = {}
+  for (const t of expenses) {
+    const cat = t.category ?? t.type ?? 'Άλλο'
+    catCounts[cat] = (catCounts[cat] ?? 0) + 1
+  }
+  const topExpenseCat = Object.entries(catCounts).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null
+
+  return {
+    txCount: txs.length,
+    topIncomeTx: topIncome ? { amount: topIncome.amount, category: topIncome.category ?? null } : null,
+    topExpenseCategory: topExpenseCat,
+  }
+}
+
+// ─── Context section ─────────────────────────────────────────────────────────
+
+function DayContextSection({ detail }: { detail: EconomicsDayDetailDto }) {
+  const ctx = deriveDayContext(detail)
+  if (ctx.txCount === 0) return null
+
+  return (
+    <div
+      style={{
+        margin: `${economicsSpacing.md}px 0`,
+        padding: `${economicsSpacing.sm}px ${economicsSpacing.md}px`,
+        borderRadius: 12,
+        background: economicsColorTokens.surface,
+        border: `1px solid ${economicsColorTokens.border}`,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 4,
+      }}
+    >
+      <div style={{ fontSize: 10, fontWeight: 900, letterSpacing: '0.07em', textTransform: 'uppercase', color: economicsColorTokens.muted, marginBottom: 4 }}>
+        Ανάλυση ημέρας
+      </div>
+
+      {/* Transaction count */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <span style={{ fontSize: 12, color: economicsColorTokens.muted, fontWeight: 600 }}>Αριθμός συναλλαγών</span>
+        <span style={{ fontSize: 13, fontWeight: 800, color: economicsColorTokens.text }}>{ctx.txCount}</span>
+      </div>
+
+      {/* Biggest income transaction */}
+      {ctx.topIncomeTx && (
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span style={{ fontSize: 12, color: economicsColorTokens.muted, fontWeight: 600 }}>Μεγαλύτερη είσπραξη</span>
+          <span style={{ fontSize: 13, fontWeight: 800, color: economicsColorTokens.positive }}>{formatAmount(ctx.topIncomeTx.amount)}</span>
+        </div>
+      )}
+
+      {/* Top expense category */}
+      {ctx.topExpenseCategory && (
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span style={{ fontSize: 12, color: economicsColorTokens.muted, fontWeight: 600 }}>Κύρια κατηγορία εξόδων</span>
+          <span style={{ fontSize: 12, fontWeight: 700, color: economicsColorTokens.warning }}>{ctx.topExpenseCategory}</span>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── Day summary section ────────────────────────────────────────────────────
 
 type DaySummaryContentProps = {
@@ -202,6 +282,7 @@ function EconomicsDayDrawerInner({ selectedDay, detail, loading = false }: Econo
       {/* Summary is isolated — async failures here do NOT crash the calendar */}
       <AsyncBoundary area="drawer">
         <DaySummaryContent detail={detail} loading={loading} />
+        {detail && <DayContextSection detail={detail} />}
         <TransactionList detail={detail} />
       </AsyncBoundary>
     </BottomSheetFrame>

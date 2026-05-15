@@ -72,6 +72,20 @@ function EconomicsCalendarCellInner({ day, isSelected, onSelect }: EconomicsCale
   const dayNumber = day.label ?? String(parseInt(day.date.slice(8, 10), 10))
   const revenueHint = fmtCompact(day.revenue)
 
+  // Derived operational signals from existing DTO fields
+  const isHighExpense =
+    !isDisabled &&
+    day.expenses !== undefined &&
+    day.revenue !== undefined &&
+    day.revenue > 0 &&
+    (day.expenses / day.revenue) > 0.72
+
+  const isProfitNegative =
+    !isDisabled &&
+    day.profit !== undefined &&
+    day.profit < 0 &&
+    day.status !== 'weak' // 'weak' already handles this visually
+
   return (
     <button
       type="button"
@@ -153,7 +167,39 @@ function EconomicsCalendarCellInner({ day, isSelected, onSelect }: EconomicsCale
           }}
         />
       )}
+      {/* High-expense indicator — bottom-right orange dot */}
+      {isHighExpense && !day.hasAnomaly && (
+        <span
+          aria-hidden="true"
+          style={{
+            position: 'absolute',
+            top: 5,
+            right: 5,
+            width: 4,
+            height: 4,
+            borderRadius: '50%',
+            background: economicsColorTokens.warning,
+            opacity: 0.8,
+          }}
+        />
+      )}
 
+      {/* Profit-negative signal — red bar overlay at top */}
+      {isProfitNegative && (
+        <span
+          aria-hidden="true"
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            height: 2,
+            background: economicsColorTokens.negative,
+            opacity: 0.6,
+            borderRadius: '8px 8px 0 0',
+          }}
+        />
+      )}
       {/* Status colour bar β€” bottom edge */}
       {palette.indicator !== 'transparent' && (
         <span

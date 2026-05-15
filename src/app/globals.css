@@ -1,8 +1,36 @@
 @import "tailwindcss";
 
-/* ----------------------------------------- */
-/* Manage Lists search input: hide native icons */
-/* ----------------------------------------- */
+/* ─── Economics module: skeleton shimmer ─── */
+@keyframes economics-shimmer {
+  0%   { background-position: -400px 0; }
+  100% { background-position:  400px 0; }
+}
+
+.economics-skeleton-line {
+  background: linear-gradient(
+    90deg,
+    rgba(148,163,184,0.13) 0%,
+    rgba(148,163,184,0.28) 40%,
+    rgba(148,163,184,0.13) 100%
+  );
+  background-size: 800px 100%;
+  animation: economics-shimmer 1.5s ease-in-out infinite;
+  border-radius: 6px;
+}
+
+/* ─── Economics: smooth card transitions ─── */
+.economics-card-stable {
+  transition: opacity 180ms ease, transform 180ms ease;
+  will-change: opacity;
+}
+
+/* ─── Economics: touch feedback ─── */
+.economics-touch-cell:active {
+  opacity: 0.75;
+  transform: scale(0.96);
+}
+
+/* ─── Manage Lists search input: hide native icons ─── */
 
 .searchInputNoNativeIcons {
   -webkit-appearance: none;
