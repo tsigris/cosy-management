@@ -6,6 +6,7 @@ import { EconomicsBottomNav } from './EconomicsBottomNav'
 import { useEconomicsShell } from './EconomicsShellProvider'
 import { mapShellNavigation } from '@/lib/economics/adapters/mapShellNavigation'
 import type { EconomicsNavigationItemDto } from '@/lib/economics/types/economicsDto'
+import { AsyncBoundary, LoadingSkeleton } from '@/components/economics/primitives'
 
 type EconomicsShellLayoutProps = {
   children: React.ReactNode
@@ -38,7 +39,9 @@ export default function EconomicsShellLayout({
   return (
     <div className={className} style={style}>
       <EconomicsContainer>
-        {children}
+        <AsyncBoundary area="shell" loadingFallback={<LoadingSkeleton lines={2} label="Φόρτωση shell" />}>
+          {children}
+        </AsyncBoundary>
       </EconomicsContainer>
       <EconomicsBottomNav
         items={navItems}

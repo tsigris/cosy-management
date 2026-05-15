@@ -20,7 +20,7 @@ export default function EconomicsRedirectPage() {
 
   // minimal fallback για να μην είναι blank screen
   return (
-    <EconomicsShell storeId={storeId} activeRoute="home" showBottomNav={false}>
+    <EconomicsShell showBottomNav={false}>
       <div
         style={{
           minHeight: '100dvh',
