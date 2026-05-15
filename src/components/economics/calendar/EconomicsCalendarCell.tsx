@@ -5,16 +5,50 @@ import type { EconomicsCalendarDayDto } from '@/lib/economics/types/economicsDto
 import { economicsColorTokens } from '@/components/economics/primitives/tokens'
 
 // Maps DTO status to visual tone.
-// scan-first: color carries the signal, no dense metrics, no charts.
+// scan-first: color carries the signal without dense metrics.
 const STATUS_PALETTE: Record<
   NonNullable<EconomicsCalendarDayDto['status']> | 'default',
-  { background: string; border: string; indicator: string }
+  { background: string; border: string; indicator: string; label: string }
 > = {
-  strong:  { background: 'rgba(16,185,129,0.10)',  border: '#10b981', indicator: '#10b981' },
-  weak:    { background: 'rgba(239,68,68,0.09)',   border: '#ef4444', indicator: '#ef4444' },
-  neutral: { background: 'rgba(148,163,184,0.08)', border: economicsColorTokens.border, indicator: economicsColorTokens.muted },
-  empty:   { background: 'rgba(148,163,184,0.04)', border: 'transparent', indicator: 'transparent' },
-  default: { background: economicsColorTokens.surface, border: economicsColorTokens.border, indicator: 'transparent' },
+  strong:  {
+    background: economicsColorTokens.dayStrongBg,
+    border: economicsColorTokens.dayStrongBorder,
+    indicator: economicsColorTokens.dayStrong,
+    label: economicsColorTokens.dayStrong,
+  },
+  weak:    {
+    background: economicsColorTokens.dayWeakBg,
+    border: economicsColorTokens.dayWeakBorder,
+    indicator: economicsColorTokens.dayWeak,
+    label: economicsColorTokens.dayWeak,
+  },
+  neutral: {
+    background: economicsColorTokens.dayNeutralBg,
+    border: economicsColorTokens.dayNeutralBorder,
+    indicator: economicsColorTokens.muted,
+    label: economicsColorTokens.muted,
+  },
+  empty:   {
+    background: economicsColorTokens.dayEmptyBg,
+    border: 'transparent',
+    indicator: 'transparent',
+    label: 'transparent',
+  },
+  default: {
+    background: economicsColorTokens.surface,
+    border: economicsColorTokens.border,
+    indicator: 'transparent',
+    label: 'transparent',
+  },
+}
+
+// Compact revenue label: 1.2k, 2.4k etc.
+function fmtCompact(value?: number): string | null {
+  if (value === undefined || value === null || value === 0) return null
+  if (Math.abs(value) >= 1000) {
+    return `${(value / 1000).toLocaleString('el-GR', { minimumFractionDigits: 0, maximumFractionDigits: 1 })}k`
+  }
+  return value.toLocaleString('el-GR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
 }
 
 type EconomicsCalendarCellProps = {
@@ -27,13 +61,16 @@ function EconomicsCalendarCellInner({ day, isSelected, onSelect }: EconomicsCale
   const statusKey = day.status ?? 'default'
   const palette = STATUS_PALETTE[statusKey]
 
-  const background = isSelected ? 'rgba(59,130,246,0.14)' : palette.background
-  const border     = isSelected ? economicsColorTokens.neutral : palette.border
+  const background = isSelected ? 'rgba(59,130,246,0.16)' : palette.background
+  const border     = isSelected
+    ? '#3b82f6'
+    : day.isToday && !isSelected
+      ? `${economicsColorTokens.positive}`
+      : palette.border
 
   const isDisabled = day.status === 'empty'
-
-  // Parse label from date (DD) if no explicit label provided
   const dayNumber = day.label ?? String(parseInt(day.date.slice(8, 10), 10))
+  const revenueHint = fmtCompact(day.revenue)
 
   return (
     <button
@@ -58,10 +95,12 @@ function EconomicsCalendarCellInner({ day, isSelected, onSelect }: EconomicsCale
         alignItems: 'flex-start',
         justifyContent: 'flex-start',
         overflow: 'hidden',
-        transition: 'border-color 120ms ease, background 120ms ease',
+        transition: 'border-color 100ms ease, background 100ms ease, transform 80ms ease',
+        boxShadow: isSelected ? '0 0 0 2px rgba(59,130,246,0.30)' : day.isToday ? '0 0 0 2px rgba(5,150,105,0.25)' : 'none',
+        transform: isSelected ? 'scale(0.97)' : 'scale(1)',
       }}
     >
-      {/* Day number — primary label */}
+      {/* Day number */}
       <span
         style={{
           position: 'absolute',
@@ -69,15 +108,38 @@ function EconomicsCalendarCellInner({ day, isSelected, onSelect }: EconomicsCale
           left: 6,
           fontSize: 12,
           fontWeight: day.isToday ? 900 : 700,
-          color: isDisabled ? economicsColorTokens.muted : economicsColorTokens.text,
+          color: isDisabled
+            ? economicsColorTokens.muted
+            : day.isToday
+              ? economicsColorTokens.positive
+              : economicsColorTokens.text,
           lineHeight: 1,
         }}
       >
         {dayNumber}
       </span>
 
-      {/* Today indicator dot */}
-      {day.isToday && (
+      {/* Compact revenue label β€” bottom-left, scan signal */}
+      {revenueHint && !isDisabled && (
+        <span
+          aria-hidden="true"
+          style={{
+            position: 'absolute',
+            bottom: 6,
+            left: 5,
+            fontSize: 9,
+            fontWeight: 800,
+            color: palette.label !== 'transparent' ? palette.label : economicsColorTokens.muted,
+            lineHeight: 1,
+            letterSpacing: '-0.02em',
+          }}
+        >
+          {revenueHint}
+        </span>
+      )}
+
+      {/* Anomaly signal β€” top-right dot */}
+      {day.hasAnomaly && (
         <span
           aria-hidden="true"
           style={{
@@ -87,28 +149,12 @@ function EconomicsCalendarCellInner({ day, isSelected, onSelect }: EconomicsCale
             width: 5,
             height: 5,
             borderRadius: '50%',
-            background: economicsColorTokens.positive,
-          }}
-        />
-      )}
-
-      {/* Anomaly signal */}
-      {day.hasAnomaly && (
-        <span
-          aria-hidden="true"
-          style={{
-            position: 'absolute',
-            bottom: 5,
-            right: 5,
-            width: 5,
-            height: 5,
-            borderRadius: '50%',
             background: economicsColorTokens.warning,
           }}
         />
       )}
 
-      {/* Status colour bar — bottom edge */}
+      {/* Status colour bar β€” bottom edge */}
       {palette.indicator !== 'transparent' && (
         <span
           aria-hidden="true"
@@ -119,6 +165,7 @@ function EconomicsCalendarCellInner({ day, isSelected, onSelect }: EconomicsCale
             right: 0,
             height: 3,
             background: palette.indicator,
+            opacity: 0.7,
             borderRadius: '0 0 8px 8px',
           }}
         />

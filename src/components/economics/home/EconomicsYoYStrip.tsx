@@ -53,20 +53,24 @@ function EconomicsYoYStripInner({ comparison, loading = false }: EconomicsYoYStr
       style={{
         display: 'flex',
         alignItems: 'center',
-        gap: economicsSpacing.md,
-        padding: `${economicsSpacing.sm}px ${economicsSpacing.md}px`,
-        borderRadius: 12,
-        border: `1px solid ${economicsColorTokens.border}`,
-        background: economicsColorTokens.surface,
+        gap: 12,
+        padding: '14px 16px',
+        borderRadius: 14,
+        border: `1px solid ${delta > 0 ? economicsColorTokens.positiveMid : delta < 0 ? economicsColorTokens.negativeMid : economicsColorTokens.border}`,
+        background: delta > 0
+          ? economicsColorTokens.positiveLight
+          : delta < 0
+            ? economicsColorTokens.negativeLight
+            : economicsColorTokens.surface,
         flexWrap: 'wrap',
       }}
     >
-      {/* Period labels */}
+      {/* Period label */}
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 10, fontWeight: 900, letterSpacing: '0.06em', textTransform: 'uppercase', color: economicsColorTokens.muted }}>
-          Σύγκριση ΥoΥ
+        <div style={{ fontSize: 10, fontWeight: 900, letterSpacing: '0.07em', textTransform: 'uppercase', color: economicsColorTokens.muted }}>
+          YoY
         </div>
-        <div style={{ fontSize: 12, fontWeight: 700, color: economicsColorTokens.text, marginTop: 2 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: economicsColorTokens.text, marginTop: 2 }}>
           {comparison.periodLabel ?? '—'}
           {comparison.previousPeriodLabel
             ? <span style={{ color: economicsColorTokens.muted }}> vs {comparison.previousPeriodLabel}</span>
@@ -77,27 +81,28 @@ function EconomicsYoYStripInner({ comparison, loading = false }: EconomicsYoYStr
       {/* Current total */}
       <div style={{ textAlign: 'right' }}>
         <div style={{ fontSize: 10, color: economicsColorTokens.muted, fontWeight: 700, textTransform: 'uppercase' }}>
-          Τρέχουσα
+          Current
         </div>
-        <div style={{ fontSize: 13, fontWeight: 800, color: economicsColorTokens.text }}>
+        <div style={{ fontSize: 16, fontWeight: 900, color: economicsColorTokens.text, letterSpacing: '-0.02em' }}>
           {fmtAmount(comparison.currentTotal)}
         </div>
       </div>
 
-      {/* Delta */}
+      {/* Delta badge */}
       {(deltaPct !== undefined && deltaPct !== null) && (
         <div
           style={{
             display: 'flex',
             alignItems: 'center',
-            gap: 4,
-            padding: `3px ${economicsSpacing.xs}px`,
-            borderRadius: 8,
-            background: `${tone}18`,
+            gap: 3,
+            padding: '5px 10px',
+            borderRadius: 999,
+            background: `${tone}22`,
+            border: `1px solid ${tone}44`,
           }}
         >
-          <span style={{ fontSize: 13, fontWeight: 900, color: tone }}>{directionMark}</span>
-          <span style={{ fontSize: 12, fontWeight: 800, color: tone }}>{pctText}</span>
+          <span style={{ fontSize: 15, fontWeight: 900, color: tone }}>{directionMark}</span>
+          <span style={{ fontSize: 13, fontWeight: 800, color: tone }}>{pctText}</span>
         </div>
       )}
     </div>

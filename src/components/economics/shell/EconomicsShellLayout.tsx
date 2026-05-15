@@ -43,20 +43,19 @@ function ShellHeader({ pathname }: { pathname: string | null }) {
         position: 'sticky',
         top: 0,
         zIndex: 30,
-        padding: '14px 0 10px',
-        background: 'var(--surface, #fff)',
-        borderBottom: '1px solid var(--border, #e2e8f0)',
-        backdropFilter: 'blur(10px)',
-        marginBottom: 16,
+        padding: '16px 0 12px',
+        background: 'var(--surface, rgba(255,255,255,0.95))',
+        backdropFilter: 'blur(12px)',
+        marginBottom: 12,
       }}
     >
       <div
         style={{
-          fontSize: 22,
+          fontSize: 26,
           fontWeight: 900,
-          letterSpacing: '-0.02em',
+          letterSpacing: '-0.03em',
           color: 'var(--text)',
-          lineHeight: 1.1,
+          lineHeight: 1.05,
         }}
       >
         {section}

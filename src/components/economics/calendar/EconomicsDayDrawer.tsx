@@ -33,13 +33,13 @@ function SummaryRow({ label, value, tone = 'muted', primary = false }: SummaryRo
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        padding: `${economicsSpacing.sm}px 0`,
+        padding: `${primary ? 14 : 10}px 0`,
         borderBottom: `1px solid ${economicsColorTokens.border}`,
       }}
     >
       <span
         style={{
-          fontSize: primary ? 14 : 13,
+          fontSize: primary ? 15 : 13,
           fontWeight: primary ? 800 : 600,
           color: economicsColorTokens.text,
         }}
@@ -48,9 +48,10 @@ function SummaryRow({ label, value, tone = 'muted', primary = false }: SummaryRo
       </span>
       <span
         style={{
-          fontSize: primary ? 15 : 13,
-          fontWeight: primary ? 900 : 700,
-          color,
+          fontSize: primary ? 20 : 14,
+          fontWeight: 900,
+          color: primary && tone !== 'muted' ? color : color,
+          letterSpacing: primary ? '-0.02em' : 0,
         }}
       >
         {value}
