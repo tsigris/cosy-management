@@ -10,10 +10,10 @@ export default function EconomicsRedirectPage() {
   const storeId = searchParams.get('store')
 
   useEffect(() => {
-    // ασφαλές redirect στο default tab (cashflow)
+    // redirect to new primary home surface
     const nextPath = storeId
-      ? `/economics/income?store=${encodeURIComponent(storeId)}`
-      : '/economics/income'
+      ? `/economics/home?store=${encodeURIComponent(storeId)}`
+      : '/economics/home'
 
     router.replace(nextPath)
   }, [router, storeId])
