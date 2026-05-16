@@ -403,6 +403,30 @@ export async function POST(request: NextRequest) {
     })
     partialComparisonPayload = payload
 
+    // CRITICAL TRACE LOG: API Response Serialization
+    console.info('[api/analysis/comparison] CANONICAL_PAYLOAD_TRACE - RESPONSE_SERIALIZATION', {
+      tracePhase: 'api-response-ready',
+      storeId,
+      userId: user.id,
+      requestPeriod: `${fromDate} to ${toDate}`,
+      comparisonPeriod: `${payload.periods.previous.from} to ${payload.periods.previous.to}`,
+      payload: {
+        periods: payload.periods,
+        summary: {
+          totalRevenue: payload.summary.totalRevenue,
+          expenses: payload.summary.expenses,
+          profit: payload.summary.profit,
+          cashRevenue: payload.summary.cashRevenue,
+          cardRevenue: payload.summary.cardRevenue,
+        },
+        daily: {
+          count: payload.daily.length,
+          first: payload.daily[0] || null,
+          last: payload.daily[payload.daily.length - 1] || null,
+        },
+      },
+    })
+
     stage = 'response:serialize-success'
 
     const response = NextResponse.json(payload, {

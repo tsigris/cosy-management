@@ -95,6 +95,34 @@ export function useAnalysisComparison({
 
         if (cancelled || requestId !== requestIdRef.current) return
 
+        // CRITICAL TRACE LOG: Adapter Mapping & UI Props
+        console.info('[useAnalysisComparison] CANONICAL_PAYLOAD_TRACE - ADAPTER_MAPPING_AND_UI', {
+          tracePhase: 'hook-adapter-complete',
+          storeId,
+          userId: 'unknown',
+          requestPeriod: `${fromDate} to ${toDate}`,
+          comparisonPeriod: `${payload.periods.previous.from} to ${payload.periods.previous.to}`,
+          adapter_mapped_dto: {
+            periods: payload.periods,
+            summary: {
+              totalRevenue: payload.summary.totalRevenue,
+              expenses: payload.summary.expenses,
+              profit: payload.summary.profit,
+            },
+            daily_count: payload.daily.length,
+            first_daily_row_props: payload.daily[0] || null,
+          },
+          ui_binding: {
+            will_render_comparison: Boolean(payload?.summary),
+            will_show_daily_rows: payload?.daily?.length > 0,
+            metric_cards_available: {
+              totalRevenue: Boolean(payload?.summary?.totalRevenue),
+              expenses: Boolean(payload?.summary?.expenses),
+              profit: Boolean(payload?.summary?.profit),
+            },
+          },
+        })
+
         // Debug: Log successful comparison response
         if (process.env.NODE_ENV !== 'production') {
           console.debug('[useAnalysisComparison] Comparison data loaded', {

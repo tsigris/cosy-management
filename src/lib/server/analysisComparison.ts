@@ -442,5 +442,43 @@ export async function buildFinancialComparison(
     })
   }
 
+  // CRITICAL TRACE LOG: Canonical comparison payload for debugging
+  console.info('[comparison/build] CANONICAL_PAYLOAD_TRACE - END_TO_END_FLOW', {
+    tracePhase: 'aggregation-complete',
+    storeId,
+    selectedPeriodDates: `${current.from} to ${current.to}`,
+    comparisonPeriodDates: `${previous.from} to ${previous.to}`,
+    canonical: {
+      current_totals: {
+        revenue: currentAggregate.totalRevenue,
+        expenses: currentAggregate.expenses,
+        profit: currentAggregate.profit,
+        z_totals: currentAggregate.zTotals,
+      },
+      previous_totals: {
+        revenue: previousAggregate.totalRevenue,
+        expenses: previousAggregate.expenses,
+        profit: previousAggregate.profit,
+        z_totals: previousAggregate.zTotals,
+      },
+      computed_delta: {
+        revenue_delta: currentAggregate.totalRevenue - previousAggregate.totalRevenue,
+        revenue_delta_pct: previousAggregate.totalRevenue === 0 ? null : ((currentAggregate.totalRevenue - previousAggregate.totalRevenue) / previousAggregate.totalRevenue) * 100,
+        expenses_delta: currentAggregate.expenses - previousAggregate.expenses,
+        profit_delta: currentAggregate.profit - previousAggregate.profit,
+      },
+    },
+    response_payload: {
+      periods: response.periods,
+      summary: {
+        totalRevenue: response.summary.totalRevenue,
+        expenses: response.summary.expenses,
+        profit: response.summary.profit,
+      },
+      daily_count: response.daily.length,
+      first_daily_row: response.daily[0] || null,
+    },
+  })
+
   return response
 }
