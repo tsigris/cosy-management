@@ -34,10 +34,18 @@ export type FinancialComparisonDayRow = {
   label: string
   currentDate: string
   previousDate: string
+  previousHasData: boolean
   currentWeekday: string
   previousWeekday: string
   currentRevenue: number
   previousRevenue: number
+  currentExpenses: number
+  previousExpenses: number
+  currentProfit: number
+  previousProfit: number
+  revenueDeltaPct: number | null
+  expensesDeltaPct: number | null
+  profitDeltaPct: number | null
   currentZTotal: number
   previousZTotal: number
   currentCumulativeRevenue: number

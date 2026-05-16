@@ -1,6 +1,9 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import {
   aggregateCanonicalFinancialMetrics,
+  isExpenseTransaction,
+  isRevenueTransaction,
+  toAmount,
   type CanonicalFinancialRow,
 } from '@/lib/canonicalFinancialMetrics'
 import {
@@ -42,7 +45,10 @@ type PeriodAggregate = {
   zTotals: number
   creditTotals: number
   revenueByDate: Record<string, number>
+  expensesByDate: Record<string, number>
+  profitByDate: Record<string, number>
   zByDate: Record<string, number>
+  rowCountByDate: Record<string, number>
 }
 
 function toNumber(value: unknown): number {
@@ -121,6 +127,25 @@ async function loadPeriodAggregate(
     payrollPct: toNumber(payroll.payroll_pct),
   })
 
+  const expensesByDate: Record<string, number> = {}
+  const rowCountByDate: Record<string, number> = {}
+
+  for (const row of rows) {
+    rowCountByDate[row.date] = toNumber(rowCountByDate[row.date]) + 1
+    if (isExpenseTransaction(row)) {
+      expensesByDate[row.date] = toNumber(expensesByDate[row.date]) + Math.abs(toAmount(row.amount))
+    }
+  }
+
+  const profitByDate: Record<string, number> = {}
+  const dateKeys = new Set<string>([
+    ...Object.keys(summary.revenueByDate),
+    ...Object.keys(expensesByDate),
+  ])
+  for (const dateKey of dateKeys) {
+    profitByDate[dateKey] = toNumber(summary.revenueByDate[dateKey]) - toNumber(expensesByDate[dateKey])
+  }
+
   return {
     range: normalizedRange,
     days,
@@ -137,7 +162,10 @@ async function loadPeriodAggregate(
     zTotals: summary.zTotals,
     creditTotals: summary.credits,
     revenueByDate: summary.revenueByDate,
+    expensesByDate,
+    profitByDate,
     zByDate: summary.zByDate,
+    rowCountByDate,
   }
 }
 
@@ -153,8 +181,17 @@ function buildDailyRows(current: PeriodAggregate, previous: PeriodAggregate): Fi
     const previousDate = previousKeys[index] || previous.range.from
     const currentRevenue = toNumber(current.revenueByDate[currentDate])
     const previousRevenue = toNumber(previous.revenueByDate[previousDate])
+    const currentExpenses = toNumber(current.expensesByDate[currentDate])
+    const previousExpenses = toNumber(previous.expensesByDate[previousDate])
+    const currentProfit = toNumber(current.profitByDate[currentDate])
+    const previousProfit = toNumber(previous.profitByDate[previousDate])
     const currentZTotal = toNumber(current.zByDate[currentDate])
     const previousZTotal = toNumber(previous.zByDate[previousDate])
+    const previousHasData = toNumber(previous.rowCountByDate[previousDate]) > 0
+
+    const revenueComparison = buildComparisonMetric(currentRevenue, previousRevenue)
+    const expenseComparison = buildComparisonMetric(currentExpenses, previousExpenses)
+    const profitComparison = buildComparisonMetric(currentProfit, previousProfit)
 
     currentCumulativeRevenue += currentRevenue
     previousCumulativeRevenue += previousRevenue
@@ -164,10 +201,18 @@ function buildDailyRows(current: PeriodAggregate, previous: PeriodAggregate): Fi
       label: formatShortDateKey(currentDate),
       currentDate,
       previousDate,
+      previousHasData,
       currentWeekday: getWeekdayLabel(currentDate),
       previousWeekday: getWeekdayLabel(previousDate),
       currentRevenue,
       previousRevenue,
+      currentExpenses,
+      previousExpenses,
+      currentProfit,
+      previousProfit,
+      revenueDeltaPct: revenueComparison.deltaPct,
+      expensesDeltaPct: expenseComparison.deltaPct,
+      profitDeltaPct: profitComparison.deltaPct,
       currentZTotal,
       previousZTotal,
       currentCumulativeRevenue,

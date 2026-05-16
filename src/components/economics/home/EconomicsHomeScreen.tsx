@@ -336,7 +336,7 @@ function ComparisonLine({
 }
 
 function HistoryRow({ row }: { row: EconomicsHistoryRowDto }) {
-  const hasComparison = row.revenuePrevYear !== undefined && row.revenuePrevYear !== null
+  const hasComparison = row.hasPreviousYearData === true
 
   return (
     <div
@@ -357,17 +357,49 @@ function HistoryRow({ row }: { row: EconomicsHistoryRowDto }) {
             color:
               !hasComparison
                 ? economicsColorTokens.muted
-                : (row.revenue || 0) >= (row.revenuePrevYear || 0)
+                : (row.revenueDeltaPct || 0) >= 0
                   ? economicsColorTokens.positive
                   : economicsColorTokens.negative,
           }}
         >
-          {hasComparison ? `vs πέρυσι: ${formatAmount(row.revenuePrevYear)}` : 'No comparison data'}
+          {hasComparison
+            ? `vs ${row.previousYearDate ? formatShortDateKey(row.previousYearDate) : 'πέρυσι'}`
+            : 'No previous-year data'}
         </div>
       </div>
-      <div style={{ fontSize: 12, color: economicsColorTokens.text }}>
-        Τζίρος {formatAmount(row.revenue)} | Έξοδα {formatAmount(row.expenses)} | Καθαρό {formatAmount(row.profit)}
-      </div>
+
+      <div style={{ fontSize: 12, color: economicsColorTokens.text }}>Τζίρος: {formatAmount(row.revenue)}</div>
+      <div style={{ fontSize: 12, color: economicsColorTokens.text }}>Έξοδα: {formatAmount(row.expenses)}</div>
+      <div style={{ fontSize: 12, color: economicsColorTokens.text }}>Καθαρό: {formatAmount(row.profit)}</div>
+
+      {hasComparison ? (
+        <>
+          <div style={{ fontSize: 11, fontWeight: 800, color: economicsColorTokens.muted, marginTop: 2 }}>
+            vs {row.previousYearDate ? formatShortDateKey(row.previousYearDate) : 'πέρυσι'}
+          </div>
+          <div style={{ fontSize: 11, color: economicsColorTokens.muted }}>
+            Τζίρος: {formatAmount(row.revenuePrevYear)} | Έξοδα: {formatAmount(row.expensesPrevYear)} | Καθαρό:{' '}
+            {formatAmount(row.profitPrevYear)}
+          </div>
+          <div
+            style={{
+              fontSize: 11,
+              fontWeight: 900,
+              color:
+                row.revenueDeltaPct === null || row.revenueDeltaPct === undefined
+                  ? economicsColorTokens.muted
+                  : row.revenueDeltaPct >= 0
+                    ? economicsColorTokens.positive
+                    : economicsColorTokens.negative,
+            }}
+          >
+            Μεταβολή: {formatPct(row.revenueDeltaPct)}
+          </div>
+        </>
+      ) : (
+        <div style={{ fontSize: 11, color: economicsColorTokens.muted, marginTop: 2 }}>No previous-year data</div>
+      )}
+
       <div style={{ fontSize: 11, color: economicsColorTokens.muted }}>
         Μετρητά {formatAmount(row.cashRevenue)} | Κάρτα {formatAmount(row.cardRevenue)}
       </div>

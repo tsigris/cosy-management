@@ -152,6 +152,13 @@ export function IncomeRouteAdapter() {
         return {
           ...row,
           revenuePrevYear: dailyComparison?.previousRevenue,
+          expensesPrevYear: dailyComparison?.previousExpenses,
+          profitPrevYear: dailyComparison?.previousProfit,
+          revenueDeltaPct: dailyComparison?.revenueDeltaPct,
+          expensesDeltaPct: dailyComparison?.expensesDeltaPct,
+          profitDeltaPct: dailyComparison?.profitDeltaPct,
+          previousYearDate: dailyComparison?.previousDate,
+          hasPreviousYearData: dailyComparison?.previousHasData,
         }
       }),
     [historyRows, dailyComparisonMap],

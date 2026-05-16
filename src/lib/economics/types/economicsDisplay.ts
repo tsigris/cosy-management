@@ -70,6 +70,11 @@ export type EconomicsHistoryRowDto = {
   revenuePrevYear?: number
   expensesPrevYear?: number
   profitPrevYear?: number
+  revenueDeltaPct?: number | null
+  expensesDeltaPct?: number | null
+  profitDeltaPct?: number | null
+  previousYearDate?: string
+  hasPreviousYearData?: boolean
 }
 
 /**
