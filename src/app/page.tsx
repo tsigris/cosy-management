@@ -235,7 +235,8 @@ function DashboardContent() {
   const businessTodayStr = useMemo(() => getTodayDateISO(), [])
   const businessYear = useMemo(() => String(businessTodayStr).slice(0, 4), [businessTodayStr])
   const yearStartStr = useMemo(() => `${businessYear}-01-01`, [businessYear])
-  const formattedToday = formatDateDMY(new Date())
+  const formattedSelectedDate = formatDateDMY(selectedDate)
+  const isToday = selectedDate === getTodayDateISO()
 
   const getEntityKeyFromTx = (t: DashboardTransaction) => {
     const description = String(t?.description || t?.notes || '')
@@ -674,12 +675,27 @@ function DashboardContent() {
     return rows
   }, [transactions, zTransactions, isZTransaction, selectedDate])
 
-  const changeDate = useCallback((days: number) => {
-    const current = parseISO(selectedDate)
-    const next = days > 0 ? addDays(current, 1) : subDays(current, 1)
-    router.push(`/?date=${format(next, 'yyyy-MM-dd')}&store=${storeIdFromUrl}`, { scroll: false })
-    setExpandedTx(null)
-  }, [selectedDate, router, storeIdFromUrl])
+  const navigateToDate = useCallback(
+    (nextDate: string) => {
+      if (!nextDate || nextDate === selectedDate) return
+      router.push(`/?date=${nextDate}&store=${storeIdFromUrl}`, { scroll: false })
+      setExpandedTx(null)
+    },
+    [selectedDate, router, storeIdFromUrl],
+  )
+
+  const changeDate = useCallback(
+    (days: number) => {
+      const current = parseISO(selectedDate)
+      const next = days > 0 ? addDays(current, 1) : subDays(current, 1)
+      navigateToDate(format(next, 'yyyy-MM-dd'))
+    },
+    [navigateToDate, selectedDate],
+  )
+
+  const jumpToToday = useCallback(() => {
+    navigateToDate(getTodayDateISO())
+  }, [navigateToDate])
 
   const money = (n: number | string | null | undefined) => formatAmount(Number(n) || 0)
 
@@ -777,11 +793,21 @@ function DashboardContent() {
         <button onClick={() => changeDate(-1)} style={dateNavBtn}>
           <ChevronLeft size={24} />
         </button>
-        <div style={{ textAlign: 'center' }}>
+        <div style={dateCardCenter}>
+          <input
+            type="date"
+            value={selectedDate}
+            onChange={(event) => navigateToDate(event.target.value)}
+            aria-label="Επιλογή ημερομηνίας"
+            style={datePickerInput}
+          />
           <p style={dateText}>{format(parseISO(selectedDate), 'EEEE, d MMMM', { locale: el }).toUpperCase()}</p>
-          <p style={businessHint}>
-            {formattedToday}
-          </p>
+          <p style={businessHint}>{formattedSelectedDate}</p>
+          {!isToday ? (
+            <button type="button" onClick={jumpToToday} style={jumpToTodayBtn}>
+              Jump to today
+            </button>
+          ) : null}
         </div>
         <button onClick={() => changeDate(1)} style={dateNavBtn}>
           <ChevronRight size={24} />
@@ -1156,8 +1182,44 @@ const dateCard: CSSProperties = {
   border: '1px solid var(--border)',
   boxShadow: 'var(--shadow)',
 }
-const dateText: CSSProperties = { fontSize: '13px', fontWeight: '800', color: colors.primaryDark, margin: 0 }
-const businessHint: CSSProperties = { margin: '6px 0 0 0', fontSize: '10px', fontWeight: '800', color: colors.secondaryText, opacity: 0.9 }
+const dateCardCenter: CSSProperties = {
+  position: 'relative',
+  flex: 1,
+  minWidth: 0,
+  textAlign: 'center',
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'center',
+  justifyContent: 'center',
+  padding: '8px 10px',
+}
+const datePickerInput: CSSProperties = {
+  position: 'absolute',
+  inset: 0,
+  width: '100%',
+  height: '100%',
+  opacity: 0,
+  cursor: 'pointer',
+  border: 'none',
+  background: 'transparent',
+  appearance: 'none',
+  WebkitAppearance: 'none',
+}
+const dateText: CSSProperties = { fontSize: '13px', fontWeight: '800', color: colors.primaryDark, margin: 0, lineHeight: 1.15 }
+const businessHint: CSSProperties = { margin: '6px 0 0 0', fontSize: '10px', fontWeight: '800', color: colors.secondaryText, opacity: 0.9, lineHeight: 1.15 }
+const jumpToTodayBtn: CSSProperties = {
+  marginTop: '8px',
+  padding: '6px 10px',
+  borderRadius: '999px',
+  border: '1px solid rgba(99, 102, 241, 0.22)',
+  background: 'rgba(99, 102, 241, 0.08)',
+  color: colors.accentBlue,
+  fontSize: '11px',
+  fontWeight: '800',
+  cursor: 'pointer',
+  position: 'relative',
+  zIndex: 3,
+}
 const dateNavBtn: CSSProperties = { background: 'none', border: 'none', color: colors.secondaryText, cursor: 'pointer', display: 'flex', alignItems: 'center' }
 
 const heroCardStyle: CSSProperties = {
