@@ -24,7 +24,10 @@ export function useEconomicsUrlSyncedState<T>({
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const searchParamsString = searchParams?.toString() || ''
-  const previousSearchParamsStringRef = useRef(searchParamsString)
+
+  // Track state of URL to prevent bidirectional sync loops
+  const lastProcessedUrlRef = useRef<string>('')
+  const syncFromUrlRef = useRef(false)
 
   const getValueFromSearchParams = (source: string) => {
     const parsedParams = new URLSearchParams(source)
@@ -33,21 +36,34 @@ export function useEconomicsUrlSyncedState<T>({
 
   const initialValue = useMemo(
     () => getValueFromSearchParams(searchParamsString),
-    [key, parse, searchParamsString],
+    // Only recompute on mount or if this key/parse/defaultValue changes (not on every URL update)
+    [key, parse, defaultValue],
   )
   const [value, setValue] = useState<T>(initialValue)
 
+  // Effect 1: Read from URL when it changes (and sync to state)
   useEffect(() => {
-    if (previousSearchParamsStringRef.current === searchParamsString) return
-    previousSearchParamsStringRef.current = searchParamsString
+    if (lastProcessedUrlRef.current === searchParamsString) return
+
+    lastProcessedUrlRef.current = searchParamsString
+    syncFromUrlRef.current = true
 
     const nextValue = getValueFromSearchParams(searchParamsString)
     if (!isEqual(value, nextValue)) {
       setValue(nextValue)
     }
-  }, [isEqual, key, parse, searchParamsString, value])
 
+    // Reset flag after microtask
+    queueMicrotask(() => {
+      syncFromUrlRef.current = false
+    })
+  }, [key, parse, searchParamsString, isEqual, value])
+
+  // Effect 2: Write to URL when state changes (but not if we just synced FROM URL)
   useEffect(() => {
+    // If we just synced FROM URL, don't immediately write back to URL
+    if (syncFromUrlRef.current) return
+
     const currentValue = getValueFromSearchParams(searchParamsString)
     if (isEqual(value, currentValue)) return
 

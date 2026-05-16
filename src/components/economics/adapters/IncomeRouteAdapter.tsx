@@ -74,9 +74,29 @@ export function IncomeRouteAdapter() {
       }
     : null
 
+  // Check if comparison data exists and has valid summary (not checking daily rows to avoid false negatives)
   const hasCanonicalComparison = Boolean(
-    comparisonData.data?.daily?.some((row) => row.previousRevenue !== 0 || row.previousZTotal !== 0),
+    comparisonData.data?.summary?.totalRevenue?.previous !== undefined &&
+      comparisonData.data?.summary?.totalRevenue?.current !== undefined,
   )
+
+  if (process.env.NODE_ENV !== 'production') {
+    if (comparisonData.loading || comparisonData.error || !hasCanonicalComparison) {
+      console.debug('[economics/income] Comparison state:', {
+        storeId,
+        period: { from: range.from, to: range.to },
+        isLoading: comparisonData.loading,
+        hasError: Boolean(comparisonData.error),
+        errorMessage: comparisonData.error,
+        hasComparison: hasCanonicalComparison,
+        responseStructure: {
+          hasSummary: Boolean(comparisonData.data?.summary),
+          totalRevenueMetric: comparisonData.data?.summary?.totalRevenue,
+          dailyCount: comparisonData.data?.daily?.length || 0,
+        },
+      })
+    }
+  }
 
   const canonicalRevenueComparison = hasCanonicalComparison
     ? comparisonData.data?.summary?.totalRevenue
@@ -89,6 +109,25 @@ export function IncomeRouteAdapter() {
   const canonicalProfitComparison = hasCanonicalComparison
     ? comparisonData.data?.summary?.profit
     : null
+
+  // Build comparison lookup map for per-day Y-o-Y data
+  const dailyComparisonMap = new Map<string, (typeof comparisonData.data.daily)[number]>()
+  if (hasCanonicalComparison && comparisonData.data?.daily) {
+    for (const dailyRow of comparisonData.data.daily) {
+      dailyComparisonMap.set(dailyRow.currentDate, dailyRow)
+    }
+  }
+
+  // Enrich history rows with per-day comparison data
+  const enrichedHistoryRows = historyRows.map((row) => {
+    const dailyComparison = dailyComparisonMap.get(row.date)
+    return {
+      ...row,
+      revenuePrevYear: dailyComparison?.previousRevenue,
+      expensesPrevYear: dailyComparison ? undefined : undefined,
+      profitPrevYear: undefined,
+    }
+  })
 
   const comparisonStub: EconomicsComparisonDto | null = canonicalRevenueComparison
     ? {
@@ -125,7 +164,7 @@ export function IncomeRouteAdapter() {
     displaySummary.rangeExpensesDeltaPct = canonicalExpensesComparison?.deltaPct
     displaySummary.rangeProfitDeltaPct = canonicalProfitComparison?.deltaPct
     displaySummary.noComparisonData = !hasCanonicalComparison
-    displaySummary.historyRows = historyRows
+    displaySummary.historyRows = enrichedHistoryRows
   }
 
   if (canonical.summary && displaySummary) {

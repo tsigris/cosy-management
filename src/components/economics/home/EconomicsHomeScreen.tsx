@@ -153,9 +153,17 @@ export function EconomicsHomeScreen({
           {comparisonLoading ? (
             <div style={{ fontSize: 12, color: economicsColorTokens.muted }}>Φόρτωση σύγκρισης...</div>
           ) : comparisonError ? (
-            <div style={{ fontSize: 12, color: economicsColorTokens.muted }}>No comparison data</div>
-          ) : noComparisonData || !comparison ? (
-            <div style={{ fontSize: 12, color: economicsColorTokens.muted }}>No comparison data</div>
+            <div style={{ fontSize: 12, color: economicsColorTokens.muted }}>
+              Σφάλμα φόρτωσης: {comparisonError}
+            </div>
+          ) : noComparisonData ? (
+            <div style={{ fontSize: 12, color: economicsColorTokens.muted }}>
+              Δεν υπάρχουν δεδομένα σύγκρισης για την προηγούμενη περίοδο
+            </div>
+          ) : !comparison ? (
+            <div style={{ fontSize: 12, color: economicsColorTokens.muted }}>
+              Δεν υπάρχουν δεδομένα σύγκρισης
+            </div>
           ) : (
             <div style={{ display: 'grid', gap: 6 }}>
               <ComparisonLine

@@ -47,6 +47,16 @@ export function useAnalysisComparison({
           throw new Error('Απαιτείται σύνδεση.')
         }
 
+        // Debug: Log comparison query
+        if (process.env.NODE_ENV !== 'production') {
+          console.debug('[useAnalysisComparison] Fetching comparison data', {
+            storeId,
+            fromDate,
+            toDate,
+            timestamp: new Date().toISOString(),
+          })
+        }
+
         const response = await fetch('/api/analysis/comparison', {
           method: 'POST',
           headers: {
@@ -70,10 +80,35 @@ export function useAnalysisComparison({
 
         if (cancelled || requestId !== requestIdRef.current) return
 
+        // Debug: Log successful comparison response
+        if (process.env.NODE_ENV !== 'production') {
+          console.debug('[useAnalysisComparison] Comparison data loaded', {
+            storeId,
+            fromDate,
+            toDate,
+            hasSummary: Boolean(payload?.summary),
+            totalRevenueComparison: payload?.summary?.totalRevenue,
+            dailyRowsCount: payload?.daily?.length || 0,
+            timestamp: new Date().toISOString(),
+          })
+        }
+
         setData(payload)
       } catch (err) {
         if (cancelled || requestId !== requestIdRef.current) return
         const message = err instanceof Error ? err.message : 'Αποτυχία φόρτωσης σύγκρισης.'
+
+        // Debug: Log comparison error
+        if (process.env.NODE_ENV !== 'production') {
+          console.debug('[useAnalysisComparison] Comparison lookup failed', {
+            storeId,
+            fromDate,
+            toDate,
+            error: message,
+            timestamp: new Date().toISOString(),
+          })
+        }
+
         setError(message)
         setData(null)
       } finally {
