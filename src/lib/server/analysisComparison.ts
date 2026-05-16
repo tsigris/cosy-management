@@ -132,7 +132,7 @@ async function loadPeriodTransactions(
 
   const { data, error } = await supabase
     .from('transactions')
-    .select('date, amount, type, category, method, payment_method, notes, is_credit')
+    .select('date, amount, type, category, method, notes, is_credit')
     .eq('store_id', storeId)
     .gte('date', range.from)
     .lte('date', range.to)
