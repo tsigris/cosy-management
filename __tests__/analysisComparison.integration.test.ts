@@ -45,4 +45,36 @@ describe('analysisComparison integration', () => {
     expect(result.summary.payrollPct.current).toBe(11)
     expect(result.daily.length).toBe(2)
   })
+
+  it('maps 15/05/2026 to 15/05/2025 and returns previous-year totals with delta', async () => {
+    const rows = [
+      { date: '2026-05-15', amount: 1725, type: 'income', category: 'Sales', method: 'Cash', is_credit: false },
+      { date: '2026-05-15', amount: -1337, type: 'expense', category: 'Ops', method: 'Cash', is_credit: false },
+      { date: '2025-05-15', amount: 1420, type: 'income', category: 'Sales', method: 'Cash', is_credit: false },
+      { date: '2025-05-15', amount: -1200, type: 'expense', category: 'Ops', method: 'Cash', is_credit: false },
+    ]
+
+    const supabase = createSupabaseForComparison(rows, 10)
+    const result = await buildFinancialComparison(
+      supabase,
+      'store-1',
+      { from: '2026-05-15', to: '2026-05-15' }
+    )
+
+    expect(result.periods.current.from).toBe('2026-05-15')
+    expect(result.periods.previous.from).toBe('2025-05-15')
+
+    expect(result.summary.totalRevenue.current).toBe(1725)
+    expect(result.summary.totalRevenue.previous).toBe(1420)
+    expect(result.summary.totalRevenue.delta).toBe(305)
+    expect(result.summary.totalRevenue.deltaPct).toBeCloseTo((305 / 1420) * 100, 6)
+
+    expect(result.daily).toHaveLength(1)
+    expect(result.daily[0]?.currentDate).toBe('2026-05-15')
+    expect(result.daily[0]?.previousDate).toBe('2025-05-15')
+    expect(result.daily[0]?.previousHasData).toBe(true)
+    expect(result.daily[0]?.currentRevenue).toBe(1725)
+    expect(result.daily[0]?.previousRevenue).toBe(1420)
+    expect(result.daily[0]?.revenueDeltaPct).toBeCloseTo((305 / 1420) * 100, 6)
+  })
 })
