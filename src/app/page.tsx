@@ -675,6 +675,8 @@ function DashboardContent() {
     return rows
   }, [transactions, zTransactions, isZTransaction, selectedDate])
 
+  const dateInputRef = useRef<HTMLInputElement | null>(null)
+
   const navigateToDate = useCallback(
     (nextDate: string) => {
       if (!nextDate || nextDate === selectedDate) return
@@ -683,6 +685,14 @@ function DashboardContent() {
     },
     [selectedDate, router, storeIdFromUrl],
   )
+
+  const openDatePicker = useCallback(() => {
+    const input = dateInputRef.current
+    if (!input) return
+
+    input.focus()
+    input.showPicker?.()
+  }, [])
 
   const changeDate = useCallback(
     (days: number) => {
@@ -789,14 +799,26 @@ function DashboardContent() {
         </div>
       </header>
 
-      <div style={dateCard}>
-        <button onClick={() => changeDate(-1)} style={dateNavBtn}>
+      <div style={dateCard} onClick={openDatePicker} role="button" tabIndex={0} aria-label="Επιλογή ημερομηνίας">
+        <button
+          onClick={(event) => {
+            event.stopPropagation()
+            changeDate(-1)
+          }}
+          style={dateNavBtn}
+          aria-label="Προηγούμενη ημέρα"
+        >
           <ChevronLeft size={24} />
         </button>
         <div style={dateCardCenter}>
           <input
+            ref={dateInputRef}
             type="date"
             value={selectedDate}
+            onClick={(event) => {
+              event.stopPropagation()
+              openDatePicker()
+            }}
             onChange={(event) => navigateToDate(event.target.value)}
             aria-label="Επιλογή ημερομηνίας"
             style={datePickerInput}
@@ -809,7 +831,14 @@ function DashboardContent() {
             </button>
           ) : null}
         </div>
-        <button onClick={() => changeDate(1)} style={dateNavBtn}>
+        <button
+          onClick={(event) => {
+            event.stopPropagation()
+            changeDate(1)
+          }}
+          style={dateNavBtn}
+          aria-label="Επόμενη ημέρα"
+        >
           <ChevronRight size={24} />
         </button>
       </div>
@@ -1181,6 +1210,7 @@ const dateCard: CSSProperties = {
   marginBottom: '25px',
   border: '1px solid var(--border)',
   boxShadow: 'var(--shadow)',
+  cursor: 'pointer',
 }
 const dateCardCenter: CSSProperties = {
   position: 'relative',
