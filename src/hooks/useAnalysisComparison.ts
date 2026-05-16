@@ -102,6 +102,7 @@ export function useAnalysisComparison({
           userId: 'unknown',
           requestPeriod: `${fromDate} to ${toDate}`,
           comparisonPeriod: `${payload.periods.previous.from} to ${payload.periods.previous.to}`,
+          comparisonMapping: payload.comparisonMapping,
           adapter_mapped_dto: {
             periods: payload.periods,
             summary: {

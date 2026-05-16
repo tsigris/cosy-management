@@ -72,19 +72,81 @@ export function normalizeRange(range: FinancialDateRange): FinancialDateRange {
   return from <= to ? { from, to } : { from: to, to: from }
 }
 
-export function getYearOverYearRanges(range: FinancialDateRange) {
+/**
+ * Find the same weekday in the previous year within a reasonable window.
+ * For retail/hospitality, traffic patterns are weekday-driven, not date-driven.
+ * E.g., Friday 15/05/2026 should compare to Friday 16/05/2025, not Thursday 15/05/2025.
+ */
+function findSameWeekdayInPreviousYear(dateKey: string): string {
+  const { year, month, day } = getParts(dateKey)
+  
+  // Get the UTC epoch day for the current date to determine weekday
+  const currentEpochDay = toUtcEpochDay(dateKey)
+  const currentWeekday = new Date(currentEpochDay * MS_PER_DAY).getUTCDay() // 0=Sunday, 6=Saturday
+  
+  // Shift by one year first (baseline)
+  const previousYearDateKey = shiftDateKeyByYears(dateKey, -1)
+  const previousEpochDay = toUtcEpochDay(previousYearDateKey)
+  const previousWeekday = new Date(previousEpochDay * MS_PER_DAY).getUTCDay()
+  
+  // If weekdays match, return the shifted date
+  if (currentWeekday === previousWeekday) {
+    return previousYearDateKey
+  }
+  
+  // Otherwise, find the closest matching weekday within ±14 days
+  // Search forward and backward to find same weekday
+  let closestDate = previousYearDateKey
+  let closestDayDiff = Math.abs(currentWeekday - previousWeekday)
+  
+  for (let daysOffset = -14; daysOffset <= 14; daysOffset++) {
+    if (daysOffset === 0) continue
+    
+    const candidateDate = addDaysToDateKey(previousYearDateKey, daysOffset)
+    const candidateEpochDay = toUtcEpochDay(candidateDate)
+    const candidateWeekday = new Date(candidateEpochDay * MS_PER_DAY).getUTCDay()
+    
+    if (candidateWeekday === currentWeekday) {
+      // Prefer earlier dates (less offset) when multiple matches exist
+      closestDate = candidateDate
+      break
+    }
+  }
+  
+  return closestDate
+}
+
+export type YearOverYearResult = {
+  current: FinancialDateRange
+  previous: FinancialDateRange
+  days: number
+  comparisonMapping: {
+    currentDate: string
+    comparisonDate: string
+    comparisonWeekday: string
+  }
+}
+
+export function getYearOverYearRanges(range: FinancialDateRange): YearOverYearResult {
   const current = normalizeRange(range)
   const days = countInclusiveDays(current)
-  const previousFrom = shiftDateKeyByYears(current.from, -1)
-  const previousTo = addDaysToDateKey(previousFrom, Math.max(0, days - 1))
+  
+  // Find same weekday in previous year for the current date
+  const comparisonFromDate = findSameWeekdayInPreviousYear(current.from)
+  const comparisonToDate = addDaysToDateKey(comparisonFromDate, Math.max(0, days - 1))
 
   return {
     current,
     previous: {
-      from: previousFrom,
-      to: previousTo,
+      from: comparisonFromDate,
+      to: comparisonToDate,
     },
     days,
+    comparisonMapping: {
+      currentDate: current.from,
+      comparisonDate: comparisonFromDate,
+      comparisonWeekday: getWeekdayLabel(comparisonFromDate),
+    },
   }
 }
 

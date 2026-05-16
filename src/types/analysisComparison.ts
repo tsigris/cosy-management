@@ -69,4 +69,9 @@ export type FinancialComparisonResponse = {
   daily: FinancialComparisonDayRow[]
   weekdayNormalized: FinancialComparisonWeekdayRow[]
   generatedAt: string
+  comparisonMapping: {
+    currentDate: string
+    comparisonDate: string
+    comparisonWeekday: string
+  }
 }

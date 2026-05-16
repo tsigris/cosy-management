@@ -351,7 +351,7 @@ export async function buildFinancialComparison(
   storeId: string,
   range: FinancialDateRange,
 ): Promise<FinancialComparisonResponse> {
-  const { current, previous, days } = getYearOverYearRanges(range)
+  const { current, previous, days, comparisonMapping } = getYearOverYearRanges(range)
 
   if (process.env.NODE_ENV !== 'production') {
     console.debug('[comparison/build] range-mapping', {
@@ -361,6 +361,7 @@ export async function buildFinancialComparison(
       selectedComparisonDate: current.from,
       mappedComparisonDate: previous.from,
       dayCount: days,
+      comparisonMapping,
     })
   }
 
@@ -423,6 +424,7 @@ export async function buildFinancialComparison(
     daily: buildDailyRows(currentAggregate, previousAggregate),
     weekdayNormalized: buildWeekdayNormalizedRows(currentAggregate, previousAggregate),
     generatedAt: new Date().toISOString(),
+    comparisonMapping,
   }
 
   if (process.env.NODE_ENV !== 'production') {
@@ -448,6 +450,7 @@ export async function buildFinancialComparison(
     storeId,
     selectedPeriodDates: `${current.from} to ${current.to}`,
     comparisonPeriodDates: `${previous.from} to ${previous.to}`,
+    comparisonMapping,
     canonical: {
       current_totals: {
         revenue: currentAggregate.totalRevenue,
@@ -475,6 +478,7 @@ export async function buildFinancialComparison(
         expenses: response.summary.expenses,
         profit: response.summary.profit,
       },
+      comparisonMapping: response.comparisonMapping,
       daily_count: response.daily.length,
       first_daily_row: response.daily[0] || null,
     },
