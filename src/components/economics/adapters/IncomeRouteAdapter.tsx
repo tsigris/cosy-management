@@ -111,7 +111,7 @@ export function IncomeRouteAdapter() {
     : null
 
   // Build comparison lookup map for per-day Y-o-Y data
-  const dailyComparisonMap = new Map<string, (typeof comparisonData.data.daily)[number]>()
+  const dailyComparisonMap = new Map<string, (typeof comparisonData.data)[number]>()
   if (hasCanonicalComparison && comparisonData.data?.daily) {
     for (const dailyRow of comparisonData.data.daily) {
       dailyComparisonMap.set(dailyRow.currentDate, dailyRow)
