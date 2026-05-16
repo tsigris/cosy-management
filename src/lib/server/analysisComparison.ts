@@ -78,15 +78,42 @@ async function loadPayrollSummary(
   storeId: string,
   range: FinancialDateRange,
 ): Promise<PayrollPeriodRpc> {
+  if (process.env.NODE_ENV !== 'production') {
+    console.debug('[comparison/service] payroll-query:start', {
+      storeId,
+      range,
+      rpc: 'get_staff_payroll_pressure_period_summary',
+    })
+  }
+
   const { data, error } = await supabase.rpc('get_staff_payroll_pressure_period_summary', {
     p_store_id: storeId,
     p_start_date: range.from,
     p_end_date: range.to,
   })
 
-  if (error) throw error
+  if (error) {
+    console.error('[comparison/service] payroll-query:error', {
+      storeId,
+      range,
+      error: error.message,
+    })
+    throw error
+  }
 
   const raw = Array.isArray(data) ? data[0] : data
+  if (process.env.NODE_ENV !== 'production') {
+    console.debug('[comparison/service] payroll-query:result', {
+      storeId,
+      range,
+      rowsReturned: Array.isArray(data) ? data.length : data ? 1 : 0,
+      payrollPct: toNumber((raw as PayrollPeriodRpc | null)?.payroll_pct),
+      nullFields: {
+        payroll_pct: (raw as PayrollPeriodRpc | null)?.payroll_pct == null,
+      },
+    })
+  }
+
   return (raw ?? {}) as PayrollPeriodRpc
 }
 
@@ -95,6 +122,14 @@ async function loadPeriodTransactions(
   storeId: string,
   range: FinancialDateRange,
 ): Promise<CanonicalFinancialRow[]> {
+  if (process.env.NODE_ENV !== 'production') {
+    console.debug('[comparison/service] transactions-query:start', {
+      storeId,
+      range,
+      table: 'transactions',
+    })
+  }
+
   const { data, error } = await supabase
     .from('transactions')
     .select('date, amount, type, category, method, payment_method, notes, is_credit')
@@ -102,8 +137,31 @@ async function loadPeriodTransactions(
     .gte('date', range.from)
     .lte('date', range.to)
 
-  if (error) throw error
-  return Array.isArray(data) ? (data as CanonicalFinancialRow[]) : []
+  if (error) {
+    console.error('[comparison/service] transactions-query:error', {
+      storeId,
+      range,
+      error: error.message,
+    })
+    throw error
+  }
+
+  const rows = Array.isArray(data) ? (data as CanonicalFinancialRow[]) : []
+
+  if (process.env.NODE_ENV !== 'production') {
+    console.debug('[comparison/service] transactions-query:result', {
+      storeId,
+      range,
+      rowsReturned: rows.length,
+      nullFields: {
+        hasNullDate: rows.some((row) => row.date == null),
+        hasNullAmount: rows.some((row) => row.amount == null),
+        hasNullType: rows.some((row) => row.type == null),
+      },
+    })
+  }
+
+  return rows
 }
 
 async function loadPeriodAggregate(
@@ -144,6 +202,27 @@ async function loadPeriodAggregate(
   ])
   for (const dateKey of dateKeys) {
     profitByDate[dateKey] = toNumber(summary.revenueByDate[dateKey]) - toNumber(expensesByDate[dateKey])
+  }
+
+  if (process.env.NODE_ENV !== 'production') {
+    console.debug('[comparison/service] period-aggregate:result', {
+      storeId,
+      range: normalizedRange,
+      rowsReturned: rows.length,
+      totalsReturned: {
+        totalRevenue: summary.totalRevenue,
+        totalExpenses: summary.totalExpenses,
+        profit: summary.profit,
+        zTotals: summary.zTotals,
+        payrollPct: summary.payrollPct,
+      },
+      nullOrUndefinedFields: {
+        totalRevenue: summary.totalRevenue == null,
+        totalExpenses: summary.totalExpenses == null,
+        profit: summary.profit == null,
+        payrollPct: summary.payrollPct == null,
+      },
+    })
   }
 
   return {

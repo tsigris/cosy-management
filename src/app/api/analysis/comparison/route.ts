@@ -13,24 +13,53 @@ type ComparisonRequestBody = {
 }
 
 export async function POST(request: NextRequest) {
+  let stage = 'request:parse'
+  let requestContext: Record<string, unknown> = {}
+
   try {
     const body = (await request.json()) as ComparisonRequestBody
     const storeId = typeof body?.storeId === 'string' ? body.storeId.trim() : ''
     const fromDate = typeof body?.fromDate === 'string' ? body.fromDate.trim() : ''
     const toDate = typeof body?.toDate === 'string' ? body.toDate.trim() : ''
 
+    requestContext = {
+      storeId,
+      fromDate,
+      toDate,
+    }
+
     if (!storeId || !fromDate || !toDate) {
+      console.error('[api/analysis/comparison] invalid-request-payload', requestContext)
       return NextResponse.json(
-        { error: 'Missing storeId, fromDate, or toDate.' },
+        {
+          error: 'Comparison service error',
+          failureReason: 'invalid_request_payload',
+          details: 'Missing storeId, fromDate, or toDate.',
+        },
         { status: 400 },
       )
     }
 
-    const token = request.headers.get('x-supabase-auth')?.trim() || ''
-    if (!token) {
-      return NextResponse.json({ error: 'Απαιτείται σύνδεση.' }, { status: 401 })
+    stage = 'request:validated'
+
+    if (process.env.NODE_ENV !== 'production') {
+      console.debug('[api/analysis/comparison] incoming-request-payload', requestContext)
     }
 
+    const token = request.headers.get('x-supabase-auth')?.trim() || ''
+    if (!token) {
+      console.error('[api/analysis/comparison] missing-auth-token', requestContext)
+      return NextResponse.json(
+        {
+          error: 'Comparison service error',
+          failureReason: 'missing_auth_token',
+          details: 'Απαιτείται σύνδεση.',
+        },
+        { status: 401 },
+      )
+    }
+
+    stage = 'auth:client-init'
     const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL
     const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
     if (!supabaseUrl || !anonKey) {
@@ -55,10 +84,24 @@ export async function POST(request: NextRequest) {
       error: userError,
     } = await callerClient.auth.getUser()
 
+    stage = 'auth:user-resolved'
+
     if (userError || !user) {
-      return NextResponse.json({ error: 'Απαιτείται σύνδεση.' }, { status: 401 })
+      console.error('[api/analysis/comparison] auth-user-failed', {
+        ...requestContext,
+        userError: userError?.message || String(userError),
+      })
+      return NextResponse.json(
+        {
+          error: 'Comparison service error',
+          failureReason: 'auth_user_failed',
+          details: 'Απαιτείται σύνδεση.',
+        },
+        { status: 401 },
+      )
     }
 
+    stage = 'auth:store-access-check'
     const { data: membershipRow, error: membershipError } = await callerClient
       .from('store_access')
       .select('store_id')
@@ -69,9 +112,21 @@ export async function POST(request: NextRequest) {
 
     if (membershipError) throw membershipError
     if (!membershipRow) {
-      return NextResponse.json({ error: 'Δεν έχετε πρόσβαση σε αυτό το κατάστημα.' }, { status: 403 })
+      console.error('[api/analysis/comparison] store-access-denied', {
+        ...requestContext,
+        userId: user.id,
+      })
+      return NextResponse.json(
+        {
+          error: 'Comparison service error',
+          failureReason: 'store_access_denied',
+          details: 'Δεν έχετε πρόσβαση σε αυτό το κατάστημα.',
+        },
+        { status: 403 },
+      )
     }
 
+    stage = 'request:store-organization-load'
     const { data: storeRow, error: storeError } = await callerClient
       .from('stores')
       .select('id, organization_id')
@@ -92,6 +147,13 @@ export async function POST(request: NextRequest) {
           : null
 
     const mappedRanges = getYearOverYearRanges({ from: fromDate, to: toDate })
+    requestContext = {
+      ...requestContext,
+      selectedOrganizationId,
+      userOrganizationId: userOrgFromMeta,
+      mappedComparisonFrom: mappedRanges.previous.from,
+      mappedComparisonTo: mappedRanges.previous.to,
+    }
 
     if (process.env.NODE_ENV !== 'production') {
       console.debug('[api/analysis/comparison] request-context', {
@@ -106,10 +168,13 @@ export async function POST(request: NextRequest) {
       })
     }
 
+    stage = 'service:build-financial-comparison'
     const payload = await buildFinancialComparison(callerClient, storeId, {
       from: fromDate,
       to: toDate,
     })
+
+    stage = 'response:serialize-success'
 
     if (process.env.NODE_ENV !== 'production') {
       console.debug('[api/analysis/comparison] response-summary', {
@@ -121,26 +186,52 @@ export async function POST(request: NextRequest) {
         expenses: payload.summary.expenses,
         profit: payload.summary.profit,
         dailyRows: payload.daily.length,
+        serializedPayload: JSON.stringify(payload),
       })
     }
 
-    return NextResponse.json(payload, {
+    const response = NextResponse.json(payload, {
       headers: {
         'Cache-Control': 'private, max-age=60, stale-while-revalidate=300',
       },
     })
+
+    if (process.env.NODE_ENV !== 'production') {
+      console.debug('[api/analysis/comparison] response-http-status', {
+        status: response.status,
+        stage,
+      })
+    }
+
+    return response
   } catch (error) {
+    stage = `failed:${stage}`
     const errorMessage = error instanceof Error ? error.message : String(error)
     const errorStack = error instanceof Error ? error.stack : undefined
-    console.error('[api/analysis/comparison] FAILED:', errorMessage)
+    console.error('[api/analysis/comparison] FAILED:', {
+      stage,
+      requestContext,
+      errorMessage,
+    })
     if (errorStack) console.error(errorStack)
     const mapped = mapErrorMessage(error, 'Αποτυχία φόρτωσης σύγκρισης.')
-    return NextResponse.json(
+    const failureResponse = NextResponse.json(
       {
-        error: mapped.message,
-        ...(process.env.NODE_ENV !== 'production' && { _debug: errorMessage }),
+        error: 'Comparison service error',
+        failureReason: 'comparison_service_error',
+        stage,
+        details: mapped.message,
+        ...(process.env.NODE_ENV !== 'production' && { _debug: errorMessage, _request: requestContext }),
       },
       { status: mapped.status },
     )
+
+    console.error('[api/analysis/comparison] response-http-status', {
+      status: failureResponse.status,
+      stage,
+      failureReason: 'comparison_service_error',
+    })
+
+    return failureResponse
   }
 }

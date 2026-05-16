@@ -72,10 +72,19 @@ export function useAnalysisComparison({
 
         const payload = (await response.json()) as FinancialComparisonResponse & {
           error?: string
+          failureReason?: string
+          stage?: string
+          details?: string
         }
 
         if (!response.ok) {
-          throw new Error(payload?.error || 'Αποτυχία φόρτωσης σύγκρισης.')
+          const failureReason = payload?.failureReason || 'comparison_service_error'
+          const failureStage = payload?.stage || 'unknown_stage'
+          const failureDetails = payload?.details || payload?.error || 'Unknown comparison failure'
+
+          throw new Error(
+            `Comparison service error [reason=${failureReason}; stage=${failureStage}; details=${failureDetails}]`,
+          )
         }
 
         if (!payload?.summary || !payload?.periods || !Array.isArray(payload?.daily)) {
@@ -114,6 +123,7 @@ export function useAnalysisComparison({
             fromDate,
             toDate,
             error: message,
+            canonicalFailure: message.includes('Comparison service error'),
             timestamp: new Date().toISOString(),
           })
         }

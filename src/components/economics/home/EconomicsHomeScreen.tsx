@@ -154,7 +154,7 @@ export function EconomicsHomeScreen({
             <div style={{ fontSize: 12, color: economicsColorTokens.muted }}>Φόρτωση σύγκρισης...</div>
           ) : comparisonError ? (
             <div style={{ fontSize: 12, color: economicsColorTokens.muted }}>
-              Σφάλμα φόρτωσης: {comparisonError}
+              Comparison service error
             </div>
           ) : noComparisonData ? (
             <div style={{ fontSize: 12, color: economicsColorTokens.muted }}>

@@ -178,15 +178,40 @@ export function IncomeRouteAdapter() {
   const summary = summaryStub ? mapHomeSummary(summaryStub) : null
   const comparison = comparisonStub ? mapComparisonSummary(comparisonStub) : null
 
-  if (process.env.NODE_ENV !== 'production' && comparisonNullReason) {
-    console.debug('[economics/income] Comparison adapter null reason', {
-      storeId,
-      selectedDate: range.from,
-      selectedRange: range,
-      nullReason: comparisonNullReason,
-      hasComparisonStub: Boolean(comparisonStub),
-      hasMappedComparison: Boolean(comparison),
-    })
+  const comparisonAdapterNullReason = comparisonData.loading
+    ? 'loading'
+    : comparisonData.error
+      ? `service_error:${comparisonData.error}`
+      : !comparisonData.data
+        ? 'missing_raw_canonical_response'
+        : !comparisonData.data.summary
+          ? 'missing_raw_summary'
+          : !comparisonStub
+            ? 'stub_mapping_failed'
+            : !comparison
+              ? 'dto_mapping_failed'
+              : null
+
+  if (process.env.NODE_ENV !== 'production') {
+    if (comparisonAdapterNullReason) {
+      console.debug('[economics/income] Comparison adapter null reason', {
+        storeId,
+        selectedDate: range.from,
+        selectedRange: range,
+        nullReason: comparisonAdapterNullReason,
+        rawCanonicalResponse: comparisonData.data,
+        mappedStub: comparisonStub,
+        mappedDto: comparison,
+      })
+    } else if (comparisonData.data) {
+      console.debug('[economics/income] Comparison adapter mapping success', {
+        storeId,
+        selectedDate: range.from,
+        rawCanonicalResponse: comparisonData.data,
+        mappedStub: comparisonStub,
+        mappedDto: comparison,
+      })
+    }
   }
 
   const displaySummary = summary
