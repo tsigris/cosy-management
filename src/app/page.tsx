@@ -9,7 +9,21 @@ import { getTodayDateISO } from '@/lib/businessDate'
 import { formatAmount, formatDateDMY } from '@/lib/formatters'
 import NotificationsBell from '@/components/NotificationsBell'
 import NextLink from 'next/link'
-import { format, addDays, subDays, parseISO } from 'date-fns'
+import {
+  format,
+  addDays,
+  addMonths,
+  subDays,
+  subMonths,
+  parseISO,
+  startOfMonth,
+  endOfMonth,
+  startOfWeek,
+  endOfWeek,
+  eachDayOfInterval,
+  isSameDay,
+  isSameMonth,
+} from 'date-fns'
 import { el } from 'date-fns/locale'
 import { Toaster, toast } from 'sonner'
 import { TrendingUp, TrendingDown, Menu, X, ChevronLeft, ChevronRight, CreditCard } from 'lucide-react'
@@ -207,6 +221,8 @@ function DashboardContent() {
   const [transactions, setTransactions] = useState<DashboardTransaction[]>([])
   const [loading, setLoading] = useState(true)
   const [expandedTx, setExpandedTx] = useState<string | null>(null)
+  const [isDatePickerOpen, setIsDatePickerOpen] = useState(false)
+  const [calendarMonth, setCalendarMonth] = useState(() => parseISO(selectedDate))
   const [totals, setTotals] = useState({
     income: 0,
     expense: 0,
@@ -237,6 +253,44 @@ function DashboardContent() {
   const yearStartStr = useMemo(() => `${businessYear}-01-01`, [businessYear])
   const formattedSelectedDate = formatDateDMY(selectedDate)
   const isToday = selectedDate === getTodayDateISO()
+  const selectedDateObject = useMemo(() => parseISO(selectedDate), [selectedDate])
+  const dateCardRef = useRef<HTMLDivElement | null>(null)
+
+  const closeDatePicker = useCallback(() => {
+    setIsDatePickerOpen(false)
+  }, [])
+
+  useEffect(() => {
+    if (!isDatePickerOpen) return
+    setCalendarMonth(selectedDateObject)
+  }, [isDatePickerOpen, selectedDateObject])
+
+  useEffect(() => {
+    if (!isDatePickerOpen) return
+
+    const handlePointerDown = (event: MouseEvent | TouchEvent) => {
+      const target = event.target as Node | null
+      if (target && dateCardRef.current && !dateCardRef.current.contains(target)) {
+        closeDatePicker()
+      }
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        closeDatePicker()
+      }
+    }
+
+    document.addEventListener('mousedown', handlePointerDown)
+    document.addEventListener('touchstart', handlePointerDown)
+    document.addEventListener('keydown', handleKeyDown)
+
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown)
+      document.removeEventListener('touchstart', handlePointerDown)
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [closeDatePicker, isDatePickerOpen])
 
   const getEntityKeyFromTx = (t: DashboardTransaction) => {
     const description = String(t?.description || t?.notes || '')
@@ -675,8 +729,6 @@ function DashboardContent() {
     return rows
   }, [transactions, zTransactions, isZTransaction, selectedDate])
 
-  const dateInputRef = useRef<HTMLInputElement | null>(null)
-
   const navigateToDate = useCallback(
     (nextDate: string) => {
       if (!nextDate || nextDate === selectedDate) return
@@ -687,11 +739,7 @@ function DashboardContent() {
   )
 
   const openDatePicker = useCallback(() => {
-    const input = dateInputRef.current
-    if (!input) return
-
-    input.focus()
-    input.showPicker?.()
+    setIsDatePickerOpen(true)
   }, [])
 
   const changeDate = useCallback(
@@ -706,6 +754,24 @@ function DashboardContent() {
   const jumpToToday = useCallback(() => {
     navigateToDate(getTodayDateISO())
   }, [navigateToDate])
+
+  const selectDateFromCalendar = useCallback(
+    (nextDate: Date) => {
+      navigateToDate(format(nextDate, 'yyyy-MM-dd'))
+      closeDatePicker()
+    },
+    [closeDatePicker, navigateToDate],
+  )
+
+  const calendarDays = useMemo(() => {
+    const monthStart = startOfMonth(calendarMonth)
+    const monthEnd = endOfMonth(calendarMonth)
+    const gridStart = startOfWeek(monthStart, { weekStartsOn: 1 })
+    const gridEnd = endOfWeek(monthEnd, { weekStartsOn: 1 })
+    return eachDayOfInterval({ start: gridStart, end: gridEnd })
+  }, [calendarMonth])
+
+  const calendarMonthLabel = format(calendarMonth, 'MMMM yyyy', { locale: el }).toUpperCase()
 
   const money = (n: number | string | null | undefined) => formatAmount(Number(n) || 0)
 
@@ -799,7 +865,20 @@ function DashboardContent() {
         </div>
       </header>
 
-      <div style={dateCard} onClick={openDatePicker} role="button" tabIndex={0} aria-label="Επιλογή ημερομηνίας">
+      <div
+        ref={dateCardRef}
+        style={dateCard}
+        onClick={openDatePicker}
+        role="button"
+        tabIndex={0}
+        aria-label="Επιλογή ημερομηνίας"
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault()
+            openDatePicker()
+          }
+        }}
+      >
         <button
           onClick={(event) => {
             event.stopPropagation()
@@ -811,18 +890,6 @@ function DashboardContent() {
           <ChevronLeft size={24} />
         </button>
         <div style={dateCardCenter}>
-          <input
-            ref={dateInputRef}
-            type="date"
-            value={selectedDate}
-            onClick={(event) => {
-              event.stopPropagation()
-              openDatePicker()
-            }}
-            onChange={(event) => navigateToDate(event.target.value)}
-            aria-label="Επιλογή ημερομηνίας"
-            style={datePickerInput}
-          />
           <p style={dateText}>{format(parseISO(selectedDate), 'EEEE, d MMMM', { locale: el }).toUpperCase()}</p>
           <p style={businessHint}>{formattedSelectedDate}</p>
           {!isToday ? (
@@ -841,6 +908,81 @@ function DashboardContent() {
         >
           <ChevronRight size={24} />
         </button>
+        {isDatePickerOpen ? (
+          <div
+            style={datePopover}
+            onClick={(event) => event.stopPropagation()}
+            role="dialog"
+            aria-label="Ημερολόγιο επιλογής ημερομηνίας"
+          >
+            <div style={datePopoverHeader}>
+              <button
+                type="button"
+                onClick={() => setCalendarMonth((current) => subMonths(current, 1))}
+                style={popoverNavBtn}
+                aria-label="Προηγούμενος μήνας"
+              >
+                <ChevronLeft size={16} />
+              </button>
+              <div style={datePopoverTitle}>{calendarMonthLabel}</div>
+              <button
+                type="button"
+                onClick={() => setCalendarMonth((current) => addMonths(current, 1))}
+                style={popoverNavBtn}
+                aria-label="Επόμενος μήνας"
+              >
+                <ChevronRight size={16} />
+              </button>
+            </div>
+
+            <div style={weekdayRow} aria-hidden="true">
+              {['ΔΕ', 'ΤΡ', 'ΤΕ', 'ΠΕ', 'ΠΑ', 'ΣΑ', 'ΚΥ'].map((label) => (
+                <div key={label} style={weekdayLabel}>
+                  {label}
+                </div>
+              ))}
+            </div>
+
+            <div style={calendarGrid}>
+              {calendarDays.map((day) => {
+                const active = isSameDay(day, selectedDateObject)
+                const outsideMonth = !isSameMonth(day, calendarMonth)
+                return (
+                  <button
+                    key={format(day, 'yyyy-MM-dd')}
+                    type="button"
+                    onClick={() => selectDateFromCalendar(day)}
+                    style={{
+                      ...calendarDayBtn,
+                      ...(active ? calendarDayBtnActive : null),
+                      ...(outsideMonth ? calendarDayBtnMuted : null),
+                    }}
+                    aria-pressed={active}
+                    aria-label={format(day, 'EEEE d MMMM yyyy', { locale: el })}
+                  >
+                    {format(day, 'd')}
+                  </button>
+                )
+              })}
+            </div>
+
+            <div style={datePopoverFooter}>
+              <button
+                type="button"
+                onClick={() => {
+                  jumpToToday()
+                  closeDatePicker()
+                }}
+                style={todayShortcutBtn}
+              >
+                Jump to today
+              </button>
+              <button type="button" onClick={closeDatePicker} style={closePopoverBtn}>
+                Close
+              </button>
+            </div>
+          </div>
+        ) : null}
       </div>
 
       <div style={heroCardStyle}>
@@ -1211,6 +1353,8 @@ const dateCard: CSSProperties = {
   border: '1px solid var(--border)',
   boxShadow: 'var(--shadow)',
   cursor: 'pointer',
+  position: 'relative',
+  overflow: 'visible',
 }
 const dateCardCenter: CSSProperties = {
   position: 'relative',
@@ -1222,18 +1366,6 @@ const dateCardCenter: CSSProperties = {
   alignItems: 'center',
   justifyContent: 'center',
   padding: '8px 10px',
-}
-const datePickerInput: CSSProperties = {
-  position: 'absolute',
-  inset: 0,
-  width: '100%',
-  height: '100%',
-  opacity: 0,
-  cursor: 'pointer',
-  border: 'none',
-  background: 'transparent',
-  appearance: 'none',
-  WebkitAppearance: 'none',
 }
 const dateText: CSSProperties = { fontSize: '13px', fontWeight: '800', color: colors.primaryDark, margin: 0, lineHeight: 1.15 }
 const businessHint: CSSProperties = { margin: '6px 0 0 0', fontSize: '10px', fontWeight: '800', color: colors.secondaryText, opacity: 0.9, lineHeight: 1.15 }
@@ -1251,6 +1383,125 @@ const jumpToTodayBtn: CSSProperties = {
   zIndex: 3,
 }
 const dateNavBtn: CSSProperties = { background: 'none', border: 'none', color: colors.secondaryText, cursor: 'pointer', display: 'flex', alignItems: 'center' }
+
+const datePopover: CSSProperties = {
+  position: 'absolute',
+  left: '50%',
+  top: 'calc(100% + 12px)',
+  transform: 'translateX(-50%) translateY(0) scale(1)',
+  width: 'min(100vw - 24px, 420px)',
+  borderRadius: '22px',
+  border: '1px solid var(--border)',
+  background: 'var(--surface)',
+  boxShadow: '0 24px 60px rgba(15, 23, 42, 0.22)',
+  padding: '14px',
+  zIndex: 40,
+  animation: 'date-popover-in 160ms ease-out',
+}
+
+const datePopoverHeader: CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: 10,
+  marginBottom: 12,
+}
+
+const datePopoverTitle: CSSProperties = {
+  fontSize: '13px',
+  fontWeight: 900,
+  letterSpacing: '0.06em',
+  textTransform: 'uppercase',
+  color: colors.primaryDark,
+  textAlign: 'center',
+  flex: 1,
+}
+
+const popoverNavBtn: CSSProperties = {
+  width: 34,
+  height: 34,
+  borderRadius: 999,
+  border: `1px solid ${colors.border}`,
+  background: 'rgba(255,255,255,0.72)',
+  color: colors.primaryDark,
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  cursor: 'pointer',
+}
+
+const weekdayRow: CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: 'repeat(7, minmax(0, 1fr))',
+  gap: 6,
+  marginBottom: 8,
+}
+
+const weekdayLabel: CSSProperties = {
+  fontSize: 10,
+  fontWeight: 900,
+  color: colors.secondaryText,
+  textAlign: 'center',
+  letterSpacing: '0.06em',
+}
+
+const calendarGrid: CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: 'repeat(7, minmax(0, 1fr))',
+  gap: 6,
+}
+
+const calendarDayBtn: CSSProperties = {
+  height: 40,
+  borderRadius: 12,
+  border: '1px solid transparent',
+  background: 'rgba(255,255,255,0.72)',
+  color: colors.primaryDark,
+  fontSize: 13,
+  fontWeight: 800,
+  cursor: 'pointer',
+}
+
+const calendarDayBtnMuted: CSSProperties = {
+  opacity: 0.45,
+}
+
+const calendarDayBtnActive: CSSProperties = {
+  background: colors.accentBlue,
+  color: 'white',
+  boxShadow: '0 8px 18px rgba(99, 102, 241, 0.28)',
+}
+
+const datePopoverFooter: CSSProperties = {
+  display: 'flex',
+  justifyContent: 'space-between',
+  gap: 10,
+  marginTop: 12,
+}
+
+const todayShortcutBtn: CSSProperties = {
+  flex: 1,
+  minHeight: 36,
+  borderRadius: 999,
+  border: '1px solid rgba(99, 102, 241, 0.22)',
+  background: 'rgba(99, 102, 241, 0.08)',
+  color: colors.accentBlue,
+  fontSize: 11,
+  fontWeight: 900,
+  cursor: 'pointer',
+}
+
+const closePopoverBtn: CSSProperties = {
+  flex: 1,
+  minHeight: 36,
+  borderRadius: 999,
+  border: `1px solid ${colors.border}`,
+  background: 'transparent',
+  color: colors.primaryDark,
+  fontSize: 11,
+  fontWeight: 900,
+  cursor: 'pointer',
+}
 
 const heroCardStyle: CSSProperties = {
   background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
