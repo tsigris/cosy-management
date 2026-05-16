@@ -1,6 +1,6 @@
 'use client'
 
-import React, { Suspense } from 'react'
+import React, { Suspense, useMemo } from 'react'
 import { EconomicsHomeScreen } from '@/components/economics/home'
 import EconomicsShell from '@/components/economics/shell/EconomicsShell'
 import { AsyncBoundary, LoadingSkeleton } from '@/components/economics/primitives'
@@ -10,7 +10,7 @@ import { buildHomeDisplay } from '@/lib/economics/adapters/buildHomeDisplay'
 import type { EconomicsHomeSummaryDto, EconomicsComparisonDto } from '@/lib/economics/types/economicsDto'
 import type { EconomicsHistoryRowDto } from '@/lib/economics/types/economicsDisplay'
 import { useEconomicsPeriod } from '@/components/economics/shell/EconomicsPeriodProvider'
-import { formatRangeLabel, getYearOverYearRanges } from '@/lib/financialPeriods'
+import { formatRangeLabel } from '@/lib/financialPeriods'
 import { useEconomicsShell } from '@/components/economics/shell/EconomicsShellProvider'
 import { useCanonicalFinancialPeriod } from '@/hooks/useCanonicalFinancialPeriod'
 import { useAnalysisComparison } from '@/hooks/useAnalysisComparison'
@@ -39,8 +39,13 @@ import type { FinancialComparisonDayRow } from '@/types/analysisComparison'
 export function IncomeRouteAdapter() {
   const { storeId } = useEconomicsShell()
   const { fromDate, toDate, setFromDate, setToDate } = useEconomicsPeriod()
-  const range = fromDate <= toDate ? { from: fromDate, to: toDate } : { from: toDate, to: fromDate }
-  const yoy = getYearOverYearRanges(range)
+
+  // Memoize range object — prevents new object identity on every render,
+  // which would otherwise trigger useCanonicalFinancialPeriod to re-fetch.
+  const range = useMemo(
+    () => (fromDate <= toDate ? { from: fromDate, to: toDate } : { from: toDate, to: fromDate }),
+    [fromDate, toDate],
+  )
 
   const canonical = useCanonicalFinancialPeriod({
     storeId,
@@ -55,7 +60,11 @@ export function IncomeRouteAdapter() {
     enabled: Boolean(storeId),
   })
 
-  const historyRows = buildHistoryRowsFromCanonical(canonical.rows)
+  // Memoize history rows — prevents re-computing the entire daily map on every render.
+  const historyRows = useMemo(
+    () => buildHistoryRowsFromCanonical(canonical.rows),
+    [canonical.rows],
+  )
 
   const rangeRevenue = canonical.summary?.totalRevenue
   const rangeExpenses = canonical.summary?.totalExpenses
@@ -112,23 +121,28 @@ export function IncomeRouteAdapter() {
     : null
 
   // Build comparison lookup map for per-day Y-o-Y data
-  const dailyComparisonMap = new Map<string, FinancialComparisonDayRow>()
-  if (hasCanonicalComparison && comparisonData.data?.daily) {
-    for (const dailyRow of comparisonData.data.daily) {
-      dailyComparisonMap.set(dailyRow.currentDate, dailyRow)
+  const dailyComparisonMap = useMemo(() => {
+    const map = new Map<string, FinancialComparisonDayRow>()
+    if (hasCanonicalComparison && comparisonData.data?.daily) {
+      for (const dailyRow of comparisonData.data.daily) {
+        map.set(dailyRow.currentDate, dailyRow)
+      }
     }
-  }
+    return map
+  }, [hasCanonicalComparison, comparisonData.data?.daily])
 
   // Enrich history rows with per-day comparison data
-  const enrichedHistoryRows = historyRows.map((row) => {
-    const dailyComparison = dailyComparisonMap.get(row.date)
-    return {
-      ...row,
-      revenuePrevYear: dailyComparison?.previousRevenue,
-      expensesPrevYear: dailyComparison ? undefined : undefined,
-      profitPrevYear: undefined,
-    }
-  })
+  const enrichedHistoryRows = useMemo(
+    () =>
+      historyRows.map((row) => {
+        const dailyComparison = dailyComparisonMap.get(row.date)
+        return {
+          ...row,
+          revenuePrevYear: dailyComparison?.previousRevenue,
+        }
+      }),
+    [historyRows, dailyComparisonMap],
+  )
 
   const comparisonStub: EconomicsComparisonDto | null = canonicalRevenueComparison
     ? {

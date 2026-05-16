@@ -32,7 +32,9 @@ export function useCanonicalFinancialPeriod({
   const [error, setError] = useState<string | null>(null)
   const requestIdRef = useRef(0)
 
-  const normalizedRange = useMemo(() => normalizeRange(range), [range])
+  // Use primitive string deps — the range object identity changes on every render
+  // even when the date strings are unchanged, so [range] would re-trigger on every render.
+  const normalizedRange = useMemo(() => normalizeRange(range), [range.from, range.to])
 
   useEffect(() => {
     if (!enabled || !storeId) {
@@ -100,7 +102,7 @@ export function useCanonicalFinancialPeriod({
     return () => {
       cancelled = true
     }
-  }, [enabled, normalizedRange, storeId])
+  }, [enabled, storeId, normalizedRange.from, normalizedRange.to])
 
   return {
     summary,

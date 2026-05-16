@@ -71,15 +71,25 @@ export function EconomicsRouteProviders({ children }: EconomicsRouteProvidersPro
   const pathname = usePathname()
   const searchParams = useSearchParams()
 
+  // Extract individual primitives from searchParams so useMemo deps are stable strings,
+  // not the searchParams object reference (which changes on every URL update).
+  const storeParam = searchParams?.get('store')?.trim() || null
+  const periodParam = searchParams?.get('period') || null
+  const yearParam = searchParams?.get('year') || null
+  const dateParam = searchParams?.get('date') || null
+  const drawerParam = searchParams?.get('drawer')?.trim() || null
+  const compareParam = searchParams?.get('compare') || null
+  const queryParam = searchParams?.get('q')?.trim() || ''
+
   const initialValues = useMemo(() => {
-    const storeId = searchParams.get('store')?.trim() || null
-    const period = parsePeriod(searchParams.get('period'))
-    const year = parseYear(searchParams.get('year'))
-    const selectedDay = isValidDateKey(searchParams.get('date')) ? searchParams.get('date') : null
-    const drawerId = searchParams.get('drawer')?.trim() || null
+    const storeId = storeParam
+    const period = parsePeriod(periodParam)
+    const year = parseYear(yearParam)
+    const selectedDay = isValidDateKey(dateParam) ? dateParam : null
+    const drawerId = drawerParam
     const comparisonMode: EconomicsComparisonMode =
-      searchParams.get('compare') === 'weekday' ? 'weekday' : 'calendar'
-    const query = searchParams.get('q')?.trim() || ''
+      compareParam === 'weekday' ? 'weekday' : 'calendar'
+    const query = queryParam
 
     return {
       storeId,
@@ -91,7 +101,7 @@ export function EconomicsRouteProviders({ children }: EconomicsRouteProvidersPro
       comparisonMode,
       query,
     }
-  }, [pathname, searchParams])
+  }, [pathname, storeParam, periodParam, yearParam, dateParam, drawerParam, compareParam, queryParam])
 
   return (
     <EconomicsShellProvider initialStoreId={initialValues.storeId} initialActiveRoute={initialValues.activeRoute}>
