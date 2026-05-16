@@ -99,6 +99,75 @@ function deriveDayContext(detail: EconomicsDayDetailDto): DayContext {
   }
 }
 
+// ─── Comparisons section — timeline context (why this day matters) ────────────
+
+type DayComparison = {
+  label: string
+  value?: number
+  pct?: number
+  tone?: 'positive' | 'negative' | 'neutral'
+}
+
+function ComparisonRow({ label, value, pct, tone = 'neutral' }: DayComparison) {
+  const color = tone === 'positive'
+    ? economicsColorTokens.positive
+    : tone === 'negative'
+      ? economicsColorTokens.negative
+      : economicsColorTokens.muted
+
+  const signal = pct === undefined ? null : pct > 0 ? '↑' : pct < 0 ? '↓' : '—'
+
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: `1px solid ${economicsColorTokens.border}` }}>
+      <span style={{ fontSize: 12, color: economicsColorTokens.muted, fontWeight: 600 }}>{label}</span>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        {value !== undefined && (
+          <span style={{ fontSize: 13, fontWeight: 700, color }}>{formatAmount(value)}</span>
+        )}
+        {pct !== undefined && (
+          <span style={{ fontSize: 11, fontWeight: 800, color }}>
+            {signal} {Math.abs(pct).toLocaleString('el-GR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}%
+          </span>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function ComparisonsSection({ detail }: { detail: EconomicsDayDetailDto | null }) {
+  if (!detail) return null
+
+  // Stub comparisons — in production these would be computed from historical data
+  // For now, show the structure so the narrative is clear
+  const comparisons: DayComparison[] = [
+    { label: 'vs Χθες (Τζίρος)', value: undefined, pct: undefined },
+    { label: 'vs Χθες (Κέρδος)', value: undefined, pct: undefined },
+    { label: 'vs Πέρυσι Σήμερα', value: undefined, pct: undefined },
+  ]
+
+  const anyComparison = comparisons.some((c) => c.value !== undefined || c.pct !== undefined)
+  if (!anyComparison) return null
+
+  return (
+    <div
+      style={{
+        margin: `${economicsSpacing.md}px 0`,
+        padding: `${economicsSpacing.sm}px ${economicsSpacing.md}px`,
+        borderRadius: 12,
+        background: economicsColorTokens.surface,
+        border: `1px solid ${economicsColorTokens.border}`,
+      }}
+    >
+      <div style={{ fontSize: 10, fontWeight: 900, letterSpacing: '0.07em', textTransform: 'uppercase', color: economicsColorTokens.muted, marginBottom: 6 }}>
+        Σχέση με προηγούμενα
+      </div>
+      {comparisons.map((c, i) => (
+        <ComparisonRow key={i} {...c} />
+      ))}
+    </div>
+  )
+}
+
 // ─── Context section ─────────────────────────────────────────────────────────
 
 function DayContextSection({ detail }: { detail: EconomicsDayDetailDto }) {
@@ -282,6 +351,7 @@ function EconomicsDayDrawerInner({ selectedDay, detail, loading = false }: Econo
       {/* Summary is isolated — async failures here do NOT crash the calendar */}
       <AsyncBoundary area="drawer">
         <DaySummaryContent detail={detail} loading={loading} />
+        {detail && <ComparisonsSection detail={detail} />}
         {detail && <DayContextSection detail={detail} />}
         <TransactionList detail={detail} />
       </AsyncBoundary>

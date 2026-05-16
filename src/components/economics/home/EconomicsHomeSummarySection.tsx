@@ -2,10 +2,14 @@
 
 import React, { memo } from 'react'
 import type { EconomicsHomeSummaryDto } from '@/lib/economics/types/economicsDto'
+import type { EconomicsHomeDisplayDto } from '@/lib/economics/types/economicsDisplay'
 import { KpiCard } from '@/components/economics/primitives/KpiCard'
 import { LoadingSkeleton } from '@/components/economics/primitives/LoadingSkeleton'
 import { EmptyState } from '@/components/economics/primitives/EmptyState'
 import { economicsColorTokens, economicsSpacing } from '@/components/economics/primitives/tokens'
+
+// Accept both canonical and display-layer types
+type SummaryShape = EconomicsHomeSummaryDto | EconomicsHomeDisplayDto | null
 
 function fmtAmount(value?: number): string {
   if (value === undefined || value === null) return '--'
@@ -218,7 +222,7 @@ function DayHighlights({ bestDayLabel, worstDayLabel }: { bestDayLabel?: string;
 }
 
 type EconomicsHomeSummarySectionProps = {
-  summary: EconomicsHomeSummaryDto | null
+  summary: SummaryShape
   loading?: boolean
 }
 
