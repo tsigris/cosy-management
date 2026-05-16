@@ -9,12 +9,33 @@ export type CanonicalPeriod = 'month' | 'year' | '30days' | 'all'
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000
 
+export function normalizeDateKey(value: unknown): string | null {
+  if (value instanceof Date) {
+    if (Number.isNaN(value.getTime())) return null
+    return formatIsoDate(value)
+  }
+
+  if (typeof value !== 'string') return null
+
+  const next = value.trim()
+  if (!isDateOnlyString(next)) return null
+
+  const parsed = parseLocalDateOnly(next)
+  if (Number.isNaN(parsed.getTime())) return null
+
+  // Reject impossible dates like 2026-02-31 that can still match the regex.
+  const normalized = formatIsoDate(parsed)
+  if (normalized !== next) return null
+
+  return normalized
+}
+
 function assertDateKey(value: string): string {
-  const next = String(value || '').trim()
-  if (!isDateOnlyString(next)) {
+  const normalized = normalizeDateKey(value)
+  if (!normalized) {
     throw new Error(`Invalid date key: ${value}`)
   }
-  return next
+  return normalized
 }
 
 function getParts(dateKey: string) {

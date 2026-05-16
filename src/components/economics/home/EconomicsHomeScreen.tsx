@@ -5,7 +5,7 @@ import type { EconomicsHomeSummaryDto, EconomicsComparisonDto } from '@/lib/econ
 import type { EconomicsHistoryRowDto, EconomicsHomeDisplayDto } from '@/lib/economics/types/economicsDisplay'
 import { AsyncBoundary } from '@/components/economics/primitives/AsyncBoundary'
 import { economicsSpacing, economicsColorTokens } from '@/components/economics/primitives/tokens'
-import { formatShortDateKey } from '@/lib/financialPeriods'
+import { formatShortDateKey, normalizeDateKey } from '@/lib/financialPeriods'
 
 type EconomicsHomeScreenProps = {
   summary: EconomicsHomeSummaryDto | EconomicsHomeDisplayDto | null
@@ -223,11 +223,23 @@ function formatAmount(value?: number) {
 }
 
 function formatRangeLabel(fromDate: string, toDate: string) {
-  if (!fromDate || !toDate) return 'Δεν επιλέχθηκε περίοδος'
+  const safeFrom = normalizeDateKey(fromDate)
+  const safeTo = normalizeDateKey(toDate)
+  if (!safeFrom || !safeTo) return 'Δεν επιλέχθηκε περίοδος'
   try {
-    return `${formatShortDateKey(fromDate)} - ${formatShortDateKey(toDate)}`
+    return `${formatShortDateKey(safeFrom)} - ${formatShortDateKey(safeTo)}`
   } catch {
     return 'Δεν επιλέχθηκε περίοδος'
+  }
+}
+
+function formatShortDateKeySafe(value?: string | null, fallback = 'πέρυσι') {
+  const safeValue = normalizeDateKey(value)
+  if (!safeValue) return fallback
+  try {
+    return formatShortDateKey(safeValue)
+  } catch {
+    return fallback
   }
 }
 
@@ -363,7 +375,7 @@ function HistoryRow({ row }: { row: EconomicsHistoryRowDto }) {
           }}
         >
           {hasComparison
-            ? `vs ${row.previousYearDate ? formatShortDateKey(row.previousYearDate) : 'πέρυσι'}`
+            ? `vs ${formatShortDateKeySafe(row.previousYearDate, 'πέρυσι')}`
             : 'No previous-year data'}
         </div>
       </div>
@@ -375,7 +387,7 @@ function HistoryRow({ row }: { row: EconomicsHistoryRowDto }) {
       {hasComparison ? (
         <>
           <div style={{ fontSize: 11, fontWeight: 800, color: economicsColorTokens.muted, marginTop: 2 }}>
-            vs {row.previousYearDate ? formatShortDateKey(row.previousYearDate) : 'πέρυσι'}
+            vs {formatShortDateKeySafe(row.previousYearDate, 'πέρυσι')}
           </div>
           <div style={{ fontSize: 11, color: economicsColorTokens.muted }}>
             Τζίρος: {formatAmount(row.revenuePrevYear)} | Έξοδα: {formatAmount(row.expensesPrevYear)} | Καθαρό:{' '}

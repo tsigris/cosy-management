@@ -29,6 +29,7 @@ import { Toaster, toast } from 'sonner'
 import { TrendingUp, TrendingDown, Menu, X, ChevronLeft, ChevronRight, CreditCard } from 'lucide-react'
 import ErrorBoundary from '@/components/ErrorBoundary'
 import { aggregateCanonicalFinancialMetrics, type CanonicalFinancialRow } from '@/lib/canonicalFinancialMetrics'
+import { normalizeDateKey } from '@/lib/financialPeriods'
 
 // Helper για αναγνώριση tips
 const isTipTransaction = (t: any) => {
@@ -212,7 +213,7 @@ function DashboardContent() {
   const searchParams = useSearchParams()
   const storeIdFromUrl = searchParams.get('store')
 
-  const selectedDate = searchParams.get('date') || getTodayDateISO()
+  const selectedDate = normalizeDateKey(searchParams.get('date')) || getTodayDateISO()
 
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [isStoreAdmin, setIsStoreAdmin] = useState(false)
@@ -731,8 +732,9 @@ function DashboardContent() {
 
   const navigateToDate = useCallback(
     (nextDate: string) => {
-      if (!nextDate || nextDate === selectedDate) return
-      router.push(`/?date=${nextDate}&store=${storeIdFromUrl}`, { scroll: false })
+      const normalizedNextDate = normalizeDateKey(nextDate)
+      if (!normalizedNextDate || normalizedNextDate === selectedDate) return
+      router.push(`/?date=${normalizedNextDate}&store=${storeIdFromUrl}`, { scroll: false })
       setExpandedTx(null)
     },
     [selectedDate, router, storeIdFromUrl],
