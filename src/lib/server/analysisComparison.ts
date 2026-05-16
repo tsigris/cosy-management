@@ -13,6 +13,7 @@ import {
   formatShortDateKey,
   getWeekdayLabel,
   getYearOverYearRanges,
+  shiftDateKeyByYears,
   type FinancialDateRange,
 } from '@/lib/financialPeriods'
 import type {
@@ -366,15 +367,22 @@ export async function buildFinancialComparison(
   }
 
   // TRACE: Log weekday mapping selection logic
+  // Calculate distance from baseline previous-year date to selected comparison date
+  const baselinePreviousYear = shiftDateKeyByYears(current.from, -1)
+  const distanceMs = Math.abs(
+    new Date(previous.from + 'T00:00:00Z').getTime() - 
+    new Date(baselinePreviousYear + 'T00:00:00Z').getTime()
+  )
+  const distanceDays = distanceMs / (24 * 60 * 60 * 1000)
+  
   console.info('[comparison/build] WEEKDAY_MAPPING_SELECTION', {
     currentDate: current.from,
     currentWeekday: getWeekdayLabel(current.from),
+    baselinePreviousYearDate: baselinePreviousYear,
     comparisonDate: previous.from,
     comparisonWeekday: comparisonMapping.comparisonWeekday,
-    distanceDays: Math.abs(
-      new Date(current.from).getTime() - new Date(previous.from).getTime()
-    ) / (24 * 60 * 60 * 1000),
-    note: 'Selected closest same weekday in ±14 day window (ties prefer future date)',
+    distanceDaysFromBaseline: distanceDays,
+    selectionRule: 'Closest same weekday within ±14 days (ties prefer future date)',
   })
 
   const [currentAggregate, previousAggregate] = await Promise.all([

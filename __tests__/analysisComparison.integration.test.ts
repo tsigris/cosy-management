@@ -21,14 +21,14 @@ function createSupabaseForComparison(rows: any[], payrollPct = 10) {
 }
 
 describe('analysisComparison integration', () => {
-  it('builds current vs previous period comparison with weekday matching', async () => {
-    // 2026-05-01 = Thursday, so comparison date is 2025-04-18 (Thursday)
-    // 2026-05-02 = Friday, so comparison date is 2025-04-19 (Friday)
+  it('builds current vs previous period comparison with closest weekday matching', async () => {
+    // 2026-05-01 = Friday, closest Friday in previous year within ±14 days of 2025-05-01 is 2025-05-02
+    // 2026-05-02 = Saturday, closest Saturday is 2025-05-03
     const rows = [
       { date: '2026-05-01', amount: 100, type: 'income', category: 'Sales', method: 'Cash', is_credit: false },
       { date: '2026-05-02', amount: -20, type: 'expense', category: 'Supplies', method: 'Cash', is_credit: false },
-      { date: '2025-04-18', amount: 80, type: 'income', category: 'Sales', method: 'Cash', is_credit: false },
-      { date: '2025-04-19', amount: -10, type: 'expense', category: 'Supplies', method: 'Cash', is_credit: false },
+      { date: '2025-05-02', amount: 80, type: 'income', category: 'Sales', method: 'Cash', is_credit: false },
+      { date: '2025-05-03', amount: -10, type: 'expense', category: 'Supplies', method: 'Cash', is_credit: false },
     ]
 
     const supabase = createSupabaseForComparison(rows, 11)
@@ -50,16 +50,19 @@ describe('analysisComparison integration', () => {
     // Verify comparisonMapping is included
     expect(result.comparisonMapping).toBeDefined()
     expect(result.comparisonMapping.currentDate).toBe('2026-05-01')
-    expect(result.comparisonMapping.comparisonDate).toBe('2025-04-18')
+    expect(result.comparisonMapping.comparisonDate).toBe('2025-05-02')
   })
 
-  it('maps 2026-05-15 (Friday) to 2025-05-02 (Friday) with weekday matching', async () => {
-    // 2026-05-15 = Friday, so comparison date is 2025-05-02 (Friday, first Friday in May 2025)
+  it('maps 2026-05-15 (Friday) to 2025-05-16 (Friday) with closest weekday matching', async () => {
+    // 2026-05-15 = Friday
+    // Previous-year baseline: 2025-05-15 = Thursday
+    // Search candidates: 2025-05-09 (Friday, 6 days away) vs 2025-05-16 (Friday, 1 day away)
+    // Select: 2025-05-16 (closest)
     const rows = [
       { date: '2026-05-15', amount: 1725, type: 'income', category: 'Sales', method: 'Cash', is_credit: false },
       { date: '2026-05-15', amount: -1337, type: 'expense', category: 'Ops', method: 'Cash', is_credit: false },
-      { date: '2025-05-02', amount: 1420, type: 'income', category: 'Sales', method: 'Cash', is_credit: false },
-      { date: '2025-05-02', amount: -1200, type: 'expense', category: 'Ops', method: 'Cash', is_credit: false },
+      { date: '2025-05-16', amount: 1420, type: 'income', category: 'Sales', method: 'Cash', is_credit: false },
+      { date: '2025-05-16', amount: -1200, type: 'expense', category: 'Ops', method: 'Cash', is_credit: false },
     ]
 
     const supabase = createSupabaseForComparison(rows, 10)
@@ -70,7 +73,7 @@ describe('analysisComparison integration', () => {
     )
 
     expect(result.periods.current.from).toBe('2026-05-15')
-    expect(result.periods.previous.from).toBe('2025-05-02')
+    expect(result.periods.previous.from).toBe('2025-05-16')
 
     expect(result.summary.totalRevenue.current).toBe(1725)
     expect(result.summary.totalRevenue.previous).toBe(1420)
@@ -79,7 +82,7 @@ describe('analysisComparison integration', () => {
 
     expect(result.daily).toHaveLength(1)
     expect(result.daily[0]?.currentDate).toBe('2026-05-15')
-    expect(result.daily[0]?.previousDate).toBe('2025-05-02')
+    expect(result.daily[0]?.previousDate).toBe('2025-05-16')
     expect(result.daily[0]?.previousHasData).toBe(true)
     expect(result.daily[0]?.currentRevenue).toBe(1725)
     expect(result.daily[0]?.previousRevenue).toBe(1420)
@@ -88,7 +91,7 @@ describe('analysisComparison integration', () => {
     // Verify comparisonMapping is included and correct
     expect(result.comparisonMapping).toBeDefined()
     expect(result.comparisonMapping.currentDate).toBe('2026-05-15')
-    expect(result.comparisonMapping.comparisonDate).toBe('2025-05-02')
+    expect(result.comparisonMapping.comparisonDate).toBe('2025-05-16')
     expect(result.comparisonMapping.comparisonWeekday).toBe('Παρ')
   })
 })
