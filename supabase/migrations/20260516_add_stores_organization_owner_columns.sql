@@ -171,7 +171,11 @@ begin
       sa.store_id,
       sa.user_id as owner_user_id
     from public.store_access sa
-    order by sa.store_id, sa.id
+    where sa.user_id is not null
+    order by
+      sa.store_id,
+      case when sa.role in ('owner', 'admin') then 0 else 1 end,
+      sa.id
   )
   update public.stores s
   set owner_id = f.owner_user_id
