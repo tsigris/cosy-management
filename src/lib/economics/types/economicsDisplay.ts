@@ -29,6 +29,39 @@ export type EconomicsHomeDisplayDto = EconomicsHomeSummaryDto & {
   monthWorstDayRevenue?: number
   /** Expense pressure this month (computed %) */
   monthExpensePressure?: number
+  /** Active range label for timeline rendering */
+  rangeLabel?: string
+  /** Selected range from date key */
+  rangeFrom?: string
+  /** Selected range to date key */
+  rangeTo?: string
+  /** Revenue total in selected range */
+  rangeRevenue?: number
+  /** Expense total in selected range */
+  rangeExpenses?: number
+  /** Net total in selected range */
+  rangeProfit?: number
+  /** Previous year revenue for same day span */
+  rangeRevenuePrevYear?: number
+  /** Previous year expense for same day span */
+  rangeExpensesPrevYear?: number
+  /** Previous year net for same day span */
+  rangeProfitPrevYear?: number
+  /** Ordered daily rows for the active range */
+  historyRows?: EconomicsHistoryRowDto[]
+}
+
+export type EconomicsHistoryRowDto = {
+  date: string
+  label?: string
+  revenue?: number
+  expenses?: number
+  profit?: number
+  cashRevenue?: number
+  cardRevenue?: number
+  revenuePrevYear?: number
+  expensesPrevYear?: number
+  profitPrevYear?: number
 }
 
 /**

@@ -3,12 +3,17 @@
 import React, { createContext, useContext, useMemo } from 'react'
 import { useEconomicsUrlSyncedState } from './economicsUrlState'
 import type { EconomicsPeriodId } from '@/lib/economics/types/economicsDto'
+import { addDaysToDateKey, getTodayDateKey } from '@/lib/financialPeriods'
 
 type EconomicsPeriodContextValue = {
   period: EconomicsPeriodId
   selectedYear: number
+  fromDate: string
+  toDate: string
   setPeriod: (period: EconomicsPeriodId) => void
   setSelectedYear: (year: number) => void
+  setFromDate: (dateKey: string) => void
+  setToDate: (dateKey: string) => void
 }
 
 const EconomicsPeriodContext = createContext<EconomicsPeriodContextValue | null>(null)
@@ -27,6 +32,17 @@ function parseYear(rawValue: string | null, fallback: number) {
   return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback
 }
 
+function isValidDateKey(value: string | null): value is string {
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false
+  const [year, month, day] = value.split('-').map(Number)
+  const dt = new Date(year, month - 1, day)
+  return dt.getFullYear() === year && dt.getMonth() === month - 1 && dt.getDate() === day
+}
+
+function parseDateKey(rawValue: string | null, fallback: string) {
+  return isValidDateKey(rawValue) ? rawValue : fallback
+}
+
 type EconomicsPeriodProviderProps = {
   children: React.ReactNode
   initialPeriod?: EconomicsPeriodId
@@ -38,6 +54,9 @@ export function EconomicsPeriodProvider({
   initialPeriod = 'month',
   initialSelectedYear = new Date().getFullYear(),
 }: EconomicsPeriodProviderProps) {
+  const today = getTodayDateKey()
+  const fallbackFrom = addDaysToDateKey(today, -13)
+
   const [period, setPeriod] = useEconomicsUrlSyncedState<EconomicsPeriodId>({
     key: 'period',
     defaultValue: 'month',
@@ -52,14 +71,32 @@ export function EconomicsPeriodProvider({
     serialize: (value) => (Number.isFinite(value) ? String(Math.floor(value)) : null),
   })
 
+  const [fromDate, setFromDate] = useEconomicsUrlSyncedState<string>({
+    key: 'from',
+    defaultValue: fallbackFrom,
+    parse: (rawValue) => parseDateKey(rawValue, fallbackFrom),
+    serialize: (value) => (isValidDateKey(value) ? value : null),
+  })
+
+  const [toDate, setToDate] = useEconomicsUrlSyncedState<string>({
+    key: 'to',
+    defaultValue: today,
+    parse: (rawValue) => parseDateKey(rawValue, today),
+    serialize: (value) => (isValidDateKey(value) ? value : null),
+  })
+
   const value = useMemo<EconomicsPeriodContextValue>(
     () => ({
       period,
       selectedYear,
+      fromDate,
+      toDate,
       setPeriod,
       setSelectedYear,
+      setFromDate,
+      setToDate,
     }),
-    [period, selectedYear, setPeriod, setSelectedYear],
+    [period, selectedYear, fromDate, toDate, setPeriod, setSelectedYear, setFromDate, setToDate],
   )
 
   return <EconomicsPeriodContext.Provider value={value}>{children}</EconomicsPeriodContext.Provider>

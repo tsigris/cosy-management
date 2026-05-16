@@ -71,10 +71,9 @@ describe('economics home smoke', () => {
       />,
     )
 
-    // Today section — 'Σήμερα' appears as both section label and KpiCard label
-    expect(screen.getAllByText('Σήμερα').length).toBeGreaterThanOrEqual(1)
-    // YoY strip
-    expect(screen.getByLabelText('Σύγκριση προηγούμενης περιόδου')).toBeInTheDocument()
+    expect(screen.getByText('Περίοδος')).toBeInTheDocument()
+    expect(screen.getByText('Ιστορικό επιχειρησιακής περιόδου')).toBeInTheDocument()
+    expect(screen.getByText('Ημερήσιο ιστορικό')).toBeInTheDocument()
   })
 
   // 2. Today section shows primary KPIs
@@ -210,11 +209,12 @@ describe('economics home smoke', () => {
       />,
     )
 
-    expect(screen.getAllByText('Σήμερα').length).toBeGreaterThanOrEqual(1)
+    expect(screen.getByText('Περίοδος')).toBeInTheDocument()
+    expect(screen.getByText('Ημερήσιο ιστορικό')).toBeInTheDocument()
   })
 
-  // 14. EconomicsHomeScreen passes loading to both sections
-  it('shows both loading skeletons when HomeScreen is in loading state', () => {
+  // 14. EconomicsHomeScreen passes comparison loading to section
+  it('shows comparison loading text when HomeScreen is in loading state', () => {
     render(
       <EconomicsHomeScreen
         summary={null}
@@ -224,8 +224,7 @@ describe('economics home smoke', () => {
       />,
     )
 
-    expect(screen.getByLabelText('Φόρτωση σύνοψης')).toBeInTheDocument()
-    expect(screen.getByLabelText('Φόρτωση σύγκρισης')).toBeInTheDocument()
+    expect(screen.getByText('Φόρτωση σύγκρισης...')).toBeInTheDocument()
   })
 
   // 15. Summary without cash/card does not render payment row
