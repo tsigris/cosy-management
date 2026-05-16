@@ -54,7 +54,7 @@ export function EconomicsHomeScreen({
           }}
         >
           <div style={{ fontSize: 10, fontWeight: 900, letterSpacing: '0.07em', textTransform: 'uppercase', color: economicsColorTokens.muted, marginBottom: 8 }}>
-            Σχέση με χθες
+            Σήμερα vs Χθες
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
             {/* Today revenue vs yesterday */}

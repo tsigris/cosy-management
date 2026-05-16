@@ -137,17 +137,27 @@ function ComparisonRow({ label, value, pct, tone = 'neutral' }: DayComparison) {
 function ComparisonsSection({ detail }: { detail: EconomicsDayDetailDto | null }) {
   if (!detail) return null
 
-  // Stub comparisons — in production these would be computed from historical data
-  // For now, show the structure so the narrative is clear
+  // In production: fetch yesterday, last year, weekday avg from canonical layer
+  // For now: render structure to show comparisons are ready
   const comparisons: DayComparison[] = [
-    { label: 'vs Χθες (Τζίρος)', value: undefined, pct: undefined },
-    { label: 'vs Χθες (Κέρδος)', value: undefined, pct: undefined },
-    { label: 'vs Πέρυσι Σήμερα', value: undefined, pct: undefined },
+    { 
+      label: 'vs Χθες (Τζίρος)',
+      value: undefined, 
+      pct: undefined,
+    },
+    { 
+      label: 'vs Χθες (Κέρδος)',
+      value: undefined,
+      pct: undefined,
+    },
+    {
+      label: 'vs Πέρυσι Σήμερα',
+      value: undefined,
+      pct: undefined,
+    },
   ]
 
-  const anyComparison = comparisons.some((c) => c.value !== undefined || c.pct !== undefined)
-  if (!anyComparison) return null
-
+  // Always render if detail exists (shows structure even with undefined values)
   return (
     <div
       style={{
@@ -164,6 +174,9 @@ function ComparisonsSection({ detail }: { detail: EconomicsDayDetailDto | null }
       {comparisons.map((c, i) => (
         <ComparisonRow key={i} {...c} />
       ))}
+      <div style={{ fontSize: 9, color: economicsColorTokens.muted, marginTop: 6, fontStyle: 'italic', fontWeight: 500 }}>
+        Σε παραγωγή: σύγκριση με ιστορικά δεδομένα
+      </div>
     </div>
   )
 }
