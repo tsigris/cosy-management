@@ -365,6 +365,18 @@ export async function buildFinancialComparison(
     })
   }
 
+  // TRACE: Log weekday mapping selection logic
+  console.info('[comparison/build] WEEKDAY_MAPPING_SELECTION', {
+    currentDate: current.from,
+    currentWeekday: getWeekdayLabel(current.from),
+    comparisonDate: previous.from,
+    comparisonWeekday: comparisonMapping.comparisonWeekday,
+    distanceDays: Math.abs(
+      new Date(current.from).getTime() - new Date(previous.from).getTime()
+    ) / (24 * 60 * 60 * 1000),
+    note: 'Selected closest same weekday in ±14 day window (ties prefer future date)',
+  })
+
   const [currentAggregate, previousAggregate] = await Promise.all([
     loadPeriodAggregate(supabase, storeId, current),
     loadPeriodAggregate(supabase, storeId, previous),

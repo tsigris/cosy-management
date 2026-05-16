@@ -75,9 +75,18 @@ export function normalizeRange(range: FinancialDateRange): FinancialDateRange {
 /**
  * Find the same weekday in the previous year within a reasonable window.
  * For retail/hospitality, traffic patterns are weekday-driven, not date-driven.
- * E.g., Friday 15/05/2026 should compare to Friday 16/05/2025, not Thursday 15/05/2025.
+ * 
+ * BUSINESS RULE: Use the CLOSEST same weekday to the original calendar date.
+ * E.g., Friday 15/05/2026 should compare to Friday 16/05/2025 (1 day away), 
+ * not Friday 02/05/2025 (13 days away).
+ * 
+ * If tie distance: prefer future date (forward is more conservative).
  */
-function findSameWeekdayInPreviousYear(dateKey: string): string {
+function findSameWeekdayInPreviousYear(dateKey: string): {
+  selectedDate: string
+  candidates: Array<{ date: string; weekday: number; distanceDays: number }>
+  selectedDistanceDays: number
+} {
   const { year, month, day } = getParts(dateKey)
   
   // Get the UTC epoch day for the current date to determine weekday
@@ -89,31 +98,55 @@ function findSameWeekdayInPreviousYear(dateKey: string): string {
   const previousEpochDay = toUtcEpochDay(previousYearDateKey)
   const previousWeekday = new Date(previousEpochDay * MS_PER_DAY).getUTCDay()
   
-  // If weekdays match, return the shifted date
+  // Collect all candidate dates with matching weekday within ±14 days
+  const candidates: Array<{ date: string; weekday: number; distanceDays: number }> = []
+  
+  // Check baseline - if weekdays match exactly
   if (currentWeekday === previousWeekday) {
-    return previousYearDateKey
+    candidates.push({
+      date: previousYearDateKey,
+      weekday: previousWeekday,
+      distanceDays: 0,
+    })
   }
   
-  // Otherwise, find the closest matching weekday within ±14 days
-  // Search forward and backward to find same weekday
-  let closestDate = previousYearDateKey
-  let closestDayDiff = Math.abs(currentWeekday - previousWeekday)
-  
+  // Search ±14 days for all matching weekdays
   for (let daysOffset = -14; daysOffset <= 14; daysOffset++) {
-    if (daysOffset === 0) continue
+    if (daysOffset === 0) continue // already checked baseline
     
     const candidateDate = addDaysToDateKey(previousYearDateKey, daysOffset)
     const candidateEpochDay = toUtcEpochDay(candidateDate)
     const candidateWeekday = new Date(candidateEpochDay * MS_PER_DAY).getUTCDay()
     
     if (candidateWeekday === currentWeekday) {
-      // Prefer earlier dates (less offset) when multiple matches exist
-      closestDate = candidateDate
-      break
+      candidates.push({
+        date: candidateDate,
+        weekday: candidateWeekday,
+        distanceDays: Math.abs(daysOffset),
+      })
     }
   }
   
-  return closestDate
+  // Select the closest match
+  // If tie: prefer future date (positive offset > negative offset)
+  let selectedCandidate = candidates[0]
+  for (const candidate of candidates) {
+    if (candidate.distanceDays < selectedCandidate.distanceDays) {
+      selectedCandidate = candidate
+    } else if (
+      candidate.distanceDays === selectedCandidate.distanceDays &&
+      toUtcEpochDay(candidate.date) > toUtcEpochDay(selectedCandidate.date)
+    ) {
+      // Tie in distance: prefer future date
+      selectedCandidate = candidate
+    }
+  }
+  
+  return {
+    selectedDate: selectedCandidate.date,
+    candidates,
+    selectedDistanceDays: selectedCandidate.distanceDays,
+  }
 }
 
 export type YearOverYearResult = {
@@ -131,8 +164,9 @@ export function getYearOverYearRanges(range: FinancialDateRange): YearOverYearRe
   const current = normalizeRange(range)
   const days = countInclusiveDays(current)
   
-  // Find same weekday in previous year for the current date
-  const comparisonFromDate = findSameWeekdayInPreviousYear(current.from)
+  // Find same weekday in previous year for the current date (with detailed mapping info)
+  const weekdayMapping = findSameWeekdayInPreviousYear(current.from)
+  const comparisonFromDate = weekdayMapping.selectedDate
   const comparisonToDate = addDaysToDateKey(comparisonFromDate, Math.max(0, days - 1))
 
   return {
