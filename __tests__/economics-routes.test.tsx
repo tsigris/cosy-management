@@ -8,6 +8,23 @@ import {
 import { EconomicsRouteProviders } from '@/components/economics/shell/EconomicsRouteProviders'
 import { useRouter } from 'next/navigation'
 
+jest.mock('@/hooks/useCanonicalFinancialPeriod', () => ({
+  useCanonicalFinancialPeriod: jest.fn(() => ({
+    summary: null,
+    rows: [],
+    loading: false,
+    error: null,
+  })),
+}))
+
+jest.mock('@/hooks/useAnalysisComparison', () => ({
+  useAnalysisComparison: jest.fn(() => ({
+    data: null,
+    loading: false,
+    error: null,
+  })),
+}))
+
 // ─── Helpers ──────────────────────────────────────────────────────────────
 
 // Mock next/navigation
