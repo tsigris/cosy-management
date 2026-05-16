@@ -12,9 +12,61 @@ type ComparisonRequestBody = {
   toDate?: string
 }
 
+function safeStringify(value: unknown): string {
+  try {
+    return JSON.stringify(value, null, 2)
+  } catch {
+    return '[unserializable]'
+  }
+}
+
+function serializeError(error: unknown): Record<string, unknown> {
+  if (error instanceof Error) {
+    const withExtras = error as Error & {
+      code?: unknown
+      details?: unknown
+      hint?: unknown
+    }
+
+    return {
+      type: 'Error',
+      name: error.name,
+      message: error.message,
+      stack: error.stack ?? null,
+      code: withExtras.code ?? null,
+      details: withExtras.details ?? null,
+      hint: withExtras.hint ?? null,
+      raw: safeStringify(error),
+    }
+  }
+
+  const objectLike = (error && typeof error === 'object' ? error : null) as
+    | {
+        name?: unknown
+        message?: unknown
+        stack?: unknown
+        code?: unknown
+        details?: unknown
+        hint?: unknown
+      }
+    | null
+
+  return {
+    type: typeof error,
+    name: typeof objectLike?.name === 'string' ? objectLike.name : null,
+    message: typeof objectLike?.message === 'string' ? objectLike.message : null,
+    stack: typeof objectLike?.stack === 'string' ? objectLike.stack : null,
+    code: objectLike?.code ?? null,
+    details: objectLike?.details ?? null,
+    hint: objectLike?.hint ?? null,
+    raw: safeStringify(error),
+  }
+}
+
 export async function POST(request: NextRequest) {
   let stage = 'request:parse'
   let requestContext: Record<string, unknown> = {}
+  let partialComparisonPayload: unknown = null
 
   try {
     const body = (await request.json()) as ComparisonRequestBody
@@ -86,10 +138,20 @@ export async function POST(request: NextRequest) {
 
     stage = 'auth:user-resolved'
 
+    console.info('[api/analysis/comparison] auth-user-result', {
+      ...requestContext,
+      hasUser: Boolean(user),
+      userId: user?.id ?? null,
+      userMetadata: user?.user_metadata ?? null,
+      appMetadata: user?.app_metadata ?? null,
+      userError: userError ? serializeError(userError) : null,
+    })
+
     if (userError || !user) {
       console.error('[api/analysis/comparison] auth-user-failed', {
         ...requestContext,
-        userError: userError?.message || String(userError),
+        hasUser: Boolean(user),
+        userError: userError ? serializeError(userError) : null,
       })
       return NextResponse.json(
         {
@@ -102,7 +164,7 @@ export async function POST(request: NextRequest) {
     }
 
     stage = 'auth:store-access-check'
-    const { data: membershipRow, error: membershipError } = await callerClient
+    const membershipResult = await callerClient
       .from('store_access')
       .select('store_id')
       .eq('user_id', user.id)
@@ -110,7 +172,38 @@ export async function POST(request: NextRequest) {
       .limit(1)
       .maybeSingle()
 
-    if (membershipError) throw membershipError
+    const { data: membershipRow, error: membershipError } = membershipResult
+
+    console.info('[api/analysis/comparison] membership-lookup-result', {
+      ...requestContext,
+      userId: user.id,
+      membershipRow,
+      membershipError: membershipError ? serializeError(membershipError) : null,
+      rawMembershipResult: {
+        status: membershipResult.status,
+        statusText: membershipResult.statusText,
+        count: membershipResult.count,
+        data: membershipResult.data,
+        error: membershipResult.error ? serializeError(membershipResult.error) : null,
+      },
+    })
+
+    if (membershipError) {
+      console.error('[api/analysis/comparison] membership-lookup-error', {
+        ...requestContext,
+        userId: user.id,
+        membershipError: serializeError(membershipError),
+        rawMembershipResult: {
+          status: membershipResult.status,
+          statusText: membershipResult.statusText,
+          count: membershipResult.count,
+          data: membershipResult.data,
+          error: membershipResult.error ? serializeError(membershipResult.error) : null,
+        },
+      })
+      throw membershipError
+    }
+
     if (!membershipRow) {
       console.error('[api/analysis/comparison] store-access-denied', {
         ...requestContext,
@@ -127,14 +220,42 @@ export async function POST(request: NextRequest) {
     }
 
     stage = 'request:store-organization-load'
-    const { data: storeRow, error: storeError } = await callerClient
+    const storeLookupResult = await callerClient
       .from('stores')
       .select('id, organization_id')
       .eq('id', storeId)
       .limit(1)
       .maybeSingle()
 
-    if (storeError) throw storeError
+    const { data: storeRow, error: storeError } = storeLookupResult
+
+    console.info('[api/analysis/comparison] store-organization-lookup-result', {
+      ...requestContext,
+      storeRow,
+      storeError: storeError ? serializeError(storeError) : null,
+      rawStoreLookupResult: {
+        status: storeLookupResult.status,
+        statusText: storeLookupResult.statusText,
+        count: storeLookupResult.count,
+        data: storeLookupResult.data,
+        error: storeLookupResult.error ? serializeError(storeLookupResult.error) : null,
+      },
+    })
+
+    if (storeError) {
+      console.error('[api/analysis/comparison] store-organization-lookup-error', {
+        ...requestContext,
+        storeError: serializeError(storeError),
+        rawStoreLookupResult: {
+          status: storeLookupResult.status,
+          statusText: storeLookupResult.statusText,
+          count: storeLookupResult.count,
+          data: storeLookupResult.data,
+          error: storeLookupResult.error ? serializeError(storeLookupResult.error) : null,
+        },
+      })
+      throw storeError
+    }
 
     const selectedOrganizationId =
       typeof storeRow?.organization_id === 'string' ? storeRow.organization_id.trim() || null : null
@@ -145,6 +266,18 @@ export async function POST(request: NextRequest) {
         : typeof (user.app_metadata as { organization_id?: unknown } | null)?.organization_id === 'string'
           ? String((user.app_metadata as { organization_id?: unknown }).organization_id).trim() || null
           : null
+
+    console.info('[api/analysis/comparison] organization-mapping-result', {
+      ...requestContext,
+      storeLookupResult: {
+        id: storeRow?.id ?? null,
+        organization_id: storeRow?.organization_id ?? null,
+      },
+      selectedOrganizationId,
+      userOrganizationIdFromMetadata: userOrgFromMeta,
+      hasStoreRow: Boolean(storeRow),
+      hasStoreOrganizationId: Boolean(selectedOrganizationId),
+    })
 
     const mappedRanges = getYearOverYearRanges({ from: fromDate, to: toDate })
     requestContext = {
@@ -173,6 +306,7 @@ export async function POST(request: NextRequest) {
       from: fromDate,
       to: toDate,
     })
+    partialComparisonPayload = payload
 
     stage = 'response:serialize-success'
 
@@ -206,22 +340,39 @@ export async function POST(request: NextRequest) {
     return response
   } catch (error) {
     stage = `failed:${stage}`
-    const errorMessage = error instanceof Error ? error.message : String(error)
-    const errorStack = error instanceof Error ? error.stack : undefined
+    const serializedError = serializeError(error)
+    const errorMessage =
+      typeof serializedError.message === 'string' && serializedError.message.length > 0
+        ? serializedError.message
+        : String(serializedError.raw)
+
     console.error('[api/analysis/comparison] FAILED:', {
       stage,
       requestContext,
       errorMessage,
+      errorName: serializedError.name,
+      errorCode: serializedError.code,
+      errorDetails: serializedError.details,
+      errorHint: serializedError.hint,
+      errorStack: serializedError.stack,
+      errorRawObject: serializedError.raw,
+      partialComparisonPayload,
     })
-    if (errorStack) console.error(errorStack)
-    const mapped = mapErrorMessage(error, 'Αποτυχία φόρτωσης σύγκρισης.')
+
+    const mapped = mapErrorMessage(errorMessage, 'Αποτυχία φόρτωσης σύγκρισης.')
     const failureResponse = NextResponse.json(
       {
         error: 'Comparison service error',
         failureReason: 'comparison_service_error',
         stage,
         details: mapped.message,
-        ...(process.env.NODE_ENV !== 'production' && { _debug: errorMessage, _request: requestContext }),
+        ...(process.env.NODE_ENV !== 'production' && {
+          _debug: {
+            request: requestContext,
+            error: serializedError,
+            partialComparisonPayload,
+          },
+        }),
       },
       { status: mapped.status },
     )
