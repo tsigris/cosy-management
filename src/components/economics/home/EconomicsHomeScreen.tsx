@@ -16,6 +16,7 @@ type EconomicsHomeScreenProps = {
   toDate?: string
   onFromDateChange?: (date: string) => void
   onToDateChange?: (date: string) => void
+  comparisonError?: string | null
 }
 
 /**
@@ -37,6 +38,7 @@ export function EconomicsHomeScreen({
   toDate = '',
   onFromDateChange,
   onToDateChange,
+  comparisonError = null,
 }: EconomicsHomeScreenProps) {
   const display = summary as EconomicsHomeDisplayDto | null
   const historyRows = display?.historyRows ?? []
@@ -47,10 +49,7 @@ export function EconomicsHomeScreen({
   const prevYearRevenue = display?.rangeRevenuePrevYear
   const prevYearExpenses = display?.rangeExpensesPrevYear
   const prevYearProfit = display?.rangeProfitPrevYear
-
-  const revenueDeltaPct = computeDeltaPct(rangeRevenue, prevYearRevenue)
-  const expensesDeltaPct = computeDeltaPct(rangeExpenses, prevYearExpenses)
-  const profitDeltaPct = computeDeltaPct(rangeProfit, prevYearProfit)
+  const noComparisonData = display?.noComparisonData ?? false
 
   return (
     <div
@@ -109,9 +108,30 @@ export function EconomicsHomeScreen({
 
           {!summaryLoading && (
             <div style={{ display: 'grid', gap: 8 }}>
-              <SummaryRow label="Τζίρος" value={rangeRevenue} prevYearValue={prevYearRevenue} deltaPct={revenueDeltaPct} tone="positive" />
-              <SummaryRow label="Έξοδα" value={rangeExpenses} prevYearValue={prevYearExpenses} deltaPct={expensesDeltaPct} tone="warning" />
-              <SummaryRow label="Καθαρό" value={rangeProfit} prevYearValue={prevYearProfit} deltaPct={profitDeltaPct} tone="neutral" />
+              <SummaryRow
+                label="Τζίρος"
+                value={rangeRevenue}
+                prevYearValue={prevYearRevenue}
+                deltaPct={display?.rangeRevenueDeltaPct}
+                tone="positive"
+                noComparisonData={noComparisonData}
+              />
+              <SummaryRow
+                label="Έξοδα"
+                value={rangeExpenses}
+                prevYearValue={prevYearExpenses}
+                deltaPct={display?.rangeExpensesDeltaPct}
+                tone="warning"
+                noComparisonData={noComparisonData}
+              />
+              <SummaryRow
+                label="Καθαρό"
+                value={rangeProfit}
+                prevYearValue={prevYearProfit}
+                deltaPct={display?.rangeProfitDeltaPct}
+                tone="neutral"
+                noComparisonData={noComparisonData}
+              />
             </div>
           )}
         </div>
@@ -132,13 +152,17 @@ export function EconomicsHomeScreen({
           </div>
           {comparisonLoading ? (
             <div style={{ fontSize: 12, color: economicsColorTokens.muted }}>Φόρτωση σύγκρισης...</div>
+          ) : comparisonError ? (
+            <div style={{ fontSize: 12, color: economicsColorTokens.muted }}>No comparison data</div>
+          ) : noComparisonData || !comparison ? (
+            <div style={{ fontSize: 12, color: economicsColorTokens.muted }}>No comparison data</div>
           ) : (
             <div style={{ display: 'grid', gap: 6 }}>
               <ComparisonLine
                 label={comparison?.periodLabel || 'Τρέχουσα περίοδος'}
                 current={comparison?.currentTotal}
                 previous={comparison?.previousTotal}
-                deltaPct={comparison?.deltaPct ?? null}
+                deltaPct={comparison?.deltaPct}
               />
             </div>
           )}
@@ -199,13 +223,8 @@ function formatRangeLabel(fromDate: string, toDate: string) {
   }
 }
 
-function computeDeltaPct(current?: number, previous?: number) {
-  if (current === undefined || previous === undefined || previous === 0) return null
-  return ((current - previous) / Math.abs(previous)) * 100
-}
-
-function formatPct(value: number | null) {
-  if (value === null) return '—'
+function formatPct(value?: number | null) {
+  if (value === null || value === undefined) return 'No comparison data'
   const sign = value > 0 ? '+' : ''
   return `${sign}${value.toLocaleString('el-GR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`
 }
@@ -222,12 +241,14 @@ function SummaryRow({
   prevYearValue,
   deltaPct,
   tone,
+  noComparisonData,
 }: {
   label: string
   value?: number
   prevYearValue?: number
-  deltaPct: number | null
+  deltaPct?: number | null
   tone: 'positive' | 'warning' | 'neutral'
+  noComparisonData?: boolean
 }) {
   return (
     <div
@@ -244,14 +265,16 @@ function SummaryRow({
       <div style={{ fontSize: 12, fontWeight: 800, color: economicsColorTokens.muted }}>{label}</div>
       <div>
         <div style={{ fontSize: 14, fontWeight: 900, color: pickTone(tone) }}>{formatAmount(value)}</div>
-        <div style={{ fontSize: 11, color: economicsColorTokens.muted }}>Πέρυσι: {formatAmount(prevYearValue)}</div>
+        <div style={{ fontSize: 11, color: economicsColorTokens.muted }}>
+          {noComparisonData ? 'No previous-year data' : `Πέρυσι: ${formatAmount(prevYearValue)}`}
+        </div>
       </div>
       <div
         style={{
           fontSize: 12,
           fontWeight: 900,
           color:
-            deltaPct === null
+            deltaPct === null || deltaPct === undefined
               ? economicsColorTokens.muted
               : deltaPct > 0
                 ? economicsColorTokens.positive
@@ -260,7 +283,7 @@ function SummaryRow({
                   : economicsColorTokens.muted,
         }}
       >
-        {formatPct(deltaPct)}
+        {noComparisonData ? 'No comparison data' : formatPct(deltaPct)}
       </div>
     </div>
   )
@@ -298,14 +321,14 @@ function ComparisonLine({
                   : economicsColorTokens.muted,
         }}
       >
-        Μεταβολή: {formatPct(deltaPct ?? null)}
+        Μεταβολή: {formatPct(deltaPct)}
       </div>
     </div>
   )
 }
 
 function HistoryRow({ row }: { row: EconomicsHistoryRowDto }) {
-  const deltaPct = computeDeltaPct(row.revenue, row.revenuePrevYear)
+  const hasComparison = row.revenuePrevYear !== undefined && row.revenuePrevYear !== null
 
   return (
     <div
@@ -324,14 +347,14 @@ function HistoryRow({ row }: { row: EconomicsHistoryRowDto }) {
             fontSize: 11,
             fontWeight: 800,
             color:
-              deltaPct === null
+              !hasComparison
                 ? economicsColorTokens.muted
-                : deltaPct >= 0
+                : (row.revenue || 0) >= (row.revenuePrevYear || 0)
                   ? economicsColorTokens.positive
                   : economicsColorTokens.negative,
           }}
         >
-          vs πέρυσι: {formatPct(deltaPct)}
+          {hasComparison ? `vs πέρυσι: ${formatAmount(row.revenuePrevYear)}` : 'No comparison data'}
         </div>
       </div>
       <div style={{ fontSize: 12, color: economicsColorTokens.text }}>

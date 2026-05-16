@@ -47,6 +47,14 @@ export type EconomicsHomeDisplayDto = EconomicsHomeSummaryDto & {
   rangeExpensesPrevYear?: number
   /** Previous year net for same day span */
   rangeProfitPrevYear?: number
+  /** Revenue delta pct from canonical comparison pipeline */
+  rangeRevenueDeltaPct?: number | null
+  /** Expense delta pct from canonical comparison pipeline */
+  rangeExpensesDeltaPct?: number | null
+  /** Profit delta pct from canonical comparison pipeline */
+  rangeProfitDeltaPct?: number | null
+  /** True when previous-year comparison is not available canonically */
+  noComparisonData?: boolean
   /** Ordered daily rows for the active range */
   historyRows?: EconomicsHistoryRowDto[]
 }
