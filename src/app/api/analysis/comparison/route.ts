@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { mapErrorMessage } from '@/app/api/admin/_shared/auth'
 import { buildFinancialComparison } from '@/lib/server/analysisComparison'
+import { getYearOverYearRanges } from '@/lib/financialPeriods'
 
 export const runtime = 'nodejs'
 
@@ -18,7 +19,7 @@ export async function POST(request: NextRequest) {
     const fromDate = typeof body?.fromDate === 'string' ? body.fromDate.trim() : ''
     const toDate = typeof body?.toDate === 'string' ? body.toDate.trim() : ''
 
-  if (!storeId || !fromDate || !toDate) {
+    if (!storeId || !fromDate || !toDate) {
       return NextResponse.json(
         { error: 'Missing storeId, fromDate, or toDate.' },
         { status: 400 },
@@ -71,10 +72,57 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Δεν έχετε πρόσβαση σε αυτό το κατάστημα.' }, { status: 403 })
     }
 
+    const { data: storeRow, error: storeError } = await callerClient
+      .from('stores')
+      .select('id, organization_id')
+      .eq('id', storeId)
+      .limit(1)
+      .maybeSingle()
+
+    if (storeError) throw storeError
+
+    const selectedOrganizationId =
+      typeof storeRow?.organization_id === 'string' ? storeRow.organization_id.trim() || null : null
+
+    const userOrgFromMeta =
+      typeof (user.user_metadata as { organization_id?: unknown } | null)?.organization_id === 'string'
+        ? String((user.user_metadata as { organization_id?: unknown }).organization_id).trim() || null
+        : typeof (user.app_metadata as { organization_id?: unknown } | null)?.organization_id === 'string'
+          ? String((user.app_metadata as { organization_id?: unknown }).organization_id).trim() || null
+          : null
+
+    const mappedRanges = getYearOverYearRanges({ from: fromDate, to: toDate })
+
+    if (process.env.NODE_ENV !== 'production') {
+      console.debug('[api/analysis/comparison] request-context', {
+        userId: user.id,
+        selectedStoreId: storeId,
+        selectedOrganizationId,
+        userOrganizationId: userOrgFromMeta,
+        selectedPeriod: { from: fromDate, to: toDate },
+        comparisonPeriod: mappedRanges.previous,
+        selectedComparisonDate: mappedRanges.current.from,
+        mappedComparisonDate: mappedRanges.previous.from,
+      })
+    }
+
     const payload = await buildFinancialComparison(callerClient, storeId, {
       from: fromDate,
       to: toDate,
     })
+
+    if (process.env.NODE_ENV !== 'production') {
+      console.debug('[api/analysis/comparison] response-summary', {
+        selectedStoreId: storeId,
+        selectedOrganizationId,
+        selectedPeriod: payload.periods.current,
+        comparisonPeriod: payload.periods.previous,
+        totalRevenue: payload.summary.totalRevenue,
+        expenses: payload.summary.expenses,
+        profit: payload.summary.profit,
+        dailyRows: payload.daily.length,
+      })
+    }
 
     return NextResponse.json(payload, {
       headers: {

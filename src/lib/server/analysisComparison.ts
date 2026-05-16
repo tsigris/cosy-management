@@ -29,6 +29,7 @@ type PayrollPeriodRpc = {
 type PeriodAggregate = {
   range: FinancialDateRange
   days: number
+  rowCount: number
   totalRevenue: number
   cashRevenue: number
   cardRevenue: number
@@ -123,6 +124,7 @@ async function loadPeriodAggregate(
   return {
     range: normalizedRange,
     days,
+    rowCount: rows.length,
     totalRevenue: summary.totalRevenue,
     cashRevenue: summary.cashRevenue,
     cardRevenue: summary.cardRevenue,
@@ -226,12 +228,47 @@ export async function buildFinancialComparison(
   range: FinancialDateRange,
 ): Promise<FinancialComparisonResponse> {
   const { current, previous, days } = getYearOverYearRanges(range)
+
+  if (process.env.NODE_ENV !== 'production') {
+    console.debug('[comparison/build] range-mapping', {
+      selectedStoreId: storeId,
+      selectedPeriod: current,
+      comparisonPeriod: previous,
+      selectedComparisonDate: current.from,
+      mappedComparisonDate: previous.from,
+      dayCount: days,
+    })
+  }
+
   const [currentAggregate, previousAggregate] = await Promise.all([
     loadPeriodAggregate(supabase, storeId, current),
     loadPeriodAggregate(supabase, storeId, previous),
   ])
 
-  return {
+  if (process.env.NODE_ENV !== 'production') {
+    console.debug('[comparison/build] canonical-aggregate', {
+      selectedStoreId: storeId,
+      current: {
+        range: currentAggregate.range,
+        rowCount: currentAggregate.rowCount,
+        totalRevenue: currentAggregate.totalRevenue,
+        expenses: currentAggregate.expenses,
+        profit: currentAggregate.profit,
+        zTotals: currentAggregate.zTotals,
+      },
+      previous: {
+        range: previousAggregate.range,
+        rowCount: previousAggregate.rowCount,
+        totalRevenue: previousAggregate.totalRevenue,
+        expenses: previousAggregate.expenses,
+        profit: previousAggregate.profit,
+        zTotals: previousAggregate.zTotals,
+      },
+      noPreviousRows: previousAggregate.rowCount === 0,
+    })
+  }
+
+  const response: FinancialComparisonResponse = {
     periods: {
       current: {
         from: current.from,
@@ -263,4 +300,23 @@ export async function buildFinancialComparison(
     weekdayNormalized: buildWeekdayNormalizedRows(currentAggregate, previousAggregate),
     generatedAt: new Date().toISOString(),
   }
+
+  if (process.env.NODE_ENV !== 'production') {
+    console.debug('[comparison/build] adapter-result', {
+      selectedStoreId: storeId,
+      hasSummary: Boolean(response.summary),
+      dailyRows: response.daily.length,
+      selectedComparisonDate: current.from,
+      mappedComparisonDate:
+        response.daily.find((row) => row.currentDate === current.from)?.previousDate || previous.from,
+      nullReason:
+        previousAggregate.rowCount === 0
+          ? 'no_previous_period_rows'
+          : response.daily.length === 0
+            ? 'no_daily_rows'
+            : null,
+    })
+  }
+
+  return response
 }

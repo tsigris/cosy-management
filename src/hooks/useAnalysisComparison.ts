@@ -78,6 +78,12 @@ export function useAnalysisComparison({
           throw new Error(payload?.error || 'Αποτυχία φόρτωσης σύγκρισης.')
         }
 
+        if (!payload?.summary || !payload?.periods || !Array.isArray(payload?.daily)) {
+          throw new Error(
+            `[comparison] Invalid canonical payload shape (summary=${Boolean(payload?.summary)}, periods=${Boolean(payload?.periods)}, daily=${Array.isArray(payload?.daily)})`,
+          )
+        }
+
         if (cancelled || requestId !== requestIdRef.current) return
 
         // Debug: Log successful comparison response
@@ -86,6 +92,9 @@ export function useAnalysisComparison({
             storeId,
             fromDate,
             toDate,
+            selectedComparisonDate: fromDate,
+            mappedPreviousDate:
+              payload.daily.find((row) => row.currentDate === fromDate)?.previousDate || null,
             hasSummary: Boolean(payload?.summary),
             totalRevenueComparison: payload?.summary?.totalRevenue,
             dailyRowsCount: payload?.daily?.length || 0,

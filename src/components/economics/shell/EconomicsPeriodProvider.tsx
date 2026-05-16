@@ -55,7 +55,8 @@ export function EconomicsPeriodProvider({
   initialSelectedYear = new Date().getFullYear(),
 }: EconomicsPeriodProviderProps) {
   const today = getTodayDateKey()
-  const fallbackFrom = addDaysToDateKey(today, -13)
+  // Operator default window: yesterday -> today (only when URL has no explicit dates).
+  const fallbackFrom = addDaysToDateKey(today, -1)
 
   const [period, setPeriod] = useEconomicsUrlSyncedState<EconomicsPeriodId>({
     key: 'period',

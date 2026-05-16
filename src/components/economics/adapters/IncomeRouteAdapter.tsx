@@ -84,21 +84,34 @@ export function IncomeRouteAdapter() {
       }
     : null
 
-  // Check if comparison data exists and has valid summary (not checking daily rows to avoid false negatives)
-  const hasCanonicalComparison = Boolean(
-    comparisonData.data?.summary?.totalRevenue?.previous !== undefined &&
-      comparisonData.data?.summary?.totalRevenue?.current !== undefined,
-  )
+  // Canonical comparison exists when the backend returned a valid summary payload.
+  // Do not infer existence from zero/non-zero revenue values.
+  const hasCanonicalComparison = Boolean(comparisonData.data?.summary)
+
+  const comparisonNullReason = comparisonData.loading
+    ? 'loading'
+    : comparisonData.error
+      ? `error:${comparisonData.error}`
+      : !comparisonData.data
+        ? 'missing_payload'
+        : !comparisonData.data.summary
+          ? 'missing_summary'
+          : null
 
   if (process.env.NODE_ENV !== 'production') {
     if (comparisonData.loading || comparisonData.error || !hasCanonicalComparison) {
       console.debug('[economics/income] Comparison state:', {
         storeId,
         period: { from: range.from, to: range.to },
+        selectedComparisonDate: range.from,
+        mappedPreviousDate:
+          comparisonData.data?.daily?.find((row) => row.currentDate === range.from)?.previousDate || null,
+        organizationId: null,
         isLoading: comparisonData.loading,
         hasError: Boolean(comparisonData.error),
         errorMessage: comparisonData.error,
         hasComparison: hasCanonicalComparison,
+        nullReason: comparisonNullReason,
         responseStructure: {
           hasSummary: Boolean(comparisonData.data?.summary),
           totalRevenueMetric: comparisonData.data?.summary?.totalRevenue,
@@ -144,7 +157,7 @@ export function IncomeRouteAdapter() {
     [historyRows, dailyComparisonMap],
   )
 
-  const comparisonStub: EconomicsComparisonDto | null = canonicalRevenueComparison
+  const comparisonStub: EconomicsComparisonDto | null = canonicalRevenueComparison && comparisonData.data
     ? {
         periodLabel: comparisonData.data?.periods.current.label,
         previousPeriodLabel: comparisonData.data?.periods.previous.label,
@@ -157,6 +170,17 @@ export function IncomeRouteAdapter() {
 
   const summary = summaryStub ? mapHomeSummary(summaryStub) : null
   const comparison = comparisonStub ? mapComparisonSummary(comparisonStub) : null
+
+  if (process.env.NODE_ENV !== 'production' && comparisonNullReason) {
+    console.debug('[economics/income] Comparison adapter null reason', {
+      storeId,
+      selectedDate: range.from,
+      selectedRange: range,
+      nullReason: comparisonNullReason,
+      hasComparisonStub: Boolean(comparisonStub),
+      hasMappedComparison: Boolean(comparison),
+    })
+  }
 
   const displaySummary = summary
     ? buildHomeDisplay(summary, {
@@ -178,7 +202,7 @@ export function IncomeRouteAdapter() {
     displaySummary.rangeRevenueDeltaPct = canonicalRevenueComparison?.deltaPct
     displaySummary.rangeExpensesDeltaPct = canonicalExpensesComparison?.deltaPct
     displaySummary.rangeProfitDeltaPct = canonicalProfitComparison?.deltaPct
-    displaySummary.noComparisonData = !hasCanonicalComparison
+    displaySummary.noComparisonData = !comparisonData.loading && !comparisonData.error && !hasCanonicalComparison
     displaySummary.historyRows = enrichedHistoryRows
   }
 
