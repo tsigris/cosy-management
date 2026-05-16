@@ -22,6 +22,7 @@ import {
   toAmount,
   type CanonicalFinancialRow,
 } from '@/lib/canonicalFinancialMetrics'
+import type { FinancialComparisonDayRow } from '@/types/analysisComparison'
 
 /**
  * Route adapter for /economics/income (home view).
@@ -111,7 +112,7 @@ export function IncomeRouteAdapter() {
     : null
 
   // Build comparison lookup map for per-day Y-o-Y data
-  const dailyComparisonMap = new Map<string, (typeof comparisonData.data)[number]>()
+  const dailyComparisonMap = new Map<string, FinancialComparisonDayRow>()
   if (hasCanonicalComparison && comparisonData.data?.daily) {
     for (const dailyRow of comparisonData.data.daily) {
       dailyComparisonMap.set(dailyRow.currentDate, dailyRow)
