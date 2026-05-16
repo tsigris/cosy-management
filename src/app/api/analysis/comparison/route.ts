@@ -111,7 +111,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    stage = 'auth:client-init'
+    stage = 'bootstrap:client-init'
     const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL
     const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
     if (!supabaseUrl || !anonKey) {
@@ -131,154 +131,345 @@ export async function POST(request: NextRequest) {
       },
     })
 
-    const {
-      data: { user },
-      error: userError,
-    } = await callerClient.auth.getUser()
+    // ================================================================
+    // BOOTSTRAP STEP 1: Load auth user
+    // ================================================================
+    stage = 'bootstrap:auth-user'
+    let user: any = null
+    try {
+      const {
+        data: { user: authUser },
+        error: userError,
+      } = await callerClient.auth.getUser()
 
-    stage = 'auth:user-resolved'
-
-    console.info('[api/analysis/comparison] auth-user-result', {
-      ...requestContext,
-      hasUser: Boolean(user),
-      userId: user?.id ?? null,
-      userMetadata: user?.user_metadata ?? null,
-      appMetadata: user?.app_metadata ?? null,
-      userError: userError ? serializeError(userError) : null,
-    })
-
-    if (userError || !user) {
-      console.error('[api/analysis/comparison] auth-user-failed', {
-        ...requestContext,
-        hasUser: Boolean(user),
-        userError: userError ? serializeError(userError) : null,
-      })
-      return NextResponse.json(
-        {
-          error: 'Comparison service error',
-          failureReason: 'auth_user_failed',
-          details: 'Απαιτείται σύνδεση.',
+      console.info('[api/analysis/comparison] [STEP 1 AFTER] bootstrap:auth-user', {
+        stepName: 'bootstrap:auth-user',
+        inputParams: { tokenTrimmed: token.substring(0, 20) + '...' },
+        returnedUser: {
+          userId: authUser?.id ?? null,
+          userEmail: authUser?.email ?? null,
+          userMetadata: authUser?.user_metadata ?? null,
+          appMetadata: authUser?.app_metadata ?? null,
         },
-        { status: 401 },
-      )
+        returnedError: userError ? serializeError(userError) : null,
+        hasError: Boolean(userError),
+        success: !userError && Boolean(authUser),
+      })
+
+      if (userError) {
+        console.error('[api/analysis/comparison] [STEP 1 FAILED] bootstrap:auth-user', {
+          stepName: 'bootstrap:auth-user',
+          inputParams: { tokenTrimmed: token.substring(0, 20) + '...' },
+          errorCode: (userError as any)?.code ?? null,
+          errorMessage: userError.message ?? null,
+          errorDetails: (userError as any)?.details ?? null,
+          errorHint: (userError as any)?.hint ?? null,
+          serializedError: serializeError(userError),
+        })
+        throw userError
+      }
+
+      if (!authUser) {
+        const noUserError = new Error('No user returned from auth.getUser() despite no error')
+        console.error('[api/analysis/comparison] [STEP 1 FAILED] bootstrap:auth-user - no-user', {
+          stepName: 'bootstrap:auth-user',
+          errorMessage: noUserError.message,
+          serializedError: serializeError(noUserError),
+        })
+        throw noUserError
+      }
+
+      user = authUser
+    } catch (authStepError) {
+      console.error('[api/analysis/comparison] [STEP 1 EXCEPTION] bootstrap:auth-user', {
+        stepName: 'bootstrap:auth-user',
+        exceptionType: typeof authStepError,
+        exceptionName: (authStepError as any)?.name ?? null,
+        exceptionCode: (authStepError as any)?.code ?? null,
+        exceptionMessage: (authStepError as any)?.message ?? String(authStepError),
+        exceptionDetails: (authStepError as any)?.details ?? null,
+        exceptionHint: (authStepError as any)?.hint ?? null,
+        serializedError: serializeError(authStepError),
+      })
+      throw authStepError
     }
 
-    stage = 'auth:store-access-check'
-    const membershipResult = await callerClient
-      .from('store_access')
-      .select('store_id')
-      .eq('user_id', user.id)
-      .eq('store_id', storeId)
-      .limit(1)
-      .maybeSingle()
+    // ================================================================
+    // BOOTSTRAP STEP 2: Check store_access membership
+    // ================================================================
+    stage = 'bootstrap:store-access'
+    let membershipRow: any = null
+    try {
+      const membershipResult = await callerClient
+        .from('store_access')
+        .select('store_id, user_id')
+        .eq('user_id', user.id)
+        .eq('store_id', storeId)
+        .limit(1)
+        .maybeSingle()
 
-    const { data: membershipRow, error: membershipError } = membershipResult
-
-    console.info('[api/analysis/comparison] membership-lookup-result', {
-      ...requestContext,
-      userId: user.id,
-      membershipRow,
-      membershipError: membershipError ? serializeError(membershipError) : null,
-      rawMembershipResult: {
-        status: membershipResult.status,
-        statusText: membershipResult.statusText,
-        count: membershipResult.count,
-        data: membershipResult.data,
-        error: membershipResult.error ? serializeError(membershipResult.error) : null,
-      },
-    })
-
-    if (membershipError) {
-      console.error('[api/analysis/comparison] membership-lookup-error', {
-        ...requestContext,
-        userId: user.id,
-        membershipError: serializeError(membershipError),
-        rawMembershipResult: {
-          status: membershipResult.status,
-          statusText: membershipResult.statusText,
-          count: membershipResult.count,
-          data: membershipResult.data,
-          error: membershipResult.error ? serializeError(membershipResult.error) : null,
+      console.info('[api/analysis/comparison] [STEP 2 AFTER] bootstrap:store-access', {
+        stepName: 'bootstrap:store-access',
+        inputParams: { userId: user.id, storeId },
+        returnedRows: membershipResult.data ? 1 : 0,
+        returnedObject: membershipResult.data ?? null,
+        returnedError: membershipResult.error ? serializeError(membershipResult.error) : null,
+        rawQueryResult: {
+          status: membershipResult.status ?? null,
+          statusText: membershipResult.statusText ?? null,
+          count: membershipResult.count ?? null,
         },
+        hasError: Boolean(membershipResult.error),
+        hasRows: Boolean(membershipResult.data),
+        success: !membershipResult.error && Boolean(membershipResult.data),
       })
-      throw membershipError
+
+      if (membershipResult.error) {
+        console.error('[api/analysis/comparison] [STEP 2 FAILED] bootstrap:store-access', {
+          stepName: 'bootstrap:store-access',
+          inputParams: { userId: user.id, storeId },
+          errorCode: membershipResult.error.code ?? null,
+          errorMessage: membershipResult.error.message ?? null,
+          errorDetails: (membershipResult.error as any)?.details ?? null,
+          errorHint: (membershipResult.error as any)?.hint ?? null,
+          serializedError: serializeError(membershipResult.error),
+        })
+        throw membershipResult.error
+      }
+
+      if (!membershipResult.data) {
+        console.error('[api/analysis/comparison] [STEP 2 FAILED] bootstrap:store-access - no-row', {
+          stepName: 'bootstrap:store-access',
+          inputParams: { userId: user.id, storeId },
+          errorMessage: 'User has no store_access membership for this storeId (RLS or no matching row)',
+          returnedRows: 0,
+          status: 403,
+        })
+        return NextResponse.json(
+          {
+            error: 'Comparison service error',
+            failureReason: 'store_access_denied',
+            details: 'Δεν έχετε πρόσβαση σε αυτό το κατάστημα.',
+          },
+          { status: 403 },
+        )
+      }
+
+      membershipRow = membershipResult.data
+    } catch (storeAccessStepError) {
+      console.error('[api/analysis/comparison] [STEP 2 EXCEPTION] bootstrap:store-access', {
+        stepName: 'bootstrap:store-access',
+        inputParams: { userId: user.id, storeId },
+        exceptionType: typeof storeAccessStepError,
+        exceptionName: (storeAccessStepError as any)?.name ?? null,
+        exceptionCode: (storeAccessStepError as any)?.code ?? null,
+        exceptionMessage: (storeAccessStepError as any)?.message ?? String(storeAccessStepError),
+        exceptionDetails: (storeAccessStepError as any)?.details ?? null,
+        exceptionHint: (storeAccessStepError as any)?.hint ?? null,
+        serializedError: serializeError(storeAccessStepError),
+      })
+      throw storeAccessStepError
     }
 
-    if (!membershipRow) {
-      console.error('[api/analysis/comparison] store-access-denied', {
-        ...requestContext,
-        userId: user.id,
-      })
-      return NextResponse.json(
-        {
-          error: 'Comparison service error',
-          failureReason: 'store_access_denied',
-          details: 'Δεν έχετε πρόσβαση σε αυτό το κατάστημα.',
+    // ================================================================
+    // BOOTSTRAP STEP 3: Load store details
+    // ================================================================
+    stage = 'bootstrap:store-load'
+    let storeRow: any = null
+    try {
+      const storeLookupResult = await callerClient
+        .from('stores')
+        .select('id, organization_id')
+        .eq('id', storeId)
+        .limit(1)
+        .maybeSingle()
+
+      console.info('[api/analysis/comparison] [STEP 3 AFTER] bootstrap:store-load', {
+        stepName: 'bootstrap:store-load',
+        inputParams: { storeId },
+        returnedRows: storeLookupResult.data ? 1 : 0,
+        returnedObject: storeLookupResult.data ?? null,
+        returnedError: storeLookupResult.error ? serializeError(storeLookupResult.error) : null,
+        rawQueryResult: {
+          status: storeLookupResult.status ?? null,
+          statusText: storeLookupResult.statusText ?? null,
+          count: storeLookupResult.count ?? null,
         },
-        { status: 403 },
-      )
+        hasError: Boolean(storeLookupResult.error),
+        hasRows: Boolean(storeLookupResult.data),
+        success: !storeLookupResult.error && Boolean(storeLookupResult.data),
+      })
+
+      if (storeLookupResult.error) {
+        console.error('[api/analysis/comparison] [STEP 3 FAILED] bootstrap:store-load', {
+          stepName: 'bootstrap:store-load',
+          inputParams: { storeId },
+          errorCode: storeLookupResult.error.code ?? null,
+          errorMessage: storeLookupResult.error.message ?? null,
+          errorDetails: (storeLookupResult.error as any)?.details ?? null,
+          errorHint: (storeLookupResult.error as any)?.hint ?? null,
+          serializedError: serializeError(storeLookupResult.error),
+        })
+        throw storeLookupResult.error
+      }
+
+      if (!storeLookupResult.data) {
+        const noStoreError = new Error(
+          `No store found with id: ${storeId} (may be RLS denied or missing row)`,
+        )
+        console.error('[api/analysis/comparison] [STEP 3 FAILED] bootstrap:store-load - no-row', {
+          stepName: 'bootstrap:store-load',
+          inputParams: { storeId },
+          errorMessage: noStoreError.message,
+          returnedRows: 0,
+          serializedError: serializeError(noStoreError),
+        })
+        throw noStoreError
+      }
+
+      storeRow = storeLookupResult.data
+    } catch (storeLoadStepError) {
+      console.error('[api/analysis/comparison] [STEP 3 EXCEPTION] bootstrap:store-load', {
+        stepName: 'bootstrap:store-load',
+        inputParams: { storeId },
+        exceptionType: typeof storeLoadStepError,
+        exceptionName: (storeLoadStepError as any)?.name ?? null,
+        exceptionCode: (storeLoadStepError as any)?.code ?? null,
+        exceptionMessage: (storeLoadStepError as any)?.message ?? String(storeLoadStepError),
+        exceptionDetails: (storeLoadStepError as any)?.details ?? null,
+        exceptionHint: (storeLoadStepError as any)?.hint ?? null,
+        serializedError: serializeError(storeLoadStepError),
+      })
+      throw storeLoadStepError
     }
 
-    stage = 'request:store-organization-load'
-    const storeLookupResult = await callerClient
-      .from('stores')
-      .select('id, organization_id')
-      .eq('id', storeId)
-      .limit(1)
-      .maybeSingle()
+    // ================================================================
+    // BOOTSTRAP STEP 4: Extract organization_id from store and user metadata
+    // ================================================================
+    stage = 'bootstrap:organization-id-extraction'
+    let selectedOrganizationId: string | null = null
+    let userOrgFromMeta: string | null = null
+    try {
+      const storeOrgId = storeRow?.organization_id ?? null
+      selectedOrganizationId =
+        typeof storeOrgId === 'string' ? (storeOrgId.trim() || null) : null
 
-    const { data: storeRow, error: storeError } = storeLookupResult
+      const userMetaOrgId =
+        typeof (user.user_metadata as { organization_id?: unknown } | null)?.organization_id === 'string'
+          ? String((user.user_metadata as { organization_id?: unknown }).organization_id).trim() || null
+          : null
 
-    console.info('[api/analysis/comparison] store-organization-lookup-result', {
-      ...requestContext,
-      storeRow,
-      storeError: storeError ? serializeError(storeError) : null,
-      rawStoreLookupResult: {
-        status: storeLookupResult.status,
-        statusText: storeLookupResult.statusText,
-        count: storeLookupResult.count,
-        data: storeLookupResult.data,
-        error: storeLookupResult.error ? serializeError(storeLookupResult.error) : null,
-      },
-    })
-
-    if (storeError) {
-      console.error('[api/analysis/comparison] store-organization-lookup-error', {
-        ...requestContext,
-        storeError: serializeError(storeError),
-        rawStoreLookupResult: {
-          status: storeLookupResult.status,
-          statusText: storeLookupResult.statusText,
-          count: storeLookupResult.count,
-          data: storeLookupResult.data,
-          error: storeLookupResult.error ? serializeError(storeLookupResult.error) : null,
-        },
-      })
-      throw storeError
-    }
-
-    const selectedOrganizationId =
-      typeof storeRow?.organization_id === 'string' ? storeRow.organization_id.trim() || null : null
-
-    const userOrgFromMeta =
-      typeof (user.user_metadata as { organization_id?: unknown } | null)?.organization_id === 'string'
-        ? String((user.user_metadata as { organization_id?: unknown }).organization_id).trim() || null
-        : typeof (user.app_metadata as { organization_id?: unknown } | null)?.organization_id === 'string'
+      const userAppMetaOrgId =
+        typeof (user.app_metadata as { organization_id?: unknown } | null)?.organization_id === 'string'
           ? String((user.app_metadata as { organization_id?: unknown }).organization_id).trim() || null
           : null
 
-    console.info('[api/analysis/comparison] organization-mapping-result', {
-      ...requestContext,
-      storeLookupResult: {
-        id: storeRow?.id ?? null,
-        organization_id: storeRow?.organization_id ?? null,
-      },
-      selectedOrganizationId,
-      userOrganizationIdFromMetadata: userOrgFromMeta,
-      hasStoreRow: Boolean(storeRow),
-      hasStoreOrganizationId: Boolean(selectedOrganizationId),
-    })
+      userOrgFromMeta = userMetaOrgId || userAppMetaOrgId
 
+      console.info('[api/analysis/comparison] [STEP 4 AFTER] bootstrap:organization-id-extraction', {
+        stepName: 'bootstrap:organization-id-extraction',
+        inputParams: {
+          storeId,
+          storeRowOrganizationId: storeRow?.organization_id ?? null,
+          userMetadataOrgId: (user.user_metadata as { organization_id?: unknown } | null)?.organization_id ?? null,
+          userAppMetadataOrgId: (user.app_metadata as { organization_id?: unknown } | null)?.organization_id ?? null,
+        },
+        returnedValues: {
+          extractedStoreOrgId: selectedOrganizationId,
+          extractedUserOrgId: userOrgFromMeta,
+        },
+        hasStoreOrgId: Boolean(selectedOrganizationId),
+        hasUserOrgId: Boolean(userOrgFromMeta),
+        idsMatch: selectedOrganizationId === userOrgFromMeta,
+        success: Boolean(selectedOrganizationId),
+      })
+
+      if (!selectedOrganizationId) {
+        const noOrgError = new Error(
+          `Store ${storeId} has no organization_id set in database row`,
+        )
+        console.error('[api/analysis/comparison] [STEP 4 FAILED] bootstrap:organization-id-extraction - no-org-id', {
+          stepName: 'bootstrap:organization-id-extraction',
+          inputParams: { storeId },
+          errorMessage: noOrgError.message,
+          storeRow: { id: storeRow?.id, organization_id: storeRow?.organization_id },
+          serializedError: serializeError(noOrgError),
+        })
+        throw noOrgError
+      }
+    } catch (orgIdExtractionError) {
+      console.error('[api/analysis/comparison] [STEP 4 EXCEPTION] bootstrap:organization-id-extraction', {
+        stepName: 'bootstrap:organization-id-extraction',
+        inputParams: { storeId },
+        exceptionType: typeof orgIdExtractionError,
+        exceptionName: (orgIdExtractionError as any)?.name ?? null,
+        exceptionCode: (orgIdExtractionError as any)?.code ?? null,
+        exceptionMessage: (orgIdExtractionError as any)?.message ?? String(orgIdExtractionError),
+        exceptionDetails: (orgIdExtractionError as any)?.details ?? null,
+        exceptionHint: (orgIdExtractionError as any)?.hint ?? null,
+        serializedError: serializeError(orgIdExtractionError),
+      })
+      throw orgIdExtractionError
+    }
+
+    // ================================================================
+    // BOOTSTRAP STEP 5: Validate organization membership
+    // ================================================================
+    stage = 'bootstrap:membership-validation'
+    try {
+      const mismatch = selectedOrganizationId && userOrgFromMeta && selectedOrganizationId !== userOrgFromMeta
+      
+      console.info('[api/analysis/comparison] [STEP 5 AFTER] bootstrap:membership-validation', {
+        stepName: 'bootstrap:membership-validation',
+        inputParams: {
+          storeOrganizationId: selectedOrganizationId,
+          userOrganizationId: userOrgFromMeta,
+        },
+        validationResult: {
+          storeOrgIdPresent: Boolean(selectedOrganizationId),
+          userOrgIdPresent: Boolean(userOrgFromMeta),
+          idsMatch: !mismatch,
+          mismatchDetected: mismatch,
+        },
+        success: !mismatch,
+      })
+
+      if (mismatch) {
+        const mismatchError = new Error(
+          `Organization mismatch: store org_id=${selectedOrganizationId} but user org_id=${userOrgFromMeta}`,
+        )
+        console.error('[api/analysis/comparison] [STEP 5 FAILED] bootstrap:membership-validation - mismatch', {
+          stepName: 'bootstrap:membership-validation',
+          inputParams: {
+            storeOrganizationId: selectedOrganizationId,
+            userOrganizationId: userOrgFromMeta,
+          },
+          errorMessage: mismatchError.message,
+          serializedError: serializeError(mismatchError),
+        })
+        throw mismatchError
+      }
+    } catch (membershipValidationError) {
+      console.error('[api/analysis/comparison] [STEP 5 EXCEPTION] bootstrap:membership-validation', {
+        stepName: 'bootstrap:membership-validation',
+        inputParams: {
+          storeOrganizationId: selectedOrganizationId,
+          userOrganizationId: userOrgFromMeta,
+        },
+        exceptionType: typeof membershipValidationError,
+        exceptionName: (membershipValidationError as any)?.name ?? null,
+        exceptionCode: (membershipValidationError as any)?.code ?? null,
+        exceptionMessage: (membershipValidationError as any)?.message ?? String(membershipValidationError),
+        exceptionDetails: (membershipValidationError as any)?.details ?? null,
+        exceptionHint: (membershipValidationError as any)?.hint ?? null,
+        serializedError: serializeError(membershipValidationError),
+      })
+      throw membershipValidationError
+    }
+
+    // ================================================================
+    // BOOTSTRAP COMPLETE - Prepare for aggregation
+    // ================================================================
     const mappedRanges = getYearOverYearRanges({ from: fromDate, to: toDate })
     requestContext = {
       ...requestContext,
@@ -287,6 +478,15 @@ export async function POST(request: NextRequest) {
       mappedComparisonFrom: mappedRanges.previous.from,
       mappedComparisonTo: mappedRanges.previous.to,
     }
+
+    console.info('[api/analysis/comparison] [BOOTSTRAP COMPLETE] all-bootstrap-steps-passed', {
+      userId: user.id,
+      storeId,
+      selectedOrganizationId,
+      userOrganizationId: userOrgFromMeta,
+      selectedPeriod: { from: fromDate, to: toDate },
+      comparisonPeriod: mappedRanges.previous,
+    })
 
     if (process.env.NODE_ENV !== 'production') {
       console.debug('[api/analysis/comparison] request-context', {
