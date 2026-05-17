@@ -11,6 +11,20 @@ type UrlSyncedStateOptions<T> = {
   isEqual?: (left: T, right: T) => boolean
 }
 
+type DateRangeValue = {
+  from: string
+  to: string
+}
+
+type UrlSyncedDateRangeOptions = {
+  fromKey: string
+  toKey: string
+  defaultFrom: string
+  defaultTo: string
+  parse: (rawValue: string | null, fallback: string) => string
+  serialize: (value: string) => string | null
+}
+
 const sameValue = <T,>(left: T, right: T) => Object.is(left, right)
 
 /**
@@ -96,6 +110,95 @@ export function useEconomicsUrlSyncedState<T>({
     lastWrittenQueryRef.current = nextQuery
     router.replace(nextUrl, { scroll: false })
   }, [key, defaultValue, value, pathname, router, searchParamsString])
+
+  return [value, setValue] as const
+}
+
+/**
+ * Atomic URL ↔ date range sync for from/to pairs.
+ *
+ * Both keys are updated in a single router.replace so stale pair merges cannot occur.
+ */
+export function useEconomicsUrlSyncedDateRangeState({
+  fromKey,
+  toKey,
+  defaultFrom,
+  defaultTo,
+  parse,
+  serialize,
+}: UrlSyncedDateRangeOptions) {
+  const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
+  const searchParamsString = searchParams?.toString() ?? ''
+
+  const parseRef = useRef(parse)
+  const serializeRef = useRef(serialize)
+  parseRef.current = parse
+  serializeRef.current = serialize
+
+  const [value, setValue] = useState<DateRangeValue>(() => ({
+    from: parse(searchParams?.get(fromKey) ?? null, defaultFrom),
+    to: parse(searchParams?.get(toKey) ?? null, defaultTo),
+  }))
+
+  const lastWrittenQueryRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    if (lastWrittenQueryRef.current !== null && lastWrittenQueryRef.current === searchParamsString) {
+      lastWrittenQueryRef.current = null
+      return
+    }
+
+    const params = new URLSearchParams(searchParamsString)
+    const from = parseRef.current(params.get(fromKey), defaultFrom)
+    const to = parseRef.current(params.get(toKey), defaultTo)
+
+    setValue((prev) => (prev.from === from && prev.to === to ? prev : { from, to }))
+  }, [searchParamsString, fromKey, toKey, defaultFrom, defaultTo])
+
+  useEffect(() => {
+    const params = new URLSearchParams(searchParamsString)
+    const currentFrom = parseRef.current(params.get(fromKey), defaultFrom)
+    const currentTo = parseRef.current(params.get(toKey), defaultTo)
+
+    if (currentFrom === value.from && currentTo === value.to) return
+
+    const nextParams = new URLSearchParams(searchParamsString)
+    const serializedFrom = serializeRef.current(value.from)
+    const serializedTo = serializeRef.current(value.to)
+
+    if (serializedFrom == null || value.from === defaultFrom) {
+      nextParams.delete(fromKey)
+    } else {
+      nextParams.set(fromKey, serializedFrom)
+    }
+
+    if (serializedTo == null || value.to === defaultTo) {
+      nextParams.delete(toKey)
+    } else {
+      nextParams.set(toKey, serializedTo)
+    }
+
+    const nextQuery = nextParams.toString()
+    const nextUrl = nextQuery ? `${pathname}?${nextQuery}` : pathname
+    const currentUrl = searchParamsString ? `${pathname}?${searchParamsString}` : pathname
+
+    if (nextUrl === currentUrl) return
+
+    lastWrittenQueryRef.current = nextQuery
+    router.replace(nextUrl, { scroll: false })
+  }, [
+    value.from,
+    value.to,
+    pathname,
+    router,
+    searchParamsString,
+    fromKey,
+    toKey,
+    defaultFrom,
+    defaultTo,
+  ])
 
   return [value, setValue] as const
 }

@@ -38,8 +38,15 @@ import type { FinancialComparisonDayRow } from '@/types/analysisComparison'
  */
 export function IncomeRouteAdapter() {
   const { storeId } = useEconomicsShell()
-  const { fromDate, toDate, setFromDate, setToDate } = useEconomicsPeriod()
+  const { fromDate, toDate, setRange } = useEconomicsPeriod()
   const todayKey = getTodayDateKey()
+
+  const commitRange = React.useCallback(
+    (nextFrom: string, nextTo: string) => {
+      setRange({ from: nextFrom, to: nextTo })
+    },
+    [setRange],
+  )
 
   // ✅ GUARD: Operational range MUST be from/toDate, never from comparison mapping
   // Comparison data is READ-ONLY analytics output, never input to period state
@@ -278,8 +285,7 @@ export function IncomeRouteAdapter() {
             comparisonLoading={comparisonData.loading}
             fromDate={range.from}
             toDate={range.to}
-            onFromDateCommit={setFromDate}
-            onToDateCommit={setToDate}
+            onRangeCommit={commitRange}
             comparisonError={comparisonData.error}
           />
         </AsyncBoundary>

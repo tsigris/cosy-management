@@ -14,8 +14,7 @@ type EconomicsHomeScreenProps = {
   comparisonLoading?: boolean
   fromDate?: string
   toDate?: string
-  onFromDateCommit?: (date: string) => void
-  onToDateCommit?: (date: string) => void
+  onRangeCommit?: (fromDate: string, toDate: string) => void
   comparisonError?: string | null
 }
 
@@ -36,8 +35,7 @@ export function EconomicsHomeScreen({
   comparisonLoading = false,
   fromDate = '',
   toDate = '',
-  onFromDateCommit,
-  onToDateCommit,
+  onRangeCommit,
   comparisonError = null,
 }: EconomicsHomeScreenProps) {
   const display = summary as EconomicsHomeDisplayDto | null
@@ -67,24 +65,26 @@ export function EconomicsHomeScreen({
     setDraftTo((prev) => (prev === toDateNormalized ? prev : toDateNormalized))
   }, [toDateNormalized])
 
-  const commitDraftDate = React.useCallback(
-    (
-      draftValue: string,
-      committedValue: string,
-      onCommit?: (date: string) => void,
-    ) => {
-      if (!onCommit) return
+  const commitDraftRange = React.useCallback(
+    (nextDraftFrom: string, nextDraftTo: string) => {
+      if (!onRangeCommit) return
 
-      const normalized = normalizeDateKey(draftValue)
-      if (!normalized || normalized !== draftValue) {
+      const normalizedFrom = normalizeDateKey(nextDraftFrom)
+      const normalizedTo = normalizeDateKey(nextDraftTo)
+      if (
+        !normalizedFrom ||
+        !normalizedTo ||
+        normalizedFrom !== nextDraftFrom ||
+        normalizedTo !== nextDraftTo
+      ) {
         return
       }
 
-      if (normalized !== committedValue) {
-        onCommit(normalized)
+      if (normalizedFrom !== fromDateNormalized || normalizedTo !== toDateNormalized) {
+        onRangeCommit(normalizedFrom, normalizedTo)
       }
     },
-    [],
+    [onRangeCommit, fromDateNormalized, toDateNormalized],
   )
 
   const rangeRevenue = display?.rangeRevenue
@@ -120,11 +120,15 @@ export function EconomicsHomeScreen({
           <input
             type="date"
             value={draftFrom}
-            onChange={(event) => setDraftFrom(event.target.value)}
-            onBlur={() => commitDraftDate(draftFrom, fromDateNormalized, onFromDateCommit)}
+            onChange={(event) => {
+              const nextDraftFrom = event.target.value
+              setDraftFrom(nextDraftFrom)
+              commitDraftRange(nextDraftFrom, draftTo)
+            }}
+            onBlur={() => commitDraftRange(draftFrom, draftTo)}
             onKeyDown={(event) => {
               if (event.key === 'Enter') {
-                commitDraftDate(draftFrom, fromDateNormalized, onFromDateCommit)
+                commitDraftRange(draftFrom, draftTo)
                 event.currentTarget.blur()
               }
               if (event.key === 'Escape') {
@@ -138,11 +142,15 @@ export function EconomicsHomeScreen({
           <input
             type="date"
             value={draftTo}
-            onChange={(event) => setDraftTo(event.target.value)}
-            onBlur={() => commitDraftDate(draftTo, toDateNormalized, onToDateCommit)}
+            onChange={(event) => {
+              const nextDraftTo = event.target.value
+              setDraftTo(nextDraftTo)
+              commitDraftRange(draftFrom, nextDraftTo)
+            }}
+            onBlur={() => commitDraftRange(draftFrom, draftTo)}
             onKeyDown={(event) => {
               if (event.key === 'Enter') {
-                commitDraftDate(draftTo, toDateNormalized, onToDateCommit)
+                commitDraftRange(draftFrom, draftTo)
                 event.currentTarget.blur()
               }
               if (event.key === 'Escape') {

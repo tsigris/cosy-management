@@ -65,6 +65,11 @@ export function useCanonicalFinancialPeriod({
         setLoading(true)
         setError(null)
 
+        console.log('FINAL_QUERY_RANGE', {
+          from: normalizedRange.from,
+          to: normalizedRange.to,
+        })
+
         const supabase = getSupabase()
         const [{ data, error: txError }, payrollRes] = await Promise.all([
           supabase

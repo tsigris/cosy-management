@@ -62,6 +62,11 @@ export function useAnalysisComparison({
           })
         }
 
+        console.log('FINAL_QUERY_RANGE', {
+          from: fromDate,
+          to: toDate,
+        })
+
         const response = await fetch('/api/analysis/comparison', {
           method: 'POST',
           headers: {

@@ -1,9 +1,14 @@
 'use client'
 
 import React, { createContext, useCallback, useContext, useMemo } from 'react'
-import { useEconomicsUrlSyncedState } from './economicsUrlState'
+import { useEconomicsUrlSyncedDateRangeState, useEconomicsUrlSyncedState } from './economicsUrlState'
 import type { EconomicsPeriodId } from '@/lib/economics/types/economicsDto'
 import { addDaysToDateKey, getTodayDateKey } from '@/lib/financialPeriods'
+
+type DateRangeValue = {
+  from: string
+  to: string
+}
 
 type EconomicsPeriodContextValue = {
   period: EconomicsPeriodId
@@ -14,6 +19,7 @@ type EconomicsPeriodContextValue = {
   setSelectedYear: (year: number) => void
   setFromDate: (dateKey: string) => void
   setToDate: (dateKey: string) => void
+  setRange: (range: DateRangeValue) => void
 }
 
 const EconomicsPeriodContext = createContext<EconomicsPeriodContextValue | null>(null)
@@ -72,19 +78,30 @@ export function EconomicsPeriodProvider({
     serialize: (value) => (Number.isFinite(value) ? String(Math.floor(value)) : null),
   })
 
-  const [fromDate, setFromDate] = useEconomicsUrlSyncedState<string>({
-    key: 'from',
-    defaultValue: fallbackFrom,
-    parse: (rawValue) => parseDateKey(rawValue, fallbackFrom),
+  const [range, setRangeState] = useEconomicsUrlSyncedDateRangeState({
+    fromKey: 'from',
+    toKey: 'to',
+    defaultFrom: fallbackFrom,
+    defaultTo: today,
+    parse: parseDateKey,
     serialize: (value) => (isValidDateKey(value) ? value : null),
   })
 
-  const [toDate, setToDate] = useEconomicsUrlSyncedState<string>({
-    key: 'to',
-    defaultValue: today,
-    parse: (rawValue) => parseDateKey(rawValue, today),
-    serialize: (value) => (isValidDateKey(value) ? value : null),
-  })
+  const fromDate = range.from
+  const toDate = range.to
+
+  const commitRange = useCallback(
+    (nextRange: DateRangeValue) => {
+      if (!isValidDateKey(nextRange.from) || !isValidDateKey(nextRange.to)) {
+        console.warn('[EconomicsPeriodProvider] Ignored invalid range commit:', nextRange)
+        return
+      }
+      setRangeState((prev) =>
+        prev.from === nextRange.from && prev.to === nextRange.to ? prev : nextRange,
+      )
+    },
+    [setRangeState],
+  )
 
   const commitFromDate = useCallback(
     (dateKey: string) => {
@@ -92,9 +109,9 @@ export function EconomicsPeriodProvider({
         console.warn('[EconomicsPeriodProvider] Ignored invalid from date commit:', dateKey)
         return
       }
-      setFromDate(dateKey)
+      commitRange({ from: dateKey, to: toDate })
     },
-    [setFromDate],
+    [commitRange, toDate],
   )
 
   const commitToDate = useCallback(
@@ -103,9 +120,9 @@ export function EconomicsPeriodProvider({
         console.warn('[EconomicsPeriodProvider] Ignored invalid to date commit:', dateKey)
         return
       }
-      setToDate(dateKey)
+      commitRange({ from: fromDate, to: dateKey })
     },
-    [setToDate],
+    [commitRange, fromDate],
   )
 
   const value = useMemo<EconomicsPeriodContextValue>(
@@ -118,8 +135,9 @@ export function EconomicsPeriodProvider({
       setSelectedYear,
       setFromDate: commitFromDate,
       setToDate: commitToDate,
+      setRange: commitRange,
     }),
-    [period, selectedYear, fromDate, toDate, setPeriod, setSelectedYear, commitFromDate, commitToDate],
+    [period, selectedYear, fromDate, toDate, setPeriod, setSelectedYear, commitFromDate, commitToDate, commitRange],
   )
 
   return <EconomicsPeriodContext.Provider value={value}>{children}</EconomicsPeriodContext.Provider>
