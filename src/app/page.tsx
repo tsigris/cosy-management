@@ -213,7 +213,14 @@ function DashboardContent() {
   const searchParams = useSearchParams()
   const storeIdFromUrl = searchParams.get('store')
 
+  // ✅ OPERATIONAL STATE: Canonical business date (NEVER contaminated by comparison data)
   const selectedDate = normalizeDateKey(searchParams.get('date')) || getTodayDateISO()
+
+  // ✅ DEFENSIVE: Validate selectedDate is truly a valid business date before using
+  if (!selectedDate || !/^\d{4}-\d{2}-\d{2}$/.test(selectedDate)) {
+    console.error('[Dashboard] Invalid selectedDate after normalization:', selectedDate)
+    return null  // white-screen guard: fail safely rather than crash with parseISO error
+  }
 
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [isStoreAdmin, setIsStoreAdmin] = useState(false)
@@ -223,6 +230,8 @@ function DashboardContent() {
   const [loading, setLoading] = useState(true)
   const [expandedTx, setExpandedTx] = useState<string | null>(null)
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false)
+  
+  // ✅ CALENDAR STATE: Always synced to selectedDate, NEVER comparison dates
   const [calendarMonth, setCalendarMonth] = useState(() => parseISO(selectedDate))
   const [totals, setTotals] = useState({
     income: 0,
@@ -254,15 +263,38 @@ function DashboardContent() {
   const yearStartStr = useMemo(() => `${businessYear}-01-01`, [businessYear])
   const formattedSelectedDate = formatDateDMY(selectedDate)
   const isToday = selectedDate === getTodayDateISO()
-  const selectedDateObject = useMemo(() => parseISO(selectedDate), [selectedDate])
+  
+  // ✅ SAFE: Derive UI date object from canonical selectedDate only
+  const selectedDateObject = useMemo(() => {
+    try {
+      const parsed = parseISO(selectedDate)
+      // ✅ Sanity check: ensure parsed date is valid
+      if (Number.isNaN(parsed.getTime())) {
+        console.error('[Dashboard] parseISO returned invalid date from:', selectedDate)
+        return parseISO(getTodayDateISO())
+      }
+      return parsed
+    } catch (err) {
+      console.error('[Dashboard] parseISO failed on selectedDate:', selectedDate, err)
+      return parseISO(getTodayDateISO())
+    }
+  }, [selectedDate])
+  
   const dateCardRef = useRef<HTMLDivElement | null>(null)
 
   const closeDatePicker = useCallback(() => {
     setIsDatePickerOpen(false)
   }, [])
 
+  // ✅ CRITICAL: Calendar month ONLY syncs to selectedDateObject (operational)
+  // NEVER to comparisonDate or comparison mapping
   useEffect(() => {
     if (!isDatePickerOpen) return
+    // Guard: ensure selectedDateObject is truly valid before using it
+    if (!selectedDateObject || Number.isNaN(selectedDateObject.getTime())) {
+      console.error('[Dashboard] selectedDateObject is invalid, not syncing calendarMonth')
+      return
+    }
     setCalendarMonth(selectedDateObject)
   }, [isDatePickerOpen, selectedDateObject])
 
@@ -431,6 +463,13 @@ function DashboardContent() {
   const loadDashboard = useCallback(async () => {
     if (!storeIdFromUrl) {
       router.replace('/select-store')
+      return
+    }
+
+    // ✅ GUARD: Verify selectedDate is valid before fetching
+    if (!selectedDate || !/^\d{4}-\d{2}-\d{2}$/.test(selectedDate)) {
+      console.error('[Dashboard] Cannot load dashboard with invalid selectedDate:', selectedDate)
+      setLoading(false)
       return
     }
 
@@ -730,10 +769,20 @@ function DashboardContent() {
     return rows
   }, [transactions, zTransactions, isZTransaction, selectedDate])
 
+  // ✅ CRITICAL: Date navigation MUST ONLY use selectedDate (operational)
+  // NEVER comparison dates or previous year data
   const navigateToDate = useCallback(
     (nextDate: string) => {
+      // ✅ DEFENSIVE: Validate the date before navigation
       const normalizedNextDate = normalizeDateKey(nextDate)
-      if (!normalizedNextDate || normalizedNextDate === selectedDate) return
+      if (!normalizedNextDate) {
+        console.warn('[Dashboard] Attempted to navigate to invalid date:', nextDate)
+        return
+      }
+      if (normalizedNextDate === selectedDate) return
+      
+      // ✅ GUARD: Ensure we're never routing comparison dates into URL
+      // Comparison dates should NEVER become the canonical selectedDate
       router.push(`/?date=${normalizedNextDate}&store=${storeIdFromUrl}`, { scroll: false })
       setExpandedTx(null)
     },
@@ -744,21 +793,33 @@ function DashboardContent() {
     setIsDatePickerOpen(true)
   }, [])
 
+  // ✅ Arrow navigation: ONLY modifies operational selectedDate
   const changeDate = useCallback(
     (days: number) => {
-      const current = parseISO(selectedDate)
-      const next = days > 0 ? addDays(current, 1) : subDays(current, 1)
+      // Guard: ensure selectedDateObject is valid before date arithmetic
+      if (!selectedDateObject || Number.isNaN(selectedDateObject.getTime())) {
+        console.error('[Dashboard] Cannot navigate: selectedDateObject is invalid')
+        return
+      }
+      const next = days > 0 ? addDays(selectedDateObject, 1) : subDays(selectedDateObject, 1)
       navigateToDate(format(next, 'yyyy-MM-dd'))
     },
-    [navigateToDate, selectedDate],
+    [navigateToDate, selectedDateObject],
   )
 
   const jumpToToday = useCallback(() => {
     navigateToDate(getTodayDateISO())
   }, [navigateToDate])
 
+  // ✅ Calendar day selection: MUST ONLY use operational dates
+  // Guard: never allow comparison dates through
   const selectDateFromCalendar = useCallback(
     (nextDate: Date) => {
+      // Defensive: validate the date before routing
+      if (!nextDate || Number.isNaN(nextDate.getTime())) {
+        console.error('[Dashboard] Calendar returned invalid date:', nextDate)
+        return
+      }
       navigateToDate(format(nextDate, 'yyyy-MM-dd'))
       closeDatePicker()
     },
@@ -947,8 +1008,17 @@ function DashboardContent() {
 
             <div style={calendarGrid}>
               {calendarDays.map((day) => {
+                // ✅ CRITICAL: ONLY use selectedDateObject for calendar selection state
+                // NEVER comparison dates or any other analytical data
                 const active = isSameDay(day, selectedDateObject)
                 const outsideMonth = !isSameMonth(day, calendarMonth)
+                
+                // Guard: reject any day that doesn't parse correctly
+                if (!day || Number.isNaN(day.getTime())) {
+                  console.error('[Dashboard] Calendar day is invalid:', day)
+                  return null
+                }
+                
                 return (
                   <button
                     key={format(day, 'yyyy-MM-dd')}

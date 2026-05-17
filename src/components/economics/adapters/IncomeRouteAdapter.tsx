@@ -40,12 +40,19 @@ export function IncomeRouteAdapter() {
   const { storeId } = useEconomicsShell()
   const { fromDate, toDate, setFromDate, setToDate } = useEconomicsPeriod()
 
+  // ✅ GUARD: Operational range MUST be from/toDate, never from comparison mapping
+  // Comparison data is READ-ONLY analytics output, never input to period state
+  
   // Memoize range object — prevents new object identity on every render,
   // which would otherwise trigger useCanonicalFinancialPeriod to re-fetch.
-  const range = useMemo(
-    () => (fromDate <= toDate ? { from: fromDate, to: toDate } : { from: toDate, to: fromDate }),
-    [fromDate, toDate],
-  )
+  const range = useMemo(() => {
+    // ✅ DEFENSIVE: Ensure from/to are valid before creating range
+    if (!fromDate || !toDate) return { from: '', to: '' }
+    if (fromDate > toDate) {
+      return { from: toDate, to: fromDate }
+    }
+    return { from: fromDate, to: toDate }
+  }, [fromDate, toDate])
 
   const canonical = useCanonicalFinancialPeriod({
     storeId,

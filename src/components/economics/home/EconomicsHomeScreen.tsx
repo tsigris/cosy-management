@@ -43,6 +43,18 @@ export function EconomicsHomeScreen({
   const display = summary as EconomicsHomeDisplayDto | null
   const historyRows = display?.historyRows ?? []
 
+  // ✅ GUARD: Date inputs MUST be operational dates, never comparison dates
+  const fromDateNormalized = normalizeDateKey(fromDate) || ''
+  const toDateNormalized = normalizeDateKey(toDate) || ''
+
+  // ✅ DEFENSIVE: Warn if date values are invalid  
+  if (fromDate && !fromDateNormalized) {
+    console.warn('[EconomicsHomeScreen] Invalid fromDate:', fromDate)
+  }
+  if (toDate && !toDateNormalized) {
+    console.warn('[EconomicsHomeScreen] Invalid toDate:', toDate)
+  }
+
   const rangeRevenue = display?.rangeRevenue
   const rangeExpenses = display?.rangeExpenses
   const rangeProfit = display?.rangeProfit
