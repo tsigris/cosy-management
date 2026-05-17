@@ -1,6 +1,6 @@
 'use client'
 
-import React, { createContext, useContext, useMemo } from 'react'
+import React, { createContext, useCallback, useContext, useMemo } from 'react'
 import { useEconomicsUrlSyncedState } from './economicsUrlState'
 import type { EconomicsPeriodId } from '@/lib/economics/types/economicsDto'
 import { addDaysToDateKey, getTodayDateKey } from '@/lib/financialPeriods'
@@ -86,6 +86,28 @@ export function EconomicsPeriodProvider({
     serialize: (value) => (isValidDateKey(value) ? value : null),
   })
 
+  const commitFromDate = useCallback(
+    (dateKey: string) => {
+      if (!isValidDateKey(dateKey)) {
+        console.warn('[EconomicsPeriodProvider] Ignored invalid from date commit:', dateKey)
+        return
+      }
+      setFromDate(dateKey)
+    },
+    [setFromDate],
+  )
+
+  const commitToDate = useCallback(
+    (dateKey: string) => {
+      if (!isValidDateKey(dateKey)) {
+        console.warn('[EconomicsPeriodProvider] Ignored invalid to date commit:', dateKey)
+        return
+      }
+      setToDate(dateKey)
+    },
+    [setToDate],
+  )
+
   const value = useMemo<EconomicsPeriodContextValue>(
     () => ({
       period,
@@ -94,10 +116,10 @@ export function EconomicsPeriodProvider({
       toDate,
       setPeriod,
       setSelectedYear,
-      setFromDate,
-      setToDate,
+      setFromDate: commitFromDate,
+      setToDate: commitToDate,
     }),
-    [period, selectedYear, fromDate, toDate, setPeriod, setSelectedYear, setFromDate, setToDate],
+    [period, selectedYear, fromDate, toDate, setPeriod, setSelectedYear, commitFromDate, commitToDate],
   )
 
   return <EconomicsPeriodContext.Provider value={value}>{children}</EconomicsPeriodContext.Provider>

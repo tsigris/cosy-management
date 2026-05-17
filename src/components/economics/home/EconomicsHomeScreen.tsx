@@ -14,8 +14,8 @@ type EconomicsHomeScreenProps = {
   comparisonLoading?: boolean
   fromDate?: string
   toDate?: string
-  onFromDateChange?: (date: string) => void
-  onToDateChange?: (date: string) => void
+  onFromDateCommit?: (date: string) => void
+  onToDateCommit?: (date: string) => void
   comparisonError?: string | null
 }
 
@@ -36,8 +36,8 @@ export function EconomicsHomeScreen({
   comparisonLoading = false,
   fromDate = '',
   toDate = '',
-  onFromDateChange,
-  onToDateChange,
+  onFromDateCommit,
+  onToDateCommit,
   comparisonError = null,
 }: EconomicsHomeScreenProps) {
   const display = summary as EconomicsHomeDisplayDto | null
@@ -54,6 +54,38 @@ export function EconomicsHomeScreen({
   if (toDate && !toDateNormalized) {
     console.warn('[EconomicsHomeScreen] Invalid toDate:', toDate)
   }
+
+  // Keep raw typing isolated from committed query state.
+  const [draftFrom, setDraftFrom] = React.useState(fromDateNormalized)
+  const [draftTo, setDraftTo] = React.useState(toDateNormalized)
+
+  React.useEffect(() => {
+    setDraftFrom((prev) => (prev === fromDateNormalized ? prev : fromDateNormalized))
+  }, [fromDateNormalized])
+
+  React.useEffect(() => {
+    setDraftTo((prev) => (prev === toDateNormalized ? prev : toDateNormalized))
+  }, [toDateNormalized])
+
+  const commitDraftDate = React.useCallback(
+    (
+      draftValue: string,
+      committedValue: string,
+      onCommit?: (date: string) => void,
+    ) => {
+      if (!onCommit) return
+
+      const normalized = normalizeDateKey(draftValue)
+      if (!normalized || normalized !== draftValue) {
+        return
+      }
+
+      if (normalized !== committedValue) {
+        onCommit(normalized)
+      }
+    },
+    [],
+  )
 
   const rangeRevenue = display?.rangeRevenue
   const rangeExpenses = display?.rangeExpenses
@@ -87,15 +119,37 @@ export function EconomicsHomeScreen({
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
           <input
             type="date"
-            value={fromDate}
-            onChange={(event) => onFromDateChange?.(event.target.value)}
+            value={draftFrom}
+            onChange={(event) => setDraftFrom(event.target.value)}
+            onBlur={() => commitDraftDate(draftFrom, fromDateNormalized, onFromDateCommit)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                commitDraftDate(draftFrom, fromDateNormalized, onFromDateCommit)
+                event.currentTarget.blur()
+              }
+              if (event.key === 'Escape') {
+                setDraftFrom(fromDateNormalized)
+                event.currentTarget.blur()
+              }
+            }}
             aria-label="Από ημερομηνία"
             style={dateInputStyle}
           />
           <input
             type="date"
-            value={toDate}
-            onChange={(event) => onToDateChange?.(event.target.value)}
+            value={draftTo}
+            onChange={(event) => setDraftTo(event.target.value)}
+            onBlur={() => commitDraftDate(draftTo, toDateNormalized, onToDateCommit)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                commitDraftDate(draftTo, toDateNormalized, onToDateCommit)
+                event.currentTarget.blur()
+              }
+              if (event.key === 'Escape') {
+                setDraftTo(toDateNormalized)
+                event.currentTarget.blur()
+              }
+            }}
             aria-label="Έως ημερομηνία"
             style={dateInputStyle}
           />

@@ -10,7 +10,7 @@ import { buildHomeDisplay } from '@/lib/economics/adapters/buildHomeDisplay'
 import type { EconomicsHomeSummaryDto, EconomicsComparisonDto } from '@/lib/economics/types/economicsDto'
 import type { EconomicsHistoryRowDto } from '@/lib/economics/types/economicsDisplay'
 import { useEconomicsPeriod } from '@/components/economics/shell/EconomicsPeriodProvider'
-import { formatRangeLabel } from '@/lib/financialPeriods'
+import { formatRangeLabel, getTodayDateKey, normalizeDateKey } from '@/lib/financialPeriods'
 import { useEconomicsShell } from '@/components/economics/shell/EconomicsShellProvider'
 import { useCanonicalFinancialPeriod } from '@/hooks/useCanonicalFinancialPeriod'
 import { useAnalysisComparison } from '@/hooks/useAnalysisComparison'
@@ -39,32 +39,43 @@ import type { FinancialComparisonDayRow } from '@/types/analysisComparison'
 export function IncomeRouteAdapter() {
   const { storeId } = useEconomicsShell()
   const { fromDate, toDate, setFromDate, setToDate } = useEconomicsPeriod()
+  const todayKey = getTodayDateKey()
 
   // ✅ GUARD: Operational range MUST be from/toDate, never from comparison mapping
   // Comparison data is READ-ONLY analytics output, never input to period state
   
   // Memoize range object — prevents new object identity on every render,
   // which would otherwise trigger useCanonicalFinancialPeriod to re-fetch.
-  const range = useMemo(() => {
-    // ✅ DEFENSIVE: Ensure from/to are valid before creating range
-    if (!fromDate || !toDate) return { from: '', to: '' }
-    if (fromDate > toDate) {
-      return { from: toDate, to: fromDate }
+  const range = useMemo<{ from: string; to: string; isValid: boolean }>(() => {
+    const normalizedFrom = normalizeDateKey(fromDate)
+    const normalizedTo = normalizeDateKey(toDate)
+    if (
+      !normalizedFrom ||
+      !normalizedTo ||
+      normalizedFrom !== fromDate ||
+      normalizedTo !== toDate
+    ) {
+      return { from: todayKey, to: todayKey, isValid: false }
     }
-    return { from: fromDate, to: toDate }
-  }, [fromDate, toDate])
+
+    if (normalizedFrom > normalizedTo) {
+      return { from: normalizedTo, to: normalizedFrom, isValid: true }
+    }
+
+    return { from: normalizedFrom, to: normalizedTo, isValid: true }
+  }, [fromDate, toDate, todayKey])
 
   const canonical = useCanonicalFinancialPeriod({
     storeId,
-    range,
-    enabled: Boolean(storeId),
+    range: { from: range.from, to: range.to },
+    enabled: Boolean(storeId && range.isValid),
   })
 
   const comparisonData = useAnalysisComparison({
     storeId,
     fromDate: range.from,
     toDate: range.to,
-    enabled: Boolean(storeId),
+    enabled: Boolean(storeId && range.isValid),
   })
 
   // Memoize history rows — prevents re-computing the entire daily map on every render.
@@ -267,8 +278,8 @@ export function IncomeRouteAdapter() {
             comparisonLoading={comparisonData.loading}
             fromDate={range.from}
             toDate={range.to}
-            onFromDateChange={setFromDate}
-            onToDateChange={setToDate}
+            onFromDateCommit={setFromDate}
+            onToDateCommit={setToDate}
             comparisonError={comparisonData.error}
           />
         </AsyncBoundary>

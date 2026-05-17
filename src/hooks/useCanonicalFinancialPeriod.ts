@@ -7,7 +7,7 @@ import {
   type CanonicalFinancialRow,
   type CanonicalFinancialSummary,
 } from '@/lib/canonicalFinancialMetrics'
-import { normalizeRange, type FinancialDateRange } from '@/lib/financialPeriods'
+import { getTodayDateKey, normalizeDateKey, normalizeRange, type FinancialDateRange } from '@/lib/financialPeriods'
 
 type PayrollPayload = {
   payroll_pct?: number | null
@@ -32,12 +32,24 @@ export function useCanonicalFinancialPeriod({
   const [error, setError] = useState<string | null>(null)
   const requestIdRef = useRef(0)
 
+  const todayKey = getTodayDateKey()
+  const hasValidRange = useMemo(() => {
+    const from = normalizeDateKey(range.from)
+    const to = normalizeDateKey(range.to)
+    return Boolean(from && to && from === range.from && to === range.to)
+  }, [range.from, range.to])
+
   // Use primitive string deps — the range object identity changes on every render
   // even when the date strings are unchanged, so [range] would re-trigger on every render.
-  const normalizedRange = useMemo(() => normalizeRange(range), [range.from, range.to])
+  const normalizedRange = useMemo(() => {
+    if (!hasValidRange) {
+      return { from: todayKey, to: todayKey }
+    }
+    return normalizeRange(range)
+  }, [range.from, range.to, hasValidRange, todayKey])
 
   useEffect(() => {
-    if (!enabled || !storeId) {
+    if (!enabled || !storeId || !hasValidRange) {
       setSummary(null)
       setRows([])
       setLoading(false)
@@ -102,7 +114,7 @@ export function useCanonicalFinancialPeriod({
     return () => {
       cancelled = true
     }
-  }, [enabled, storeId, normalizedRange.from, normalizedRange.to])
+  }, [enabled, storeId, hasValidRange, normalizedRange.from, normalizedRange.to])
 
   return {
     summary,

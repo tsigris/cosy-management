@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { getSupabase } from '@/lib/supabase'
 import type { FinancialComparisonResponse } from '@/types/analysisComparison'
+import { normalizeDateKey } from '@/lib/financialPeriods'
 
 type UseAnalysisComparisonArgs = {
   storeId: string | null
@@ -22,8 +23,12 @@ export function useAnalysisComparison({
   const [error, setError] = useState<string | null>(null)
   const requestIdRef = useRef(0)
 
+  const hasValidDates =
+    Boolean(normalizeDateKey(fromDate) === fromDate) &&
+    Boolean(normalizeDateKey(toDate) === toDate)
+
   useEffect(() => {
-    if (!enabled || !storeId) {
+    if (!enabled || !storeId || !hasValidDates) {
       setData(null)
       setLoading(false)
       setError(null)
@@ -171,7 +176,7 @@ export function useAnalysisComparison({
     return () => {
       cancelled = true
     }
-  }, [enabled, storeId, fromDate, toDate])
+  }, [enabled, storeId, fromDate, toDate, hasValidDates])
 
   return {
     data,
