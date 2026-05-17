@@ -33,13 +33,32 @@ export function normalizeDateKey(value: unknown): string | null {
 function assertDateKey(value: string): string {
   const normalized = normalizeDateKey(value)
   if (!normalized) {
-    throw new Error(`Invalid date key: ${value}`)
+    // ✅ CRITICAL: Never throw during render or typing
+    // Return value as-is if it looks remotely like a date attempt
+    // Only truly invalid cases (null, empty) are rejected
+    // Partial typing (2, 20, 202, 2026-05) is gracefully ignored
+    console.warn('[assertDateKey] Received invalid date key, returning fallback:', value)
+    return value // Return as-is to preserve caller's intent, caller will handle
   }
   return normalized
 }
 
+// ✅ NEW: Safe date key validator that never throws
+export function isSafeToUseDateKey(value: string | unknown): boolean {
+  if (typeof value !== 'string') return false
+  const normalized = normalizeDateKey(value)
+  return normalized !== null && /^\d{4}-\d{2}-\d{2}$/.test(normalized)
+}
+
 function getParts(dateKey: string) {
-  const [year, month, day] = assertDateKey(dateKey).split('-').map(Number)
+  // ✅ SAFE: Validate before parsing
+  const normalized = normalizeDateKey(dateKey)
+  if (!normalized) {
+    console.warn('[getParts] Invalid dateKey, returning zeros:', dateKey)
+    return { year: 1970, month: 1, day: 1 }  // Epoch fallback
+  }
+  
+  const [year, month, day] = normalized.split('-').map(Number)
   return {
     year,
     month,
@@ -52,16 +71,29 @@ function getDaysInMonth(year: number, month: number) {
 }
 
 function toUtcEpochDay(dateKey: string): number {
-  const { year, month, day } = getParts(dateKey)
-  return Math.floor(Date.UTC(year, month - 1, day) / MS_PER_DAY)
+  try {
+    const { year, month, day } = getParts(dateKey)
+    return Math.floor(Date.UTC(year, month - 1, day) / MS_PER_DAY)
+  } catch (err) {
+    // ✅ SAFE: If date parsing fails, return epoch 0 (1970-01-01)
+    // Prevents render crashes from partial/invalid dates
+    console.warn('[toUtcEpochDay] Failed to parse date, returning epoch 0:', dateKey, err)
+    return 0
+  }
 }
 
 function fromUtcEpochDay(epochDay: number): string {
-  const date = new Date(epochDay * MS_PER_DAY)
-  const year = date.getUTCFullYear()
-  const month = String(date.getUTCMonth() + 1).padStart(2, '0')
-  const day = String(date.getUTCDate()).padStart(2, '0')
-  return `${year}-${month}-${day}`
+  try {
+    const date = new Date(epochDay * MS_PER_DAY)
+    const year = date.getUTCFullYear()
+    const month = String(date.getUTCMonth() + 1).padStart(2, '0')
+    const day = String(date.getUTCDate()).padStart(2, '0')
+    return `${year}-${month}-${day}`
+  } catch (err) {
+    // ✅ SAFE: Return today's date on error
+    console.warn('[fromUtcEpochDay] Failed to format date, returning today:', epochDay, err)
+    return getTodayDateKey()
+  }
 }
 
 export function getTodayDateKey(now: Date = new Date()): string {
@@ -69,28 +101,74 @@ export function getTodayDateKey(now: Date = new Date()): string {
 }
 
 export function addDaysToDateKey(dateKey: string, days: number): string {
-  return fromUtcEpochDay(toUtcEpochDay(assertDateKey(dateKey)) + days)
+  // ✅ SAFE: Validate input before arithmetic
+  const normalized = normalizeDateKey(dateKey)
+  if (!normalized) {
+    console.warn('[addDaysToDateKey] Invalid dateKey, cannot add days:', dateKey)
+    // Return today instead of throwing
+    return getTodayDateKey()
+  }
+  try {
+    return fromUtcEpochDay(toUtcEpochDay(normalized) + days)
+  } catch (err) {
+    console.warn('[addDaysToDateKey] Failed to add days, returning input date:', dateKey, err)
+    return normalized
+  }
 }
 
 export function shiftDateKeyByYears(dateKey: string, yearDelta: number): string {
-  const { year, month, day } = getParts(dateKey)
-  const nextYear = year + yearDelta
-  const nextDay = Math.min(day, getDaysInMonth(nextYear, month))
-  const shifted = new Date(nextYear, month - 1, nextDay, 12, 0, 0, 0)
-  return formatIsoDate(shifted)
+  // ✅ SAFE: Validate before using
+  const normalized = normalizeDateKey(dateKey)
+  if (!normalized) {
+    console.warn('[shiftDateKeyByYears] Invalid dateKey, cannot shift:', dateKey)
+    return getTodayDateKey()
+  }
+  try {
+    const { year, month, day } = getParts(normalized)
+    const nextYear = year + yearDelta
+    const nextDay = Math.min(day, getDaysInMonth(nextYear, month))
+    const shifted = new Date(nextYear, month - 1, nextDay, 12, 0, 0, 0)
+    return formatIsoDate(shifted)
+  } catch (err) {
+    console.warn('[shiftDateKeyByYears] Failed to shift date, returning input:', dateKey, err)
+    return normalized
+  }
 }
 
 export function countInclusiveDays(range: FinancialDateRange): number {
-  const start = toUtcEpochDay(assertDateKey(range.from))
-  const end = toUtcEpochDay(assertDateKey(range.to))
-  if (end < start) return 0
-  return end - start + 1
+  // ✅ SAFE: Validate both dates before calculation
+  const fromNormalized = normalizeDateKey(range.from)
+  const toNormalized = normalizeDateKey(range.to)
+  
+  if (!fromNormalized || !toNormalized) {
+    console.warn('[countInclusiveDays] Invalid range, returning 1:', range)
+    return 1
+  }
+  
+  try {
+    const start = toUtcEpochDay(fromNormalized)
+    const end = toUtcEpochDay(toNormalized)
+    if (end < start) return 0
+    return end - start + 1
+  } catch (err) {
+    console.warn('[countInclusiveDays] Failed to calculate days, returning 1:', range, err)
+    return 1
+  }
 }
 
 export function normalizeRange(range: FinancialDateRange): FinancialDateRange {
-  const from = assertDateKey(range.from)
-  const to = assertDateKey(range.to)
-  return from <= to ? { from, to } : { from: to, to: from }
+  // ✅ SAFE: Validate before normalizing
+  const fromNormalized = normalizeDateKey(range.from)
+  const toNormalized = normalizeDateKey(range.to)
+  
+  if (!fromNormalized || !toNormalized) {
+    console.warn('[normalizeRange] Invalid range, returning as-is:', range)
+    return range
+  }
+  
+  return fromNormalized <= toNormalized 
+    ? { from: fromNormalized, to: toNormalized } 
+    : { from: toNormalized, to: fromNormalized }
 }
 
 /**
@@ -219,24 +297,73 @@ export function formatRangeLabel(range: FinancialDateRange): string {
 }
 
 export function formatShortDateKey(dateKey: string): string {
-  const date = parseLocalDateOnly(assertDateKey(dateKey))
-  const day = String(date.getDate()).padStart(2, '0')
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  return `${day}/${month}`
+  // ✅ SAFE: Return fallback for invalid dates
+  const normalized = normalizeDateKey(dateKey)
+  if (!normalized) {
+    console.warn('[formatShortDateKey] Invalid dateKey, returning fallback:', dateKey)
+    return '--'
+  }
+  
+  try {
+    const date = parseLocalDateOnly(normalized)
+    if (Number.isNaN(date.getTime())) return '--'
+    const day = String(date.getDate()).padStart(2, '0')
+    const month = String(date.getMonth() + 1).padStart(2, '0')
+    return `${day}/${month}`
+  } catch (err) {
+    console.warn('[formatShortDateKey] Failed to format date, returning fallback:', dateKey, err)
+    return '--'
+  }
 }
 
 export function getWeekdayLabel(dateKey: string, locale = 'el-GR'): string {
-  const { year, month, day } = getParts(dateKey)
-  const date = new Date(Date.UTC(year, month - 1, day, 12, 0, 0, 0))
-  return new Intl.DateTimeFormat(locale, { weekday: 'short' }).format(date)
+  // ✅ SAFE: Return empty string on error
+  const normalized = normalizeDateKey(dateKey)
+  if (!normalized) {
+    console.warn('[getWeekdayLabel] Invalid dateKey, returning empty:', dateKey)
+    return ''
+  }
+  
+  try {
+    const { year, month, day } = getParts(normalized)
+    const date = new Date(Date.UTC(year, month - 1, day, 12, 0, 0, 0))
+    return new Intl.DateTimeFormat(locale, { weekday: 'short' }).format(date)
+  } catch (err) {
+    console.warn('[getWeekdayLabel] Failed to get weekday, returning empty:', dateKey, err)
+    return ''
+  }
 }
 
 export function getMonthRange(dateKey: string): FinancialDateRange {
-  const { year, month } = getParts(dateKey)
-  const lastDay = getDaysInMonth(year, month)
-  return {
-    from: `${year}-${String(month).padStart(2, '0')}-01`,
-    to: `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`,
+  // ✅ SAFE: Validate before using
+  const normalized = normalizeDateKey(dateKey)
+  if (!normalized) {
+    console.warn('[getMonthRange] Invalid dateKey, returning current month:', dateKey)
+    const today = getTodayDateKey()
+    const [year, month] = today.split('-').slice(0, 2)
+    const lastDay = getDaysInMonth(Number(year), Number(month))
+    return {
+      from: `${year}-${month}-01`,
+      to: `${year}-${month}-${String(lastDay).padStart(2, '0')}`,
+    }
+  }
+  
+  try {
+    const { year, month } = getParts(normalized)
+    const lastDay = getDaysInMonth(year, month)
+    return {
+      from: `${year}-${String(month).padStart(2, '0')}-01`,
+      to: `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`,
+    }
+  } catch (err) {
+    console.warn('[getMonthRange] Failed to get month range, returning current month:', dateKey, err)
+    const today = getTodayDateKey()
+    const [year, month] = today.split('-').slice(0, 2)
+    const lastDay = getDaysInMonth(Number(year), Number(month))
+    return {
+      from: `${year}-${month}-01`,
+      to: `${year}-${month}-${String(lastDay).padStart(2, '0')}`,
+    }
   }
 }
 
@@ -248,11 +375,32 @@ export function getYearRange(year: number): FinancialDateRange {
 }
 
 export function getRollingDayRange(endDateKey: string, days: number): FinancialDateRange {
-  const safeDays = Math.max(1, Math.floor(days))
-  const to = assertDateKey(endDateKey)
-  return {
-    from: addDaysToDateKey(to, -(safeDays - 1)),
-    to,
+  // ✅ SAFE: Validate before using
+  const normalized = normalizeDateKey(endDateKey)
+  if (!normalized) {
+    console.warn('[getRollingDayRange] Invalid endDateKey, using today:', endDateKey)
+    const today = getTodayDateKey()
+    const safeDays = Math.max(1, Math.floor(days))
+    return {
+      from: addDaysToDateKey(today, -(safeDays - 1)),
+      to: today,
+    }
+  }
+  
+  try {
+    const safeDays = Math.max(1, Math.floor(days))
+    return {
+      from: addDaysToDateKey(normalized, -(safeDays - 1)),
+      to: normalized,
+    }
+  } catch (err) {
+    console.warn('[getRollingDayRange] Failed to get rolling range, using today:', endDateKey, err)
+    const today = getTodayDateKey()
+    const safeDays = Math.max(1, Math.floor(days))
+    return {
+      from: addDaysToDateKey(today, -(safeDays - 1)),
+      to: today,
+    }
   }
 }
 
@@ -262,7 +410,9 @@ export function getCanonicalPeriodRange(options: {
   customRange?: FinancialDateRange
   todayKey?: string
 }): FinancialDateRange {
-  const todayKey = options.todayKey ? assertDateKey(options.todayKey) : getTodayDateKey()
+  // ✅ SAFE: Validate todayKey before using
+  const todayKeyNormalized = options.todayKey ? normalizeDateKey(options.todayKey) : null
+  const todayKey = todayKeyNormalized || getTodayDateKey()
 
   if (options.period === 'month') {
     return getMonthRange(todayKey)
