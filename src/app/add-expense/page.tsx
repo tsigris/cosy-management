@@ -964,25 +964,6 @@ function AddExpenseForm() {
     }
   }
 
-  const checkBalanceLock = async () => {
-    const activeStoreId = getActiveStoreId()
-    if (!activeStoreId) return null
-    try {
-      const { data, error } = await supabase
-        .from('transactions')
-        .select('date')
-        .eq('store_id', activeStoreId)
-        .eq('type', 'income')
-        .eq('category', 'Εσοδα Ζ')
-        .order('date', { ascending: false })
-        .limit(1)
-      if (error) return null
-      return data?.[0]?.date ? String(data[0].date) : null
-    } catch {
-      return null
-    }
-  }
-
   const checkPossibleDuplicate = async (txType: 'expense' | 'debt_payment', amtAbs: number) => {
     const activeStoreId = getActiveStoreId()
     if (!activeStoreId || !selectedEntity) return null
@@ -1029,14 +1010,10 @@ function AddExpenseForm() {
 
       const category = categoryFromSelection(selectedEntity, smartItemMap)
       const txType: 'expense' | 'debt_payment' = isAgainstDebt ? 'debt_payment' : 'expense'
-      const isExpense = txType === 'expense' || txType === 'debt_payment'
 
-      const lastZ = await checkBalanceLock()
-      const isDateLockedByZ = !!(lastZ && expenseDate <= lastZ)
-      if (isDateLockedByZ) {
-        toast.error(`Η ημερομηνία είναι κλειδωμένη (τελευταίο Z: ${lastZ})`)
-        return
-      }
+      // Z-close does NOT lock expense / debt_payment entries.
+      // Only fiscal documents (income / Z-report records) are subject to Z-date lock.
+      // accountingLocked / fiscalDocumentLocked are separate mechanisms handled elsewhere.
 
       const finalIsCredit = txType === 'debt_payment' ? false : !!isCredit
       const chosenMethod: PaymentMethod = method === 'Πίστωση' ? 'Μετρητά' : method
