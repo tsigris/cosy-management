@@ -102,6 +102,9 @@ type DashboardTransaction = {
   revenue_source_id?: string | null
   user_id?: string | null
   created_by_name?: string | null
+  voided_at?: string | null
+  voided_by?: string | null
+  void_reason?: string | null
   profiles?: ProfileRef
   suppliers?: NamedRef
   fixed_assets?: NamedRef
@@ -502,6 +505,9 @@ function DashboardContent() {
   revenue_source_id,
   user_id,
   created_by_name,
+  voided_at,
+  voided_by,
+  void_reason,
   profiles:profiles!transactions_user_id_fkey (
     username
   ),
@@ -547,6 +553,9 @@ function DashboardContent() {
   revenue_source_id,
   user_id,
   created_by_name,
+  voided_at,
+  voided_by,
+  void_reason,
   suppliers(name),
   fixed_assets:fixed_assets!transactions_fixed_asset_id_fkey(name),
   revenue_sources(name)
@@ -599,7 +608,7 @@ function DashboardContent() {
   const loadTotals = useCallback(async () => {
     try {
       const txRows = Array.isArray(transactions)
-        ? transactions.filter((t) => !isTipTransaction(t) && t.date === selectedDate)
+        ? transactions.filter((t) => !isTipTransaction(t) && t.date === selectedDate && !t?.voided_at)
         : []
 
       const summary = aggregateCanonicalFinancialMetrics(txRows as CanonicalFinancialRow[], {
@@ -644,20 +653,101 @@ function DashboardContent() {
     ytdLoadingKeys.current.clear()
   }, [storeIdFromUrl])
 
-  const handleDelete = useCallback(async (id: string) => {
-    if (!confirm('Οριστική διαγραφή αυτής της κίνησης;')) return
+  const handleDelete = useCallback(async (tx: DashboardTransaction) => {
+    const id = String(tx?.id || '')
+    if (!id) {
+      toast.error('Μη έγκυρη κίνηση')
+      return
+    }
+
     if (!storeIdFromUrl) {
       toast.error('Σφάλμα καταστήματος')
       return
     }
+
+    const txType = String(tx?.type || '').trim().toLowerCase()
+
+    if (txType === 'supplier_credit_note') {
+      if (tx?.voided_at) {
+        toast.info('Το πιστωτικό είναι ήδη ακυρωμένο')
+        return
+      }
+
+      if (!confirm('Ακύρωση (VOID) αυτού του supplier credit note;')) return
+
+      const reasonInput = prompt('Λόγος ακύρωσης (υποχρεωτικό):')
+      const reason = String(reasonInput || '').trim()
+      if (!reason) {
+        toast.error('Ο λόγος ακύρωσης είναι υποχρεωτικός')
+        return
+      }
+
+      try {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession()
+
+        if (!session?.user?.id) {
+          toast.error('Απαιτείται σύνδεση χρήστη')
+          return
+        }
+
+        const nowIso = new Date().toISOString()
+
+        const { error } = await supabase
+          .from('transactions')
+          .update({
+            voided_at: nowIso,
+            voided_by: session.user.id,
+            void_reason: reason,
+          })
+          .eq('id', id)
+          .eq('store_id', storeIdFromUrl)
+          .eq('type', 'supplier_credit_note')
+          .is('voided_at', null)
+
+        if (error) throw error
+
+        setTransactions((prev) =>
+          prev.map((item) =>
+            String(item?.id) === id
+              ? {
+                  ...item,
+                  voided_at: nowIso,
+                  voided_by: session.user.id,
+                  void_reason: reason,
+                }
+              : item,
+          ),
+        )
+        setExpandedTx(null)
+        toast.success('Το supplier credit note ακυρώθηκε')
+      } catch (err: any) {
+        const message = String(err?.message || '').toLowerCase()
+        if (message.includes('hard delete') || message.includes('supplier_credit_note')) {
+          toast.error('Το supplier credit note δεν διαγράφεται. Επιτρέπεται μόνο ακύρωση (VOID).')
+        } else {
+          toast.error('Σφάλμα κατά την ακύρωση (VOID)')
+        }
+      }
+      return
+    }
+
+    if (!confirm('Οριστική διαγραφή αυτής της κίνησης;')) return
+
     try {
       const { error } = await supabase.from('transactions').delete().eq('id', id).eq('store_id', storeIdFromUrl)
       if (error) throw error
-      setTransactions((prev) => prev.filter((t) => String(t.id) !== String(id)))
+      setTransactions((prev) => prev.filter((t) => String(t.id) !== id))
       setExpandedTx(null)
       toast.success('Η κίνηση διαγράφηκε')
-    } catch (err) {
-      toast.error('Σφάλμα κατά τη διαγραφή')
+    } catch (err: any) {
+      const message = String(err?.message || '').toLowerCase()
+      if (message.includes('supplier_credit_note') || message.includes('hard delete')) {
+        toast.error('Το supplier credit note δεν διαγράφεται. Επιτρέπεται μόνο ακύρωση (VOID).')
+      } else {
+        toast.error('Σφάλμα κατά τη διαγραφή')
+      }
     }
   }, [storeIdFromUrl, supabase])
 
@@ -1138,12 +1228,15 @@ function DashboardContent() {
 
             const displayUser = isZMaster ? row.user_label : tx?.created_by_name || tx?.profiles?.username || 'Χρήστης'
             const txAmountValue = isZMaster ? row.amount : Number(tx?.amount) || 0
+            const isCreditNote = String(tx?.type || '').trim().toLowerCase() === 'supplier_credit_note'
+            const isVoidedCreditNote = !!tx && isCreditNote && !!tx?.voided_at
 
             return (
               <div key={txId} style={{ marginBottom: '12px' }}>
                 <div
                   style={{
                     ...txRow,
+                    opacity: isVoidedCreditNote ? 0.6 : 1,
                     borderRadius: expandedTx === txId ? '20px 20px 0 0' : '20px',
                     borderBottom: expandedTx === txId ? `1px dashed ${colors.border}` : `1px solid ${colors.border}`,
                   }}
@@ -1159,6 +1252,11 @@ function DashboardContent() {
                     <p style={txTitle}>
                       {txTitleText}
                       {!isZMaster && tx?.is_credit && <span style={creditBadgeStyle}>ΠΙΣΤΩΣΗ</span>}
+                      {isVoidedCreditNote && (
+                        <span style={{ ...creditBadgeStyle, background: '#fee2e2', color: '#991b1b', border: '1px solid #fecaca' }}>
+                          ΑΚΥΡΩΜΕΝΟ
+                        </span>
+                      )}
                       {isZMaster && <span style={creditBadgeStyle}>{row.itemsCount} ΚΙΝΗΣΕΙΣ</span>}
                     </p>
 
@@ -1233,14 +1331,16 @@ function DashboardContent() {
                       <>
                         {!entityKey?.startsWith('loan:') ? (
                           <>
-                            <button
-                              onClick={() => router.push(`/add-${isIncomeTx ? 'income' : 'expense'}?editId=${tx?.id}&store=${storeIdFromUrl}`)}
-                              style={editRowBtn}
-                            >
-                              Επεξεργασία
-                            </button>
-                            <button onClick={() => tx && handleDelete(String(tx.id))} style={deleteRowBtn}>
-                              Διαγραφή
+                            {!isVoidedCreditNote && (
+                              <button
+                                onClick={() => router.push(`/add-${isIncomeTx ? 'income' : 'expense'}?editId=${tx?.id}&store=${storeIdFromUrl}`)}
+                                style={editRowBtn}
+                              >
+                                Επεξεργασία
+                              </button>
+                            )}
+                            <button onClick={() => tx && handleDelete(tx)} style={deleteRowBtn} disabled={isVoidedCreditNote}>
+                              {isCreditNote ? 'Ακύρωση' : 'Διαγραφή'}
                             </button>
                           </>
                         ) : (
