@@ -97,6 +97,11 @@ type LinkedInvoiceOption = {
   label: string
 }
 
+function isImmutableSupplierCreditNoteEditRow(row: any) {
+  if (!row) return false
+  return String(row?.type || '').trim().toLowerCase() === 'supplier_credit_note'
+}
+
 function stripDiacritics(str: string) {
   return str.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
 }
@@ -256,6 +261,7 @@ function AddExpenseForm() {
   const [isCredit, setIsCredit] = useState(false)
   const [isAgainstDebt, setIsAgainstDebt] = useState(searchParams.get('mode') === 'debt')
   const [isSupplierCreditNote, setIsSupplierCreditNote] = useState(false)
+  const [isPostedSupplierCreditNoteEdit, setIsPostedSupplierCreditNoteEdit] = useState(false)
   const [creditNoteNumber, setCreditNoteNumber] = useState('')
   const [linkedInvoiceTxId, setLinkedInvoiceTxId] = useState('')
   const [linkedInvoiceOptions, setLinkedInvoiceOptions] = useState<LinkedInvoiceOption[]>([])
@@ -619,7 +625,9 @@ function AddExpenseForm() {
           setNotes(notesText)
           const txType = String(tx.type || '')
           const editingSupplierCreditNote = txType === 'supplier_credit_note'
+          const postedSupplierCreditNote = isImmutableSupplierCreditNoteEditRow(tx)
           setIsSupplierCreditNote(editingSupplierCreditNote)
+          setIsPostedSupplierCreditNoteEdit(postedSupplierCreditNote)
           setIsCredit(!editingSupplierCreditNote && (!!tx.is_credit || m === 'Πίστωση'))
           setIsAgainstDebt(!editingSupplierCreditNote && tx.type === 'debt_payment')
           setCreditNoteNumber(String(tx.supplier_credit_note_number || ''))
@@ -646,6 +654,7 @@ function AddExpenseForm() {
           }
         }
       } else {
+        setIsPostedSupplierCreditNoteEdit(false)
         if (urlSupId) {
           const id = String(urlSupId)
           setSelectedEntity({ kind: 'supplier', id })
@@ -1058,6 +1067,10 @@ function AddExpenseForm() {
   }
 
   const handleSave = async () => {
+    if (editId && isPostedSupplierCreditNoteEdit && isSupplierCreditNote) {
+      return toast.error('Το πιστωτικό τιμολόγιο δεν μπορεί να τροποποιηθεί μετά την καταχώρηση. Χρησιμοποιήστε Ακύρωση.')
+    }
+
     const amt = parseAmount(amount)
     if (!amount || !Number.isFinite(amt) || amt <= 0) return toast.error('Συμπλήρωσε σωστό ποσό')
     if (!selectedEntity) return toast.error('Επίλεξε δικαιούχο')
@@ -1270,8 +1283,32 @@ function AddExpenseForm() {
         <div style={formCard}>
           <div style={{ marginBottom: 14 }}>
             <label style={labelStyle}>Ημερομηνία εξόδου</label>
-            <input type="date" value={expenseDate} onChange={(e) => setExpenseDate(e.target.value)} style={inputStyle} />
+            <input
+              type="date"
+              value={expenseDate}
+              onChange={(e) => setExpenseDate(e.target.value)}
+              style={inputStyle}
+              disabled={isPostedSupplierCreditNoteEdit}
+              readOnly={isPostedSupplierCreditNoteEdit}
+            />
           </div>
+
+          {isPostedSupplierCreditNoteEdit && (
+            <div
+              style={{
+                marginBottom: 14,
+                padding: 12,
+                borderRadius: 12,
+                border: '1px solid #fecaca',
+                backgroundColor: '#fff1f2',
+                color: '#9f1239',
+                fontSize: 13,
+                fontWeight: 800,
+              }}
+            >
+              Το πιστωτικό τιμολόγιο δεν μπορεί να τροποποιηθεί μετά την καταχώρηση. Χρησιμοποιήστε Ακύρωση.
+            </div>
+          )}
 
           {/* ✅ BENEFICIARY SECTION (colored) */}
           <div style={beneficiarySectionStyle}>
@@ -1293,6 +1330,8 @@ function AddExpenseForm() {
                 autoCorrect="off"
                 spellCheck={false}
                 maxLength={80}
+                disabled={isPostedSupplierCreditNoteEdit}
+                readOnly={isPostedSupplierCreditNoteEdit}
               />
 
               {!!smartQuery && (
@@ -1381,7 +1420,7 @@ function AddExpenseForm() {
               value={selectedDropdownValue}
               onChange={(e) => handleDropdownSelect(e.target.value)}
               style={selectStyle}
-              disabled={loading || smartItems.length === 0}
+              disabled={isPostedSupplierCreditNoteEdit || loading || smartItems.length === 0}
             >
               <option value="">{smartItems.length === 0 ? 'Φόρτωση λίστας...' : '— Επιλογή από λίστα —'}</option>
 
@@ -1429,6 +1468,8 @@ function AddExpenseForm() {
               placeholder="0.00"
               enterKeyHint="done"
               autoComplete="off"
+              disabled={isPostedSupplierCreditNoteEdit}
+              readOnly={isPostedSupplierCreditNoteEdit}
             />
             <div style={{ marginTop: 6, fontSize: 12, fontWeight: 800, color: colors.secondaryText }}>
               Tip: δέχεται και <b>10,50</b>.
@@ -1441,7 +1482,9 @@ function AddExpenseForm() {
               <button
                 key={type}
                 type="button"
-                onClick={() => setDocumentType(type)}
+                onClick={() => {
+                  if (!isPostedSupplierCreditNoteEdit) setDocumentType(type)
+                }}
                 style={{
                   border: documentType === type ? `2px solid ${colors.accentBlue}` : `1px solid ${colors.border}`,
                   fontWeight: documentType === type ? 900 : 700,
@@ -1449,8 +1492,10 @@ function AddExpenseForm() {
                   color: colors.primaryDark,
                   borderRadius: 10,
                   padding: '10px',
-                  cursor: 'pointer',
+                  cursor: isPostedSupplierCreditNoteEdit ? 'not-allowed' : 'pointer',
+                  opacity: isPostedSupplierCreditNoteEdit ? 0.65 : 1,
                 }}
+                disabled={isPostedSupplierCreditNoteEdit}
               >
                 {type}
               </button>
@@ -1462,6 +1507,7 @@ function AddExpenseForm() {
             <button
               type="button"
               onClick={() => {
+                if (isPostedSupplierCreditNoteEdit) return
                 setMethod('Μετρητά')
                 setIsCredit(false)
               }}
@@ -1477,6 +1523,7 @@ function AddExpenseForm() {
             <button
               type="button"
               onClick={() => {
+                if (isPostedSupplierCreditNoteEdit) return
                 setMethod('Τράπεζα')
                 setIsCredit(false)
               }}
@@ -1492,6 +1539,7 @@ function AddExpenseForm() {
             <button
               type="button"
               onClick={() => {
+                if (isPostedSupplierCreditNoteEdit) return
                 setMethod('Κάρτα')
                 setIsCredit(false)
               }}
@@ -1511,6 +1559,7 @@ function AddExpenseForm() {
                 type="checkbox"
                 checked={isCredit}
                 onChange={(e) => {
+                  if (isPostedSupplierCreditNoteEdit) return
                   const checked = e.target.checked
                   setIsCredit(checked)
                   if (checked) setIsAgainstDebt(false)
@@ -1518,6 +1567,7 @@ function AddExpenseForm() {
                 }}
                 id="credit"
                 style={checkboxStyle}
+                disabled={isPostedSupplierCreditNoteEdit}
               />
               <label htmlFor="credit" style={checkLabel}>
                 Επί πιστώσει (νέο χρέος)
@@ -1529,6 +1579,7 @@ function AddExpenseForm() {
                 type="checkbox"
                 checked={isAgainstDebt}
                 onChange={(e) => {
+                  if (isPostedSupplierCreditNoteEdit) return
                   const checked = e.target.checked
                   setIsAgainstDebt(checked)
                   if (checked) setIsCredit(false)
@@ -1536,6 +1587,7 @@ function AddExpenseForm() {
                 }}
                 id="against"
                 style={checkboxStyle}
+                disabled={isPostedSupplierCreditNoteEdit}
               />
               <label htmlFor="against" style={{ ...checkLabel, color: isAgainstDebt ? colors.accentBlue : colors.primaryDark }}>
                 Έναντι παλαιού χρέους
@@ -1547,6 +1599,7 @@ function AddExpenseForm() {
                 type="checkbox"
                 checked={isSupplierCreditNote}
                 onChange={(e) => {
+                  if (isPostedSupplierCreditNoteEdit) return
                   const checked = e.target.checked
                   setIsSupplierCreditNote(checked)
                   if (checked) {
@@ -1557,6 +1610,7 @@ function AddExpenseForm() {
                 }}
                 id="supplier-credit-note"
                 style={checkboxStyle}
+                disabled={isPostedSupplierCreditNoteEdit}
               />
               <label htmlFor="supplier-credit-note" style={{ ...checkLabel, color: isSupplierCreditNote ? colors.accentGreen : colors.primaryDark }}>
                 Πιστωτικό τιμολόγιο προμηθευτή
@@ -1574,6 +1628,8 @@ function AddExpenseForm() {
                 style={{ ...inputStyle, marginTop: 8 }}
                 maxLength={80}
                 placeholder="π.χ. CN-2026-001"
+                disabled={isPostedSupplierCreditNoteEdit}
+                readOnly={isPostedSupplierCreditNoteEdit}
               />
 
               <label style={{ ...labelStyle, marginTop: 14, color: colors.accentGreen }}>Σύνδεση με αρχικό τιμολόγιο (προαιρετικό)</label>
@@ -1581,7 +1637,12 @@ function AddExpenseForm() {
                 value={linkedInvoiceTxId}
                 onChange={(e) => setLinkedInvoiceTxId(e.target.value)}
                 style={{ ...selectStyle, marginTop: 8 }}
-                disabled={loadingLinkedInvoices || !selectedEntity || selectedEntity.kind !== 'supplier'}
+                disabled={
+                  isPostedSupplierCreditNoteEdit ||
+                  loadingLinkedInvoices ||
+                  !selectedEntity ||
+                  selectedEntity.kind !== 'supplier'
+                }
               >
                 <option value="">Χωρίς σύνδεση</option>
                 {linkedInvoiceOptions.map((opt) => (
@@ -1644,15 +1705,23 @@ function AddExpenseForm() {
             <button
               type="button"
               onClick={handleSave}
-              disabled={loading || isSaving}
+              disabled={isPostedSupplierCreditNoteEdit || loading || isSaving}
               style={{
                 ...smartSaveBtn,
                 backgroundColor: editId ? colors.accentBlue : colors.accentRed,
-                opacity: isSaving ? 0.75 : 1,
+                opacity: isPostedSupplierCreditNoteEdit || isSaving ? 0.75 : 1,
               }}
             >
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                <span style={{ fontSize: 14, fontWeight: 900 }}>{isSaving ? 'Αποθήκευση...' : editId ? 'Ενημέρωση' : 'Καταχώρηση'}</span>
+                <span style={{ fontSize: 14, fontWeight: 900 }}>
+                  {isPostedSupplierCreditNoteEdit
+                    ? 'Χρησιμοποιήστε Ακύρωση'
+                    : isSaving
+                      ? 'Αποθήκευση...'
+                      : editId
+                        ? 'Ενημέρωση'
+                        : 'Καταχώρηση'}
+                </span>
                 <span style={{ fontSize: 14, opacity: 0.85, fontWeight: 800, marginTop: 6 }}>
                   Καθαρό ταμείο: {currentBalance.toFixed(2)}€
                 </span>
