@@ -7,6 +7,7 @@ import { getSupabase } from '@/lib/supabase'
 import { getTodayDateISO } from '@/lib/businessDate'
 import { formatDateDMY } from '@/lib/formatters'
 import { syncStoreToStorage, getStoredActiveStoreId } from '@/lib/storeResolution'
+import { normalizeSupplierCreditNoteNumber, validateSupplierCreditNoteDraft } from '@/lib/supplierCreditNote'
 import Link from 'next/link'
 import { toast, Toaster } from 'sonner'
 
@@ -89,6 +90,11 @@ type DayStatTxRow = {
   amount: number | string
   type: string | null
   is_credit?: boolean | null
+}
+
+type LinkedInvoiceOption = {
+  id: string
+  label: string
 }
 
 function stripDiacritics(str: string) {
@@ -249,6 +255,11 @@ function AddExpenseForm() {
   const [notes, setNotes] = useState('')
   const [isCredit, setIsCredit] = useState(false)
   const [isAgainstDebt, setIsAgainstDebt] = useState(searchParams.get('mode') === 'debt')
+  const [isSupplierCreditNote, setIsSupplierCreditNote] = useState(false)
+  const [creditNoteNumber, setCreditNoteNumber] = useState('')
+  const [linkedInvoiceTxId, setLinkedInvoiceTxId] = useState('')
+  const [linkedInvoiceOptions, setLinkedInvoiceOptions] = useState<LinkedInvoiceOption[]>([])
+  const [loadingLinkedInvoices, setLoadingLinkedInvoices] = useState(false)
   type DocumentType = 'Απόδειξη λιανικής' | 'Τιμολόγιο' | 'Χωρίς τιμολόγιο'
   const [documentType, setDocumentType] = useState<DocumentType | null>(null)
 
@@ -606,8 +617,13 @@ function AddExpenseForm() {
 
           const notesText = String(tx.notes || '')
           setNotes(notesText)
-          setIsCredit(!!tx.is_credit || m === 'Πίστωση')
-          setIsAgainstDebt(tx.type === 'debt_payment')
+          const txType = String(tx.type || '')
+          const editingSupplierCreditNote = txType === 'supplier_credit_note'
+          setIsSupplierCreditNote(editingSupplierCreditNote)
+          setIsCredit(!editingSupplierCreditNote && (!!tx.is_credit || m === 'Πίστωση'))
+          setIsAgainstDebt(!editingSupplierCreditNote && tx.type === 'debt_payment')
+          setCreditNoteNumber(String(tx.supplier_credit_note_number || ''))
+          setLinkedInvoiceTxId(String(tx.linked_invoice_tx_id || ''))
 
           if (notesText.startsWith('Απόδειξη λιανικής')) setDocumentType('Απόδειξη λιανικής')
           else if (notesText.startsWith('Τιμολόγιο')) setDocumentType('Τιμολόγιο')
@@ -646,10 +662,17 @@ function AddExpenseForm() {
         }
 
         const isDebtMode = searchParams.get('mode') === 'debt'
+        const isCreditNoteMode = searchParams.get('mode') === 'credit-note'
         if (isDebtMode) {
           setIsAgainstDebt(true)
           setIsCredit(false)
+          setIsSupplierCreditNote(false)
           setNotes((prev) => (prev?.trim() ? prev : 'ΕΞΟΦΛΗΣΗ ΥΠΟΛΟΙΠΟΥ ΚΑΡΤΕΛΑΣ'))
+        } else if (isCreditNoteMode) {
+          setIsSupplierCreditNote(true)
+          setIsAgainstDebt(false)
+          setIsCredit(false)
+          setNotes((prev) => (prev?.trim() ? prev : 'ΑΙΤΙΟΛΟΓΙΑ ΠΙΣΤΩΤΙΚΟΥ ΤΙΜΟΛΟΓΙΟΥ'))
         }
       }
     } catch (error: unknown) {
@@ -663,6 +686,54 @@ function AddExpenseForm() {
   useEffect(() => {
     loadFormData()
   }, [loadFormData])
+
+  useEffect(() => {
+    const loadLinkedInvoices = async () => {
+      if (!isSupplierCreditNote || !selectedEntity || selectedEntity.kind !== 'supplier') {
+        setLinkedInvoiceOptions([])
+        setLinkedInvoiceTxId('')
+        return
+      }
+
+      const activeStoreId = getActiveStoreId()
+      if (!activeStoreId) return
+
+      try {
+        setLoadingLinkedInvoices(true)
+        const { data, error } = await supabase
+          .from('transactions')
+          .select('id, date, amount, notes')
+          .eq('store_id', activeStoreId)
+          .eq('supplier_id', selectedEntity.id)
+          .eq('type', 'expense')
+          .eq('is_credit', true)
+          .is('voided_at', null)
+          .order('date', { ascending: false })
+          .limit(200)
+
+        if (error) throw error
+
+        const options = (data || []).map((row: any) => {
+          const datePart = String(row?.date || '').trim()
+          const amountPart = `${Math.abs(Number(row?.amount) || 0).toFixed(2)}€`
+          const notesPart = String(row?.notes || '').trim()
+          const label = notesPart
+            ? `${datePart} • ${amountPart} • ${notesPart.slice(0, 80)}`
+            : `${datePart} • ${amountPart}`
+          return { id: String(row.id), label }
+        })
+
+        setLinkedInvoiceOptions(options)
+      } catch (e) {
+        console.error(e)
+        setLinkedInvoiceOptions([])
+      } finally {
+        setLoadingLinkedInvoices(false)
+      }
+    }
+
+    loadLinkedInvoices()
+  }, [isSupplierCreditNote, selectedEntity, getActiveStoreId, supabase])
 
   const currentBalance = useMemo(
     () => dayStats.income - dayStats.expenses - dayStats.savingsDeposits + dayStats.savingsWithdrawals,
@@ -964,7 +1035,7 @@ function AddExpenseForm() {
     }
   }
 
-  const checkPossibleDuplicate = async (txType: 'expense' | 'debt_payment', amtAbs: number) => {
+  const checkPossibleDuplicate = async (txType: 'expense' | 'debt_payment' | 'supplier_credit_note', amtAbs: number) => {
     const activeStoreId = getActiveStoreId()
     if (!activeStoreId || !selectedEntity) return null
     try {
@@ -976,7 +1047,7 @@ function AddExpenseForm() {
         .eq('date', expenseDate)
         .eq('type', txType)
         .eq(col, selectedEntity.id)
-        .eq('amount', -Math.abs(amtAbs))
+        .eq('amount', txType === 'supplier_credit_note' ? Math.abs(amtAbs) : -Math.abs(amtAbs))
 
       if (editId) q = q.neq('id', editId)
       const { data } = await q.limit(1)
@@ -1009,15 +1080,34 @@ function AddExpenseForm() {
       }
 
       const category = categoryFromSelection(selectedEntity, smartItemMap)
-      const txType: 'expense' | 'debt_payment' = isAgainstDebt ? 'debt_payment' : 'expense'
+      const txType: 'expense' | 'debt_payment' | 'supplier_credit_note' = isSupplierCreditNote
+        ? 'supplier_credit_note'
+        : isAgainstDebt
+          ? 'debt_payment'
+          : 'expense'
 
       // Z-close does NOT lock expense / debt_payment entries.
       // Only fiscal documents (income / Z-report records) are subject to Z-date lock.
       // accountingLocked / fiscalDocumentLocked are separate mechanisms handled elsewhere.
 
-      const finalIsCredit = txType === 'debt_payment' ? false : !!isCredit
+      const finalIsCredit = txType === 'supplier_credit_note' ? false : txType === 'debt_payment' ? false : !!isCredit
       const chosenMethod: PaymentMethod = method === 'Πίστωση' ? 'Μετρητά' : method
-      const finalMethod: PaymentMethod = finalIsCredit ? 'Πίστωση' : chosenMethod
+      const finalMethod: PaymentMethod = txType === 'supplier_credit_note' ? 'Πίστωση' : finalIsCredit ? 'Πίστωση' : chosenMethod
+
+      if (txType === 'supplier_credit_note') {
+        if (selectedEntity.kind !== 'supplier') {
+          return toast.error('Το πιστωτικό τιμολόγιο επιτρέπεται μόνο για προμηθευτή')
+        }
+
+        const validation = validateSupplierCreditNoteDraft({
+          amount: amt,
+          supplierId: selectedEntity.id,
+          reason: clampText(notes, 500),
+        })
+        if (!validation.ok) {
+          return toast.error(validation.message)
+        }
+      }
 
       const dup = await checkPossibleDuplicate(txType, amt)
       if (dup) {
@@ -1029,6 +1119,7 @@ function AddExpenseForm() {
 
       const baseNotes = clampText(notes, 500)
       const mustDebtNote = txType === 'debt_payment' ? 'ΕΞΟΦΛΗΣΗ ΥΠΟΛΟΙΠΟΥ ΚΑΡΤΕΛΑΣ' : ''
+      const mustCreditNote = txType === 'supplier_credit_note' ? 'ΠΙΣΤΩΤΙΚΟ ΤΙΜΟΛΟΓΙΟ ΠΡΟΜΗΘΕΥΤΗ' : ''
       const debtNote =
         txType === 'debt_payment'
           ? baseNotes
@@ -1036,14 +1127,18 @@ function AddExpenseForm() {
               ? baseNotes
               : `${baseNotes} | ${mustDebtNote}`
             : mustDebtNote
-          : baseNotes
+          : txType === 'supplier_credit_note'
+            ? baseNotes
+              ? `${mustCreditNote} | ${baseNotes}`
+              : mustCreditNote
+            : baseNotes
 
       const finalNotes = documentType ? documentType + (debtNote ? ' | ' + debtNote : '') : debtNote
 
       const createdByName = (currentUsername || session.user.email?.split('@')[0] || 'Χρήστης').trim()
 
       const payload: any = {
-        amount: -Math.abs(amt),
+        amount: txType === 'supplier_credit_note' ? Math.abs(amt) : -Math.abs(amt),
         method: finalMethod,
         is_credit: finalIsCredit,
         type: txType,
@@ -1056,6 +1151,8 @@ function AddExpenseForm() {
         category,
         created_by_name: clampText(createdByName, 60),
         notes: finalNotes,
+        linked_invoice_tx_id: txType === 'supplier_credit_note' ? linkedInvoiceTxId || null : null,
+        supplier_credit_note_number: txType === 'supplier_credit_note' ? normalizeSupplierCreditNoteNumber(clampText(creditNoteNumber, 80)) : null,
       }
 
       if (imageFile && documentType !== 'Χωρίς τιμολόγιο' && !editId) {
@@ -1096,6 +1193,10 @@ function AddExpenseForm() {
       setSelectedEntity(null)
       setSmartQuery('')
       setSmartOpen(false)
+      setIsSupplierCreditNote(false)
+      setCreditNoteNumber('')
+      setLinkedInvoiceTxId('')
+      setLinkedInvoiceOptions([])
 
       router.push(`/?date=${expenseDate}&store=${getActiveStoreId() || ''}`)
       router.refresh()
@@ -1413,6 +1514,7 @@ function AddExpenseForm() {
                   const checked = e.target.checked
                   setIsCredit(checked)
                   if (checked) setIsAgainstDebt(false)
+                  if (checked) setIsSupplierCreditNote(false)
                 }}
                 id="credit"
                 style={checkboxStyle}
@@ -1430,6 +1532,7 @@ function AddExpenseForm() {
                   const checked = e.target.checked
                   setIsAgainstDebt(checked)
                   if (checked) setIsCredit(false)
+                  if (checked) setIsSupplierCreditNote(false)
                 }}
                 id="against"
                 style={checkboxStyle}
@@ -1438,7 +1541,61 @@ function AddExpenseForm() {
                 Έναντι παλαιού χρέους
               </label>
             </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 12 }}>
+              <input
+                type="checkbox"
+                checked={isSupplierCreditNote}
+                onChange={(e) => {
+                  const checked = e.target.checked
+                  setIsSupplierCreditNote(checked)
+                  if (checked) {
+                    setIsCredit(false)
+                    setIsAgainstDebt(false)
+                    setMethod('Μετρητά')
+                  }
+                }}
+                id="supplier-credit-note"
+                style={checkboxStyle}
+              />
+              <label htmlFor="supplier-credit-note" style={{ ...checkLabel, color: isSupplierCreditNote ? colors.accentGreen : colors.primaryDark }}>
+                Πιστωτικό τιμολόγιο προμηθευτή
+              </label>
+            </div>
           </div>
+
+          {isSupplierCreditNote && (
+            <div style={{ ...creditPanel, marginTop: 12, borderColor: 'rgba(5, 150, 105, 0.35)' }}>
+              <label style={{ ...labelStyle, marginTop: 0, color: colors.accentGreen }}>Αριθμός πιστωτικού (προαιρετικό)</label>
+              <input
+                type="text"
+                value={creditNoteNumber}
+                onChange={(e) => setCreditNoteNumber(e.target.value)}
+                style={{ ...inputStyle, marginTop: 8 }}
+                maxLength={80}
+                placeholder="π.χ. CN-2026-001"
+              />
+
+              <label style={{ ...labelStyle, marginTop: 14, color: colors.accentGreen }}>Σύνδεση με αρχικό τιμολόγιο (προαιρετικό)</label>
+              <select
+                value={linkedInvoiceTxId}
+                onChange={(e) => setLinkedInvoiceTxId(e.target.value)}
+                style={{ ...selectStyle, marginTop: 8 }}
+                disabled={loadingLinkedInvoices || !selectedEntity || selectedEntity.kind !== 'supplier'}
+              >
+                <option value="">Χωρίς σύνδεση</option>
+                {linkedInvoiceOptions.map((opt) => (
+                  <option key={opt.id} value={opt.id}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+
+              <div style={{ marginTop: 8, fontSize: 12, color: colors.secondaryText, fontWeight: 700 }}>
+                Το ποσό πιστωτικού καταχωρείται θετικό και μειώνει το υπόλοιπο προμηθευτή.
+              </div>
+            </div>
+          )}
 
           <label style={{ ...labelStyle, marginTop: 20 }}>Σημειώσεις</label>
           <textarea

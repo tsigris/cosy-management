@@ -26,6 +26,7 @@ import EconomicsHeaderNav from '@/components/economics/EconomicsHeaderNav'
 import EconomicsPeriodFilter from '@/components/economics/EconomicsPeriodFilter'
 import EconomicsContainer from '@/components/economics/EconomicsContainer'
 import { toBusinessDayDateFromInput } from '@/lib/businessDate'
+import { isSupplierCreditNoteTx } from '@/lib/supplierCreditNote'
 
 const colors = {
   primaryDark: '#1e293b',
@@ -55,6 +56,8 @@ function getPaymentMethodFromTx(tx: any) {
 
 function isCreditLike(tx: any) {
   if (!tx) return false
+  if (tx?.voided_at) return false
+  if (isSupplierCreditNoteTx(tx)) return true
   if (tx?.is_credit === true) return true
   return getPaymentMethodFromTx(tx).toLowerCase() === 'πίστωση'
 }
@@ -89,6 +92,8 @@ type Tx = {
   notes?: string | null
   description?: string | null
   is_credit?: boolean | null
+  voided_at?: string | null
+  void_reason?: string | null
   supplier_id?: string | null
   fixed_asset_id?: string | null
   revenue_source_id?: string | null
@@ -235,7 +240,7 @@ function CreditsContent() {
       }
 
       const transactionSelect =
-        'id, store_id, created_at, date, type, amount, category, method, payment_method:method, notes, is_credit, supplier_id, fixed_asset_id, revenue_source_id'
+        'id, store_id, created_at, date, type, amount, category, method, payment_method:method, notes, is_credit, voided_at, void_reason, supplier_id, fixed_asset_id, revenue_source_id'
 
       console.log('RUNNING QUERY: transactions', { select: transactionSelect })
       let q = supabase

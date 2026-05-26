@@ -7,6 +7,12 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { getSupabase } from '@/lib/supabase'
 import { toast, Toaster } from 'sonner'
 import {
+  getSupplierBalanceComponents,
+  isSupplierChargeTx,
+  isSupplierCreditNoteTx,
+  isSupplierPaymentTx,
+} from '@/lib/supplierCreditNote'
+import {
   Users,
   Wrench,
   Lightbulb,
@@ -476,7 +482,9 @@ function ManageListsContent() {
         // ✅ IMPORTANT: include type + date/created_at for year filter + credit logic
         supabase
           .from('transactions')
-          .select('id, amount, supplier_id, fixed_asset_id, employee_id, revenue_source_id, type, category, date, created_at, notes, is_credit')
+          .select(
+            'id, amount, supplier_id, fixed_asset_id, employee_id, revenue_source_id, type, category, date, created_at, notes, is_credit, linked_invoice_tx_id, supplier_credit_note_number, voided_at, voided_by, void_reason',
+          )
           .eq('store_id', activeStoreId),
       ])
 
@@ -904,7 +912,7 @@ function ManageListsContent() {
             .filter((t: any) => {
               const type = String(t.type || '')
               if (activeTab === 'staff') return STAFF_REGISTER_TYPES.has(type)
-              if (isSupplier) return type === 'expense'
+              if (isSupplier) return type === 'expense' || type === 'supplier_credit_note'
               return type === 'expense' || type === 'debt_payment'
             })
             .sort((a: any, b: any) => (getTxDate(b)?.getTime() || 0) - (getTxDate(a)?.getTime() || 0))
@@ -912,15 +920,15 @@ function ManageListsContent() {
       const debtBaseCreditTxs = isIncome
         ? creditTxs
         : entityTrans
-            .filter((t: any) => String(t.type || '') === 'expense' && t.is_credit === true)
+        .filter((t: any) => isSupplierChargeTx(t) || isSupplierCreditNoteTx(t))
             .sort((a: any, b: any) => (getTxDate(b)?.getTime() || 0) - (getTxDate(a)?.getTime() || 0))
 
-      const settlementTxs = isIncome
+        const settlementTxs = isIncome
         ? entityTrans
             .filter((t: any) => RECEIVED_TYPES.includes(String(t.type || '')))
             .sort((a: any, b: any) => (getTxDate(b)?.getTime() || 0) - (getTxDate(a)?.getTime() || 0))
         : entityTrans
-            .filter((t: any) => String(t.type || '') === 'debt_payment')
+          .filter((t: any) => isSupplierPaymentTx(t))
             .sort((a: any, b: any) => (getTxDate(b)?.getTime() || 0) - (getTxDate(a)?.getTime() || 0))
 
       const latestCreditDate = creditTxs.length ? getTxDate(creditTxs[0]) : null
@@ -929,6 +937,10 @@ function ManageListsContent() {
       const totalCreditAmount = creditTxs.reduce((acc: number, t: any) => acc + Math.abs(Number(t.amount) || 0), 0)
       const totalDebtBaseAmount = debtBaseCreditTxs.reduce((acc: number, t: any) => acc + Math.abs(Number(t.amount) || 0), 0)
       const totalSettlementAmount = settlementTxs.reduce((acc: number, t: any) => acc + Math.abs(Number(t.amount) || 0), 0)
+      const supplierExpenseComponents =
+        activeTab === 'suppliers'
+          ? getSupplierBalanceComponents(entityTrans)
+          : null
       const latestSettlementDate = settlementTxs.length ? getTxDate(settlementTxs[0]) : null
       const latestSettlementAmount = settlementTxs.length ? Math.abs(Number(settlementTxs[0]?.amount) || 0) : null
 
@@ -941,7 +953,7 @@ function ManageListsContent() {
         latestSettlementAmount,
         totalCreditAmount,
         totalSettlementAmount,
-        balance: totalDebtBaseAmount - totalSettlementAmount,
+        balance: supplierExpenseComponents ? supplierExpenseComponents.openBalance : totalDebtBaseAmount - totalSettlementAmount,
       }
     },
     [activeTab, RECEIVED_TYPES, STAFF_REGISTER_TYPES],

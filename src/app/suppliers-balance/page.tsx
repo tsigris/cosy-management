@@ -6,6 +6,12 @@ import { getSupabase } from '@/lib/supabase'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { toast, Toaster } from 'sonner'
+import {
+  getSupplierBalanceComponents,
+  isSupplierChargeTx,
+  isSupplierCreditNoteTx,
+  isSupplierPaymentTx,
+} from '@/lib/supplierCreditNote'
 import { toBusinessDayDateFromInput } from '@/lib/businessDate'
 import {
   ChevronLeft,
@@ -98,21 +104,6 @@ function greekToGreeklish(value: string) {
     .join('')
 }
 
-const isExpenseCardCharge = (t: any) => {
-  if (!t) return false
-
-  const type = String(t?.type || '').trim().toLowerCase()
-  const isCredit = t?.is_credit === true
-
-  // Canonical rule for expense-card charge rows.
-  return type === 'expense' && isCredit
-}
-
-const isExpenseCardPayment = (t: any) => {
-  if (!t) return false
-  return String(t?.type || '').trim().toLowerCase() === 'debt_payment'
-}
-
 // Date helpers (no automatic day shift)
 const toBusinessDateNormalized = (d: Date) => new Date(d)
 
@@ -140,6 +131,7 @@ function BalancesContent() {
   const [rawAssets, setRawAssets] = useState<any[]>([])
   const [rawRevenueSources, setRawRevenueSources] = useState<any[]>([])
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [voidingTxId, setVoidingTxId] = useState<string | null>(null)
   const fetchSeqRef = useRef(0)
 
   // ✅ YEAR SELECTOR (tab-aware)
@@ -258,10 +250,10 @@ function BalancesContent() {
       if (!relevantForTab) continue
 
       // Balances relevance (credit ή settlement):
-      const isCredit = isIncome ? t?.is_credit === true : isExpenseCardCharge(t)
+      const isCredit = isIncome ? t?.is_credit === true : isSupplierChargeTx(t) || isSupplierCreditNoteTx(t)
       const isSettlement = isIncome
         ? RECEIVED_TYPES.includes(String(t?.type || ''))
-        : isExpenseCardPayment(t)
+        : isSupplierPaymentTx(t)
 
       if (!isCredit && !isSettlement) continue
 
@@ -299,7 +291,11 @@ function BalancesContent() {
       .filter((t) => isTxInYear(t, year)) // ✅ YEAR FILTER
 
     const creditTxs = entityTrans
-      .filter((t) => (isIncome ? t?.is_credit === true : isExpenseCardCharge(t)))
+      .filter((t) =>
+        isIncome
+          ? t?.is_credit === true
+          : isSupplierChargeTx(t) || String(t?.type || '').trim().toLowerCase() === 'supplier_credit_note',
+      )
       .sort((a, b) => (getTxDate(b)?.getTime() || 0) - (getTxDate(a)?.getTime() || 0))
 
     const settlementTxs = isIncome
@@ -307,7 +303,7 @@ function BalancesContent() {
           .filter((t) => RECEIVED_TYPES.includes(String(t?.type || '')))
           .sort((a, b) => (getTxDate(b)?.getTime() || 0) - (getTxDate(a)?.getTime() || 0))
         : entityTrans
-          .filter((t) => isExpenseCardPayment(t))
+          .filter((t) => isSupplierPaymentTx(t))
           .sort((a, b) => (getTxDate(b)?.getTime() || 0) - (getTxDate(a)?.getTime() || 0))
 
     const latestCreditDate = creditTxs.length ? getTxDate(creditTxs[0]) : null
@@ -317,8 +313,17 @@ function BalancesContent() {
     const latestSettlementDate = latestSettlementTx ? getTxDate(latestSettlementTx) : null
     const latestSettlementAmount = latestSettlementTx ? Math.abs(Number(latestSettlementTx.amount) || 0) : null
 
-    const totalCreditAmount = creditTxs.reduce((acc, t) => acc + Math.abs(Number(t?.amount) || 0), 0)
-    const totalSettlementAmount = settlementTxs.reduce((acc, t) => acc + Math.abs(Number(t?.amount) || 0), 0)
+    const expenseComponents = isIncome
+      ? null
+      : getSupplierBalanceComponents(entityTrans.filter((t) => !!t && (t?.supplier_id === entity.id || t?.fixed_asset_id === entity.id)))
+
+    const totalCreditAmount = isIncome
+      ? creditTxs.reduce((acc, t) => acc + Math.abs(Number(t?.amount) || 0), 0)
+      : Number(expenseComponents?.charges || 0)
+    const totalSettlementAmount = isIncome
+      ? settlementTxs.reduce((acc, t) => acc + Math.abs(Number(t?.amount) || 0), 0)
+      : Number(expenseComponents?.payments || 0)
+    const totalCreditNotesAmount = isIncome ? 0 : Number(expenseComponents?.creditNotes || 0)
 
     return {
       creditTxs,
@@ -330,6 +335,8 @@ function BalancesContent() {
       latestSettlementAmount,
       totalCreditAmount,
       totalSettlementAmount,
+      totalCreditNotesAmount,
+      openBalance: expenseComponents?.openBalance ?? null,
     }
   }
 
@@ -349,17 +356,11 @@ function BalancesContent() {
           isSupplier ? t?.supplier_id === entity.id : t?.fixed_asset_id === entity.id,
         )
 
-        const totalCredit = entityTrans
-          .filter((t) => isExpenseCardCharge(t))
-          .reduce((acc, t) => acc + Math.abs(Number(t?.amount) || 0), 0)
-
-        const totalPaid = entityTrans
-          .filter((t) => isExpenseCardPayment(t))
-          .reduce((acc, t) => acc + Math.abs(Number(t?.amount) || 0), 0)
+        const { openBalance } = getSupplierBalanceComponents(entityTrans)
 
         return {
           ...entity,
-          balance: totalCredit - totalPaid,
+          balance: openBalance,
         }
       })
       .filter((e) => Math.abs(e.balance) > 0.1)
@@ -408,7 +409,7 @@ function BalancesContent() {
       setLoading(true)
 
       const transactionSelect =
-        'id, store_id, created_at, date, type, amount, category, notes, is_credit, supplier_id, fixed_asset_id, revenue_source_id'
+        'id, store_id, created_at, date, type, amount, category, notes, is_credit, supplier_id, fixed_asset_id, revenue_source_id, linked_invoice_tx_id, supplier_credit_note_number, voided_at, voided_by, void_reason'
 
       console.log('RUNNING QUERY: transactions', { select: transactionSelect })
       const transRes = await supabase
@@ -535,6 +536,56 @@ function BalancesContent() {
       }
     }
   }, [storeIdFromUrl, viewMode, selectedYear, buildExpenseBalanceList, buildIncomeBalanceList])
+
+  const handleVoidSupplierCreditNote = useCallback(
+    async (tx: any) => {
+      if (!tx?.id || !storeIdFromUrl) return
+      if (tx?.voided_at) {
+        toast.error('Το πιστωτικό είναι ήδη ακυρωμένο')
+        return
+      }
+
+      const reasonRaw = window.prompt('Αιτιολογία ακύρωσης (υποχρεωτικό):', '')
+      const reason = String(reasonRaw || '').trim()
+      if (!reason) {
+        toast.error('Η αιτιολογία ακύρωσης είναι υποχρεωτική')
+        return
+      }
+
+      const ok = window.confirm('Θες σίγουρα να ακυρώσεις αυτό το πιστωτικό; Η κίνηση θα παραμείνει στο ιστορικό για audit.')
+      if (!ok) return
+
+      try {
+        setVoidingTxId(String(tx.id))
+        const {
+          data: { session },
+        } = await supabase.auth.getSession()
+        if (!session?.user?.id) throw new Error('Δεν βρέθηκε ενεργό session')
+
+        const { error } = await supabase
+          .from('transactions')
+          .update({
+            voided_at: new Date().toISOString(),
+            voided_by: session.user.id,
+            void_reason: reason,
+          })
+          .eq('id', tx.id)
+          .eq('store_id', storeIdFromUrl)
+          .eq('type', 'supplier_credit_note')
+          .is('voided_at', null)
+
+        if (error) throw error
+
+        toast.success('Το πιστωτικό ακυρώθηκε')
+        await fetchBalances()
+      } catch (e: any) {
+        toast.error(e?.message || 'Αποτυχία ακύρωσης πιστωτικού')
+      } finally {
+        setVoidingTxId(null)
+      }
+    },
+    [fetchBalances, storeIdFromUrl, supabase],
+  )
 
   useEffect(() => {
     if (!storeIdFromUrl || !isValidUUID(storeIdFromUrl)) {
@@ -715,14 +766,14 @@ function BalancesContent() {
           : t?.fixed_asset_id === row.id,
       )
 
-      const charges = entityTrans.filter((t) => isExpenseCardCharge(t))
-      const payments = entityTrans.filter((t) => isExpenseCardPayment(t))
+      const components = getSupplierBalanceComponents(entityTrans)
 
       return {
         id: row.id,
         name: row.name,
-        charges: charges.reduce((s, t) => s + Math.abs(Number(t?.amount) || 0), 0),
-        payments: payments.reduce((s, t) => s + Math.abs(Number(t?.amount) || 0), 0),
+        charges: components.charges,
+        payments: components.payments,
+        creditNotes: components.creditNotes,
         balance: row.balance,
       }
     })
@@ -994,10 +1045,24 @@ function BalancesContent() {
                             <span style={miniPillValue}>{history.totalCreditAmount.toFixed(2)}€</span>
                           </div>
 
+                          {viewMode === 'expenses' && (
+                            <div style={miniPill}>
+                              <span style={miniPillLabel}>Σύνολο πιστωτικών</span>
+                              <span style={{ ...miniPillValue, color: colors.accentGreen }}>{history.totalCreditNotesAmount.toFixed(2)}€</span>
+                            </div>
+                          )}
+
                           <div style={miniPill}>
                             <span style={miniPillLabel}>{viewMode === 'income' ? 'Σύνολο εισπράξεων' : 'Σύνολο εξοφλήσεων'}</span>
                             <span style={miniPillValue}>{history.totalSettlementAmount.toFixed(2)}€</span>
                           </div>
+
+                          {viewMode === 'expenses' && history.openBalance !== null && (
+                            <div style={miniPill}>
+                              <span style={miniPillLabel}>Υπόλοιπο (χρεώσεις-πληρωμές-πιστωτικά)</span>
+                              <span style={miniPillValue}>{Number(history.openBalance || 0).toFixed(2)}€</span>
+                            </div>
+                          )}
                         </div>
 
                         <div style={sectionTitle}>
@@ -1010,6 +1075,7 @@ function BalancesContent() {
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                             {history.creditTxs.slice(0, 12).map((t: any) => {
                               const d = getTxDate(t)
+                              const isCreditNote = isSupplierCreditNoteTx(t)
                               const note =
                                 String(t?.notes || '').trim() ||
                                 String(t?.category || t?.type || '').trim() ||
@@ -1023,10 +1089,47 @@ function BalancesContent() {
                                       <span style={tinyChip}>{daysAgoLabel(d)}</span>
                                     </div>
                                     <div style={txNote} title={note}>
-                                      {note}
+                                      {isCreditNote ? 'Πιστωτικό Τιμολόγιο' : note}
                                     </div>
+                                    {t?.voided_at && (
+                                      <div style={{ ...rowMuted, color: colors.accentRed, marginTop: 2 }}>
+                                        VOID: {String(t?.void_reason || 'Χωρίς αιτιολογία')}
+                                      </div>
+                                    )}
                                   </div>
-                                  <div style={txAmount}>{Math.abs(Number(t?.amount) || 0).toFixed(2)}€</div>
+                                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
+                                    <div
+                                      style={{
+                                        ...txAmount,
+                                        color: isCreditNote ? colors.accentGreen : txAmount.color,
+                                      }}
+                                    >
+                                      {Math.abs(Number(t?.amount) || 0).toFixed(2)}€
+                                    </div>
+                                    {isCreditNote && !t?.voided_at && s.entityType === 'supplier' && (
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation()
+                                          handleVoidSupplierCreditNote(t)
+                                        }}
+                                        style={{
+                                          border: '1px solid #fecaca',
+                                          background: '#fef2f2',
+                                          color: colors.accentRed,
+                                          borderRadius: 8,
+                                          padding: '4px 8px',
+                                          fontSize: 11,
+                                          fontWeight: 900,
+                                          cursor: voidingTxId === String(t.id) ? 'wait' : 'pointer',
+                                          opacity: voidingTxId === String(t.id) ? 0.7 : 1,
+                                        }}
+                                        disabled={voidingTxId === String(t.id)}
+                                      >
+                                        {voidingTxId === String(t.id) ? 'ΑΚΥΡΩΣΗ...' : 'VOID'}
+                                      </button>
+                                    )}
+                                  </div>
                                 </div>
                               )
                             })}
@@ -1118,6 +1221,24 @@ function BalancesContent() {
                     >
                       <CreditCard size={14} /> {actionLabel}
                     </button>
+
+                    {!isIncome && s.entityType === 'supplier' && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          router.push(`/add-expense?store=${storeIdFromUrl}&supId=${s.id}&mode=credit-note`)
+                        }}
+                        style={{
+                          ...payBtnStyle,
+                          marginTop: 6,
+                          backgroundColor: '#ecfdf5',
+                          border: '1px solid #a7f3d0',
+                          color: '#065f46',
+                        }}
+                      >
+                        <Receipt size={14} /> ΠΙΣΤΩΤΙΚΟ
+                      </button>
+                    )}
                   </div>
                 </div>
               )
