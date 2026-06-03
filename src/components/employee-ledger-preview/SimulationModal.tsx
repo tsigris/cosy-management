@@ -1,7 +1,6 @@
 'use client'
 
 import type { CSSProperties } from 'react'
-import type { EmployeeLedgerPreviewEventType } from '@/lib/employeeLedgerPreviewMock'
 
 type SimulationAction = 'earning' | 'payment' | 'deduction'
 
@@ -22,39 +21,40 @@ export default function SimulationModal({ open, action, currentBalance, onClose 
   const defaultAmount = action === 'earning' ? 120 : action === 'payment' ? 80 : 30
   const projectedChange = action === 'earning' ? defaultAmount : -defaultAmount
   const projectedNewBalance = Number((currentBalance + projectedChange).toFixed(2))
-  const eventType: EmployeeLedgerPreviewEventType = action === 'earning' ? 'earning' : action === 'payment' ? 'payment' : 'deduction'
+  const titleByAction: Record<SimulationAction, string> = {
+    earning: 'Προσθήκη Κέρδους',
+    payment: 'Πληρωμή Υπαλλήλου',
+    deduction: 'Κράτηση Υπαλλήλου',
+  }
+
+  const amountLabelByAction: Record<SimulationAction, string> = {
+    earning: 'Κέρδος',
+    payment: 'Πληρωμή',
+    deduction: 'Κράτηση',
+  }
 
   return (
     <div style={overlayStyle} role="dialog" aria-modal="true">
       <div style={modalStyle}>
         <div style={titleRowStyle}>
-          <h3 style={titleStyle}>Add {action.charAt(0).toUpperCase() + action.slice(1)} (Simulation)</h3>
-          <button onClick={onClose} style={closeBtnStyle}>Close</button>
+          <h3 style={titleStyle}>{titleByAction[action]}</h3>
+          <button onClick={onClose} style={closeBtnStyle}>Κλείσιμο</button>
         </div>
 
-        <div style={bannerStyle}>Preview Mode - No Data Will Be Saved</div>
+        <div style={bannerStyle}>Προεπισκόπηση - Δεν αποθηκεύεται τίποτα</div>
 
         <div style={gridStyle}>
-          <Metric label="Current Balance" value={money(currentBalance)} />
+          <Metric label="Τρέχον υπόλοιπο" value={money(currentBalance)} />
           <Metric
-            label="Projected Change"
-            value={`${projectedChange >= 0 ? '+' : ''}${money(projectedChange)}`}
+            label={amountLabelByAction[action]}
+            value={money(Math.abs(defaultAmount))}
             tone={projectedChange >= 0 ? '#065f46' : '#9a3412'}
           />
-          <Metric label="Projected New Balance" value={money(projectedNewBalance)} />
-        </div>
-
-        <div style={previewRowStyle}>
-          <p style={previewTitleStyle}>Preview Event Row</p>
-          <p style={previewLineStyle}><strong>Type:</strong> {eventType}</p>
-          <p style={previewLineStyle}><strong>Amount:</strong> {money(defaultAmount)}</p>
-          <p style={previewLineStyle}><strong>Reference:</strong> PRV-{action.toUpperCase()}-SIM</p>
-          <p style={previewLineStyle}><strong>Balance Before:</strong> {money(currentBalance)}</p>
-          <p style={previewLineStyle}><strong>Balance After:</strong> {money(projectedNewBalance)}</p>
+          <Metric label="Νέο υπόλοιπο" value={money(projectedNewBalance)} />
         </div>
 
         <div style={footerStyle}>
-          <button disabled style={saveBtnStyle}>Save (Disabled)</button>
+          <button disabled style={saveBtnStyle}>Αποθήκευση απενεργοποιημένη</button>
         </div>
       </div>
     </div>
@@ -139,8 +139,7 @@ const metricStyle: CSSProperties = {
 
 const metricLabelStyle: CSSProperties = {
   display: 'block',
-  fontSize: '11px',
-  textTransform: 'uppercase',
+  fontSize: '12px',
   fontWeight: 800,
   color: '#64748b',
 }
@@ -150,27 +149,6 @@ const metricValueStyle: CSSProperties = {
   marginTop: '4px',
   fontSize: '18px',
   fontWeight: 900,
-}
-
-const previewRowStyle: CSSProperties = {
-  marginTop: '14px',
-  border: '1px solid #e2e8f0',
-  borderRadius: '12px',
-  background: '#ffffff',
-  padding: '12px',
-}
-
-const previewTitleStyle: CSSProperties = {
-  margin: 0,
-  fontWeight: 900,
-  fontSize: '13px',
-  color: '#0f172a',
-}
-
-const previewLineStyle: CSSProperties = {
-  margin: '6px 0 0 0',
-  fontSize: '13px',
-  color: '#1e293b',
 }
 
 const footerStyle: CSSProperties = {
