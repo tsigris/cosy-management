@@ -1,35 +1,28 @@
-export type EmployeeLedgerPreviewEventType =
-  | 'earning'
-  | 'payment'
-  | 'deduction'
-  | 'adjustment'
-  | 'reversal'
-
-export type EmployeeLedgerPreviewEvent = {
+export type EmployeeMonthlyPaymentHistoryItem = {
   id: string
   date: string
-  type: EmployeeLedgerPreviewEventType
-  amount: number
-  reference: string
-  source: string
-  reason: string
-  balanceBefore: number
-  balanceAfter: number
+  text: string
+  amountText?: string
 }
 
-export type EmployeeLedgerPreviewSummary = {
-  currentBalance: number
-  totalEarned: number
-  totalPaid: number
-  totalDeductions: number
-  netChange: number
-  lastUpdated: string
-  events: EmployeeLedgerPreviewEvent[]
+export type EmployeeMonthlyPaymentSummary = {
+  monthLabel: string
+  startedDate: string
+  salaryAgreement: number
+  tips: number
+  overtime: number
+  entitledTotal: number
+  paidBank: number
+  paidCash: number
+  paidTotal: number
+  remainingBalance: number
+  history: EmployeeMonthlyPaymentHistoryItem[]
 }
 
 type EmployeeSeed = {
   id: string
   name?: string | null
+  start_date?: string | null
   monthly_salary?: number | null
   agreed_extra_salary?: number | null
   daily_rate?: number | null
@@ -41,122 +34,80 @@ function toMoney(value: unknown): number {
   return Number.isFinite(n) ? Number(n.toFixed(2)) : 0
 }
 
-function buildEvent(
-  id: string,
-  date: string,
-  type: EmployeeLedgerPreviewEventType,
-  amount: number,
-  reference: string,
-  source: string,
-  reason: string,
-  balanceBefore: number,
-): EmployeeLedgerPreviewEvent {
-  const sign = type === 'earning' || type === 'reversal' ? 1 : -1
-  const balanceAfter = toMoney(balanceBefore + amount * sign)
-
-  return {
-    id,
-    date,
-    type,
-    amount: toMoney(amount),
-    reference,
-    source,
-    reason,
-    balanceBefore: toMoney(balanceBefore),
-    balanceAfter,
-  }
+function isoDate(year: number, monthIndex: number, day: number): string {
+  return new Date(year, monthIndex, day).toISOString().slice(0, 10)
 }
 
-export function getEmployeeLedgerPreviewSummary(employee: EmployeeSeed): EmployeeLedgerPreviewSummary {
-  const today = new Date()
-  const iso = (d: Date) => d.toISOString().slice(0, 10)
+export function getEmployeeLedgerPreviewSummary(employee: EmployeeSeed): EmployeeMonthlyPaymentSummary {
+  const now = new Date()
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
 
-  const baseSalary = toMoney(employee.monthly_salary)
-  const extraSalary = toMoney(employee.agreed_extra_salary)
+  const startDate = String(employee.start_date || '').slice(0, 10) || monthStart.toISOString().slice(0, 10)
+  const monthLabel = monthStart.toLocaleDateString('el-GR', { month: 'long', year: 'numeric' })
+
+  const salaryBase = toMoney(employee.monthly_salary)
+  const salaryExtra = toMoney(employee.agreed_extra_salary)
   const dailyRate = toMoney(employee.daily_rate)
   const payBasis = String(employee.pay_basis || 'monthly')
 
-  const salaryEarning = payBasis === 'daily' ? toMoney(dailyRate * 18) : toMoney(baseSalary + extraSalary)
+  const salaryAgreement =
+    payBasis === 'daily'
+      ? toMoney(dailyRate * 18)
+      : toMoney((salaryBase || 1200) + salaryExtra)
 
-  const seedEvents: Array<Omit<EmployeeLedgerPreviewEvent, 'balanceBefore' | 'balanceAfter'>> = [
+  const tips = 120
+  const overtime = 100
+  const entitledTotal = toMoney(salaryAgreement + tips + overtime)
+
+  const paidBank = 300
+  const paidCash = 200
+  const paidTotal = toMoney(paidBank + paidCash)
+
+  const remainingBalance = toMoney(entitledTotal - paidTotal)
+
+  const history: EmployeeMonthlyPaymentHistoryItem[] = [
     {
-      id: `${employee.id}-e1`,
-      date: iso(new Date(today.getFullYear(), today.getMonth(), 1)),
-      type: 'earning',
-      amount: salaryEarning || 80,
-      reference: 'PRV-EARN-001',
-      source: 'preview.salary_engine',
-      reason: payBasis === 'daily' ? 'Simulated daily wage earnings' : 'Simulated monthly earnings',
+      id: `${employee.id}-h1`,
+      date: isoDate(now.getFullYear(), now.getMonth(), 1),
+      text: 'Ξεκίνησε εργασία',
     },
     {
-      id: `${employee.id}-e2`,
-      date: iso(new Date(today.getFullYear(), today.getMonth(), 5)),
-      type: 'earning',
-      amount: 120,
-      reference: 'PRV-EARN-002',
-      source: 'preview.bonus_engine',
-      reason: 'Simulated bonus event',
+      id: `${employee.id}-h2`,
+      date: isoDate(now.getFullYear(), now.getMonth(), 5),
+      text: 'Tips',
+      amountText: '+40€',
     },
     {
-      id: `${employee.id}-p1`,
-      date: iso(new Date(today.getFullYear(), today.getMonth(), 10)),
-      type: 'payment',
-      amount: 300,
-      reference: 'PRV-PAY-001',
-      source: 'preview.payment_engine',
-      reason: 'Simulated advance payment',
+      id: `${employee.id}-h3`,
+      date: isoDate(now.getFullYear(), now.getMonth(), 10),
+      text: 'Πληρωμή μετρητά',
+      amountText: '-100€',
     },
     {
-      id: `${employee.id}-d1`,
-      date: iso(new Date(today.getFullYear(), today.getMonth(), 14)),
-      type: 'deduction',
-      amount: 50,
-      reference: 'PRV-DED-001',
-      source: 'preview.deduction_engine',
-      reason: 'Simulated deduction',
+      id: `${employee.id}-h4`,
+      date: isoDate(now.getFullYear(), now.getMonth(), 15),
+      text: 'Υπερωρίες',
+      amountText: '+50€',
     },
     {
-      id: `${employee.id}-a1`,
-      date: iso(new Date(today.getFullYear(), today.getMonth(), 16)),
-      type: 'adjustment',
-      amount: 20,
-      reference: 'PRV-ADJ-001',
-      source: 'preview.adjustment_engine',
-      reason: 'Simulated adjustment correction',
+      id: `${employee.id}-h5`,
+      date: isoDate(now.getFullYear(), now.getMonth(), 20),
+      text: 'Πληρωμή τράπεζα',
+      amountText: '-300€',
     },
   ]
 
-  let running = 0
-  const events = seedEvents
-    .sort((a, b) => String(a.date).localeCompare(String(b.date)))
-    .map((raw) => {
-      const event = buildEvent(
-        raw.id,
-        raw.date,
-        raw.type,
-        raw.amount,
-        raw.reference,
-        raw.source,
-        raw.reason,
-        running,
-      )
-      running = event.balanceAfter
-      return event
-    })
-    .reverse()
-
-  const totalEarned = toMoney(events.filter((e) => e.type === 'earning' || e.type === 'reversal').reduce((sum, e) => sum + e.amount, 0))
-  const totalPaid = toMoney(events.filter((e) => e.type === 'payment').reduce((sum, e) => sum + e.amount, 0))
-  const totalDeductions = toMoney(events.filter((e) => e.type === 'deduction' || e.type === 'adjustment').reduce((sum, e) => sum + e.amount, 0))
-  const currentBalance = toMoney(totalEarned - totalPaid - totalDeductions)
-
   return {
-    currentBalance,
-    totalEarned,
-    totalPaid,
-    totalDeductions,
-    netChange: currentBalance,
-    lastUpdated: events[0]?.date || iso(today),
-    events,
+    monthLabel,
+    startedDate: startDate,
+    salaryAgreement,
+    tips,
+    overtime,
+    entitledTotal,
+    paidBank,
+    paidCash,
+    paidTotal,
+    remainingBalance,
+    history,
   }
 }

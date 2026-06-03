@@ -6,12 +6,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { formatDateDMY } from '@/lib/formatters'
 import { getEmployees } from '@/lib/employees'
-import {
-  getEmployeeLedgerPreviewSummary,
-  type EmployeeLedgerPreviewEvent,
-  type EmployeeLedgerPreviewEventType,
-} from '@/lib/employeeLedgerPreviewMock'
-import SimulationModal from '@/components/employee-ledger-preview/SimulationModal'
+import { getEmployeeLedgerPreviewSummary } from '@/lib/employeeLedgerPreviewMock'
 
 type ProfileProps = {
   employeeId: string
@@ -21,13 +16,12 @@ type ProfileProps = {
 type EmployeeRow = {
   id: string
   name?: string | null
+  start_date?: string | null
   monthly_salary?: number | null
   agreed_extra_salary?: number | null
   daily_rate?: number | null
   pay_basis?: string | null
 }
-
-type SimulationAction = 'earning' | 'payment' | 'deduction' | null
 
 function money(value: number) {
   return `${Number(value || 0).toLocaleString('el-GR', {
@@ -36,25 +30,20 @@ function money(value: number) {
   })}€`
 }
 
-function historyTypeLabel(type: EmployeeLedgerPreviewEventType): string {
-  if (type === 'earning') return 'Του χρωστάμε'
-  if (type === 'payment') return 'Πληρωμή'
-  if (type === 'deduction') return 'Αφαίρεση'
-  if (type === 'adjustment') return 'Αφαίρεση'
-  return 'Του χρωστάμε'
-}
-
-function signedAmount(event: EmployeeLedgerPreviewEvent): string {
-  const isPositive = event.type === 'earning' || event.type === 'reversal'
-  return `${isPositive ? '+' : '-'}${money(event.amount)}`
-}
+const ACTIONS = [
+  '+ Μισθός / Ποσό',
+  '+ Tips',
+  '+ Υπερωρίες',
+  '+ Πληρωμή τράπεζα',
+  '+ Πληρωμή μετρητά',
+  '+ Αφαίρεση / Διόρθωση',
+]
 
 export default function EmployeeProfilePreview({ employeeId, storeId }: ProfileProps) {
   const router = useRouter()
 
   const [loading, setLoading] = useState(true)
   const [employee, setEmployee] = useState<EmployeeRow | null>(null)
-  const [simulationAction, setSimulationAction] = useState<SimulationAction>(null)
 
   useEffect(() => {
     if (!storeId || storeId === 'null') {
@@ -96,6 +85,7 @@ export default function EmployeeProfilePreview({ employeeId, storeId }: ProfileP
     return getEmployeeLedgerPreviewSummary({
       id: String(employee.id),
       name: employee.name,
+      start_date: employee.start_date,
       monthly_salary: employee.monthly_salary,
       agreed_extra_salary: employee.agreed_extra_salary,
       daily_rate: employee.daily_rate,
@@ -125,57 +115,63 @@ export default function EmployeeProfilePreview({ employeeId, storeId }: ProfileP
           Επιστροφή
         </Link>
 
-        <section style={summaryStyle}>
-          <h1 style={nameStyle}>{String(employee.name || 'Υπάλληλος')}</h1>
-          <p style={balanceLabelStyle}>Υπόλοιπο που του χρωστάμε:</p>
-          <p style={balanceValueStyle}>{money(summary.currentBalance)}</p>
+        <p style={previewBadgeStyle}>Δοκιμαστική προβολή</p>
 
-          <div style={totalsGridStyle}>
-            <MiniStat label="Του χρωστάμε" value={money(summary.totalEarned)} />
-            <MiniStat label="Του πληρώσαμε" value={money(summary.totalPaid)} />
-            <MiniStat label="Αφαιρέσεις" value={money(summary.totalDeductions)} />
-          </div>
+        <section style={topSectionStyle}>
+          <h1 style={nameStyle}>{String(employee.name || 'Υπάλληλος')}</h1>
+          <p style={metaLineStyle}>Ξεκίνησε: {formatDateDMY(summary.startedDate, summary.startedDate)}</p>
+          <p style={metaLineStyle}>Μήνας: {summary.monthLabel}</p>
+        </section>
+
+        <section style={simpleSectionStyle}>
+          <h2 style={sectionTitleStyle}>Τι δικαιούται</h2>
+          <Row label="Μισθός / Συμφωνία" value={money(summary.salaryAgreement)} />
+          <Row label="Tips" value={money(summary.tips)} />
+          <Row label="Υπερωρίες" value={money(summary.overtime)} />
+          <Row label="Σύνολο που δικαιούται" value={money(summary.entitledTotal)} strong />
+        </section>
+
+        <section style={simpleSectionStyle}>
+          <h2 style={sectionTitleStyle}>Τι πληρώθηκε</h2>
+          <Row label="Τράπεζα" value={money(summary.paidBank)} />
+          <Row label="Μετρητά" value={money(summary.paidCash)} />
+          <Row label="Σύνολο πληρωμών" value={money(summary.paidTotal)} strong />
+        </section>
+
+        <section style={balanceSectionStyle}>
+          <p style={balanceLabelStyle}>Υπόλοιπο</p>
+          <p style={balanceValueStyle}>{money(summary.remainingBalance)}</p>
         </section>
 
         <section style={actionsStyle}>
-          <button type="button" style={primaryActionStyle} onClick={() => setSimulationAction('earning')}>
-            + Του χρωστάμε
-          </button>
-          <button type="button" style={secondaryActionStyle} onClick={() => setSimulationAction('payment')}>
-            - Του πλήρωσα
-          </button>
-          <button type="button" style={secondaryActionStyle} onClick={() => setSimulationAction('deduction')}>
-            - Αφαίρεση
-          </button>
+          {ACTIONS.map((label) => (
+            <button key={label} type="button" style={disabledActionStyle} disabled>
+              <span>{label}</span>
+              <span style={soonPillStyle}>Σύντομα διαθέσιμο</span>
+            </button>
+          ))}
         </section>
 
         <section style={historyStyle}>
-          {summary.events.map((event) => (
-            <article key={event.id} style={historyRowStyle}>
-              <p style={historyDateStyle}>{formatDateDMY(event.date, event.date).slice(0, 5)}</p>
-              <p style={historyTypeStyle}>{historyTypeLabel(event.type)}</p>
-              <p style={historyAmountStyle}>{signedAmount(event)}</p>
-              <p style={historyBalanceStyle}>Υπόλοιπο: {money(event.balanceAfter)}</p>
+          {summary.history.map((item) => (
+            <article key={item.id} style={historyRowStyle}>
+              <p style={historyDateStyle}>{formatDateDMY(item.date, item.date).slice(0, 5)}</p>
+              <p style={historyTextStyle}>{item.text}</p>
+              {item.amountText ? <p style={historyAmountStyle}>{item.amountText}</p> : null}
             </article>
           ))}
+          <p style={historyBalanceStyle}>Υπόλοιπο: {money(summary.remainingBalance)}</p>
         </section>
       </div>
-
-      <SimulationModal
-        open={simulationAction !== null}
-        action={(simulationAction || 'earning') as 'earning' | 'payment' | 'deduction'}
-        currentBalance={summary.currentBalance}
-        onClose={() => setSimulationAction(null)}
-      />
     </div>
   )
 }
 
-function MiniStat({ label, value }: { label: string; value: string }) {
+function Row({ label, value, strong = false }: { label: string; value: string; strong?: boolean }) {
   return (
-    <div style={miniStatStyle}>
-      <span style={miniLabelStyle}>{label}</span>
-      <span style={miniValueStyle}>{value}</span>
+    <div style={rowStyle}>
+      <span style={{ ...rowLabelStyle, ...(strong ? strongTextStyle : null) }}>{label}:</span>
+      <span style={{ ...rowValueStyle, ...(strong ? strongTextStyle : null) }}>{value}</span>
     </div>
   )
 }
@@ -187,7 +183,7 @@ const pageStyle: CSSProperties = {
 }
 
 const containerStyle: CSSProperties = {
-  maxWidth: '420px',
+  maxWidth: '460px',
   margin: '0 auto',
   display: 'flex',
   flexDirection: 'column',
@@ -203,63 +199,92 @@ const backLinkStyle: CSSProperties = {
   padding: '4px 0',
 }
 
-const summaryStyle: CSSProperties = {
+const previewBadgeStyle: CSSProperties = {
+  margin: 0,
+  alignSelf: 'flex-start',
+  borderRadius: '999px',
+  background: '#fef3c7',
+  color: '#92400e',
+  fontSize: '12px',
+  fontWeight: 800,
+  padding: '5px 10px',
+}
+
+const topSectionStyle: CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
-  gap: '6px',
+  gap: '4px',
 }
 
 const nameStyle: CSSProperties = {
   margin: 0,
-  fontSize: '32px',
+  fontSize: '34px',
   lineHeight: 1,
   fontWeight: 900,
   color: '#0f172a',
   textTransform: 'uppercase',
 }
 
-const balanceLabelStyle: CSSProperties = {
-  margin: '8px 0 0 0',
-  fontSize: '18px',
-  lineHeight: 1.2,
-  fontWeight: 800,
+const metaLineStyle: CSSProperties = {
+  margin: 0,
+  fontSize: '16px',
+  color: '#334155',
+  fontWeight: 700,
+}
+
+const simpleSectionStyle: CSSProperties = {
+  background: '#ffffff',
+  borderRadius: '10px',
+  padding: '12px',
+}
+
+const sectionTitleStyle: CSSProperties = {
+  margin: '0 0 8px 0',
+  fontSize: '20px',
+  color: '#0f172a',
+  fontWeight: 900,
+}
+
+const rowStyle: CSSProperties = {
+  display: 'flex',
+  alignItems: 'baseline',
+  justifyContent: 'space-between',
+  gap: '8px',
+  padding: '4px 0',
+}
+
+const rowLabelStyle: CSSProperties = {
+  fontSize: '16px',
   color: '#334155',
 }
 
-const balanceValueStyle: CSSProperties = {
+const rowValueStyle: CSSProperties = {
+  fontSize: '16px',
+  color: '#0f172a',
+  fontWeight: 700,
+}
+
+const strongTextStyle: CSSProperties = {
+  fontWeight: 900,
+}
+
+const balanceSectionStyle: CSSProperties = {
+  background: '#ffffff',
+  borderRadius: '10px',
+  padding: '12px',
+}
+
+const balanceLabelStyle: CSSProperties = {
   margin: 0,
-  fontSize: '42px',
-  lineHeight: 1,
+  fontSize: '22px',
   fontWeight: 900,
   color: '#0f172a',
 }
 
-const totalsGridStyle: CSSProperties = {
-  display: 'grid',
-  gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
-  gap: '8px',
-  marginTop: '8px',
-}
-
-const miniStatStyle: CSSProperties = {
-  background: '#ffffff',
-  borderRadius: '12px',
-  padding: '10px',
-}
-
-const miniLabelStyle: CSSProperties = {
-  display: 'block',
-  fontSize: '12px',
-  lineHeight: 1.2,
-  fontWeight: 700,
-  color: '#475569',
-}
-
-const miniValueStyle: CSSProperties = {
-  display: 'block',
-  marginTop: '6px',
-  fontSize: '18px',
-  lineHeight: 1.1,
+const balanceValueStyle: CSSProperties = {
+  margin: '6px 0 0 0',
+  fontSize: '54px',
+  lineHeight: 1,
   fontWeight: 900,
   color: '#0f172a',
 }
@@ -270,66 +295,69 @@ const actionsStyle: CSSProperties = {
   gap: '8px',
 }
 
-const baseActionStyle: CSSProperties = {
+const disabledActionStyle: CSSProperties = {
   width: '100%',
-  minHeight: '52px',
-  borderRadius: '14px',
-  border: 'none',
-  fontSize: '18px',
-  fontWeight: 900,
-  cursor: 'pointer',
-}
-
-const primaryActionStyle: CSSProperties = {
-  ...baseActionStyle,
-  background: '#0f172a',
-  color: '#ffffff',
-}
-
-const secondaryActionStyle: CSSProperties = {
-  ...baseActionStyle,
-  background: '#e2e8f0',
+  minHeight: '50px',
+  borderRadius: '12px',
+  border: '1px solid #cbd5e1',
+  background: '#ffffff',
   color: '#0f172a',
+  padding: '10px 12px',
+  display: 'flex',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+  fontSize: '16px',
+  fontWeight: 800,
+  opacity: 0.8,
+}
+
+const soonPillStyle: CSSProperties = {
+  borderRadius: '999px',
+  background: '#e2e8f0',
+  color: '#334155',
+  fontSize: '12px',
+  fontWeight: 800,
+  padding: '4px 8px',
 }
 
 const historyStyle: CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
-  gap: '10px',
+  gap: '8px',
 }
 
 const historyRowStyle: CSSProperties = {
   background: '#ffffff',
-  borderRadius: '12px',
-  padding: '12px',
+  borderRadius: '10px',
+  padding: '10px 12px',
 }
 
 const historyDateStyle: CSSProperties = {
   margin: 0,
-  fontSize: '18px',
-  fontWeight: 900,
+  fontSize: '16px',
   color: '#0f172a',
+  fontWeight: 900,
 }
 
-const historyTypeStyle: CSSProperties = {
-  margin: '4px 0 0 0',
-  fontSize: '17px',
-  fontWeight: 700,
+const historyTextStyle: CSSProperties = {
+  margin: '3px 0 0 0',
+  fontSize: '16px',
   color: '#334155',
+  fontWeight: 700,
 }
 
 const historyAmountStyle: CSSProperties = {
-  margin: '6px 0 0 0',
-  fontSize: '28px',
-  fontWeight: 900,
+  margin: '3px 0 0 0',
+  fontSize: '20px',
   color: '#0f172a',
+  fontWeight: 900,
 }
 
 const historyBalanceStyle: CSSProperties = {
   margin: '4px 0 0 0',
-  fontSize: '15px',
-  fontWeight: 700,
-  color: '#475569',
+  fontSize: '20px',
+  fontWeight: 900,
+  color: '#0f172a',
 }
 
 const loadingWrapStyle: CSSProperties = {
