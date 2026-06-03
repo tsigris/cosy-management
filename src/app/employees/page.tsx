@@ -8,6 +8,7 @@ import { getEmployees } from '@/lib/employees'
 import { formatDateEl } from '@/lib/formatters'
 import PermissionGuard from '@/components/PermissionGuard'
 import ReadOnlyBanner from '@/components/ReadOnlyBanner'
+import { employeeLedgerPreviewEnabled } from '@/lib/featureFlags'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { toast, Toaster } from 'sonner'
@@ -1842,6 +1843,29 @@ function EmployeesContent() {
                           ΠΡΟΚΑΤΑΒΟΛΗ
                         </Link>
                       </div>
+
+                      {employeeLedgerPreviewEnabled && (
+                        <div style={{ display: 'flex', marginTop: '8px' }}>
+                          <Link
+                            href={`/employees/${emp.id}?store=${storeId}`}
+                            onClick={(e) => e.stopPropagation()}
+                            style={{
+                              width: '100%',
+                              textAlign: 'center',
+                              textDecoration: 'none',
+                              border: '1px dashed var(--border)',
+                              borderRadius: '10px',
+                              color: 'var(--muted)',
+                              fontWeight: 800,
+                              fontSize: '12px',
+                              padding: '8px 10px',
+                              backgroundColor: 'var(--surface)',
+                            }}
+                          >
+                            VIEW PROFILE (PREVIEW)
+                          </Link>
+                        </div>
+                      )}
 
                       <div style={{ ...employeeMiniSummaryRow, marginTop: 0 }}>
                         <span
