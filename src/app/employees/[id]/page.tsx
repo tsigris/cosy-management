@@ -3,14 +3,21 @@ import EmployeeProfilePreview from '@/components/employee-ledger-preview/Employe
 import { isEmployeeLedgerPreviewEnabled } from '@/lib/featureFlags'
 
 type EmployeeProfilePageProps = {
-  params: { id: string }
-  searchParams: { store?: string }
+  params: { id: string } | Promise<{ id: string }>
+  searchParams: { store?: string | string[] } | Promise<{ store?: string | string[] }>
 }
 
-export default function EmployeeProfilePage({ params, searchParams }: EmployeeProfilePageProps) {
+export default async function EmployeeProfilePage({ params, searchParams }: EmployeeProfilePageProps) {
   if (!isEmployeeLedgerPreviewEnabled()) {
     notFound()
   }
 
-  return <EmployeeProfilePreview employeeId={params.id} storeId={String(searchParams.store || '')} />
+  const resolvedParams = await Promise.resolve(params)
+  const resolvedSearchParams = await Promise.resolve(searchParams)
+
+  const employeeId = String(resolvedParams?.id || '')
+  const rawStore = resolvedSearchParams?.store
+  const storeId = Array.isArray(rawStore) ? String(rawStore[0] || '') : String(rawStore || '')
+
+  return <EmployeeProfilePreview employeeId={employeeId} storeId={storeId} />
 }
