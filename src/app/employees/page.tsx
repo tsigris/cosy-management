@@ -1862,7 +1862,7 @@ function EmployeesContent() {
                               backgroundColor: 'var(--surface)',
                             }}
                           >
-                            VIEW PROFILE (PREVIEW)
+                            EMPLOYEE WALLET
                           </Link>
                         </div>
                       )}

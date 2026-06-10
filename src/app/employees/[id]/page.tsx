@@ -1,5 +1,5 @@
 import { notFound } from 'next/navigation'
-import EmployeeProfilePreview from '@/components/employee-ledger-preview/EmployeeProfilePreview'
+import EmployeeWalletScreen from '@/components/employee-wallet/EmployeeWalletScreen'
 import { isEmployeeLedgerPreviewEnabled } from '@/lib/featureFlags'
 
 type EmployeeProfilePageProps = {
@@ -19,5 +19,5 @@ export default async function EmployeeProfilePage({ params, searchParams }: Empl
   const rawStore = resolvedSearchParams?.store
   const storeId = Array.isArray(rawStore) ? String(rawStore[0] || '') : String(rawStore || '')
 
-  return <EmployeeProfilePreview employeeId={employeeId} storeId={storeId} />
+  return <EmployeeWalletScreen employeeId={employeeId} storeId={storeId} />
 }
