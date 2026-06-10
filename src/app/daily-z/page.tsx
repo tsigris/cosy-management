@@ -33,6 +33,16 @@ type ZNoteType =
   | 'cash_difference'
   | 'next_shift_todo'
   | 'general'
+  | 'bad_weather'
+  | 'heatwave'
+  | 'power_outage'
+  | 'internet_pos_issue'
+  | 'supplier_order'
+  | 'inspection'
+  | 'incident'
+  | 'high_traffic'
+  | 'low_traffic'
+  | 'revenue_record'
 
 type ZNoteRow = {
   id: string
@@ -54,23 +64,45 @@ type ZRevisionRow = {
 }
 
 const NOTE_TYPE_OPTIONS: Array<{ value: ZNoteType; label: string }> = [
-  { value: 'equipment_issue', label: 'Βλάβη Εξοπλισμού' },
-  { value: 'stock_shortage', label: 'Έλλειψη Προϊόντων' },
-  { value: 'staff_issue', label: 'Πρόβλημα Προσωπικού' },
+  { value: 'general',            label: 'Γενική Σημείωση' },
+  { value: 'bad_weather',        label: 'Βροχή / Κακοκαιρία' },
+  { value: 'heatwave',           label: 'Καύσωνας' },
+  { value: 'power_outage',       label: 'Διακοπή Ρεύματος' },
+  { value: 'equipment_issue',    label: 'Βλάβη Εξοπλισμού' },
+  { value: 'stock_shortage',     label: 'Έλλειψη Προϊόντων' },
+  { value: 'staff_issue',        label: 'Πρόβλημα Προσωπικού' },
   { value: 'customer_complaint', label: 'Παράπονο Πελάτη' },
-  { value: 'cash_difference', label: 'Ταμειακή Διαφορά' },
-  { value: 'next_shift_todo', label: 'Εκκρεμότητα Επόμενης Βάρδιας' },
-  { value: 'general', label: 'Γενική Παρατήρηση' },
+  { value: 'cash_difference',    label: 'Ταμειακή Διαφορά' },
+  { value: 'next_shift_todo',    label: 'Εκκρεμότητα Επόμενης Βάρδιας' },
+  { value: 'internet_pos_issue', label: 'Πρόβλημα Internet / POS' },
+  { value: 'supplier_order',     label: 'Παραγγελία Προμηθευτή' },
+  { value: 'inspection',         label: 'Έλεγχος / Επιθεώρηση' },
+  { value: 'incident',           label: 'Ατύχημα / Συμβάν' },
+  { value: 'high_traffic',       label: 'Πολύ Αυξημένη Κίνηση' },
+  { value: 'low_traffic',        label: 'Πολύ Χαμηλή Κίνηση' },
+  { value: 'revenue_record',     label: 'Ρεκόρ Τζίρου' },
 ]
 
-const NOTE_TYPE_LABELS: Record<ZNoteType, string> = {
-  equipment_issue: 'Βλάβη Εξοπλισμού',
-  stock_shortage: 'Έλλειψη Προϊόντων',
-  staff_issue: 'Πρόβλημα Προσωπικού',
+// Record<string, string> (not ZNoteType) so old DB values still render safely
+const NOTE_TYPE_LABELS: Record<string, string> = {
+  // New categories
+  general:            'Γενική Σημείωση',
+  bad_weather:        'Βροχή / Κακοκαιρία',
+  heatwave:           'Καύσωνας',
+  power_outage:       'Διακοπή Ρεύματος',
+  equipment_issue:    'Βλάβη Εξοπλισμού',
+  stock_shortage:     'Έλλειψη Προϊόντων',
+  staff_issue:        'Πρόβλημα Προσωπικού',
   customer_complaint: 'Παράπονο Πελάτη',
-  cash_difference: 'Ταμειακή Διαφορά',
-  next_shift_todo: 'Εκκρεμότητα Επόμενης Βάρδιας',
-  general: 'Γενική Παρατήρηση',
+  cash_difference:    'Ταμειακή Διαφορά',
+  next_shift_todo:    'Εκκρεμότητα Επόμενης Βάρδιας',
+  internet_pos_issue: 'Πρόβλημα Internet / POS',
+  supplier_order:     'Παραγγελία Προμηθευτή',
+  inspection:         'Έλεγχος / Επιθεώρηση',
+  incident:           'Ατύχημα / Συμβάν',
+  high_traffic:       'Πολύ Αυξημένη Κίνηση',
+  low_traffic:        'Πολύ Χαμηλή Κίνηση',
+  revenue_record:     'Ρεκόρ Τζίρου',
 }
 
 function formatDateTime(input: string | null | undefined): string {
@@ -598,7 +630,7 @@ function DailyZContent() {
                 return (
                   <div key={note.id} style={noteCardStyle}>
                     <div style={noteCardHeaderStyle}>
-                      <span style={noteTypeChipStyle}>{NOTE_TYPE_LABELS[(note.note_type || 'general') as ZNoteType]}</span>
+                      <span style={noteTypeChipStyle}>{NOTE_TYPE_LABELS[note.note_type || 'general'] ?? note.note_type ?? 'Γενική Σημείωση'}</span>
                       <span style={noteMetaStyle}>#{formatUserRef(note.created_by)} • {formatDateTime(note.created_at)}</span>
                     </div>
 
