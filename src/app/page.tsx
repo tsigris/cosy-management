@@ -30,6 +30,7 @@ import { TrendingUp, TrendingDown, Menu, X, ChevronLeft, ChevronRight, CreditCar
 import ErrorBoundary from '@/components/ErrorBoundary'
 import { aggregateCanonicalFinancialMetrics, type CanonicalFinancialRow } from '@/lib/canonicalFinancialMetrics'
 import { normalizeDateKey } from '@/lib/financialPeriods'
+import { summarizeZNotes } from '@/lib/zNotes'
 
 // Helper για αναγνώριση tips
 const isTipTransaction = (t: any) => {
@@ -131,6 +132,8 @@ type DisplayZMasterRow = {
   user_label: string
   itemsCount: number
   breakdown: ZBreakdownItem[]
+  notesCount: number
+  notesLastUpdatedAt: string | null
 }
 
 type DisplayTransactionRow = DisplayNormalRow | DisplayZMasterRow
@@ -138,6 +141,11 @@ type DisplayTransactionRow = DisplayNormalRow | DisplayZMasterRow
 type CollapsedZRow = {
   __collapsedZ: true
   date: string
+}
+
+type ZNotesSummary = {
+  count: number
+  lastUpdatedAt: string | null
 }
 
 type EntityYtdPayload = {
@@ -245,6 +253,7 @@ function DashboardContent() {
 
   // ✅ Z visibility flag
   const [zEnabled, setZEnabled] = useState<boolean>(true)
+  const [zNotesSummary, setZNotesSummary] = useState<ZNotesSummary>({ count: 0, lastUpdatedAt: null })
 
   // cache YTD metrics per entity key
   const [ytdCache, setYtdCache] = useState<Record<string, YtdInfo>>({})
@@ -485,7 +494,7 @@ function DashboardContent() {
       if (!session) return router.push('/login')
 
       // store name + settings + daily transactions (safe parallel fetch after session check)
-      const [storeRes, txRes] = await Promise.all([
+      const [storeRes, txRes, zNotesRes] = await Promise.all([
         supabase.from('stores').select('name, z_enabled').eq('id', storeIdFromUrl).maybeSingle(),
         supabase
           .from('transactions')
@@ -518,6 +527,13 @@ function DashboardContent() {
           .eq('store_id', storeIdFromUrl)
           .eq('date', selectedDate)
           .order('created_at', { ascending: false }),
+        supabase
+          .from('z_notes')
+          .select('updated_at')
+          .eq('store_id', storeIdFromUrl)
+          .eq('business_date', selectedDate)
+          .eq('is_deleted', false)
+          .order('updated_at', { ascending: false }),
       ])
 
       const { data: storeData, error: storeErr } = storeRes
@@ -525,6 +541,13 @@ function DashboardContent() {
       if (storeErr) console.error(storeErr)
       if (storeData?.name) setStoreName(storeData.name)
       setZEnabled(storeData?.z_enabled !== false)
+
+      if (zNotesRes.error) {
+        console.error('Failed loading z notes summary:', zNotesRes.error)
+        setZNotesSummary({ count: 0, lastUpdatedAt: null })
+      } else {
+        setZNotesSummary(summarizeZNotes(zNotesRes.data))
+      }
 
       const { data: tx, error: txError } = txRes
 
@@ -851,13 +874,15 @@ function DashboardContent() {
           user_label: getUserLabelFromTx(zTx[0]),
           itemsCount: zTx.length,
           breakdown: zBreakdown,
+          notesCount: zNotesSummary.count,
+          notesLastUpdatedAt: zNotesSummary.lastUpdatedAt,
         })
         zInserted = true
       }
     }
 
     return rows
-  }, [transactions, zTransactions, isZTransaction, selectedDate])
+  }, [transactions, zTransactions, isZTransaction, selectedDate, zNotesSummary.count, zNotesSummary.lastUpdatedAt])
 
   // ✅ CRITICAL: Date navigation MUST ONLY use selectedDate (operational)
   // NEVER comparison dates or previous year data
@@ -1258,6 +1283,7 @@ function DashboardContent() {
                         </span>
                       )}
                       {isZMaster && <span style={creditBadgeStyle}>{row.itemsCount} ΚΙΝΗΣΕΙΣ</span>}
+                      {isZMaster && row.notesCount > 0 && <span style={creditBadgeStyle}>📝 {row.notesCount} ΣΗΜ.</span>}
                     </p>
 
                     {!isZMaster && tx?.description && (
@@ -1268,6 +1294,7 @@ function DashboardContent() {
 
                     <p style={txMeta}>
                       {txMethod} • {txCreatedAt ? format(parseISO(txCreatedAt), 'HH:mm') : '--:--'} • {displayUser}
+                      {isZMaster && row.notesLastUpdatedAt ? ` • Notes update ${format(parseISO(row.notesLastUpdatedAt), 'HH:mm')}` : ''}
                     </p>
                   </div>
 

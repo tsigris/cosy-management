@@ -7,6 +7,8 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { format } from 'date-fns'
 import { getTodayDateISO, parseLocalDateOnly } from '@/lib/businessDate'
+import useStoreAccess from '@/hooks/useStoreAccess'
+import { canEditZNotes, canViewZNoteHistory, optimisticUpdateSucceeded } from '@/lib/zNotes'
 
 // ✅ ΟΡΙΣΤΙΚΕΣ ΣΤΑΘΕΡΕΣ ΓΙΑ ΑΠΟΛΥΤΗ ΤΑΥΤΙΣΗ ΜΕ ΤΗΝ ΑΝΑΛΥΣΗ
 const Z_METHODS = {
@@ -22,6 +24,67 @@ const Z_NOTES = {
 } as const
 
 const Z_CATEGORY = 'Εσοδα Ζ' as const
+
+type ZNoteType =
+  | 'equipment_issue'
+  | 'stock_shortage'
+  | 'staff_issue'
+  | 'customer_complaint'
+  | 'cash_difference'
+  | 'next_shift_todo'
+  | 'general'
+
+type ZNoteRow = {
+  id: string
+  note_text: string
+  note_type: ZNoteType | null
+  created_at: string
+  created_by: string
+  updated_at: string
+  updated_by: string | null
+}
+
+type ZRevisionRow = {
+  id: string
+  action: 'insert' | 'update' | 'delete'
+  old_text: string | null
+  new_text: string | null
+  changed_at: string
+  changed_by: string
+}
+
+const NOTE_TYPE_OPTIONS: Array<{ value: ZNoteType; label: string }> = [
+  { value: 'equipment_issue', label: 'Βλάβη Εξοπλισμού' },
+  { value: 'stock_shortage', label: 'Έλλειψη Προϊόντων' },
+  { value: 'staff_issue', label: 'Πρόβλημα Προσωπικού' },
+  { value: 'customer_complaint', label: 'Παράπονο Πελάτη' },
+  { value: 'cash_difference', label: 'Ταμειακή Διαφορά' },
+  { value: 'next_shift_todo', label: 'Εκκρεμότητα Επόμενης Βάρδιας' },
+  { value: 'general', label: 'Γενική Παρατήρηση' },
+]
+
+const NOTE_TYPE_LABELS: Record<ZNoteType, string> = {
+  equipment_issue: 'Βλάβη Εξοπλισμού',
+  stock_shortage: 'Έλλειψη Προϊόντων',
+  staff_issue: 'Πρόβλημα Προσωπικού',
+  customer_complaint: 'Παράπονο Πελάτη',
+  cash_difference: 'Ταμειακή Διαφορά',
+  next_shift_todo: 'Εκκρεμότητα Επόμενης Βάρδιας',
+  general: 'Γενική Παρατήρηση',
+}
+
+function formatDateTime(input: string | null | undefined): string {
+  if (!input) return '--'
+  const d = new Date(input)
+  if (Number.isNaN(d.getTime())) return '--'
+  return format(d, 'dd/MM/yyyy HH:mm')
+}
+
+function formatUserRef(userId: string | null | undefined): string {
+  const raw = String(userId || '').trim()
+  if (!raw) return 'Άγνωστος'
+  return raw.slice(0, 8).toUpperCase()
+}
 
 function parseMoneyInput(value: string | number | null | undefined): number {
   if (typeof value === 'number') return Number.isFinite(value) ? value : 0
@@ -44,10 +107,28 @@ function DailyZContent() {
 
   // 1. SaaS ΠΗΓΗ ΑΛΗΘΕΙΑΣ: Το ID από το URL
   const storeId = searchParams.get('store')
+  const dateFromQuery = searchParams.get('date')
+
+  const { data: accessData } = useStoreAccess({
+    storeId: storeId || undefined,
+    fields: 'role, can_edit_transactions, can_view_history',
+    autoFetch: !!storeId,
+  })
 
   const [cashZ, setCashZ] = useState('')
   const [posZ, setPosZ] = useState('')
   const [noTax, setNoTax] = useState('')
+  const [nightNoteDraft, setNightNoteDraft] = useState('')
+  const [noteType, setNoteType] = useState<ZNoteType>('general')
+  const [notes, setNotes] = useState<ZNoteRow[]>([])
+  const [notesLoading, setNotesLoading] = useState(false)
+  const [savingNote, setSavingNote] = useState(false)
+  const [editingNoteId, setEditingNoteId] = useState<string | null>(null)
+  const [editingText, setEditingText] = useState('')
+  const [editingUpdatedAt, setEditingUpdatedAt] = useState<string | null>(null)
+  const [expandedHistory, setExpandedHistory] = useState<Record<string, boolean>>({})
+  const [historyByNoteId, setHistoryByNoteId] = useState<Record<string, ZRevisionRow[]>>({})
+  const [historyLoadingByNoteId, setHistoryLoadingByNoteId] = useState<Record<string, boolean>>({})
 
   const [date, setDate] = useState(() => getTodayDateISO())
 
@@ -55,12 +136,21 @@ function DailyZContent() {
   const [isAlreadyClosed, setIsAlreadyClosed] = useState(false)
   const [username, setUsername] = useState('Admin')
 
+  const canEditNotes = canEditZNotes(accessData)
+  const canViewHistory = canViewZNoteHistory(accessData)
+
   // ✅ SaaS Guard: Προστασία από απώλεια καταστήματος
   useEffect(() => {
     if (!storeId || storeId === 'null') {
       router.replace('/select-store')
     }
   }, [storeId, router])
+
+  useEffect(() => {
+    if (!dateFromQuery) return
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateFromQuery)) return
+    setDate(dateFromQuery)
+  }, [dateFromQuery])
 
   const checkExistingZ = useCallback(async () => {
     if (!storeId) return
@@ -93,6 +183,190 @@ function DailyZContent() {
     }
     fetchUser()
   }, [])
+
+  const loadNotes = useCallback(async () => {
+    if (!storeId || !date) return
+    setNotesLoading(true)
+    const { data, error } = await supabase
+      .from('z_notes')
+      .select('id, note_text, note_type, created_at, created_by, updated_at, updated_by')
+      .eq('store_id', storeId)
+      .eq('business_date', date)
+      .eq('is_deleted', false)
+      .order('created_at', { ascending: false })
+
+    if (error) {
+      console.error('Failed loading z notes', error)
+      setNotes([])
+    } else {
+      setNotes((data || []) as ZNoteRow[])
+    }
+    setNotesLoading(false)
+  }, [date, storeId, supabase])
+
+  useEffect(() => {
+    void loadNotes()
+  }, [loadNotes])
+
+  async function insertNightNote(userId: string) {
+    const trimmed = nightNoteDraft.trim()
+    if (!trimmed || !storeId) return { ok: true as const }
+
+    const { error } = await supabase.from('z_notes').insert({
+      store_id: storeId,
+      business_date: date,
+      note_text: trimmed,
+      note_type: noteType,
+      created_by: userId,
+      updated_by: userId,
+    })
+
+    if (error) {
+      console.error('Failed inserting z note', error)
+      return { ok: false as const, message: error.message }
+    }
+
+    setNightNoteDraft('')
+    await loadNotes()
+    return { ok: true as const }
+  }
+
+  async function handleAddNote() {
+    if (!canEditNotes) {
+      alert('Δεν έχετε δικαίωμα επεξεργασίας σημειώσεων.')
+      return
+    }
+    const trimmed = nightNoteDraft.trim()
+    if (!trimmed) return
+
+    setSavingNote(true)
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+
+    if (!user?.id) {
+      alert('Σφάλμα: Δεν βρέθηκε χρήστης')
+      setSavingNote(false)
+      return
+    }
+
+    const result = await insertNightNote(user.id)
+    if (!result.ok) {
+      alert('Αποτυχία αποθήκευσης σημείωσης: ' + result.message)
+    }
+    setSavingNote(false)
+  }
+
+  function handleStartEdit(note: ZNoteRow) {
+    if (!canEditNotes) return
+    setEditingNoteId(note.id)
+    setEditingText(note.note_text)
+    setEditingUpdatedAt(note.updated_at)
+  }
+
+  function handleCancelEdit() {
+    setEditingNoteId(null)
+    setEditingText('')
+    setEditingUpdatedAt(null)
+  }
+
+  async function handleSaveEdit(noteId: string) {
+    if (!canEditNotes || !editingUpdatedAt) return
+
+    const trimmed = editingText.trim()
+    if (!trimmed) {
+      alert('Η σημείωση δεν μπορεί να είναι κενή.')
+      return
+    }
+
+    setSavingNote(true)
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+
+    if (!user?.id) {
+      alert('Σφάλμα: Δεν βρέθηκε χρήστης')
+      setSavingNote(false)
+      return
+    }
+
+    const { data, error } = await supabase
+      .from('z_notes')
+      .update({
+        note_text: trimmed,
+        updated_by: user.id,
+      })
+      .eq('id', noteId)
+      .eq('updated_at', editingUpdatedAt)
+      .select('id')
+
+    if (error) {
+      alert('Αποτυχία ενημέρωσης σημείωσης: ' + error.message)
+    } else if (!optimisticUpdateSucceeded(data)) {
+      alert('Η σημείωση άλλαξε από άλλο χρήστη. Κάντε ανανέωση και ξαναδοκιμάστε.')
+    } else {
+      handleCancelEdit()
+      await loadNotes()
+    }
+
+    setSavingNote(false)
+  }
+
+  async function handleSoftDelete(note: ZNoteRow) {
+    if (!canEditNotes) return
+    if (!confirm('Να διαγραφεί η σημείωση;')) return
+
+    setSavingNote(true)
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+
+    if (!user?.id) {
+      alert('Σφάλμα: Δεν βρέθηκε χρήστης')
+      setSavingNote(false)
+      return
+    }
+
+    const { data, error } = await supabase
+      .from('z_notes')
+      .update({
+        is_deleted: true,
+        deleted_at: new Date().toISOString(),
+        deleted_by: user.id,
+        updated_by: user.id,
+      })
+      .eq('id', note.id)
+      .eq('updated_at', note.updated_at)
+      .select('id')
+
+    if (error) {
+      alert('Αποτυχία διαγραφής σημείωσης: ' + error.message)
+    } else if (!optimisticUpdateSucceeded(data)) {
+      alert('Η σημείωση άλλαξε από άλλο χρήστη. Κάντε ανανέωση και ξαναδοκιμάστε.')
+    } else {
+      await loadNotes()
+    }
+    setSavingNote(false)
+  }
+
+  async function handleToggleHistory(noteId: string) {
+    if (!canViewHistory) return
+    const isOpen = expandedHistory[noteId] === true
+    setExpandedHistory((prev) => ({ ...prev, [noteId]: !isOpen }))
+    if (isOpen || historyByNoteId[noteId]) return
+
+    setHistoryLoadingByNoteId((prev) => ({ ...prev, [noteId]: true }))
+    const { data, error } = await supabase
+      .from('z_note_revisions')
+      .select('id, action, old_text, new_text, changed_at, changed_by')
+      .eq('note_id', noteId)
+      .order('changed_at', { ascending: false })
+
+    if (!error) {
+      setHistoryByNoteId((prev) => ({ ...prev, [noteId]: (data || []) as ZRevisionRow[] }))
+    }
+    setHistoryLoadingByNoteId((prev) => ({ ...prev, [noteId]: false }))
+  }
 
   async function handleUnlock() {
     if (!storeId) return
@@ -185,6 +459,12 @@ function DailyZContent() {
     const { error } = await supabase.from('transactions').insert(incomeTransactions)
 
     if (!error) {
+      if (nightNoteDraft.trim()) {
+        const noteResult = await insertNightNote(user.id)
+        if (!noteResult.ok) {
+          alert('Το Ζ αποθηκεύτηκε, αλλά η σημείωση απέτυχε: ' + noteResult.message)
+        }
+      }
       alert(`Επιτυχές κλείσιμο βάρδιας: ${format(parseLocalDateOnly(date), 'dd/MM')}`)
       router.push(`/?store=${storeId}`)
     } else {
@@ -270,6 +550,111 @@ function DailyZContent() {
         <div style={{ marginBottom: '20px' }}>
           <label style={labelStyle}>ΗΜΕΡΟΜΗΝΙΑ ΒΑΡΔΙΑΣ</label>
           <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={dateInputStyle} />
+        </div>
+
+        <div style={notesSectionBox}>
+          <p style={sectionTitle}>🗒️ ΣΗΜΕΙΩΣΕΙΣ ΒΡΑΔΙΑΣ</p>
+          <select
+            value={noteType}
+            onChange={(e) => setNoteType(e.target.value as ZNoteType)}
+            style={noteTypeSelectStyle}
+            disabled={!canEditNotes || savingNote}
+          >
+            {NOTE_TYPE_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+
+          <textarea
+            value={nightNoteDraft}
+            onChange={(e) => setNightNoteDraft(e.target.value)}
+            placeholder="Καταχώρησε βλάβες, ελλείψεις, παράπονα ή εκκρεμότητες για την επόμενη βάρδια..."
+            style={notesTextareaStyle}
+            rows={5}
+            disabled={!canEditNotes || savingNote}
+          />
+
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button type="button" onClick={handleAddNote} style={addNoteBtnStyle} disabled={!canEditNotes || savingNote || !nightNoteDraft.trim()}>
+              + Προσθήκη Σημείωσης
+            </button>
+          </div>
+
+          {!canEditNotes && <p style={noteMutedStyle}>Read-only: μόνο admin ή χρήστες με δικαίωμα επεξεργασίας μπορούν να γράψουν.</p>}
+
+          <div style={{ marginTop: 12 }}>
+            <p style={timelineTitleStyle}>Timeline Σημειώσεων ({notes.length})</p>
+            {notesLoading ? (
+              <p style={noteMutedStyle}>Φόρτωση...</p>
+            ) : notes.length === 0 ? (
+              <p style={noteMutedStyle}>Δεν υπάρχουν σημειώσεις για αυτή την ημερομηνία.</p>
+            ) : (
+              notes.map((note) => {
+                const isEditing = editingNoteId === note.id
+                const historyOpen = expandedHistory[note.id] === true
+                const historyRows = historyByNoteId[note.id] || []
+                return (
+                  <div key={note.id} style={noteCardStyle}>
+                    <div style={noteCardHeaderStyle}>
+                      <span style={noteTypeChipStyle}>{NOTE_TYPE_LABELS[(note.note_type || 'general') as ZNoteType]}</span>
+                      <span style={noteMetaStyle}>#{formatUserRef(note.created_by)} • {formatDateTime(note.created_at)}</span>
+                    </div>
+
+                    {isEditing ? (
+                      <textarea value={editingText} onChange={(e) => setEditingText(e.target.value)} style={notesTextareaEditStyle} rows={4} />
+                    ) : (
+                      <p style={noteTextStyle}>{note.note_text}</p>
+                    )}
+
+                    <p style={noteMetaStyle}>Τελευταία ενημέρωση: {formatDateTime(note.updated_at)} • #{formatUserRef(note.updated_by || note.created_by)}</p>
+
+                    <div style={noteActionsStyle}>
+                      {isEditing ? (
+                        <>
+                          <button type="button" onClick={() => handleSaveEdit(note.id)} style={noteActionPrimaryStyle} disabled={savingNote}>Αποθήκευση</button>
+                          <button type="button" onClick={handleCancelEdit} style={noteActionGhostStyle} disabled={savingNote}>Άκυρο</button>
+                        </>
+                      ) : (
+                        canEditNotes && (
+                          <>
+                            <button type="button" onClick={() => handleStartEdit(note)} style={noteActionGhostStyle} disabled={savingNote}>Επεξεργασία</button>
+                            <button type="button" onClick={() => handleSoftDelete(note)} style={noteActionDangerStyle} disabled={savingNote}>Διαγραφή</button>
+                          </>
+                        )
+                      )}
+
+                      {canViewHistory && !isEditing && (
+                        <button type="button" onClick={() => handleToggleHistory(note.id)} style={noteActionGhostStyle}>
+                          {historyOpen ? 'Απόκρυψη Ιστορικού' : 'Ιστορικό'}
+                        </button>
+                      )}
+                    </div>
+
+                    {canViewHistory && historyOpen && (
+                      <div style={historyWrapStyle}>
+                        {historyLoadingByNoteId[note.id] ? (
+                          <p style={noteMutedStyle}>Φόρτωση ιστορικού...</p>
+                        ) : historyRows.length === 0 ? (
+                          <p style={noteMutedStyle}>Δεν υπάρχουν αλλαγές.</p>
+                        ) : (
+                          historyRows.map((h) => (
+                            <div key={h.id} style={historyRowStyle}>
+                              <p style={historyActionStyle}>{h.action.toUpperCase()} • #{formatUserRef(h.changed_by)} • {formatDateTime(h.changed_at)}</p>
+                              {h.action === 'update' && (
+                                <p style={historyTextStyle}>Old: {h.old_text || '—'} | New: {h.new_text || '—'}</p>
+                              )}
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )
+              })
+            )}
+          </div>
         </div>
 
         <div style={totalDisplay}>
@@ -401,6 +786,177 @@ const dateInputStyle = {
   border: '1px solid #e2e8f0',
   fontSize: '16px',
   fontWeight: 'bold' as const,
+}
+
+const notesSectionBox: any = {
+  marginBottom: '20px',
+  padding: '18px',
+  borderRadius: '22px',
+  border: '1px solid #dbeafe',
+  backgroundColor: '#f8fbff',
+}
+
+const noteTypeSelectStyle: any = {
+  width: '100%',
+  border: '1px solid #cbd5e1',
+  borderRadius: '10px',
+  padding: '10px',
+  marginBottom: '10px',
+  fontSize: '13px',
+  fontWeight: 700,
+  color: '#1e293b',
+  backgroundColor: '#fff',
+}
+
+const notesTextareaStyle: any = {
+  width: '100%',
+  border: '1px solid #cbd5e1',
+  borderRadius: '12px',
+  padding: '12px',
+  fontSize: '14px',
+  lineHeight: 1.4,
+  resize: 'vertical',
+  marginBottom: '10px',
+}
+
+const notesTextareaEditStyle: any = {
+  width: '100%',
+  border: '1px solid #94a3b8',
+  borderRadius: '10px',
+  padding: '10px',
+  fontSize: '14px',
+  lineHeight: 1.4,
+  resize: 'vertical',
+  marginBottom: '8px',
+}
+
+const addNoteBtnStyle: any = {
+  backgroundColor: '#0f172a',
+  color: '#fff',
+  border: 'none',
+  borderRadius: '10px',
+  padding: '10px 12px',
+  fontSize: '12px',
+  fontWeight: 900,
+  cursor: 'pointer',
+}
+
+const timelineTitleStyle: any = {
+  fontSize: '12px',
+  fontWeight: 900,
+  color: '#334155',
+  margin: '0 0 8px 0',
+}
+
+const noteCardStyle: any = {
+  border: '1px solid #e2e8f0',
+  borderRadius: '12px',
+  padding: '10px',
+  backgroundColor: '#fff',
+  marginBottom: '8px',
+}
+
+const noteCardHeaderStyle: any = {
+  display: 'flex',
+  justifyContent: 'space-between',
+  gap: '8px',
+  alignItems: 'center',
+  flexWrap: 'wrap',
+}
+
+const noteTypeChipStyle: any = {
+  display: 'inline-block',
+  fontSize: '10px',
+  fontWeight: 900,
+  color: '#1d4ed8',
+  backgroundColor: '#dbeafe',
+  borderRadius: '999px',
+  padding: '4px 8px',
+}
+
+const noteMetaStyle: any = {
+  fontSize: '10px',
+  color: '#64748b',
+  margin: 0,
+  fontWeight: 700,
+}
+
+const noteTextStyle: any = {
+  fontSize: '13px',
+  color: '#0f172a',
+  margin: '8px 0',
+  whiteSpace: 'pre-wrap',
+}
+
+const noteActionsStyle: any = {
+  display: 'flex',
+  gap: '6px',
+  flexWrap: 'wrap',
+  marginTop: '6px',
+}
+
+const noteActionPrimaryStyle: any = {
+  border: '1px solid #2563eb',
+  backgroundColor: '#2563eb',
+  color: '#fff',
+  borderRadius: '8px',
+  padding: '6px 8px',
+  fontSize: '11px',
+  fontWeight: 800,
+  cursor: 'pointer',
+}
+
+const noteActionGhostStyle: any = {
+  border: '1px solid #cbd5e1',
+  backgroundColor: '#fff',
+  color: '#334155',
+  borderRadius: '8px',
+  padding: '6px 8px',
+  fontSize: '11px',
+  fontWeight: 800,
+  cursor: 'pointer',
+}
+
+const noteActionDangerStyle: any = {
+  border: '1px solid #fecaca',
+  backgroundColor: '#fff1f2',
+  color: '#b91c1c',
+  borderRadius: '8px',
+  padding: '6px 8px',
+  fontSize: '11px',
+  fontWeight: 800,
+  cursor: 'pointer',
+}
+
+const historyWrapStyle: any = {
+  marginTop: '8px',
+  paddingTop: '8px',
+  borderTop: '1px dashed #cbd5e1',
+}
+
+const historyRowStyle: any = {
+  marginBottom: '6px',
+}
+
+const historyActionStyle: any = {
+  margin: 0,
+  fontSize: '10px',
+  fontWeight: 900,
+  color: '#475569',
+}
+
+const historyTextStyle: any = {
+  margin: '2px 0 0 0',
+  fontSize: '11px',
+  color: '#334155',
+  whiteSpace: 'pre-wrap',
+}
+
+const noteMutedStyle: any = {
+  fontSize: '11px',
+  color: '#64748b',
+  margin: '6px 0 0 0',
+  fontWeight: 700,
 }
 
 const totalDisplay = {
