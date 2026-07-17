@@ -12,6 +12,7 @@ import {
   isSupplierCreditNoteTx,
   isSupplierPaymentTx,
 } from '@/lib/supplierCreditNote'
+import { fetchAllPaginatedRows, getSupplierBalanceYearBounds } from '@/lib/suppliersBalanceQueries'
 import { toBusinessDayDateFromInput } from '@/lib/businessDate'
 import {
   ChevronLeft,
@@ -127,6 +128,7 @@ function BalancesContent() {
   const [selectorSearch, setSelectorSearch] = useState('')
 
   const [rawTransactions, setRawTransactions] = useState<any[]>([])
+  const [yearOptionTransactions, setYearOptionTransactions] = useState<any[]>([])
   const [rawSuppliers, setRawSuppliers] = useState<any[]>([])
   const [rawAssets, setRawAssets] = useState<any[]>([])
   const [rawRevenueSources, setRawRevenueSources] = useState<any[]>([])
@@ -243,7 +245,7 @@ function BalancesContent() {
     // (αλλιώς θα βγει κενό dropdown)
     let foundAny = false
 
-    for (const t of rawTransactions) {
+    for (const t of yearOptionTransactions) {
       // Tab relevance:
       const isIncome = viewMode === 'income'
       const relevantForTab = isIncome ? !!t?.revenue_source_id : !!t?.supplier_id || !!t?.fixed_asset_id
@@ -267,7 +269,7 @@ function BalancesContent() {
     if (!foundAny) years.add(currentYear)
 
     return Array.from(years).sort((a, b) => b - a)
-  }, [rawTransactions, viewMode, RECEIVED_TYPES, currentYear])
+  }, [yearOptionTransactions, viewMode, RECEIVED_TYPES, currentYear])
 
   // ✅ Default selectedYear: currentYear if exists, else most recent
   useEffect(() => {
@@ -410,31 +412,60 @@ function BalancesContent() {
 
       const transactionSelect =
         'id, store_id, created_at, date, type, amount, category, notes, is_credit, supplier_id, fixed_asset_id, revenue_source_id, linked_invoice_tx_id, supplier_credit_note_number, voided_at, voided_by, void_reason'
+      const yearOptionsSelect =
+        'id, date, type, is_credit, supplier_id, fixed_asset_id, revenue_source_id, voided_at'
+      const { from: dateFrom, to: dateTo } = getSupplierBalanceYearBounds(selectedYear)
 
-      console.log('RUNNING QUERY: transactions', { select: transactionSelect })
-      const transRes = await supabase
-        .from('transactions')
-        .select(transactionSelect)
-        .eq('store_id', storeIdFromUrl)
-      if (transRes.error) {
-        console.error('RAW QUERY ERROR', transRes.error)
-        console.error('Suppliers balance transactions query failed', {
-          message: transRes.error.message,
-          details: transRes.error.details,
-          hint: transRes.error.hint,
-          query: {
-            table: 'transactions',
-            select: transactionSelect,
-            filters: {
-              store_id: storeIdFromUrl,
-            },
+      const [transactions, yearOptionRows] = await Promise.all([
+        fetchAllPaginatedRows<any>(
+          async ({ from, to, dateFrom: scopedFrom, dateTo: scopedTo }) => {
+            const res = await supabase
+              .from('transactions')
+              .select(transactionSelect, { count: 'exact' })
+              .eq('store_id', storeIdFromUrl)
+              .gte('date', scopedFrom || dateFrom)
+              .lte('date', scopedTo || dateTo)
+              .order('date', { ascending: true })
+              .order('created_at', { ascending: true })
+              .order('id', { ascending: true })
+              .range(from, to)
+
+            return {
+              data: res.data || [],
+              count: res.count ?? null,
+              error: res.error,
+            }
           },
-        })
-        throw transRes.error
-      }
-      const transactions = transRes.data || []
+          { dateFrom, dateTo },
+        ),
+        fetchAllPaginatedRows<any>(async ({ from, to }) => {
+          const res = await supabase
+            .from('transactions')
+            .select(yearOptionsSelect, { count: 'exact' })
+            .eq('store_id', storeIdFromUrl)
+            .order('date', { ascending: true })
+            .order('created_at', { ascending: true })
+            .order('id', { ascending: true })
+            .range(from, to)
+
+          return {
+            data: res.data || [],
+            count: res.count ?? null,
+            error: res.error,
+          }
+        }),
+      ])
+
       if (fetchId !== fetchSeqRef.current) return
       setRawTransactions(transactions)
+      setYearOptionTransactions(yearOptionRows)
+
+      console.log('RUNNING QUERY: transactions years', { select: yearOptionsSelect })
+      console.log('RUNNING QUERY: transactions year scoped', {
+        select: transactionSelect,
+        dateFrom,
+        dateTo,
+      })
 
       if (viewMode === 'expenses') {
         const suppliersSelect = 'id, store_id, name'
