@@ -1,7 +1,7 @@
 'use client'
 export const dynamic = 'force-dynamic'
 
-import { useEffect, useMemo, useState, useCallback, Suspense } from 'react'
+import { useEffect, useMemo, useState, useCallback, Suspense, useRef } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { getSupabase } from '@/lib/supabase'
@@ -13,6 +13,7 @@ import {
   isSupplierPaymentTx,
 } from '@/lib/supplierCreditNote'
 import { buildSupplierTurnoverTotalsForYear, getSupplierYearMovementHistory } from '@/lib/manageListsSuppliers'
+import { buildManageListsTransactionsPageQuery, fetchAllManageListsTransactions } from '@/lib/manageListsTransactions'
 import {
   Users,
   Wrench,
@@ -101,6 +102,7 @@ function ManageListsContent() {
 
   // ✅ transactions για τζίρους (με type + date)
   const [transactions, setTransactions] = useState<any[]>([])
+  const loadDataRequestRef = useRef(0)
 
   const [search, setSearch] = useState('')
 
@@ -428,6 +430,9 @@ function ManageListsContent() {
 
   // -------------------- LOAD DATA --------------------
   const loadData = useCallback(async () => {
+    loadDataRequestRef.current += 1
+    const requestId = loadDataRequestRef.current
+
     try {
       setLoading(true)
 
@@ -448,7 +453,7 @@ function ManageListsContent() {
 
       setStoreId(activeStoreId)
 
-      const [storeRes, sRes, fRes, rRes, tRes] = await Promise.all([
+      const [storeRes, sRes, fRes, rRes, allTransactions] = await Promise.all([
         supabase.from('stores').select('name').eq('id', activeStoreId).single(),
         supabase
           .from('suppliers')
@@ -470,33 +475,30 @@ function ManageListsContent() {
           .eq('store_id', activeStoreId)
           .eq('is_active', true)
           .order('name'),
-
-        // ✅ IMPORTANT: include type + date/created_at for year filter + credit logic
-        supabase
-          .from('transactions')
-          .select(
-            'id, amount, supplier_id, fixed_asset_id, employee_id, revenue_source_id, type, category, method, date, created_at, notes, is_credit, linked_invoice_tx_id, supplier_credit_note_number, voided_at, voided_by, void_reason',
-          )
-          .eq('store_id', activeStoreId),
+        fetchAllManageListsTransactions((from, to) => buildManageListsTransactionsPageQuery(supabase, activeStoreId, from, to)),
       ])
+
+      if (requestId !== loadDataRequestRef.current) return
 
       if (storeRes.data?.name) setCurrentStoreName(String(storeRes.data.name))
 
       if (sRes.error) throw sRes.error
       if (fRes.error) throw fRes.error
       if (rRes.error) throw rRes.error
-      if (tRes.error) throw tRes.error
 
       setSuppliers(sRes.data || [])
       setFixedAssets(fRes.data || [])
       setRevenueSources(rRes.data || [])
-      setTransactions(tRes.data || [])
+      setTransactions(allTransactions)
     } catch (e: any) {
+      if (requestId !== loadDataRequestRef.current) return
       toast.error(e?.message || 'Σφάλμα φόρτωσης')
     } finally {
-      setLoading(false)
+      if (requestId === loadDataRequestRef.current) {
+        setLoading(false)
+      }
     }
-  }, [router, urlStoreId])
+  }, [router, urlStoreId, supabase])
 
   useEffect(() => {
     loadData()
