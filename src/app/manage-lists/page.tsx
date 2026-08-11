@@ -12,6 +12,7 @@ import {
   isSupplierCreditNoteTx,
   isSupplierPaymentTx,
 } from '@/lib/supplierCreditNote'
+import { buildSupplierTurnoverTotalsForYear, getSupplierYearMovementHistory } from '@/lib/manageListsSuppliers'
 import {
   Users,
   Wrench,
@@ -334,16 +335,7 @@ function ManageListsContent() {
   const turnoverTxYear = useMemo(() => turnoverTx.filter((t: any) => isTxInYear(t, selectedYear)), [turnoverTx, selectedYear])
 
   // -------------------- TOTALS (based on turnoverTxYear ONLY) --------------------
-  const supplierTotals = useMemo(() => {
-    const totals: Record<string, number> = {}
-    for (const t of turnoverTxYear) {
-      if (!t?.supplier_id) continue
-      const id = String(t.supplier_id)
-      const amount = Math.abs(Number(t.amount)) || 0
-      totals[id] = (totals[id] || 0) + amount
-    }
-    return totals
-  }, [turnoverTxYear])
+  const supplierTotals = useMemo(() => buildSupplierTurnoverTotalsForYear(turnoverTxYear, selectedYear), [turnoverTxYear, selectedYear])
 
   const fixedAssetTotals = useMemo(() => {
     const totals: Record<string, number> = {}
@@ -483,7 +475,7 @@ function ManageListsContent() {
         supabase
           .from('transactions')
           .select(
-            'id, amount, supplier_id, fixed_asset_id, employee_id, revenue_source_id, type, category, date, created_at, notes, is_credit, linked_invoice_tx_id, supplier_credit_note_number, voided_at, voided_by, void_reason',
+            'id, amount, supplier_id, fixed_asset_id, employee_id, revenue_source_id, type, category, method, date, created_at, notes, is_credit, linked_invoice_tx_id, supplier_credit_note_number, voided_at, voided_by, void_reason',
           )
           .eq('store_id', activeStoreId),
       ])
@@ -894,16 +886,46 @@ function ManageListsContent() {
     (item: any, txs: any[], year: number) => {
       const isIncome = activeTab === 'revenue'
 
+      if (activeTab === 'suppliers') {
+        const supplierHistory = getSupplierYearMovementHistory(txs, String(item.id), year)
+
+        const latestCreditDate = supplierHistory.chargeMovements.length ? getTxDate(supplierHistory.chargeMovements[0]) : null
+        const oldestCreditDate = supplierHistory.chargeMovements.length
+          ? getTxDate(supplierHistory.chargeMovements[supplierHistory.chargeMovements.length - 1])
+          : null
+        const latestSettlementDate = supplierHistory.paymentMovements.length ? getTxDate(supplierHistory.paymentMovements[0]) : null
+        const latestSettlementAmount = supplierHistory.paymentMovements.length
+          ? Math.abs(Number(supplierHistory.paymentMovements[0]?.amount) || 0)
+          : null
+
+        const entityTrans = txs
+          .filter((t: any) => t.supplier_id === item.id)
+          .filter((t: any) => isTxInYear(t, year))
+
+        const supplierExpenseComponents = getSupplierBalanceComponents(entityTrans)
+        const totalSettlementAmount = supplierHistory.paymentMovements.reduce((acc: number, t: any) => acc + Math.abs(Number(t.amount) || 0), 0)
+
+        return {
+          creditTxs: supplierHistory.chargeMovements,
+          settlementTxs: supplierHistory.paymentMovements,
+          latestCreditDate,
+          oldestCreditDate,
+          latestSettlementDate,
+          latestSettlementAmount,
+          totalCreditAmount: supplierHistory.annualTurnover,
+          totalSettlementAmount,
+          balance: supplierExpenseComponents.openBalance,
+        }
+      }
+
       const entityTrans = txs
         .filter((t: any) => {
-          if (activeTab === 'suppliers') return t.supplier_id === item.id
           if (activeTab === 'revenue') return t.revenue_source_id === item.id
           if (activeTab === 'staff') return t.employee_id === item.id || t.fixed_asset_id === item.id
           return t.fixed_asset_id === item.id
         })
         .filter((t: any) => isTxInYear(t, year))
 
-      const isSupplier = activeTab === 'suppliers'
       const creditTxs = isIncome
         ? entityTrans
             .filter((t: any) => t.is_credit === true)
@@ -912,7 +934,6 @@ function ManageListsContent() {
             .filter((t: any) => {
               const type = String(t.type || '')
               if (activeTab === 'staff') return STAFF_REGISTER_TYPES.has(type)
-              if (isSupplier) return type === 'expense' || type === 'supplier_credit_note'
               return type === 'expense' || type === 'debt_payment'
             })
             .sort((a: any, b: any) => (getTxDate(b)?.getTime() || 0) - (getTxDate(a)?.getTime() || 0))
@@ -937,10 +958,6 @@ function ManageListsContent() {
       const totalCreditAmount = creditTxs.reduce((acc: number, t: any) => acc + Math.abs(Number(t.amount) || 0), 0)
       const totalDebtBaseAmount = debtBaseCreditTxs.reduce((acc: number, t: any) => acc + Math.abs(Number(t.amount) || 0), 0)
       const totalSettlementAmount = settlementTxs.reduce((acc: number, t: any) => acc + Math.abs(Number(t.amount) || 0), 0)
-      const supplierExpenseComponents =
-        activeTab === 'suppliers'
-          ? getSupplierBalanceComponents(entityTrans)
-          : null
       const latestSettlementDate = settlementTxs.length ? getTxDate(settlementTxs[0]) : null
       const latestSettlementAmount = settlementTxs.length ? Math.abs(Number(settlementTxs[0]?.amount) || 0) : null
 
@@ -953,7 +970,7 @@ function ManageListsContent() {
         latestSettlementAmount,
         totalCreditAmount,
         totalSettlementAmount,
-        balance: supplierExpenseComponents ? supplierExpenseComponents.openBalance : totalDebtBaseAmount - totalSettlementAmount,
+        balance: totalDebtBaseAmount - totalSettlementAmount,
       }
     },
     [activeTab, RECEIVED_TYPES, STAFF_REGISTER_TYPES],
@@ -1380,7 +1397,7 @@ function ManageListsContent() {
                 : `/add-expense?store=${storeForActions}&${activeTab === 'suppliers' ? 'supId' : 'assetId'}=${item.id}&mode=debt`
               const showDebtAction = history.balance > 0.1 && !!storeForActions
               const debtActionLabel = isIncome ? 'ΕΙΣΠΡΑΞΗ' : 'ΕΞΟΦΛΗΣΗ'
-              const cardMainAmount = isIncome ? history.balance : history.totalCreditAmount
+              const cardMainAmount = activeTab === 'suppliers' ? getTurnover(String(item.id)) : isIncome ? history.balance : history.totalCreditAmount
 
               const rfValue = String(item?.rf_code || '').trim()
               const ibanValue = String(item?.iban || '').trim()
@@ -1459,7 +1476,7 @@ function ManageListsContent() {
                       <div style={detailsHeader}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                           <Calendar size={14} />
-                          <span style={{ fontWeight: 950, fontSize: 12, letterSpacing: 0.2 }}>ΙΣΤΟΡΙΚΟ ΟΦΕΙΛΩΝ ({selectedYear})</span>
+                          <span style={{ fontWeight: 950, fontSize: 12, letterSpacing: 0.2 }}>{activeTab === 'suppliers' ? `ΚΙΝΗΣΕΙΣ ΠΡΟΜΗΘΕΥΤΗ (${selectedYear})` : `ΙΣΤΟΡΙΚΟ ΟΦΕΙΛΩΝ (${selectedYear})`}</span>
                         </div>
                         <button style={closeMiniBtn} onClick={() => setExpandedId(null)} title="Κλείσιμο">
                           <X size={14} />
@@ -1518,10 +1535,12 @@ function ManageListsContent() {
                           <span style={miniPillValue}>{history.totalCreditAmount.toFixed(2)}€</span>
                         </div>
 
-                        <div style={miniPill}>
-                          <span style={miniPillLabel}>Τρέχον υπόλοιπο</span>
-                          <span style={miniPillValue}>{history.balance.toFixed(2)}€</span>
-                        </div>
+                        {activeTab !== 'suppliers' && (
+                          <div style={miniPill}>
+                            <span style={miniPillLabel}>Τρέχον υπόλοιπο</span>
+                            <span style={miniPillValue}>{history.balance.toFixed(2)}€</span>
+                          </div>
+                        )}
                       </div>
 
                       <div style={rfIbanWrap}>
@@ -1533,7 +1552,7 @@ function ManageListsContent() {
                         )}
                       </div>
 
-                      <div style={sectionTitle}>{isIncome ? `Απαιτήσεις (${history.creditTxs.length})` : `Χρεώσεις (${history.creditTxs.length})`}</div>
+                      <div style={sectionTitle}>{isIncome ? `Απαιτήσεις (${history.creditTxs.length})` : activeTab === 'suppliers' ? `Κινήσεις Αγορών (${history.creditTxs.length})` : `Χρεώσεις (${history.creditTxs.length})`}</div>
                       {history.creditTxs.length === 0 ? (
                         <div style={rowMuted}>Δεν βρέθηκαν καταχωρήσεις.</div>
                       ) : (
@@ -1554,7 +1573,9 @@ function ManageListsContent() {
                                     {paymentLabel ? <span style={tinyChip}>{paymentLabel}</span> : null}
                                   </div>
                                   <div style={txNote} title={note}>
-                                    {note}
+                                    {activeTab === 'suppliers' && String(tx?.type || '').trim().toLowerCase() === 'supplier_credit_note'
+                                      ? `Πιστωτικό Προμηθευτή${note ? ` • ${note}` : ''}`
+                                      : note}
                                   </div>
                                 </div>
                                 <div style={txAmount}>{Math.abs(Number(tx.amount) || 0).toFixed(2)}€</div>
@@ -1566,11 +1587,11 @@ function ManageListsContent() {
                         </div>
                       )}
 
-                      {isIncome && (
+                      {(isIncome || activeTab === 'suppliers') && (
                         <>
-                          <div style={{ ...sectionTitle, marginTop: 14 }}>Εισπράξεις ({history.settlementTxs.length})</div>
+                          <div style={{ ...sectionTitle, marginTop: 14 }}>{isIncome ? `Εισπράξεις (${history.settlementTxs.length})` : `Πληρωμές (${history.settlementTxs.length})`}</div>
                           {history.settlementTxs.length === 0 ? (
-                            <div style={rowMuted}>Δεν βρέθηκαν κινήσεις είσπραξης.</div>
+                            <div style={rowMuted}>{isIncome ? 'Δεν βρέθηκαν κινήσεις είσπραξης.' : 'Δεν βρέθηκαν κινήσεις πληρωμής.'}</div>
                           ) : (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                               {history.settlementTxs.slice(0, 10).map((tx: any) => {
@@ -1583,6 +1604,7 @@ function ManageListsContent() {
                                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                                         <div style={txDate}>{formatTxDate(d)}</div>
                                         <span style={tinyChip}>{daysAgoLabel(d)}</span>
+                                        {activeTab === 'suppliers' && tx?.method ? <span style={tinyChip}>{String(tx.method)}</span> : null}
                                       </div>
                                       <div style={txNote} title={note}>
                                         {note}
