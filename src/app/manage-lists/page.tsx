@@ -12,7 +12,6 @@ import {
   isSupplierCreditNoteTx,
   isSupplierPaymentTx,
 } from '@/lib/supplierCreditNote'
-import { getManageListsCardAmountLabel, getManageListsCardMainAmount } from '@/lib/manageListsCardMetric'
 import {
   Users,
   Wrench,
@@ -1381,12 +1380,7 @@ function ManageListsContent() {
                 : `/add-expense?store=${storeForActions}&${activeTab === 'suppliers' ? 'supId' : 'assetId'}=${item.id}&mode=debt`
               const showDebtAction = history.balance > 0.1 && !!storeForActions
               const debtActionLabel = isIncome ? 'ΕΙΣΠΡΑΞΗ' : 'ΕΞΟΦΛΗΣΗ'
-              const cardMainAmount = getManageListsCardMainAmount({
-                activeTab,
-                isIncome,
-                history,
-              })
-              const cardAmountLabel = getManageListsCardAmountLabel({ activeTab, isIncome })
+              const cardMainAmount = isIncome ? history.balance : history.totalCreditAmount
 
               const rfValue = String(item?.rf_code || '').trim()
               const ibanValue = String(item?.iban || '').trim()
@@ -1432,7 +1426,6 @@ function ManageListsContent() {
                     </div>
 
                     <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
-                      <p style={{ ...categoryBadge, margin: 0 }}>{cardAmountLabel}</p>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                         <p style={{ ...turnoverText, color: 'var(--text)' }}>{cardMainAmount.toFixed(2)}€</p>
                         {isExpanded ? <ChevronUp size={18} color={colors.secondaryText} /> : <ChevronDown size={18} color={colors.secondaryText} />}
