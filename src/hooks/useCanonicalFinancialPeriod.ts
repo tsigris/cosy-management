@@ -7,6 +7,7 @@ import {
   type CanonicalFinancialRow,
   type CanonicalFinancialSummary,
 } from '@/lib/canonicalFinancialMetrics'
+import { fetchAllTransactionsForFinancialRange } from '@/lib/fetchAllTransactionsForFinancialRange'
 import { getTodayDateKey, normalizeDateKey, normalizeRange, type FinancialDateRange } from '@/lib/financialPeriods'
 
 type PayrollPayload = {
@@ -71,15 +72,14 @@ export function useCanonicalFinancialPeriod({
         })
 
         const supabase = getSupabase()
-        const [{ data, error: txError }, payrollRes] = await Promise.all([
-          supabase
-            .from('transactions')
-            .select(SELECT_FIELDS)
-            .eq('store_id', storeId)
-            .gte('date', normalizedRange.from)
-            .lte('date', normalizedRange.to)
-            .order('date', { ascending: false })
-            .order('created_at', { ascending: false }),
+        const [rows, payrollRes] = await Promise.all([
+          fetchAllTransactionsForFinancialRange<CanonicalFinancialRow>(supabase, {
+            storeId,
+            range: normalizedRange,
+            select: SELECT_FIELDS,
+            ascending: false,
+            pageSize: 1000,
+          }),
           supabase.rpc('get_staff_payroll_pressure_period_summary', {
             p_store_id: storeId,
             p_start_date: normalizedRange.from,
@@ -87,11 +87,10 @@ export function useCanonicalFinancialPeriod({
           }),
         ])
 
-        if (txError) throw txError
         if (payrollRes.error) throw payrollRes.error
         if (cancelled || requestId !== requestIdRef.current) return
 
-        const nextRows = Array.isArray(data) ? (data as CanonicalFinancialRow[]) : []
+        const nextRows = rows
         const rawPayroll = Array.isArray(payrollRes.data) ? payrollRes.data[0] : payrollRes.data
         const payrollPct = Number((rawPayroll as PayrollPayload | null)?.payroll_pct || 0)
 

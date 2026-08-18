@@ -6,12 +6,12 @@
 import {
   countInclusiveDays,
   addDaysToDateKey,
-  getTodayDateKey,
   getMonthRange,
   getYearRange,
   getRollingDayRange,
   getCanonicalPeriodRange,
   enumerateDateKeys,
+  getYearOverYearRanges,
 } from '@/lib/financialPeriods'
 
 describe('financialPeriods - Date Math', () => {
@@ -258,6 +258,38 @@ describe('financialPeriods - Date Math', () => {
       expect(keys).toEqual(['2026-05-14', '2026-05-15', '2026-05-16'])
     })
 
+
+  describe('getYearOverYearRanges', () => {
+    it('uses strict calendar mapping when mode is calendar', () => {
+      const mapped = getYearOverYearRanges(
+        { from: '2026-04-01', to: '2026-08-17' },
+        'calendar'
+      )
+
+      expect(mapped.previous.from).toBe('2025-04-01')
+      expect(mapped.previous.to).toBe('2025-08-17')
+    })
+
+    it('maps full month boundaries in calendar mode', () => {
+      const mapped = getYearOverYearRanges(
+        { from: '2026-05-01', to: '2026-05-31' },
+        'calendar'
+      )
+
+      expect(mapped.previous.from).toBe('2025-05-01')
+      expect(mapped.previous.to).toBe('2025-05-31')
+    })
+
+    it('handles leap-year boundaries safely in calendar mode', () => {
+      const mapped = getYearOverYearRanges(
+        { from: '2024-02-29', to: '2024-03-01' },
+        'calendar'
+      )
+
+      expect(mapped.previous.from).toBe('2023-02-28')
+      expect(mapped.previous.to).toBe('2023-03-01')
+    })
+  })
     it('should enumerate month with correct count', () => {
       const keys = enumerateDateKeys({ from: '2026-05-01', to: '2026-05-31' })
 

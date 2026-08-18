@@ -380,7 +380,7 @@ export async function POST(request: NextRequest) {
     // ================================================================
     // BOOTSTRAP COMPLETE - All steps passed
     // ================================================================
-    const mappedRanges = getYearOverYearRanges({ from: fromDate, to: toDate })
+    const mappedRanges = getYearOverYearRanges({ from: fromDate, to: toDate }, 'calendar')
     requestContext = {
       ...requestContext,
       selectedOrganizationId,

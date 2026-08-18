@@ -1,18 +1,50 @@
 import { renderHook, waitFor } from '@testing-library/react'
 import { useCanonicalFinancialPeriod } from '@/hooks/useCanonicalFinancialPeriod'
 
-function createSupabaseMock(rows: any[], payrollPct = 0) {
-  const queryResult = { data: rows, error: null }
-  const orderSecond = jest.fn().mockResolvedValue(queryResult)
-  const orderFirst = jest.fn().mockReturnValue({ order: orderSecond })
-  const lte = jest.fn().mockReturnValue({ order: orderFirst })
-  const gte = jest.fn().mockReturnValue({ lte })
-  const eq = jest.fn().mockReturnValue({ gte })
-  const select = jest.fn().mockReturnValue({ eq })
-  const from = jest.fn().mockReturnValue({ select })
+type TestRow = {
+  id?: string | number
+  date: string
+  amount: number
+  type: string
+  category?: string
+  method?: string
+  is_credit?: boolean
+}
+
+function createSupabaseMock(rows: TestRow[], payrollPct = 0) {
+  const state: {
+    storeId?: string
+    from?: string
+    to?: string
+  } = {}
+
+  const queryBuilder = {
+    select: jest.fn(() => queryBuilder),
+    eq: jest.fn((_field: string, value: string) => {
+      state.storeId = value
+      return queryBuilder
+    }),
+    gte: jest.fn((_field: string, value: string) => {
+      state.from = value
+      return queryBuilder
+    }),
+    lte: jest.fn((_field: string, value: string) => {
+      state.to = value
+      return queryBuilder
+    }),
+    order: jest.fn(() => queryBuilder),
+    range: jest.fn(async (fromIdx: number, toIdx: number) => {
+      const filtered = rows
+        .filter((row) => row.date >= String(state.from) && row.date <= String(state.to))
+        .slice(fromIdx, toIdx + 1)
+      return { data: filtered, error: null }
+    }),
+  }
+
+  const from = jest.fn().mockReturnValue(queryBuilder)
   const rpc = jest.fn().mockResolvedValue({ data: [{ payroll_pct: payrollPct }], error: null })
 
-  return { from, rpc }
+  return { from, rpc, queryBuilder }
 }
 
 describe('useCanonicalFinancialPeriod', () => {
@@ -59,6 +91,42 @@ describe('useCanonicalFinancialPeriod', () => {
     expect(result.current.summary?.totalExpenses).toBe(40)
     expect(result.current.summary?.profit).toBe(60)
     expect(result.current.summary?.payrollPct).toBe(12)
+  })
+
+  it('loads all pages when period contains more than 1000 rows', async () => {
+    const range = { from: '2026-05-01', to: '2026-05-31' }
+    const rows = Array.from({ length: 1205 }, (_, index) => ({
+      id: index + 1,
+      date: '2026-05-14',
+      amount: 1,
+      type: 'income',
+      category: 'Sales',
+      method: 'Cash',
+      is_credit: false,
+    }))
+
+    const supabase = createSupabaseMock(rows, 0)
+    const { getSupabase } = jest.requireMock('@/lib/supabase') as { getSupabase: jest.Mock }
+    getSupabase.mockReturnValue(supabase)
+
+    const { result } = renderHook(() =>
+      useCanonicalFinancialPeriod({
+        storeId: 'store-1',
+        range,
+        enabled: true,
+      })
+    )
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false)
+      expect(result.current.summary).not.toBeNull()
+    })
+
+    expect(result.current.rows).toHaveLength(1205)
+    expect(result.current.summary?.totalRevenue).toBe(1205)
+    expect(supabase.queryBuilder.range).toHaveBeenCalledTimes(2)
+    expect(supabase.queryBuilder.range).toHaveBeenNthCalledWith(1, 0, 999)
+    expect(supabase.queryBuilder.range).toHaveBeenNthCalledWith(2, 1000, 1999)
   })
 
   it('resets state when disabled or storeId missing', async () => {

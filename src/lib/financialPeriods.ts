@@ -259,13 +259,19 @@ export type YearOverYearResult = {
   }
 }
 
-export function getYearOverYearRanges(range: FinancialDateRange): YearOverYearResult {
+export type YearOverYearMode = 'weekday' | 'calendar'
+
+export function getYearOverYearRanges(
+  range: FinancialDateRange,
+  mode: YearOverYearMode = 'weekday',
+): YearOverYearResult {
   const current = normalizeRange(range)
   const days = countInclusiveDays(current)
-  
-  // Find same weekday in previous year for the current date (with detailed mapping info)
-  const weekdayMapping = findSameWeekdayInPreviousYear(current.from)
-  const comparisonFromDate = weekdayMapping.selectedDate
+
+  const comparisonFromDate =
+    mode === 'calendar'
+      ? shiftDateKeyByYears(current.from, -1)
+      : findSameWeekdayInPreviousYear(current.from).selectedDate
   const comparisonToDate = addDaysToDateKey(comparisonFromDate, Math.max(0, days - 1))
 
   return {

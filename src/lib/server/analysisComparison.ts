@@ -2,7 +2,6 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import {
   aggregateCanonicalFinancialMetrics,
   isExpenseTransaction,
-  isRevenueTransaction,
   toAmount,
   type CanonicalFinancialRow,
 } from '@/lib/canonicalFinancialMetrics'
@@ -13,9 +12,9 @@ import {
   formatShortDateKey,
   getWeekdayLabel,
   getYearOverYearRanges,
-  shiftDateKeyByYears,
   type FinancialDateRange,
 } from '@/lib/financialPeriods'
+import { fetchAllTransactionsForFinancialRange } from '@/lib/fetchAllTransactionsForFinancialRange'
 import type {
   ComparisonTrend,
   FinancialComparisonDayRow,
@@ -131,23 +130,13 @@ async function loadPeriodTransactions(
     })
   }
 
-  const { data, error } = await supabase
-    .from('transactions')
-    .select('date, amount, type, category, method, notes, is_credit')
-    .eq('store_id', storeId)
-    .gte('date', range.from)
-    .lte('date', range.to)
-
-  if (error) {
-    console.error('[comparison/service] transactions-query:error', {
-      storeId,
-      range,
-      error: error.message,
-    })
-    throw error
-  }
-
-  const rows = Array.isArray(data) ? (data as CanonicalFinancialRow[]) : []
+  const rows = await fetchAllTransactionsForFinancialRange<CanonicalFinancialRow>(supabase, {
+    storeId,
+    range,
+    select: 'id, date, amount, type, category, method, notes, is_credit',
+    ascending: true,
+    pageSize: 1000,
+  })
 
   if (process.env.NODE_ENV !== 'production') {
     console.debug('[comparison/service] transactions-query:result', {
@@ -352,7 +341,7 @@ export async function buildFinancialComparison(
   storeId: string,
   range: FinancialDateRange,
 ): Promise<FinancialComparisonResponse> {
-  const { current, previous, days, comparisonMapping } = getYearOverYearRanges(range)
+  const { current, previous, days, comparisonMapping } = getYearOverYearRanges(range, 'calendar')
 
   if (process.env.NODE_ENV !== 'production') {
     console.debug('[comparison/build] range-mapping', {
@@ -366,23 +355,11 @@ export async function buildFinancialComparison(
     })
   }
 
-  // TRACE: Log weekday mapping selection logic
-  // Calculate distance from baseline previous-year date to selected comparison date
-  const baselinePreviousYear = shiftDateKeyByYears(current.from, -1)
-  const distanceMs = Math.abs(
-    new Date(previous.from + 'T00:00:00Z').getTime() - 
-    new Date(baselinePreviousYear + 'T00:00:00Z').getTime()
-  )
-  const distanceDays = distanceMs / (24 * 60 * 60 * 1000)
-  
-  console.info('[comparison/build] WEEKDAY_MAPPING_SELECTION', {
+  console.info('[comparison/build] CALENDAR_MAPPING_SELECTION', {
     currentDate: current.from,
-    currentWeekday: getWeekdayLabel(current.from),
-    baselinePreviousYearDate: baselinePreviousYear,
     comparisonDate: previous.from,
     comparisonWeekday: comparisonMapping.comparisonWeekday,
-    distanceDaysFromBaseline: distanceDays,
-    selectionRule: 'Closest same weekday within ±14 days (ties prefer future date)',
+    selectionRule: 'Strict calendar shift by -1 year for financial reporting',
   })
 
   const [currentAggregate, previousAggregate] = await Promise.all([

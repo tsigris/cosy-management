@@ -1,34 +1,63 @@
 import { buildFinancialComparison } from '@/lib/server/analysisComparison'
 
-function createSupabaseForComparison(rows: any[], payrollPct = 10) {
-  const state: { from?: string; to?: string } = {}
+type TestRow = {
+  id?: string | number
+  date: string
+  amount: number
+  type: string
+  category?: string
+  method?: string
+  notes?: string
+  is_credit?: boolean
+}
 
-  const lte = jest.fn(async (_field: string, to: string) => {
-    state.to = to
-    const data = rows.filter((r) => r.date >= String(state.from) && r.date <= String(state.to))
-    return { data, error: null }
-  })
-  const gte = jest.fn((_field: string, from: string) => {
-    state.from = from
-    return { lte }
-  })
-  const eq = jest.fn(() => ({ gte }))
-  const select = jest.fn(() => ({ eq }))
-  const from = jest.fn(() => ({ select }))
+type ComparisonSupabaseMock = {
+  from: jest.Mock
+  rpc: jest.Mock
+  queryBuilder: {
+    range: jest.Mock
+  }
+}
+
+function createSupabaseForComparison(rows: TestRow[], payrollPct = 10): ComparisonSupabaseMock {
+  const state: {
+    from?: string
+    to?: string
+  } = {}
+
+  const queryBuilder = {
+    select: jest.fn(() => queryBuilder),
+    eq: jest.fn(() => queryBuilder),
+    gte: jest.fn((_field: string, from: string) => {
+      state.from = from
+      return queryBuilder
+    }),
+    lte: jest.fn((_field: string, to: string) => {
+      state.to = to
+      return queryBuilder
+    }),
+    order: jest.fn(() => queryBuilder),
+    range: jest.fn(async (fromIdx: number, toIdx: number) => {
+      const filtered = rows
+        .filter((row) => row.date >= String(state.from) && row.date <= String(state.to))
+        .slice(fromIdx, toIdx + 1)
+      return { data: filtered, error: null }
+    }),
+  }
+
+  const from = jest.fn(() => queryBuilder)
   const rpc = jest.fn(async () => ({ data: [{ payroll_pct: payrollPct }], error: null }))
 
-  return { from, rpc } as any
+  return { from, rpc, queryBuilder }
 }
 
 describe('analysisComparison integration', () => {
-  it('builds current vs previous period comparison with closest weekday matching', async () => {
-    // 2026-05-01 = Friday, closest Friday in previous year within ±14 days of 2025-05-01 is 2025-05-02
-    // 2026-05-02 = Saturday, closest Saturday is 2025-05-03
+  it('builds current vs previous period comparison with strict calendar mapping', async () => {
     const rows = [
       { date: '2026-05-01', amount: 100, type: 'income', category: 'Sales', method: 'Cash', is_credit: false },
       { date: '2026-05-02', amount: -20, type: 'expense', category: 'Supplies', method: 'Cash', is_credit: false },
-      { date: '2025-05-02', amount: 80, type: 'income', category: 'Sales', method: 'Cash', is_credit: false },
-      { date: '2025-05-03', amount: -10, type: 'expense', category: 'Supplies', method: 'Cash', is_credit: false },
+      { date: '2025-05-01', amount: 80, type: 'income', category: 'Sales', method: 'Cash', is_credit: false },
+      { date: '2025-05-02', amount: -10, type: 'expense', category: 'Supplies', method: 'Cash', is_credit: false },
     ]
 
     const supabase = createSupabaseForComparison(rows, 11)
@@ -50,19 +79,15 @@ describe('analysisComparison integration', () => {
     // Verify comparisonMapping is included
     expect(result.comparisonMapping).toBeDefined()
     expect(result.comparisonMapping.currentDate).toBe('2026-05-01')
-    expect(result.comparisonMapping.comparisonDate).toBe('2025-05-02')
+    expect(result.comparisonMapping.comparisonDate).toBe('2025-05-01')
   })
 
-  it('maps 2026-05-15 (Friday) to 2025-05-16 (Friday) with closest weekday matching', async () => {
-    // 2026-05-15 = Friday
-    // Previous-year baseline: 2025-05-15 = Thursday
-    // Search candidates: 2025-05-09 (Friday, 6 days away) vs 2025-05-16 (Friday, 1 day away)
-    // Select: 2025-05-16 (closest)
+  it('maps 2026-05-15 to 2025-05-15 in calendar mode', async () => {
     const rows = [
       { date: '2026-05-15', amount: 1725, type: 'income', category: 'Sales', method: 'Cash', is_credit: false },
       { date: '2026-05-15', amount: -1337, type: 'expense', category: 'Ops', method: 'Cash', is_credit: false },
-      { date: '2025-05-16', amount: 1420, type: 'income', category: 'Sales', method: 'Cash', is_credit: false },
-      { date: '2025-05-16', amount: -1200, type: 'expense', category: 'Ops', method: 'Cash', is_credit: false },
+      { date: '2025-05-15', amount: 1420, type: 'income', category: 'Sales', method: 'Cash', is_credit: false },
+      { date: '2025-05-15', amount: -1200, type: 'expense', category: 'Ops', method: 'Cash', is_credit: false },
     ]
 
     const supabase = createSupabaseForComparison(rows, 10)
@@ -73,7 +98,7 @@ describe('analysisComparison integration', () => {
     )
 
     expect(result.periods.current.from).toBe('2026-05-15')
-    expect(result.periods.previous.from).toBe('2025-05-16')
+    expect(result.periods.previous.from).toBe('2025-05-15')
 
     expect(result.summary.totalRevenue.current).toBe(1725)
     expect(result.summary.totalRevenue.previous).toBe(1420)
@@ -82,7 +107,7 @@ describe('analysisComparison integration', () => {
 
     expect(result.daily).toHaveLength(1)
     expect(result.daily[0]?.currentDate).toBe('2026-05-15')
-    expect(result.daily[0]?.previousDate).toBe('2025-05-16')
+    expect(result.daily[0]?.previousDate).toBe('2025-05-15')
     expect(result.daily[0]?.previousHasData).toBe(true)
     expect(result.daily[0]?.currentRevenue).toBe(1725)
     expect(result.daily[0]?.previousRevenue).toBe(1420)
@@ -91,7 +116,59 @@ describe('analysisComparison integration', () => {
     // Verify comparisonMapping is included and correct
     expect(result.comparisonMapping).toBeDefined()
     expect(result.comparisonMapping.currentDate).toBe('2026-05-15')
-    expect(result.comparisonMapping.comparisonDate).toBe('2025-05-16')
-    expect(result.comparisonMapping.comparisonWeekday).toBe('Παρ')
+    expect(result.comparisonMapping.comparisonDate).toBe('2025-05-15')
+  })
+
+  it('loads all pages when comparison range returns more than 1000 rows', async () => {
+    const currentRows = Array.from({ length: 1205 }, (_, idx) => ({
+      id: `c-${idx + 1}`,
+      date: '2026-05-14',
+      amount: 1,
+      type: 'income',
+      category: 'Sales',
+      method: 'Cash',
+      is_credit: false,
+    }))
+    const previousRows = Array.from({ length: 1205 }, (_, idx) => ({
+      id: `p-${idx + 1}`,
+      date: '2025-05-14',
+      amount: 1,
+      type: 'income',
+      category: 'Sales',
+      method: 'Cash',
+      is_credit: false,
+    }))
+
+    const supabase = createSupabaseForComparison([...currentRows, ...previousRows], 10)
+    const result = await buildFinancialComparison(
+      supabase,
+      'store-1',
+      { from: '2026-05-14', to: '2026-05-14' }
+    )
+
+    expect(result.summary.totalRevenue.current).toBe(1205)
+    expect(result.summary.totalRevenue.previous).toBe(1205)
+    expect(result.summary.totalRevenue.delta).toBe(0)
+    expect(supabase.queryBuilder.range).toHaveBeenCalledTimes(4)
+  })
+
+  it('keeps canonical current and comparison current consistent for same rows', async () => {
+    const rows = [
+      { date: '2026-05-01', amount: 100, type: 'income', category: 'Sales', method: 'Cash', is_credit: false },
+      { date: '2026-05-01', amount: -10, type: 'expense', category: 'Ops', method: 'Cash', is_credit: false },
+      { date: '2026-05-02', amount: 50, type: 'income', category: 'Sales', method: 'Card', is_credit: false },
+      { date: '2025-05-01', amount: 40, type: 'income', category: 'Sales', method: 'Cash', is_credit: false },
+      { date: '2025-05-02', amount: 20, type: 'income', category: 'Sales', method: 'Card', is_credit: false },
+    ]
+
+    const supabase = createSupabaseForComparison(rows, 9)
+    const result = await buildFinancialComparison(
+      supabase,
+      'store-1',
+      { from: '2026-05-01', to: '2026-05-02' }
+    )
+
+    expect(result.summary.totalRevenue.current).toBe(150)
+    expect(result.daily[result.daily.length - 1]?.currentCumulativeRevenue).toBe(150)
   })
 })
